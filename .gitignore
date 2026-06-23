@@ -10,3 +10,10 @@ data/workbench-state.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# docs: only upload the project usage doc and change-plan docs.
+docs/**
+!docs/
+!docs/usage.md
+!docs/方案与规划/
+!docs/方案与规划/*.md

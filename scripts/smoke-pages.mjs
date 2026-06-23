@@ -7,8 +7,8 @@ const baseUrl = (baseUrlArg ? baseUrlArg.split("=").slice(1).join("=") : DEFAULT
 const targets = [
   { name: "dashboard_page", path: "/", expect: "JOTO GTM" },
   { name: "weekly_plan_page", path: "/weekly-plan", expect: "周计划" },
-  { name: "today_page", path: "/today", expect: "今日任务" },
-  { name: "publish_page", path: "/publish", expect: "发布队列" },
+  { name: "today_page", path: "/today", expect: "今日发布" },
+  { name: "publish_page", path: "/publish", expect: "数据回传" },
   { name: "blog_monitor_page", path: "/blog-monitor", expect: "官网博客监控" },
   { name: "blog_candidates_page", path: "/blog-candidates", expect: "博客候选池" },
   { name: "geo_test_page", path: "/geo-test", expect: "GEO 测试" },

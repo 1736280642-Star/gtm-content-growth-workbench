@@ -23,8 +23,8 @@ const { Header, Sider, Content } = Layout;
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
   { key: "/weekly-plan", icon: <CalendarOutlined />, label: <Link href="/weekly-plan">周计划</Link> },
-  { key: "/today", icon: <CheckSquareOutlined />, label: <Link href="/today">今日任务</Link> },
-  { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">发布队列</Link> },
+  { key: "/today", icon: <CheckSquareOutlined />, label: <Link href="/today">今日发布</Link> },
+  { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },
   { key: "/blog-monitor", icon: <FileSearchOutlined />, label: <Link href="/blog-monitor">官网博客监控</Link> },
   { key: "/blog-candidates", icon: <FileSearchOutlined />, label: <Link href="/blog-candidates">博客候选池</Link> },
   { key: "/geo-test", icon: <RocketOutlined />, label: <Link href="/geo-test">GEO 测试</Link> },
@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Typography.Title level={4} style={{ margin: 0 }}>
             JOTO GTM
           </Typography.Title>
-          <Typography.Text type="secondary">内容工作台 MVP</Typography.Text>
+          <Typography.Text type="secondary">内容增长工作台 V3</Typography.Text>
         </div>
         <Menu mode="inline" selectedKeys={[selectedKey || "/"]} items={navItems} />
       </Sider>
@@ -63,8 +63,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             justifyContent: "space-between"
           }}
         >
-          <Typography.Text strong>渠道生产 + 博客诊断 + GEO 测试</Typography.Text>
-          <Typography.Text type="secondary">Demo / Imported / Real 数据分层展示</Typography.Text>
+          <Typography.Text strong>{"知识库 -> 周计划 -> 今日发布 -> 数据回传 -> 周度复盘"}</Typography.Text>
+          <Typography.Text type="secondary">诊断优先，动作收敛，数据回传独立</Typography.Text>
         </Header>
         <Content style={{ padding: 24 }}>{children}</Content>
       </Layout>

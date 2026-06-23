@@ -263,7 +263,7 @@ function getDashboardActionText(step: DashboardActionStep, count: number) {
   }
 
   if (step === "publish") {
-    return count ? `还有 ${count} 条记录等待人工发布、URL 回填、指标录入或失败排查。` : "当前没有发布侧待处理记录。";
+    return count ? `还有 ${count} 条记录等待人工发布确认、URL 回填、指标录入或失败排查。` : "当前没有今日发布侧待处理记录。";
   }
 
   if (step === "blog") {
@@ -409,13 +409,13 @@ export default function DashboardPage() {
     },
     {
       key: "publish",
-      title: "发布侧待处理",
+      title: "今日发布待处理",
       count: pendingPublishCount,
       step: "publish" as const,
-      href: "/publish",
+      href: "/today",
       currentAction: getDashboardActionText("publish", pendingPublishCount),
-      entryLabel: "去发布",
-      description: pendingPublishCount ? `还有 ${pendingPublishCount} 条记录等待人工发布、URL 回填、指标录入或失败排查。` : "当前没有发布侧待处理记录。"
+      entryLabel: "去今日发布",
+      description: pendingPublishCount ? `还有 ${pendingPublishCount} 条记录等待人工发布确认、URL 回填或数据回传。` : "当前没有今日发布侧待处理记录。"
     },
     {
       key: "blog",
@@ -568,15 +568,15 @@ export default function DashboardPage() {
     <>
       {contextHolder}
       <PageHeader
-        title="工作台首页"
-        subtitle="今天需要处理的任务、发布回填、官网博客诊断和 GEO 测试都在这里汇总。"
+        title="首页数据看板"
+        subtitle="本周内容生产、官网监控、GEO 诊断和数据回传的总览。"
         actions={
           <>
             <Button loading={runningPipeline} onClick={handleRunPipeline}>
               运行 GTM Pipeline
             </Button>
             <Link href="/today">
-              <Button type="primary">生成今日文章</Button>
+              <Button type="primary">去今日发布</Button>
             </Link>
             <Link href="/geo-test">
               <Button>运行 GEO 测试</Button>
@@ -585,11 +585,12 @@ export default function DashboardPage() {
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
-      <div className="metric-grid">
+      <div className="metric-grid metric-grid-five">
         <MetricCard title="本周计划" value={metrics.targetTotal} suffix="篇" />
         <MetricCard title="已生成" value={metrics.generated} suffix="篇" />
         <MetricCard title="已发布" value={metrics.published} suffix="篇" />
         <MetricCard title="待回填 URL" value={metrics.pendingUrl} suffix="条" />
+        <MetricCard title="待数据回传" value={pendingPublishCount} suffix="条" />
       </div>
       <div className="two-column">
         <Card title="执行队列">

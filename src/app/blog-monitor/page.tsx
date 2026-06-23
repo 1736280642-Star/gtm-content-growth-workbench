@@ -7,6 +7,7 @@ import { ActionEmpty } from "@/components/ActionEmpty";
 import { DataConfidenceTag } from "@/components/DataConfidenceTag";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
+import { MetricCard } from "@/components/MetricCard";
 import { DEFAULT_BLOG_SOURCE_URLS } from "@/lib/blog-source";
 import { confidenceLabels } from "@/lib/labels";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
@@ -41,6 +42,13 @@ const geoResultColors: Record<BlogArticle["geoResult"], string> = {
 type BlogCandidateStatusView = NonNullable<BlogArticle["candidateStatus"]>;
 type BlogPriority = "high" | "medium" | "low";
 type BlogNextStep = "diagnose" | "add_candidate" | "candidate_pool" | "planned" | "observe" | "dismissed";
+type BlogAuditIndicator = {
+  key: string;
+  label: string;
+  passed: boolean;
+  severity: BlogPriority;
+  action: string;
+};
 
 const candidateStatusLabels: Record<BlogCandidateStatusView, string> = {
   none: "未入池",
@@ -100,6 +108,89 @@ function getBlogPriority(article: BlogArticle): BlogPriority {
   }
 
   return "low";
+}
+
+function getBlogGeoHealthScore(article: BlogArticle) {
+  let score = 100;
+
+  if (article.indexedStatus === "not_indexed") score -= 24;
+  if (article.indexedStatus === "unknown") score -= 12;
+  score -= Math.min(article.seoIssueCount * 9, 36);
+  if (article.geoResult === "miss") score -= 26;
+  if (article.geoResult === "partial") score -= 12;
+  if (!article.title.trim() || article.title.startsWith("http")) score -= 10;
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function getBlogAuditIndicators(article: BlogArticle): BlogAuditIndicator[] {
+  const titleReady = Boolean(article.title.trim()) && !/^https?:\/\//i.test(article.title);
+  const crawlerReady = article.indexedStatus !== "not_indexed";
+  const structuredReady = article.seoIssueCount <= 1;
+  const faqSchemaReady = article.seoIssueCount === 0 || article.geoResult === "hit";
+  const clearConclusionReady = article.geoResult !== "miss";
+  const officialFactReady = article.url.includes("jotoai.com") && article.geoResult !== "miss";
+  const chunkReady = titleReady && structuredReady && article.geoResult !== "miss";
+
+  return [
+    {
+      key: "crawler",
+      label: "AI crawler 可访问性",
+      passed: crawlerReady,
+      severity: crawlerReady ? "low" : "high",
+      action: "检查 robots、CDN 或页面访问状态。"
+    },
+    {
+      key: "extractable",
+      label: "标题与正文可提取性",
+      passed: titleReady,
+      severity: titleReady ? "low" : "medium",
+      action: "保证标题可解析，URL 放详情里。"
+    },
+    {
+      key: "structure",
+      label: "结构化内容完整度",
+      passed: structuredReady,
+      severity: structuredReady ? "low" : "medium",
+      action: "补清晰小节、FAQ 或 How-to 段落。"
+    },
+    {
+      key: "schema",
+      label: "FAQ / Schema 完整度",
+      passed: faqSchemaReady,
+      severity: faqSchemaReady ? "low" : "medium",
+      action: "补 FAQ、How-to 或结构化问答。"
+    },
+    {
+      key: "conclusion",
+      label: "结论明确度",
+      passed: clearConclusionReady,
+      severity: clearConclusionReady ? "low" : "high",
+      action: "开头和结尾补明确判断，不只解释概念。"
+    },
+    {
+      key: "official_fact",
+      label: "官方事实与产品指向",
+      passed: officialFactReady,
+      severity: officialFactReady ? "low" : "high",
+      action: "补 JOTO / 唯客 / jotoai.com 的事实链路。"
+    },
+    {
+      key: "chunk",
+      label: "Chunk 准备度",
+      passed: chunkReady,
+      severity: chunkReady ? "low" : "medium",
+      action: "补可独立引用的小段结论和上下文。"
+    }
+  ];
+}
+
+function getArticleTitle(article: BlogArticle) {
+  if (!article.title.trim() || /^https?:\/\//i.test(article.title)) {
+    return "";
+  }
+
+  return article.title;
 }
 
 function getBlogNextStep(article: BlogArticle): BlogNextStep {
@@ -224,6 +315,48 @@ export default function BlogMonitorPage() {
   const visiblePlannedCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "planned").length;
   const visibleObserveCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "observe").length;
   const visibleDismissedCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "dismissed").length;
+  const auditRows = blogArticles.map((article) => ({
+    article,
+    indicators: getBlogAuditIndicators(article),
+    healthScore: getBlogGeoHealthScore(article)
+  }));
+  const auditFailures = auditRows.flatMap((row) => row.indicators.filter((indicator) => !indicator.passed).map((indicator) => ({ ...indicator, article: row.article })));
+  const issueDistribution = Object.values(
+    auditFailures.reduce<Record<string, { key: string; label: string; count: number; high: number; action: string }>>((groups, issue) => {
+      const current = groups[issue.key] || {
+        key: issue.key,
+        label: issue.label,
+        count: 0,
+        high: 0,
+        action: issue.action
+      };
+      groups[issue.key] = {
+        ...current,
+        count: current.count + 1,
+        high: current.high + (issue.severity === "high" ? 1 : 0)
+      };
+      return groups;
+    }, {})
+  ).sort((left, right) => right.high - left.high || right.count - left.count);
+  const citationWeakCount = auditRows.filter((row) => row.indicators.some((item) => !item.passed && (item.key === "conclusion" || item.key === "official_fact" || item.key === "schema"))).length;
+  const chunkWeakCount = auditRows.filter((row) => row.indicators.some((item) => !item.passed && item.key === "chunk")).length;
+  const healthScore = blogArticles.length ? Math.round(auditRows.reduce((sum, row) => sum + row.healthScore, 0) / blogArticles.length) : 0;
+  const priorityActions = [...blogArticles]
+    .map((article) => {
+      const indicators = getBlogAuditIndicators(article).filter((indicator) => !indicator.passed);
+      const highCount = indicators.filter((indicator) => indicator.severity === "high").length;
+
+      return {
+        article,
+        healthScore: getBlogGeoHealthScore(article),
+        indicators,
+        highCount,
+        nextStep: getBlogNextStep(article)
+      };
+    })
+    .filter((item) => item.indicators.length || item.nextStep === "add_candidate" || item.nextStep === "diagnose")
+    .sort((left, right) => right.highCount - left.highCount || left.healthScore - right.healthScore)
+    .slice(0, 5);
 
   function clearFilters() {
     setIndexedStatusFilter([]);
@@ -420,15 +553,88 @@ export default function BlogMonitorPage() {
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
-      <div className="metric-grid">
-        <Card size="small">总文章：{blogArticles.length}</Card>
-        <Card size="small">SEO 问题：{blogArticles.reduce((sum, item) => sum + item.seoIssueCount, 0)}</Card>
-        <Card size="small">GEO 未命中：{blogArticles.filter((item) => item.geoResult === "miss").length}</Card>
-        <Card size="small">
-          AI Bot PV：{botVisits.reduce((sum, item) => sum + item.pv, 0)} <DataConfidenceTag value={botConfidence} />
+      <div className="metric-grid metric-grid-five">
+        <MetricCard title="监控文章" value={blogArticles.length} suffix="篇" />
+        <MetricCard title="待处理问题" value={auditFailures.length} suffix="个" />
+        <MetricCard title="GEO 健康分" value={healthScore} />
+        <MetricCard title="引用准备不足" value={citationWeakCount} suffix="篇" />
+        <MetricCard title="Chunk 不足" value={chunkWeakCount} suffix="篇" />
+      </div>
+      <div className="two-column" style={{ marginBottom: 16 }}>
+        <Card title="问题分布">
+          <Alert
+            showIcon
+            type={auditFailures.length ? "warning" : "success"}
+            message={`当前发现 ${auditFailures.length} 个 GEO optimizer 问题，AI Bot PV ${botVisits.reduce((sum, item) => sum + item.pv, 0)}`}
+            description={<DataConfidenceTag value={botConfidence} />}
+            style={{ marginBottom: 16 }}
+          />
+          <Table
+            rowKey="key"
+            size="small"
+            pagination={false}
+            dataSource={issueDistribution}
+            locale={{ emptyText: "当前没有明显页面审计问题。" }}
+            columns={[
+              { title: "问题类型", dataIndex: "label" },
+              { title: "数量", dataIndex: "count", render: (value) => <Tag>{value}</Tag> },
+              { title: "高优先级", dataIndex: "high", render: (value) => <Tag color={value ? "red" : "green"}>{value}</Tag> },
+              { title: "建议动作", dataIndex: "action" }
+            ]}
+          />
+        </Card>
+        <Card title="官网信源状态">
+          <Table
+            rowKey="label"
+            size="small"
+            pagination={false}
+            dataSource={[
+              { label: "可作为信源", value: auditRows.filter((row) => row.healthScore >= 80).length, color: "green" },
+              { label: "部分可用", value: auditRows.filter((row) => row.healthScore >= 60 && row.healthScore < 80).length, color: "gold" },
+              { label: "不建议引用", value: auditRows.filter((row) => row.healthScore < 60).length, color: "red" },
+              { label: "AI Bot PV", value: botVisits.reduce((sum, item) => sum + item.pv, 0), color: "blue" }
+            ]}
+            columns={[
+              { title: "状态", dataIndex: "label" },
+              { title: "数量", render: (_, record) => <Tag color={record.color}>{record.value}</Tag> }
+            ]}
+          />
+          <p className="muted" style={{ marginTop: 12 }}>
+            这里是基于现有收录、SEO、GEO 和日志导入状态的页面可引用性判断，不替代真实服务器日志。
+          </p>
         </Card>
       </div>
-      <div className="two-column">
+      <Card title="优先处理问题" style={{ marginBottom: 16 }}>
+        <Table
+          rowKey={(record) => record.article.id}
+          size="small"
+          pagination={false}
+          dataSource={priorityActions}
+          locale={{ emptyText: "当前没有需要优先处理的博客问题。" }}
+          columns={[
+            { title: "标题", render: (_, record) => getArticleTitle(record.article) || <span className="muted">空标题</span> },
+            { title: "GEO 健康分", dataIndex: "healthScore", render: (value) => <Tag color={value >= 80 ? "green" : value >= 60 ? "gold" : "red"}>{value}</Tag> },
+            {
+              title: "主要问题",
+              render: (_, record) => (
+                <Space wrap size={[4, 4]}>
+                  {record.indicators.slice(0, 3).map((indicator) => (
+                    <Tag key={indicator.key} color={blogPriorityColors[indicator.severity]}>
+                      {indicator.label}
+                    </Tag>
+                  ))}
+                </Space>
+              )
+            },
+            { title: "建议动作", render: (_, record) => record.indicators[0]?.action || getBlogActionText(record.article) },
+            {
+              title: "入口",
+              render: (_, record) => renderBlogEntry(record.article)
+            }
+          ]}
+        />
+      </Card>
+      <div className="two-column" style={{ marginBottom: 16 }}>
         <Card title="博客数据导入">
           <Space direction="vertical" style={{ width: "100%" }}>
             <Input.TextArea
@@ -494,7 +700,7 @@ export default function BlogMonitorPage() {
           </Space>
         </Card>
       </div>
-      <Card title="博客列表">
+      <Card title="博客明细">
         <Alert
           showIcon
           type={visibleActionNeededCount ? "info" : "success"}
@@ -566,8 +772,32 @@ export default function BlogMonitorPage() {
             )
           }}
           columns={[
-            { title: "标题", dataIndex: "title" },
-            { title: "URL", dataIndex: "url", render: (value) => <span className="mono">{value}</span> },
+            { title: "标题", render: (_, record) => getArticleTitle(record) || <span className="muted">空标题</span> },
+            {
+              title: "GEO 健康分",
+              render: (_, record) => {
+                const score = getBlogGeoHealthScore(record);
+
+                return <Tag color={score >= 80 ? "green" : score >= 60 ? "gold" : "red"}>{score}</Tag>;
+              }
+            },
+            {
+              title: "引用准备度",
+              render: (_, record) => {
+                const ready = getBlogAuditIndicators(record).every((item) => item.passed || !["schema", "conclusion", "official_fact"].includes(item.key));
+
+                return <Tag color={ready ? "green" : "gold"}>{ready ? "可用" : "不足"}</Tag>;
+              }
+            },
+            {
+              title: "Chunk 准备度",
+              render: (_, record) => {
+                const ready = getBlogAuditIndicators(record).find((item) => item.key === "chunk")?.passed;
+
+                return <Tag color={ready ? "green" : "gold"}>{ready ? "可切片" : "不足"}</Tag>;
+              }
+            },
+            { title: "URL 详情", dataIndex: "url", render: (value) => <span className="mono">{value}</span> },
             { title: "收录", dataIndex: "indexedStatus", render: (value) => <Tag color={indexedStatusColors[value as BlogArticle["indexedStatus"]]}>{indexedStatusLabels[value as BlogArticle["indexedStatus"]]}</Tag> },
             { title: "SEO 问题", dataIndex: "seoIssueCount" },
             { title: "GEO 结果", dataIndex: "geoResult", render: (value) => <Tag color={geoResultColors[value as BlogArticle["geoResult"]]}>{geoResultLabels[value as BlogArticle["geoResult"]]}</Tag> },

@@ -1,10 +1,10 @@
 import { readRequestPayload } from "@/lib/api-utils";
-import { batchGenerateDrafts } from "@/lib/workbench-store";
+import { fillContentTaskPublishUrl } from "@/lib/workbench-store";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   const payload = await readRequestPayload(request);
-  const result = await batchGenerateDrafts(payload);
+  const result = fillContentTaskPublishUrl(params.id, payload);
 
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }
