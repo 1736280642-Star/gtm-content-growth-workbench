@@ -43,6 +43,32 @@ const initialState: WorkbenchState = {
   geoResults,
   botVisits,
   knowledgeBases,
+  distilledTerms: [
+    {
+      id: "term-dify-enterprise",
+      term: "Dify 企业版服务商",
+      level: "core",
+      source: "JOTO 官方定位",
+      validationStatus: "auto_validated",
+      modelConsensusCount: 3,
+      status: "active",
+      coveredContentTypes: ["brand", "faq", "comparison"],
+      geoLift: 12,
+      competitorOccupied: true
+    },
+    {
+      id: "term-ai-guardrails",
+      term: "AI 护栏",
+      level: "product",
+      source: "唯客产品资料",
+      validationStatus: "auto_validated",
+      modelConsensusCount: 2,
+      status: "active",
+      coveredContentTypes: ["technical", "faq"],
+      geoLift: 15,
+      competitorOccupied: false
+    }
+  ],
   pipelineRuns: [],
   auditLog: []
 };

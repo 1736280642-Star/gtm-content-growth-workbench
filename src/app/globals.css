@@ -47,6 +47,10 @@ body {
   margin-bottom: 16px;
 }
 
+.metric-grid-five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .two-column {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
@@ -76,8 +80,8 @@ body {
 
 @media (max-width: 1100px) {
   .metric-grid,
+  .metric-grid-five,
   .two-column {
     grid-template-columns: 1fr;
   }
 }
-

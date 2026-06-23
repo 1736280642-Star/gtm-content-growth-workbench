@@ -1,91 +1,68 @@
 "use client";
 
-import { Alert, Button, Card, Popconfirm, Select, Space, Table, Tag, message } from "antd";
+import { Alert, Button, Card, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from "antd";
 import Link from "next/link";
+import { useMemo, useState, type Key } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
+import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
-import { channelLabels, contentTypeLabels, productLabels, statusLabels } from "@/lib/labels";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
+import { useWorkbenchSnapshot } from "@/lib/client-state";
+import { channelLabels, contentTypeLabels, productLabels, statusLabels } from "@/lib/labels";
 import type { ArticleDraft, ChannelKey, ContentTask, ProductKey, PublishRecord, TaskStatus } from "@/lib/types";
-import { useState } from "react";
 
-type TodayNextStep = "confirm_task" | "generate_draft" | "fix_generation" | "fix_qa" | "review_draft" | "publish" | "fill_url" | "record_metrics" | "fix_publish" | "retrospect";
-
-const draftStatusLabels = {
-  draft: "草稿",
-  final: "终稿",
-  discarded: "已废弃"
-} as const;
-
-const draftStatusColors = {
-  draft: "gold",
-  final: "green",
-  discarded: "default"
-} as const;
-
-const generationStatusLabels = {
-  success: "生成成功",
-  pending_config: "待配置",
-  failed: "生成失败"
-} as const;
-
-const generationStatusColors = {
-  success: "green",
-  pending_config: "gold",
-  failed: "red"
-} as const;
+type TodayNextStep =
+  | "generate_draft"
+  | "fix_generation"
+  | "fix_qa"
+  | "preview_copy"
+  | "confirm_published"
+  | "fill_url"
+  | "record_metrics"
+  | "retrospect";
 
 const todayNextStepLabels: Record<TodayNextStep, string> = {
-  confirm_task: "回周计划确认",
-  generate_draft: "生成稿件",
+  generate_draft: "待批量生成",
   fix_generation: "排查生成",
   fix_qa: "处理质检",
-  review_draft: "终稿确认",
-  publish: "人工发布",
+  preview_copy: "预览复制",
+  confirm_published: "确认已发布",
   fill_url: "回填 URL",
-  record_metrics: "录入指标",
-  fix_publish: "排查发布",
+  record_metrics: "数据回传",
   retrospect: "可复盘"
 };
 
 const todayNextStepColors: Record<TodayNextStep, string> = {
-  confirm_task: "gold",
   generate_draft: "blue",
   fix_generation: "red",
   fix_qa: "red",
-  review_draft: "purple",
-  publish: "gold",
-  fill_url: "blue",
-  record_metrics: "purple",
-  fix_publish: "red",
+  preview_copy: "purple",
+  confirm_published: "gold",
+  fill_url: "orange",
+  record_metrics: "cyan",
   retrospect: "green"
 };
 
+function canBatchGenerate(task: ContentTask, publishRecord?: PublishRecord) {
+  return !publishRecord && ["confirmed", "generated", "qa_failed", "pending_review"].includes(task.status);
+}
+
 function getTodayNextStep(task: ContentTask, draft?: ArticleDraft, publishRecord?: PublishRecord): TodayNextStep {
-  if (publishRecord?.publishStatus === "failed") {
-    return "fix_publish";
-  }
-
-  if (publishRecord?.publishStatus === "queued") {
-    return "publish";
-  }
-
-  if (publishRecord?.publishStatus === "published" && !publishRecord.publishedUrl) {
-    return "fill_url";
-  }
-
-  if (publishRecord && !publishRecord.channelMetrics) {
-    return "record_metrics";
-  }
-
   if (publishRecord?.channelMetrics) {
     return "retrospect";
   }
 
-  if (task.status === "planned") {
-    return "confirm_task";
+  if (publishRecord?.publishStatus === "url_filled" || publishRecord?.publishedUrl) {
+    return "record_metrics";
+  }
+
+  if (publishRecord?.publishStatus === "published") {
+    return "fill_url";
+  }
+
+  if (publishRecord?.publishStatus === "queued") {
+    return "confirm_published";
   }
 
   if (!draft) {
@@ -100,114 +77,96 @@ function getTodayNextStep(task: ContentTask, draft?: ArticleDraft, publishRecord
     return "fix_qa";
   }
 
-  return "review_draft";
+  return draft.status === "final" ? "confirm_published" : "preview_copy";
 }
 
 function getTodayActionText(task: ContentTask, draft?: ArticleDraft, publishRecord?: PublishRecord) {
   const nextStep = getTodayNextStep(task, draft, publishRecord);
 
-  if (nextStep === "confirm_task") {
-    return "任务还停在计划状态，先回周计划确认后再进入今日生成。";
-  }
-
   if (nextStep === "generate_draft") {
-    return "当前还没有稿件，先生成初稿，再检查质检结果。";
+    return "勾选任务后统一批量生成正文，不在单行里单篇生成。";
   }
 
   if (nextStep === "fix_generation") {
-    return draft?.generationSource?.status === "pending_config"
-      ? "生成能力待配置，先检查 AI 配置；也可继续使用本地规则生成。"
-      : "上次生成失败，建议重新生成并查看错误提示。";
+    return "生成配置或上次生成结果异常，勾选后重新批量生成，必要时先看 AI 配置。";
   }
 
   if (nextStep === "fix_qa") {
-    return "质检存在阻断项，进入终稿页处理后再确认入发布队列。";
+    return "进入草稿预览页处理阻断项，二次质检通过后才能复制发布。";
   }
 
-  if (nextStep === "review_draft") {
-    return "稿件已具备确认条件，进入终稿页复核并加入发布队列。";
+  if (nextStep === "preview_copy") {
+    return "进入草稿预览，人工修改并通过 AI 二次质检后复制全文发布。";
   }
 
-  if (nextStep === "publish") {
-    return "终稿已进入发布队列，下一步人工发布并标记状态。";
+  if (nextStep === "confirm_published") {
+    return "外部渠道已经人工发布后，在这里确认已发布，系统会提醒继续回填 URL。";
   }
 
   if (nextStep === "fill_url") {
-    return "内容已发布但缺少链接，先回填 URL，后续才能复盘。";
+    return "正式链接还没回填，先补 URL，后续数据回传才能准确匹配。";
   }
 
   if (nextStep === "record_metrics") {
-    return "发布链路已完成，补齐渠道指标用于周报复盘。";
+    return "发布和 URL 已闭环，去数据回传页导入渠道指标。";
   }
 
-  if (nextStep === "fix_publish") {
-    return "发布记录失败，先到发布队列排查失败原因。";
-  }
-
-  return "发布和指标已闭环，可进入周度复盘。";
+  return "发布、URL 和渠道数据都已闭环，可以进入周度复盘。";
 }
 
 export default function TodayPage() {
   const {
-    state: { tasks, weeklyPlan, drafts, publishRecords },
+    state: { tasks, drafts, publishRecords },
     loading,
     error,
     refresh
   } = useWorkbenchSnapshot();
   const [messageApi, contextHolder] = message.useMessage();
   const [batchGenerating, setBatchGenerating] = useState(false);
-  const [generatingTaskId, setGeneratingTaskId] = useState<string>();
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Key[]>([]);
+  const [markingPublishedTaskId, setMarkingPublishedTaskId] = useState<string>();
+  const [fillingUrlTaskId, setFillingUrlTaskId] = useState<string>();
+  const [urlTask, setUrlTask] = useState<ContentTask>();
+  const [publishedUrl, setPublishedUrl] = useState("");
   const [statusFilter, setStatusFilter] = useState<TaskStatus[]>([]);
   const [channelFilter, setChannelFilter] = useState<ChannelKey[]>([]);
   const [productFilter, setProductFilter] = useState<ProductKey[]>([]);
-  const todayTasks = tasks.filter((task) => task.publishDate === weeklyPlan.weekStart || task.status !== "planned").slice(0, 20);
-  const draftByTaskId = new Map(drafts.map((draft) => [draft.taskId, draft]));
-  const publishRecordByTaskId = new Map(
-    publishRecords
-      .map((record) => {
-        const draft = drafts.find((item) => item.id === record.draftId);
+  const activeTasks = tasks.filter((task) => task.status !== "planned");
+  const draftByTaskId = useMemo(() => new Map(drafts.map((draft) => [draft.taskId, draft])), [drafts]);
+  const publishRecordByTaskId = useMemo(
+    () =>
+      new Map(
+        publishRecords
+          .map((record) => {
+            const draft = drafts.find((item) => item.id === record.draftId);
 
-        return draft ? ([draft.taskId, record] as const) : undefined;
-      })
-      .filter((item): item is readonly [string, PublishRecord] => Boolean(item))
+            return draft ? ([draft.taskId, record] as const) : undefined;
+          })
+          .filter((item): item is readonly [string, PublishRecord] => Boolean(item))
+      ),
+    [drafts, publishRecords]
   );
   const hasActiveFilter = Boolean(statusFilter.length || channelFilter.length || productFilter.length);
-  const filteredTodayTasks = todayTasks.filter((task) => {
+  const filteredTodayTasks = activeTasks.filter((task) => {
     const statusMatched = !statusFilter.length || statusFilter.includes(task.status);
     const channelMatched = !channelFilter.length || channelFilter.includes(task.channel);
     const productMatched = !productFilter.length || productFilter.includes(task.product);
 
     return statusMatched && channelMatched && productMatched;
   });
-  const visibleDraftCount = filteredTodayTasks.filter((task) => draftByTaskId.has(task.id)).length;
-  const visiblePassedCount = filteredTodayTasks.filter((task) => draftByTaskId.get(task.id)?.qaResult.passed).length;
-  const visibleBlockedCount = filteredTodayTasks.filter((task) => {
-    const draft = draftByTaskId.get(task.id);
-    return Boolean(draft && !draft.qaResult.passed);
+  const selectedGeneratableIds = selectedTaskIds
+    .map(String)
+    .filter((taskId) => {
+      const task = activeTasks.find((item) => item.id === taskId);
+      return Boolean(task && canBatchGenerate(task, publishRecordByTaskId.get(task.id)));
+    });
+  const pendingGenerateCount = filteredTodayTasks.filter((task) => getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id)) === "generate_draft").length;
+  const draftReadyCount = filteredTodayTasks.filter((task) => {
+    const step = getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id));
+    return step === "preview_copy" || step === "confirm_published";
   }).length;
-  const visiblePendingDraftCount = filteredTodayTasks.length - visibleDraftCount;
-  const visibleGenerateActionCount = filteredTodayTasks.filter((task) => {
-    const nextStep = getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id));
-
-    return nextStep === "confirm_task" || nextStep === "generate_draft" || nextStep === "fix_generation";
-  }).length;
-  const visibleReviewActionCount = filteredTodayTasks.filter((task) => {
-    const nextStep = getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id));
-
-    return nextStep === "fix_qa" || nextStep === "review_draft";
-  }).length;
-  const visiblePublishActionCount = filteredTodayTasks.filter((task) => {
-    const nextStep = getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id));
-
-    return nextStep === "publish" || nextStep === "fill_url" || nextStep === "record_metrics" || nextStep === "fix_publish";
-  }).length;
-  const visibleRetrospectCount = filteredTodayTasks.filter((task) => getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id)) === "retrospect").length;
-  const highestPriorityTodayTask =
-    filteredTodayTasks.find((task) => getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id)) !== "retrospect") ||
-    filteredTodayTasks[0];
-  const highestPriorityTodayStep = highestPriorityTodayTask
-    ? getTodayNextStep(highestPriorityTodayTask, draftByTaskId.get(highestPriorityTodayTask.id), publishRecordByTaskId.get(highestPriorityTodayTask.id))
-    : undefined;
+  const pendingUrlCount = filteredTodayTasks.filter((task) => getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id)) === "fill_url").length;
+  const pendingMetricsCount = filteredTodayTasks.filter((task) => getTodayNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id)) === "record_metrics").length;
 
   function clearFilters() {
     setStatusFilter([]);
@@ -216,11 +175,20 @@ export default function TodayPage() {
   }
 
   async function handleBatchGenerate() {
+    if (!selectedGeneratableIds.length) {
+      messageApi.warning("请先勾选已确认且尚未发布的任务。");
+      return;
+    }
+
     setBatchGenerating(true);
 
     try {
-      const result = await callJsonApi("/api/content-tasks/batch-generate", { method: "POST" });
+      const result = await callJsonApi("/api/content-tasks/batch-generate", {
+        method: "POST",
+        body: JSON.stringify({ taskIds: selectedGeneratableIds })
+      });
       await refresh();
+      setSelectedTaskIds([]);
       messageApi.success(formatApiMessage(result, "批量生成完成"));
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "批量生成失败");
@@ -229,17 +197,42 @@ export default function TodayPage() {
     }
   }
 
-  async function handleGenerateTask(taskId: string) {
-    setGeneratingTaskId(taskId);
+  async function handleMarkPublished(task: ContentTask) {
+    setMarkingPublishedTaskId(task.id);
 
     try {
-      const result = await callJsonApi(`/api/content-tasks/${taskId}/generate`, { method: "POST" });
+      const result = await callJsonApi(`/api/content-tasks/${task.id}/published`, { method: "PATCH" });
       await refresh();
-      messageApi.success(formatApiMessage(result, "单篇生成完成"));
+      setUrlTask(task);
+      setPublishedUrl("");
+      messageApi.success(formatApiMessage(result, "已确认发布"));
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "单篇生成失败");
+      messageApi.error(error instanceof Error ? error.message : "确认发布失败");
     } finally {
-      setGeneratingTaskId(undefined);
+      setMarkingPublishedTaskId(undefined);
+    }
+  }
+
+  async function handleFillUrl() {
+    if (!urlTask) {
+      return;
+    }
+
+    setFillingUrlTaskId(urlTask.id);
+
+    try {
+      const result = await callJsonApi(`/api/content-tasks/${urlTask.id}/url`, {
+        method: "PATCH",
+        body: JSON.stringify({ publishedUrl })
+      });
+      await refresh();
+      messageApi.success(formatApiMessage(result, "URL 已回填"));
+      setUrlTask(undefined);
+      setPublishedUrl("");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "URL 回填失败");
+    } finally {
+      setFillingUrlTaskId(undefined);
     }
   }
 
@@ -248,52 +241,70 @@ export default function TodayPage() {
     const publishRecord = publishRecordByTaskId.get(task.id);
     const nextStep = getTodayNextStep(task, draft, publishRecord);
 
-    if (nextStep === "confirm_task") {
+    if (nextStep === "generate_draft" || nextStep === "fix_generation") {
       return (
-        <Link href="/weekly-plan">
-          <Button size="small">去确认</Button>
-        </Link>
+        <Button size="small" onClick={() => setSelectedTaskIds([task.id])} disabled={!canBatchGenerate(task, publishRecord)}>
+          勾选生成
+        </Button>
       );
     }
 
-    if (nextStep === "generate_draft" || (nextStep === "fix_generation" && draft?.generationSource?.status !== "pending_config")) {
-      return (
-        <Popconfirm
-          title="确认生成这篇稿件？"
-          description="如果已有草稿，会更新为新的生成结果。"
-          okText="生成"
-          cancelText="取消"
-          onConfirm={() => handleGenerateTask(task.id)}
-        >
-          <Button size="small" loading={generatingTaskId === task.id}>
-            {draft ? "重新生成" : "生成稿件"}
-          </Button>
-        </Popconfirm>
-      );
-    }
-
-    if (nextStep === "fix_generation") {
-      return (
-        <Link href="/ai-config">
-          <Button size="small">看配置</Button>
-        </Link>
-      );
-    }
-
-    if (nextStep === "fix_qa" || nextStep === "review_draft") {
+    if (nextStep === "fix_qa" || nextStep === "preview_copy") {
       return (
         <Link href={`/drafts/${task.id}`}>
           <Button size="small" type="primary">
-            {nextStep === "fix_qa" ? "处理阻断" : "终稿确认"}
+            草稿预览
           </Button>
         </Link>
       );
     }
 
-    if (nextStep === "publish" || nextStep === "fill_url" || nextStep === "record_metrics" || nextStep === "fix_publish") {
+    if (nextStep === "confirm_published") {
+      return (
+        <Space wrap>
+          {draft ? (
+            <Link href={`/drafts/${task.id}`}>
+              <Button size="small">预览</Button>
+            </Link>
+          ) : null}
+          <Popconfirm
+            title="确认已在外部渠道发布？"
+            description="确认后会进入 URL 回填，数据回传仍在数据回传页完成。"
+            okText="确认已发布"
+            cancelText="取消"
+            okButtonProps={{ "data-testid": `today-confirm-published-confirm-${task.id}` }}
+            onConfirm={() => handleMarkPublished(task)}
+          >
+            <Button size="small" type="primary" loading={markingPublishedTaskId === task.id} data-testid={`today-confirm-published-${task.id}`}>
+              确认已发布
+            </Button>
+          </Popconfirm>
+        </Space>
+      );
+    }
+
+    if (nextStep === "fill_url") {
+      return (
+        <Button
+          size="small"
+          type="primary"
+          data-testid={`today-fill-url-${task.id}`}
+          onClick={() => {
+            setUrlTask(task);
+            setPublishedUrl(publishRecord?.publishedUrl || "");
+          }}
+        >
+          回填 URL
+        </Button>
+      );
+    }
+
+    if (nextStep === "record_metrics") {
       return (
         <Link href="/publish">
-          <Button size="small">{todayNextStepLabels[nextStep]}</Button>
+          <Button size="small" type="primary">
+            去数据回传
+          </Button>
         </Link>
       );
     }
@@ -309,33 +320,30 @@ export default function TodayPage() {
     <>
       {contextHolder}
       <PageHeader
-        title="今日任务"
-        subtitle="执行当天已经确认的渠道文章任务，支持批量生成、查看质检和进入终稿确认。"
+        title="今日发布"
+        subtitle="从已确认周计划中选择任务，批量生成正文；人工发布后在这里确认发布并回填 URL。"
         actions={
-          <Popconfirm
-            title="确认批量生成今日文章？"
-            description="已有草稿可能会被重新生成结果覆盖。"
-            okText="生成"
-            cancelText="取消"
-            onConfirm={handleBatchGenerate}
-          >
-            <Button type="primary" loading={batchGenerating}>
-              批量生成
+          <Popconfirm title="批量生成选中正文？" description="只处理已勾选的已确认任务，不会自动发布到外部平台。" okText="生成" cancelText="取消" onConfirm={handleBatchGenerate}>
+            <Button type="primary" loading={batchGenerating} disabled={!selectedGeneratableIds.length}>
+              批量生成正文
             </Button>
           </Popconfirm>
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
+      <div className="metric-grid metric-grid-five">
+        <MetricCard title="今日任务池" value={filteredTodayTasks.length} suffix="条" />
+        <MetricCard title="待生成" value={pendingGenerateCount} suffix="条" />
+        <MetricCard title="待复制/发布" value={draftReadyCount} suffix="条" />
+        <MetricCard title="待回填 URL" value={pendingUrlCount} suffix="条" />
+        <MetricCard title="待数据回传" value={pendingMetricsCount} suffix="条" />
+      </div>
       <Card>
         <Alert
           showIcon
-          type={visibleBlockedCount ? "warning" : visiblePendingDraftCount ? "info" : "success"}
-          message={`今日任务共 ${filteredTodayTasks.length} 条，已生成 ${visibleDraftCount} 条，质检通过 ${visiblePassedCount} 条${highestPriorityTodayStep ? `，当前优先：${todayNextStepLabels[highestPriorityTodayStep]}` : ""}`}
-          description={
-            filteredTodayTasks.length
-              ? `生成/排查 ${visibleGenerateActionCount} 条，终稿处理 ${visibleReviewActionCount} 条，发布承接 ${visiblePublishActionCount} 条，可复盘 ${visibleRetrospectCount} 条。${highestPriorityTodayTask ? getTodayActionText(highestPriorityTodayTask, draftByTaskId.get(highestPriorityTodayTask.id), publishRecordByTaskId.get(highestPriorityTodayTask.id)) : ""}`
-              : "当前筛选没有任务，清空筛选或回周计划确认今天要执行的任务。"
-          }
+          type={pendingUrlCount ? "warning" : pendingGenerateCount ? "info" : "success"}
+          message={`已选 ${selectedGeneratableIds.length} 条可生成任务；待生成 ${pendingGenerateCount} 条，待回填 URL ${pendingUrlCount} 条。`}
+          description="今日发布页是执行入口：选择任务、批量生成、进入草稿预览复制、确认已发布、回填 URL。渠道阅读点赞等指标统一到数据回传页处理。"
           style={{ marginBottom: 16 }}
         />
         <Space wrap style={{ width: "100%", marginBottom: 16 }}>
@@ -346,7 +354,7 @@ export default function TodayPage() {
             value={statusFilter}
             onChange={(value) => setStatusFilter(value)}
             options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-            style={{ minWidth: 220 }}
+            style={{ minWidth: 200 }}
           />
           <Select
             mode="multiple"
@@ -355,7 +363,7 @@ export default function TodayPage() {
             value={channelFilter}
             onChange={(value) => setChannelFilter(value)}
             options={Object.entries(channelLabels).map(([value, label]) => ({ value, label }))}
-            style={{ minWidth: 220 }}
+            style={{ minWidth: 200 }}
           />
           <Select
             mode="multiple"
@@ -364,7 +372,7 @@ export default function TodayPage() {
             value={productFilter}
             onChange={(value) => setProductFilter(value)}
             options={Object.entries(productLabels).map(([value, label]) => ({ value, label }))}
-            style={{ minWidth: 240 }}
+            style={{ minWidth: 220 }}
           />
           <Button onClick={clearFilters} disabled={!hasActiveFilter}>
             清空筛选
@@ -374,11 +382,18 @@ export default function TodayPage() {
           rowKey="id"
           loading={loading}
           dataSource={filteredTodayTasks}
+          rowSelection={{
+            selectedRowKeys: selectedTaskIds,
+            onChange: setSelectedTaskIds,
+            getCheckboxProps: (record) => ({
+              disabled: !canBatchGenerate(record, publishRecordByTaskId.get(record.id))
+            })
+          }}
           locale={{
             emptyText: (
               <ActionEmpty
-                title={hasActiveFilter ? "当前筛选没有任务" : "今天还没有可处理任务"}
-                description={hasActiveFilter ? "清空筛选或调整状态、渠道、产品条件后再查看。" : "先去周计划生成或确认任务，再回到这里批量生成文章。"}
+                title={hasActiveFilter ? "当前筛选没有任务" : "今日发布还没有任务"}
+                description={hasActiveFilter ? "清空筛选或调整条件后再查看。" : "先在周计划页确认计划项，再回到这里批量生成正文。"}
                 action={
                   hasActiveFilter ? (
                     <Button type="primary" onClick={clearFilters}>
@@ -394,13 +409,14 @@ export default function TodayPage() {
             )
           }}
           columns={[
-            { title: "状态", dataIndex: "status", render: (value) => <Tag>{statusLabels[value as keyof typeof statusLabels]}</Tag> },
-            { title: "渠道", dataIndex: "channel", render: (value) => channelLabels[value as keyof typeof channelLabels] },
-            { title: "产品", dataIndex: "product", render: (value) => productLabels[value as keyof typeof productLabels] },
+            { title: "日期", dataIndex: "publishDate", width: 110 },
             { title: "标题", dataIndex: "title" },
-            { title: "类型", dataIndex: "contentType", render: (value) => contentTypeLabels[value as keyof typeof contentTypeLabels] },
+            { title: "渠道", dataIndex: "channel", render: (value) => channelLabels[value as ChannelKey], width: 120 },
+            { title: "产品", dataIndex: "product", render: (value) => productLabels[value as ProductKey], width: 140 },
+            { title: "类型", dataIndex: "contentType", render: (value) => contentTypeLabels[value as keyof typeof contentTypeLabels], width: 110 },
+            { title: "主蒸馏词", dataIndex: "primaryDistilledTerm", render: (value) => value || <span className="muted">待补</span> },
             {
-              title: "稿件状态",
+              title: "草稿/质检",
               render: (_, record) => {
                 const draft = draftByTaskId.get(record.id);
 
@@ -410,62 +426,56 @@ export default function TodayPage() {
 
                 return (
                   <Space wrap>
-                    <Tag color={draftStatusColors[draft.status]}>{draftStatusLabels[draft.status]}</Tag>
+                    <Tag color={draft.qaResult.passed ? "green" : "red"}>{draft.qaResult.passed ? "质检通过" : "质检阻断"}</Tag>
                     <Tag>{`v${draft.version}`}</Tag>
-                    <Tag color={generationStatusColors[draft.generationSource?.status || "success"]}>
-                      {generationStatusLabels[draft.generationSource?.status || "success"]}
-                    </Tag>
+                    {draft.qaResult.warnings.length ? <Tag color="gold">{`${draft.qaResult.warnings.length} 个提醒`}</Tag> : null}
                   </Space>
                 );
               }
             },
             {
-              title: "质检",
+              title: "URL 状态",
               render: (_, record) => {
-                const draft = draftByTaskId.get(record.id);
+                const publishRecord = publishRecordByTaskId.get(record.id);
 
-                if (!draft) {
-                  return <span className="muted">待生成</span>;
+                if (!publishRecord) {
+                  return <span className="muted">未确认发布</span>;
                 }
 
-                if (draft.qaResult.passed) {
-                  return (
-                    <Space wrap>
-                      <Tag color="green">已通过</Tag>
-                      {draft.qaResult.warnings.length ? <Tag color="gold">{`${draft.qaResult.warnings.length} 个警告`}</Tag> : null}
-                    </Space>
-                  );
+                if (publishRecord.publishedUrl) {
+                  return <Tag color="green">已回填</Tag>;
                 }
 
-                return (
-                  <Space wrap>
-                    <Tag color="red">{`${draft.qaResult.blockers.length} 个阻断项`}</Tag>
-                    {draft.qaResult.warnings.length ? <Tag color="gold">{`${draft.qaResult.warnings.length} 个警告`}</Tag> : null}
-                  </Space>
-                );
+                return <Tag color={publishRecord.publishStatus === "published" ? "orange" : "gold"}>{publishRecord.publishStatus === "published" ? "待回填" : "待确认发布"}</Tag>;
               }
             },
             {
               title: "下一步",
               render: (_, record) => {
-                const draft = draftByTaskId.get(record.id);
-                const publishRecord = publishRecordByTaskId.get(record.id);
-                const nextStep = getTodayNextStep(record, draft, publishRecord);
+                const nextStep = getTodayNextStep(record, draftByTaskId.get(record.id), publishRecordByTaskId.get(record.id));
 
                 return <Tag color={todayNextStepColors[nextStep]}>{todayNextStepLabels[nextStep]}</Tag>;
               }
             },
-            {
-              title: "处理动作",
-              render: (_, record) => getTodayActionText(record, draftByTaskId.get(record.id), publishRecordByTaskId.get(record.id))
-            },
-            {
-              title: "可执行入口",
-              render: (_, record) => renderTodayEntry(record)
-            }
+            { title: "处理动作", render: (_, record) => getTodayActionText(record, draftByTaskId.get(record.id), publishRecordByTaskId.get(record.id)) },
+            { title: "可执行入口", render: (_, record) => renderTodayEntry(record), width: 180 }
           ]}
         />
       </Card>
+      <Modal
+        title="回填正式发布 URL"
+        open={Boolean(urlTask)}
+        onOk={handleFillUrl}
+        confirmLoading={Boolean(urlTask && fillingUrlTaskId === urlTask.id)}
+        okButtonProps={{ disabled: !publishedUrl.trim(), "data-testid": "today-url-save-button" }}
+        onCancel={() => {
+          setUrlTask(undefined);
+          setPublishedUrl("");
+        }}
+      >
+        <Alert showIcon type="info" message="确认发布后必须回填 URL，后续渠道数据才能准确匹配到这篇文章。" style={{ marginBottom: 12 }} />
+        <Input placeholder="https://..." value={publishedUrl} onChange={(event) => setPublishedUrl(event.target.value)} data-testid="today-url-input" />
+      </Modal>
     </>
   );
 }

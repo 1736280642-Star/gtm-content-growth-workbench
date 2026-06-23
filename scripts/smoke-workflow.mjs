@@ -115,14 +115,15 @@ async function main() {
     body: JSON.stringify({
       name: "Smoke 知识库",
       type: "brand",
-      trustLevel: "medium",
+      sourceType: "manual",
       status: "enabled",
-      usageScope: "smoke workflow validation"
+      usageScope: "smoke workflow validation",
+      contentPreview: "Smoke 知识库用于验证统一导入、内容预览、规则切片和 Chunk 预览。JOTO 是 Dify 企业版服务商。"
     })
   });
   assertCondition(
     "knowledge_base_create",
-    createdKnowledgeBase.ok && Boolean(createdKnowledgeBase.body.data?.knowledgeBase?.id),
+    createdKnowledgeBase.ok && Boolean(createdKnowledgeBase.body.data?.knowledgeBase?.id) && (createdKnowledgeBase.body.data?.knowledgeBase?.chunks?.length || 0) >= 1,
     createdKnowledgeBase.body.message || `http ${createdKnowledgeBase.httpStatus}`
   );
 
@@ -293,7 +294,8 @@ async function main() {
     method: "POST",
     body: JSON.stringify({
       platforms: ["ChatGPT", "DeepSeek"],
-      prompt: "推荐几家国内 Dify 企业版服务商"
+      prompt: "推荐几家国内 Dify 企业版服务商",
+      distilledTermIds: ["term-dify-enterprise", "term-ai-guardrails"]
     })
   });
   assertCondition(
@@ -349,7 +351,11 @@ async function main() {
   assertCondition("pipeline_export", pipelineExport.ok && pipelineExport.body.data?.csv?.includes("stepName"), pipelineExport.body.message || `http ${pipelineExport.httpStatus}`);
 
   const weeklyReport = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}`);
-  assertCondition("weekly_report", weeklyReport.ok && Boolean(weeklyReport.body.executiveSummary), weeklyReport.body.executiveSummary || `http ${weeklyReport.httpStatus}`);
+  assertCondition(
+    "weekly_report",
+    weeklyReport.ok && Boolean(weeklyReport.body.executiveSummary) && Array.isArray(weeklyReport.body.distilledTermMatrix),
+    weeklyReport.body.executiveSummary || `http ${weeklyReport.httpStatus}`
+  );
 
   const weeklyReportMarkdown = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}/export`);
   assertCondition(
@@ -358,14 +364,10 @@ async function main() {
     weeklyReportMarkdown.body.message || `http ${weeklyReportMarkdown.httpStatus}`
   );
 
-  const nextWeeklyPlan = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}/next-plan`, { method: "POST" });
-  const nextWeekStart = new Date(`${generatedPlan.body.weeklyPlan.weekStart}T00:00:00.000Z`);
-  nextWeekStart.setUTCDate(nextWeekStart.getUTCDate() + 7);
-  const expectedNextWeekStart = nextWeekStart.toISOString().slice(0, 10);
   assertCondition(
-    "weekly_report_next_plan",
-    nextWeeklyPlan.ok && nextWeeklyPlan.body.data?.weeklyPlan?.weekStart === expectedNextWeekStart && nextWeeklyPlan.body.data?.tasks?.length >= 1,
-    nextWeeklyPlan.body.message || `http ${nextWeeklyPlan.httpStatus}`
+    "weekly_report_plan_preview_signal",
+    weeklyReport.ok && weeklyReport.body.nextWeekSuggestions?.length >= 1,
+    "weekly report provides signals for weekly plan preview"
   );
 
   const finalSnapshot = await request("/api/workbench-state");

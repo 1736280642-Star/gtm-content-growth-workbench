@@ -1,15 +1,17 @@
 "use client";
 
-import { Alert, Button, Card, Popconfirm, Select, Space, Table, Tag, message } from "antd";
+import { Alert, Button, Card, Select, Space, Table, Tag, message } from "antd";
 import Link from "next/link";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { DataConfidenceTag } from "@/components/DataConfidenceTag";
+import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { channelLabels } from "@/lib/labels";
+import { promptTemplates, type PromptTemplate } from "@/lib/prompt-templates";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi } from "@/lib/client-api";
-import type { BlogArticle, GeoTestResult, PublishRecord } from "@/lib/types";
+import type { BlogArticle, DistilledTerm, GeoTestResult, PublishRecord } from "@/lib/types";
 import { useState } from "react";
 
 interface WeeklyReport {
@@ -18,8 +20,21 @@ interface WeeklyReport {
   publishRecords: PublishRecord[];
   blogDiagnostics: BlogArticle[];
   geoResults: GeoTestResult[];
+  distilledTerms?: DistilledTerm[];
+  distilledTermMatrix?: DistilledTermMatrixRow[];
+  promptTemplates?: PromptTemplate[];
   nextWeekSuggestions: string[];
   dataSource: string;
+}
+
+interface DistilledTermMatrixRow {
+  id: string;
+  term: string;
+  contentCoverage: number;
+  typeCompleteness: string;
+  geoLift: number;
+  competitorOccupied: boolean;
+  nextSuggestion: string;
 }
 
 type ReportActionStep = "publish_records" | "fill_url" | "record_metrics" | "blog_candidates" | "geo_config" | "geo_candidates" | "create_next_plan" | "ready";
@@ -40,7 +55,7 @@ interface WeeklySuggestionAction {
   suggestion: string;
   nextStep: WeeklySuggestionStep;
   actionText: string;
-  entry: { type: "button"; label: string } | { type: "confirm"; label: string } | { type: "link"; href: string; label: string };
+  entry: { type: "button"; label: string } | { type: "link"; href: string; label: string };
 }
 
 const publishStatusLabels: Record<PublishRecord["publishStatus"], string> = {
@@ -87,7 +102,7 @@ const reportActionStepColors: Record<ReportActionStep, string> = {
 const weeklySuggestionStepLabels: Record<WeeklySuggestionStep, string> = {
   generate_report: "先生成周报",
   review_suggestion: "复核建议",
-  create_next_plan: "生成计划草稿"
+  create_next_plan: "进入周计划生成预览"
 };
 
 const weeklySuggestionStepColors: Record<WeeklySuggestionStep, string> = {
@@ -240,8 +255,8 @@ function createWeeklySuggestionActions(suggestions: string[] | undefined, hasAct
       key: `suggestion-${index}`,
       suggestion,
       nextStep: index === 0 ? "create_next_plan" : "review_suggestion",
-      actionText: index === 0 ? "确认这条建议是否要进入下周排期，并生成下周计划草稿。" : "复核建议对应的发布、博客或 GEO 证据，再决定是否进入下周计划。",
-      entry: index === 0 ? { type: "confirm", label: "生成计划" } : { type: "link", href: "/weekly-plan", label: "看周计划" }
+      actionText: index === 0 ? "把这条建议带到周计划页，先生成计划预览，再人工确认。" : "复核建议对应的发布、博客或 GEO 证据，再决定是否进入下周计划。",
+      entry: { type: "link", href: "/weekly-plan", label: index === 0 ? "进入周计划生成预览" : "看周计划" }
     };
   });
 }
@@ -256,7 +271,6 @@ export default function WeeklyReportPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [generating, setGenerating] = useState(false);
   const [exportingMarkdown, setExportingMarkdown] = useState(false);
-  const [creatingNextPlan, setCreatingNextPlan] = useState(false);
   const [report, setReport] = useState<WeeklyReport>();
   const [publishStatusFilter, setPublishStatusFilter] = useState<PublishRecord["publishStatus"][]>([]);
   const [blogGeoResultFilter, setBlogGeoResultFilter] = useState<BlogArticle["geoResult"][]>([]);
@@ -265,6 +279,8 @@ export default function WeeklyReportPage() {
   const reportPublishRecords = activeReport?.publishRecords || publishRecords;
   const reportBlogDiagnostics = activeReport?.blogDiagnostics || blogArticles;
   const reportGeoResults = activeReport?.geoResults || geoResults;
+  const reportDistilledTermMatrix = activeReport?.distilledTermMatrix || [];
+  const reportPromptTemplates = activeReport?.promptTemplates || promptTemplates;
   const hasReportFilter = Boolean(publishStatusFilter.length || blogGeoResultFilter.length || geoExecutionStatusFilter.length);
   const filteredReportPublishRecords = reportPublishRecords.filter((item) => !publishStatusFilter.length || publishStatusFilter.includes(item.publishStatus));
   const filteredReportBlogDiagnostics = reportBlogDiagnostics.filter((item) => !blogGeoResultFilter.length || blogGeoResultFilter.includes(item.geoResult));
@@ -275,6 +291,36 @@ export default function WeeklyReportPage() {
   });
   const geoJotoHits = reportGeoResults.filter((item) => item.mentionedJoto).length;
   const geoWeikeHits = reportGeoResults.filter((item) => item.mentionedWeike).length;
+  const generatedCount = weeklyPlan.targetTotalCount ? Math.min(weeklyPlan.targetTotalCount, reportPublishRecords.length) : reportPublishRecords.length;
+  const publishedCount = reportPublishRecords.filter((item) => item.publishStatus !== "queued").length;
+  const dataReturnedCount = reportPublishRecords.filter((item) => item.channelMetrics).length;
+  const publishCompletionRate = weeklyPlan.targetTotalCount ? Math.round((publishedCount / weeklyPlan.targetTotalCount) * 100) : 0;
+  const dataReturnRate = publishedCount ? Math.round((dataReturnedCount / publishedCount) * 100) : 0;
+  const geoHitRate = reportGeoResults.length ? Math.round((geoJotoHits / reportGeoResults.length) * 100) : 0;
+  const officialDirectRate = reportGeoResults.length
+    ? Math.round((reportGeoResults.filter((item) => item.citationLevel === "official_site_direct" || (item.citedOfficialUrl && !item.citationLevel)).length / reportGeoResults.length) * 100)
+    : 0;
+  const funnelRows = [
+    { stage: "计划", count: weeklyPlan.targetTotalCount },
+    { stage: "生成", count: generatedCount },
+    { stage: "发布", count: publishedCount },
+    { stage: "回传", count: dataReturnedCount }
+  ];
+  const channelRows = Object.entries(channelLabels).map(([channel, label]) => {
+    const records = reportPublishRecords.filter((item) => item.channel === channel);
+    const views = records.reduce((sum, item) => sum + (item.channelMetrics?.views || 0), 0);
+
+    return {
+      channel: label,
+      records: records.length,
+      views,
+      dataReturned: records.filter((item) => item.channelMetrics).length
+    };
+  });
+  const citationRows = ["official_site_direct", "official_content", "official_channel", "non_official", "none"].map((level) => ({
+    level,
+    count: reportGeoResults.filter((item) => (item.citationLevel || (item.citedOfficialUrl ? "official_site_direct" : "none")) === level).length
+  }));
   const reportActionItems = createReportActionItems(reportPublishRecords, reportBlogDiagnostics, reportGeoResults, Boolean(activeReport));
   const reportActionTotal = reportActionItems.reduce((sum, item) => sum + item.count, 0);
   const highestPriorityReportAction = reportActionItems[0];
@@ -324,20 +370,6 @@ export default function WeeklyReportPage() {
     }
   }
 
-  async function handleCreateNextPlan() {
-    setCreatingNextPlan(true);
-
-    try {
-      const result = await callJsonApi(`/api/weekly-reports/${weeklyPlan.weekStart}/next-plan`, { method: "POST" });
-      await refresh();
-      messageApi.success(result && typeof result === "object" && "message" in result && typeof result.message === "string" ? result.message : "下周计划草稿已生成");
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "生成下周计划草稿失败");
-    } finally {
-      setCreatingNextPlan(false);
-    }
-  }
-
   function clearReportFilters() {
     setPublishStatusFilter([]);
     setBlogGeoResultFilter([]);
@@ -353,22 +385,6 @@ export default function WeeklyReportPage() {
       );
     }
 
-    if (record.entry.type === "confirm") {
-      return (
-        <Popconfirm
-          title="确认生成下周计划草稿？"
-          description="会用当前周报建议覆盖当前周计划任务；已生成的草稿和发布队列会清空。"
-          okText="生成草稿"
-          cancelText="取消"
-          onConfirm={handleCreateNextPlan}
-        >
-          <Button size="small" type="primary" loading={creatingNextPlan}>
-            {record.entry.label}
-          </Button>
-        </Popconfirm>
-      );
-    }
-
     return (
       <Link href={record.entry.href}>
         <Button size="small">{record.entry.label}</Button>
@@ -381,20 +397,12 @@ export default function WeeklyReportPage() {
       {contextHolder}
       <PageHeader
         title="周度复盘"
-        subtitle="汇总渠道执行、官网博客诊断和 GEO 测试，生成下周选题建议。"
+        subtitle="用本周数据解释问题，把信号带到周计划预览，不在周报页直接覆盖计划。"
         actions={
           <>
-            <Popconfirm
-              title="确认生成下周计划草稿？"
-              description="会用当前周报建议覆盖当前周计划任务；已生成的草稿和发布队列会清空。"
-              okText="生成草稿"
-              cancelText="取消"
-              onConfirm={handleCreateNextPlan}
-            >
-              <Button loading={creatingNextPlan}>
-                生成下周计划草稿
-              </Button>
-            </Popconfirm>
+            <Link href="/weekly-plan">
+              <Button>进入周计划生成预览</Button>
+            </Link>
             <Button loading={exportingMarkdown} onClick={handleExportMarkdown}>
               导出 Markdown
             </Button>
@@ -419,6 +427,12 @@ export default function WeeklyReportPage() {
           }
         />
       ) : null}
+      <div className="metric-grid">
+        <MetricCard title="发布完成率" value={publishCompletionRate} suffix="%" />
+        <MetricCard title="数据回传率" value={dataReturnRate} suffix="%" />
+        <MetricCard title="GEO 命中率" value={geoHitRate} suffix="%" />
+        <MetricCard title="官网直引率" value={officialDirectRate} suffix="%" />
+      </div>
       <div className="two-column">
         <Card title="管理层摘要">
           <p>
@@ -431,6 +445,74 @@ export default function WeeklyReportPage() {
           <p>提及 JOTO：{geoJotoHits}/{reportGeoResults.length}</p>
           <p>提及唯客：{geoWeikeHits}/{reportGeoResults.length}</p>
           <p>Demo AI Bot PV：{botVisits.reduce((sum, item) => sum + item.pv, 0)} <Tag>Demo</Tag></p>
+        </Card>
+      </div>
+      <div className="two-column" style={{ marginTop: 16 }}>
+        <Card title="本周发布漏斗">
+          <Table
+            rowKey="stage"
+            size="small"
+            pagination={false}
+            dataSource={funnelRows}
+            columns={[
+              { title: "阶段", dataIndex: "stage" },
+              { title: "数量", dataIndex: "count", render: (value) => <Tag>{value}</Tag> },
+              {
+                title: "进度",
+                render: (_, record) => {
+                  const denominator = Math.max(weeklyPlan.targetTotalCount, 1);
+                  const width = Math.min(100, Math.round((record.count / denominator) * 100));
+
+                  return (
+                    <div style={{ background: "#eef2ff", borderRadius: 6, height: 8, overflow: "hidden" }}>
+                      <div style={{ width: `${width}%`, height: 8, background: "#2255ff" }} />
+                    </div>
+                  );
+                }
+              }
+            ]}
+          />
+        </Card>
+        <Card title="渠道表现对比">
+          <Table
+            rowKey="channel"
+            size="small"
+            pagination={false}
+            dataSource={channelRows}
+            columns={[
+              { title: "渠道", dataIndex: "channel" },
+              { title: "发布", dataIndex: "records", render: (value) => <Tag>{value}</Tag> },
+              { title: "阅读", dataIndex: "views" },
+              { title: "已回传", dataIndex: "dataReturned" }
+            ]}
+          />
+        </Card>
+      </div>
+      <div className="two-column" style={{ marginTop: 16 }}>
+        <Card title="GEO 命中与引用层级">
+          <Table
+            rowKey="level"
+            size="small"
+            pagination={false}
+            dataSource={citationRows}
+            columns={[
+              { title: "引用层级", dataIndex: "level" },
+              { title: "数量", dataIndex: "count", render: (value) => <Tag>{value}</Tag> }
+            ]}
+          />
+        </Card>
+        <Card title="固定 Prompt 模板">
+          <Table
+            rowKey="id"
+            size="small"
+            pagination={false}
+            dataSource={reportPromptTemplates}
+            columns={[
+              { title: "模板", dataIndex: "name" },
+              { title: "版本", dataIndex: "version", render: (value) => <Tag color="blue">{value}</Tag> },
+              { title: "使用位置", dataIndex: "usedAt" }
+            ]}
+          />
         </Card>
       </div>
       <Card title="复盘行动队列" style={{ marginTop: 16 }}>
@@ -629,6 +711,34 @@ export default function WeeklyReportPage() {
             { title: "引用官网", dataIndex: "citedOfficialUrl", render: (value) => <Tag color={value ? "green" : "gold"}>{value ? "是" : "否"}</Tag> },
             { title: "执行状态", dataIndex: "executionStatus", render: (value) => <Tag>{geoExecutionStatusLabels[(value || "success") as NonNullable<GeoTestResult["executionStatus"]>]}</Tag> },
             { title: "数据来源", dataIndex: "dataConfidence", render: (value) => <DataConfidenceTag value={value || "demo"} /> }
+          ]}
+        />
+      </Card>
+      <Card title="蒸馏词矩阵复盘" style={{ marginTop: 16 }}>
+        <Table
+          rowKey="id"
+          pagination={false}
+          dataSource={reportDistilledTermMatrix}
+          locale={{
+            emptyText: (
+              <ActionEmpty
+                title="还没有蒸馏词矩阵"
+                description="生成周报后，系统会按蒸馏词解释本周覆盖、类型完整度、GEO 提升和竞品占位。"
+                action={
+                  <Button type="primary" loading={generating} onClick={handleGenerateReport}>
+                    生成周报
+                  </Button>
+                }
+              />
+            )
+          }}
+          columns={[
+            { title: "蒸馏词", dataIndex: "term" },
+            { title: "内容覆盖", dataIndex: "contentCoverage", render: (value) => <Tag>{value} 篇</Tag> },
+            { title: "类型完整度", dataIndex: "typeCompleteness" },
+            { title: "GEO 提升", dataIndex: "geoLift", render: (value) => <Tag color={value > 10 ? "green" : "gold"}>{value}</Tag> },
+            { title: "竞品占位", dataIndex: "competitorOccupied", render: (value) => <Tag color={value ? "red" : "green"}>{value ? "是" : "否"}</Tag> },
+            { title: "下周建议", dataIndex: "nextSuggestion" }
           ]}
         />
       </Card>

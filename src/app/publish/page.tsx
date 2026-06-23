@@ -3,92 +3,81 @@
 import { Alert, Button, Card, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from "antd";
 import type { UploadFile } from "antd";
 import Link from "next/link";
+import { useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
+import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
-import { channelLabels, contentTypeLabels, productLabels } from "@/lib/labels";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
-import { useState } from "react";
+import { useWorkbenchSnapshot } from "@/lib/client-state";
+import { channelLabels, contentTypeLabels, productLabels } from "@/lib/labels";
 import type { ChannelKey, PublishRecord } from "@/lib/types";
 
 const publishStatusLabels: Record<PublishRecord["publishStatus"], string> = {
-  queued: "待发布",
-  published: "已发布",
-  url_filled: "已回填",
+  queued: "待确认发布",
+  published: "待回填 URL",
+  url_filled: "已回填 URL",
   failed: "失败"
 };
 
-const draftStatusLabels = {
-  draft: "草稿",
-  final: "终稿",
-  discarded: "已废弃"
-} as const;
+type DataReturnStatus = "missing_url" | "pending_metrics" | "matched" | "publish_pending" | "failed";
 
-const draftStatusColors = {
-  draft: "gold",
-  final: "green",
-  discarded: "default"
-} as const;
-
-type PublishNextStep = "publish" | "fill_url" | "record_metrics" | "review" | "failed";
-
-const publishNextStepLabels: Record<PublishNextStep, string> = {
-  publish: "待人工发布",
-  fill_url: "待回填 URL",
-  record_metrics: "待录入指标",
-  review: "可复盘",
-  failed: "需排查失败"
+const dataReturnStatusLabels: Record<DataReturnStatus, string> = {
+  missing_url: "缺 URL",
+  pending_metrics: "待数据回传",
+  matched: "已匹配数据",
+  publish_pending: "待今日确认",
+  failed: "需排查"
 };
 
-const publishNextStepColors: Record<PublishNextStep, string> = {
-  publish: "gold",
-  fill_url: "blue",
-  record_metrics: "purple",
-  review: "green",
+const dataReturnStatusColors: Record<DataReturnStatus, string> = {
+  missing_url: "orange",
+  pending_metrics: "gold",
+  matched: "green",
+  publish_pending: "blue",
   failed: "red"
 };
 
-function getPublishNextStep(record: PublishRecord): PublishNextStep {
+function getDataReturnStatus(record: PublishRecord): DataReturnStatus {
   if (record.publishStatus === "failed") {
     return "failed";
   }
 
+  if (record.channelMetrics) {
+    return "matched";
+  }
+
   if (record.publishStatus === "queued") {
-    return "publish";
+    return "publish_pending";
   }
 
   if (!record.publishedUrl) {
-    return "fill_url";
+    return "missing_url";
   }
 
-  if (!record.channelMetrics) {
-    return "record_metrics";
-  }
-
-  return "review";
+  return "pending_metrics";
 }
 
-function getPublishActionText(record: PublishRecord): string {
-  const nextStep = getPublishNextStep(record);
+function getDataReturnActionText(record: PublishRecord) {
+  const status = getDataReturnStatus(record);
 
-  if (nextStep === "publish") {
-    return "先按导出的发布清单完成人工发布，发布完成后标记为已发布。";
+  if (status === "publish_pending") {
+    return "这篇还没有在今日发布页确认已发布，先回今日发布处理。";
   }
 
-  if (nextStep === "fill_url") {
-    return "内容已标记发布，但缺少正式 URL；先回填链接，后续才能进入指标和周报复盘。";
+  if (status === "missing_url") {
+    return "缺正式 URL，渠道数据无法稳定匹配，先回今日发布页补链接。";
   }
 
-  if (nextStep === "record_metrics") {
-    return "发布 URL 已闭环，继续录入阅读、点赞、收藏、评论和转发指标。";
+  if (status === "pending_metrics") {
+    return "可以通过导入渠道数据表或手动补录，把阅读、点赞等指标写回。";
   }
 
-  if (nextStep === "failed") {
-    return "当前发布记录失败，先重新导出清单核对渠道动作；确认已发布后再标记并回填 URL。";
+  if (status === "failed") {
+    return "发布记录失败，先回今日发布核对状态，再导入指标。";
   }
 
-  return "发布、URL 和渠道指标已闭环，可进入周报复盘查看内容表现。";
+  return "渠道指标已匹配，可进入周度复盘。";
 }
 
 export default function PublishPage() {
@@ -99,13 +88,9 @@ export default function PublishPage() {
     refresh
   } = useWorkbenchSnapshot();
   const [messageApi, contextHolder] = message.useMessage();
-  const [exporting, setExporting] = useState(false);
   const [importingMetrics, setImportingMetrics] = useState(false);
-  const [markingRecordId, setMarkingRecordId] = useState<string>();
-  const [fillingRecord, setFillingRecord] = useState<PublishRecord>();
   const [metricsRecord, setMetricsRecord] = useState<PublishRecord>();
   const [savingMetrics, setSavingMetrics] = useState(false);
-  const [publishedUrl, setPublishedUrl] = useState("");
   const [statusFilter, setStatusFilter] = useState<PublishRecord["publishStatus"][]>([]);
   const [channelFilter, setChannelFilter] = useState<ChannelKey[]>([]);
   const [manualMetrics, setManualMetrics] = useState({
@@ -127,61 +112,19 @@ export default function PublishPage() {
 
     return statusMatched && channelMatched;
   });
-  const visibleQueuedCount = filteredPublishRecords.filter((record) => getPublishNextStep(record) === "publish").length;
-  const visiblePendingUrlCount = filteredPublishRecords.filter((record) => getPublishNextStep(record) === "fill_url").length;
-  const visiblePendingMetricsCount = filteredPublishRecords.filter((record) => getPublishNextStep(record) === "record_metrics").length;
-  const visibleReviewReadyCount = filteredPublishRecords.filter((record) => getPublishNextStep(record) === "review").length;
+  const publishedCount = filteredPublishRecords.filter((record) => record.publishStatus !== "queued").length;
+  const matchedCount = filteredPublishRecords.filter((record) => getDataReturnStatus(record) === "matched").length;
+  const missingUrlCount = filteredPublishRecords.filter((record) => getDataReturnStatus(record) === "missing_url").length;
+  const pendingMetricsCount = filteredPublishRecords.filter((record) => getDataReturnStatus(record) === "pending_metrics").length;
 
   function clearFilters() {
     setStatusFilter([]);
     setChannelFilter([]);
   }
 
-  async function handleExport() {
-    setExporting(true);
-
-    try {
-      const result = await callJsonApi("/api/publish-records/export", { method: "POST" });
-      await refresh();
-      messageApi.success(formatApiMessage(result, "发布清单已导出"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "导出发布清单失败");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function handleFillUrl() {
-    if (!fillingRecord) {
-      return;
-    }
-
-    try {
-      const result = await callJsonApi(`/api/publish-records/${fillingRecord.id}/url`, {
-        method: "PATCH",
-        body: JSON.stringify({ publishedUrl })
-      });
-      await refresh();
-      messageApi.success(formatApiMessage(result, "URL 已回填"));
-      setFillingRecord(undefined);
-      setPublishedUrl("");
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "URL 回填失败");
-    }
-  }
-
-  async function handleMarkPublished(recordId: string) {
-    setMarkingRecordId(recordId);
-
-    try {
-      const result = await callJsonApi(`/api/publish-records/${recordId}/published`, { method: "PATCH" });
-      await refresh();
-      messageApi.success(formatApiMessage(result, "已标记为已发布"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "标记已发布失败");
-    } finally {
-      setMarkingRecordId(undefined);
-    }
+  async function handleCopyTemplate() {
+    await navigator.clipboard.writeText("title,publishedUrl,views,likes,favorites,comments,shares\n");
+    messageApi.success("渠道数据 CSV 模板已复制。");
   }
 
   async function handleImportMetrics() {
@@ -278,7 +221,7 @@ export default function PublishPage() {
 
   function renderMetrics(record: PublishRecord) {
     if (!record.channelMetrics) {
-      return "待录入";
+      return <span className="muted">待回传</span>;
     }
 
     return [
@@ -291,75 +234,28 @@ export default function PublishPage() {
     ].join(" / ");
   }
 
-  function renderPublishEntry(record: PublishRecord) {
-    const nextStep = getPublishNextStep(record);
+  function renderDataReturnEntry(record: PublishRecord) {
+    const status = getDataReturnStatus(record);
 
-    if (nextStep === "publish") {
-      return (
-        <Popconfirm
-          title="确认标记为已发布？"
-          description="状态会进入已发布，后续需要回填正式 URL。"
-          okText="标记"
-          cancelText="取消"
-          onConfirm={() => handleMarkPublished(record.id)}
-          okButtonProps={{ "data-testid": `publish-mark-published-confirm-${record.id}` }}
-        >
-          <Button size="small" type="primary" loading={markingRecordId === record.id} data-testid={`publish-mark-published-${record.id}`}>
-            标记已发布
-          </Button>
-        </Popconfirm>
-      );
-    }
-
-    if (nextStep === "fill_url") {
-      return (
-        <Button
-          size="small"
-          type="primary"
-          data-testid={`publish-fill-url-${record.id}`}
-          onClick={() => {
-            setFillingRecord(record);
-            setPublishedUrl(record.publishedUrl || "");
-          }}
-        >
-          回填 URL
-        </Button>
-      );
-    }
-
-    if (nextStep === "record_metrics") {
+    if (status === "pending_metrics") {
       return (
         <Button size="small" type="primary" onClick={() => openMetricsModal(record)}>
-          录入指标
+          手动补录
         </Button>
       );
     }
 
-    if (nextStep === "failed") {
+    if (status === "matched") {
       return (
-        <Space>
-          <Button size="small" loading={exporting} onClick={handleExport}>
-            重新导出
-          </Button>
-          <Popconfirm
-            title="确认标记为已发布？"
-            description="仅在已经确认渠道侧发布成功时使用，后续还需要回填 URL。"
-            okText="标记"
-            cancelText="取消"
-            onConfirm={() => handleMarkPublished(record.id)}
-            okButtonProps={{ "data-testid": `publish-mark-published-confirm-${record.id}` }}
-          >
-            <Button size="small" loading={markingRecordId === record.id} data-testid={`publish-mark-published-${record.id}`}>
-              标记已发布
-            </Button>
-          </Popconfirm>
-        </Space>
+        <Link href="/weekly-report">
+          <Button size="small">去周报</Button>
+        </Link>
       );
     }
 
     return (
-      <Link href="/weekly-report">
-        <Button size="small">去周报复盘</Button>
+      <Link href="/today">
+        <Button size="small">{status === "missing_url" ? "回填 URL" : "回今日发布"}</Button>
       </Link>
     );
   }
@@ -368,47 +264,44 @@ export default function PublishPage() {
     <>
       {contextHolder}
       <PageHeader
-        title="发布队列"
-        subtitle="MVP 不做自动发布，只做导出、标记已发布和 URL 回填。"
+        title="数据回传"
+        subtitle="这里只负责把渠道数据匹配到已发布文章；发布确认和 URL 回填统一回今日发布页处理。"
         actions={
-          <Button type="primary" loading={exporting} onClick={handleExport}>
-            导出发布清单
-          </Button>
+          <>
+            <Button onClick={handleCopyTemplate}>下载模板</Button>
+            <Link href="/today">
+              <Button>回今日发布</Button>
+            </Link>
+          </>
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
+      <div className="metric-grid">
+        <MetricCard title="已发布文章" value={publishedCount} suffix="篇" />
+        <MetricCard title="已匹配数据" value={matchedCount} suffix="篇" />
+        <MetricCard title="匹配失败/缺 URL" value={missingUrlCount} suffix="篇" />
+        <MetricCard title="待导入渠道" value={pendingMetricsCount} suffix="篇" />
+      </div>
       <Card>
         <Alert
           showIcon
-          type={visibleQueuedCount || visiblePendingUrlCount || visiblePendingMetricsCount ? "info" : "success"}
-          message={`发布队列共 ${filteredPublishRecords.length} 条，待发布 ${visibleQueuedCount} 条，待回填 URL ${visiblePendingUrlCount} 条`}
-          description={`待录入指标 ${visiblePendingMetricsCount} 条，可进入周报复盘 ${visibleReviewReadyCount} 条。`}
+          type={missingUrlCount ? "warning" : pendingMetricsCount ? "info" : "success"}
+          message={`数据回传记录 ${filteredPublishRecords.length} 条，已匹配 ${matchedCount} 条，待回传 ${pendingMetricsCount} 条。`}
+          description="如果记录缺 URL，先回今日发布补链接；只有已发布且 URL 完整的内容，才适合导入渠道指标。"
           style={{ marginBottom: 16 }}
         />
         <Space direction="vertical" style={{ width: "100%", marginBottom: 16 }}>
-          <Upload
-            multiple
-            accept=".csv,.txt,.xls,.xlsx"
-            beforeUpload={() => false}
-            fileList={metricsFiles}
-            onChange={({ fileList }) => setMetricsFiles(fileList)}
-          >
+          <Upload multiple accept=".csv,.txt,.xls,.xlsx" beforeUpload={() => false} fileList={metricsFiles} onChange={({ fileList }) => setMetricsFiles(fileList)}>
             <Button>选择渠道数据表</Button>
           </Upload>
           <Input.TextArea
             rows={4}
-            placeholder="也可以粘贴 CSV：标题,阅读,点赞,收藏,评论,分享 或 title,views,likes,favorites,comments,shares"
+            placeholder="也可以粘贴 CSV：title,publishedUrl,views,likes,favorites,comments,shares"
             value={metricsCsv}
             onChange={(event) => setMetricsCsv(event.target.value)}
           />
-          <Popconfirm
-            title="确认导入渠道数据？"
-            description="会自动识别中文/英文字段，统一写入展现、阅读、点赞、收藏、评论和分享指标。"
-            okText="导入"
-            cancelText="取消"
-            onConfirm={handleImportMetrics}
-          >
-            <Button loading={importingMetrics}>
+          <Popconfirm title="导入渠道数据？" description="会按标题或 URL 匹配已发布文章，并统一写入渠道指标。" okText="导入" cancelText="取消" onConfirm={handleImportMetrics}>
+            <Button type="primary" loading={importingMetrics}>
               导入渠道数据
             </Button>
           </Popconfirm>
@@ -443,8 +336,8 @@ export default function PublishPage() {
           locale={{
             emptyText: (
               <ActionEmpty
-                title={hasActiveFilter ? "当前筛选没有发布记录" : "发布队列还没有终稿"}
-                description={hasActiveFilter ? "清空筛选或调整状态、渠道条件后再查看。" : "先在今日任务生成稿件，并在终稿确认页加入发布队列。"}
+                title={hasActiveFilter ? "当前筛选没有数据回传记录" : "还没有已发布记录"}
+                description={hasActiveFilter ? "清空筛选或调整状态、渠道条件后再查看。" : "先在今日发布页确认已发布并回填 URL，再回到这里导入渠道数据。"}
                 action={
                   hasActiveFilter ? (
                     <Button type="primary" onClick={clearFilters}>
@@ -452,7 +345,7 @@ export default function PublishPage() {
                     </Button>
                   ) : (
                     <Link href="/today">
-                      <Button type="primary">去今日任务</Button>
+                      <Button type="primary">去今日发布</Button>
                     </Link>
                   )
                 }
@@ -460,8 +353,8 @@ export default function PublishPage() {
             )
           }}
           columns={[
-            { title: "状态", dataIndex: "publishStatus", render: (value) => <Tag>{publishStatusLabels[value as keyof typeof publishStatusLabels]}</Tag> },
-            { title: "渠道", dataIndex: "channel", render: (value) => channelLabels[value as keyof typeof channelLabels] },
+            { title: "匹配状态", render: (_, record) => <Tag color={dataReturnStatusColors[getDataReturnStatus(record)]}>{dataReturnStatusLabels[getDataReturnStatus(record)]}</Tag>, width: 130 },
+            { title: "渠道", dataIndex: "channel", render: (value) => channelLabels[value as ChannelKey], width: 120 },
             { title: "标题", dataIndex: "title" },
             {
               title: "来源任务",
@@ -484,58 +377,14 @@ export default function PublishPage() {
                 );
               }
             },
-            {
-              title: "稿件来源",
-              render: (_, record) => {
-                const draft = draftById.get(record.draftId);
-
-                if (!draft) {
-                  return <Tag color="red">稿件缺失</Tag>;
-                }
-
-                return (
-                  <Space wrap>
-                    <Tag color={draftStatusColors[draft.status]}>{draftStatusLabels[draft.status]}</Tag>
-                    <Tag>{`v${draft.version}`}</Tag>
-                  </Space>
-                );
-              }
-            },
-            { title: "发布时间", dataIndex: "publishedAt", render: (value) => value || "-" },
-            { title: "URL", dataIndex: "publishedUrl", render: (value) => value || "待回填" },
-            { title: "渠道指标", render: (_, record) => <span>{renderMetrics(record)}</span> },
-            {
-              title: "下一步",
-              render: (_, record) => {
-                const nextStep = getPublishNextStep(record);
-
-                return <Tag color={publishNextStepColors[nextStep]}>{publishNextStepLabels[nextStep]}</Tag>;
-              }
-            },
-            { title: "处理动作", render: (_, record) => getPublishActionText(record) },
-            {
-              title: "可执行入口",
-              render: (_, record) => renderPublishEntry(record)
-            }
+            { title: "URL", dataIndex: "publishedUrl", render: (value) => value || <span className="muted">缺 URL</span> },
+            { title: "渠道指标", render: (_, record) => renderMetrics(record) },
+            { title: "处理动作", render: (_, record) => getDataReturnActionText(record) },
+            { title: "可执行入口", render: (_, record) => renderDataReturnEntry(record), width: 130 }
           ]}
         />
       </Card>
-      <Modal
-        title="回填发布 URL"
-        open={Boolean(fillingRecord)}
-        onOk={handleFillUrl}
-        onCancel={() => setFillingRecord(undefined)}
-        okButtonProps={{ "data-testid": "publish-url-save-button" }}
-      >
-        <Input placeholder="https://..." value={publishedUrl} onChange={(event) => setPublishedUrl(event.target.value)} data-testid="publish-url-input" />
-      </Modal>
-      <Modal
-        title="录入渠道指标"
-        open={Boolean(metricsRecord)}
-        onOk={handleSaveMetrics}
-        confirmLoading={savingMetrics}
-        onCancel={() => setMetricsRecord(undefined)}
-      >
+      <Modal title="手动补录渠道指标" open={Boolean(metricsRecord)} onOk={handleSaveMetrics} confirmLoading={savingMetrics} onCancel={() => setMetricsRecord(undefined)}>
         <Space direction="vertical" style={{ width: "100%" }}>
           <InputNumber addonBefore="展现" min={0} precision={0} value={manualMetrics.impressions} onChange={(value) => updateManualMetric("impressions", value)} style={{ width: "100%" }} />
           <InputNumber addonBefore="阅读" min={0} precision={0} value={manualMetrics.views} onChange={(value) => updateManualMetric("views", value)} style={{ width: "100%" }} />

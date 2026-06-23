@@ -13,6 +13,7 @@ import { loadBlogArticles } from "./blog-sync-adapter";
 import { importChannelMetrics } from "./channel-metrics-adapter";
 import { channelLabels, productLabels } from "./labels";
 import { parseBotLogInput } from "./log-import-adapter";
+import { getPromptTemplate, promptTemplates } from "./prompt-templates";
 import { getWorkbenchRepository } from "./repositories";
 import { getProviderMissingEnv } from "./runtime-config";
 import type {
@@ -22,9 +23,13 @@ import type {
   ChannelKey,
   ContentTask,
   ContentType,
+  DistilledTerm,
+  DraftQaResult,
   GeoPlatformName,
   GeoTestResult,
+  KnowledgeChunk,
   KnowledgeBase,
+  KnowledgeSourceType,
   LogMode,
   ProductKey,
   PublishRecord,
@@ -74,6 +79,7 @@ export interface WorkbenchState {
   geoResults: GeoTestResult[];
   botVisits: BotVisitSummary[];
   knowledgeBases: KnowledgeBase[];
+  distilledTerms: DistilledTerm[];
   pipelineRuns: PipelineRunRecord[];
   auditLog: WorkbenchAuditEvent[];
 }
@@ -112,6 +118,7 @@ interface SaveWorkspaceSettingInput {
 type KnowledgeBaseType = KnowledgeBase["type"];
 type KnowledgeBaseTrustLevel = KnowledgeBase["trustLevel"];
 type KnowledgeBaseStatus = KnowledgeBase["status"];
+type KnowledgeChunkStatus = KnowledgeChunk["status"];
 
 interface WorkflowResult<T> {
   ok: boolean;
@@ -131,6 +138,68 @@ const defaultGeoPrompts: Record<GeoTestResult["promptGroup"], string> = {
   FAQ: "Dify 应用需要 AI 护栏吗？如果需要，应该如何选择服务商或产品？"
 };
 const geoCompetitorKeywords = ["腾讯云", "阿里云", "火山引擎", "百度智能云", "硅基流动", "Coze", "扣子", "FastGPT", "LangChain", "智谱", "Kimi", "MiniMax"];
+const defaultDistilledTerms: DistilledTerm[] = [
+  {
+    id: "term-dify-enterprise",
+    term: "Dify 企业版服务商",
+    level: "core",
+    source: "JOTO 官方定位",
+    validationStatus: "auto_validated",
+    modelConsensusCount: 3,
+    status: "active",
+    coveredContentTypes: ["brand", "faq", "comparison"],
+    geoLift: 12,
+    competitorOccupied: true
+  },
+  {
+    id: "term-dify-provider",
+    term: "Dify 服务商",
+    level: "core",
+    source: "SEO / GEO 关键词",
+    validationStatus: "auto_validated",
+    modelConsensusCount: 3,
+    status: "active",
+    coveredContentTypes: ["brand", "technical"],
+    geoLift: 8,
+    competitorOccupied: false
+  },
+  {
+    id: "term-ai-guardrails",
+    term: "AI 护栏",
+    level: "product",
+    source: "唯客产品资料",
+    validationStatus: "auto_validated",
+    modelConsensusCount: 2,
+    status: "active",
+    coveredContentTypes: ["technical", "faq"],
+    geoLift: 15,
+    competitorOccupied: false
+  },
+  {
+    id: "term-enterprise-ai-safety",
+    term: "企业大模型安全",
+    level: "scenario",
+    source: "官网博客与渠道反馈",
+    validationStatus: "auto_validated",
+    modelConsensusCount: 2,
+    status: "watching",
+    coveredContentTypes: ["scenario", "technical"],
+    geoLift: 6,
+    competitorOccupied: true
+  },
+  {
+    id: "term-joto-delivery",
+    term: "企业级交付",
+    level: "core",
+    source: "品牌事实库",
+    validationStatus: "auto_validated",
+    modelConsensusCount: 3,
+    status: "active",
+    coveredContentTypes: ["brand", "case"],
+    geoLift: 10,
+    competitorOccupied: false
+  }
+];
 
 function nowIso() {
   return new Date().toISOString();
@@ -149,12 +218,109 @@ function normalizeGeoPlatformName(value: unknown): GeoPlatformName | undefined {
   return geoPlatformOptions.includes(value as GeoPlatformName) ? (value as GeoPlatformName) : undefined;
 }
 
+function getGeoCitationLevel(input: Pick<GeoTestResult, "citedOfficialUrl" | "citedUrls">): NonNullable<GeoTestResult["citationLevel"]> {
+  const citedUrls = input.citedUrls || [];
+  const hasOfficialSite = citedUrls.some((url) => /https?:\/\/([^/]+\.)?jotoai\.com/i.test(url));
+  const hasOfficialContent = citedUrls.some((url) => /jotoai\.com\/(blog|articles|news|docs|case|cases)/i.test(url));
+  const hasOfficialChannel = citedUrls.some((url) => /(mp\.weixin\.qq\.com|zhihu\.com|juejin\.cn|csdn\.net)/i.test(url));
+
+  if (hasOfficialContent) {
+    return "official_content";
+  }
+
+  if (hasOfficialSite || input.citedOfficialUrl) {
+    return "official_site_direct";
+  }
+
+  if (hasOfficialChannel) {
+    return "official_channel";
+  }
+
+  if (citedUrls.length) {
+    return "non_official";
+  }
+
+  return "none";
+}
+
+function getGeoIssueType(input: Pick<GeoTestResult, "mentionedJoto" | "mentionedWeike" | "competitorAppeared" | "executionStatus" | "citationLevel">) {
+  if (input.executionStatus === "pending_config") {
+    return "模型配置缺失";
+  }
+
+  if (input.executionStatus === "failed") {
+    return "测试执行失败";
+  }
+
+  if (!input.mentionedJoto) {
+    return "品牌未提及";
+  }
+
+  if (input.citationLevel === "none" || input.citationLevel === "non_official") {
+    return "官网引用不足";
+  }
+
+  if (input.citationLevel === "official_channel") {
+    return "官方渠道强于官网";
+  }
+
+  if (input.competitorAppeared) {
+    return "竞品占位";
+  }
+
+  if (!input.mentionedWeike) {
+    return "产品提及不足";
+  }
+
+  return "链路稳定";
+}
+
+function getGeoSuggestedAction(input: Pick<GeoTestResult, "issueType" | "citationLevel">) {
+  if (input.issueType === "模型配置缺失") {
+    return "先补齐 AI Provider 配置，再重跑测试。";
+  }
+
+  if (input.issueType === "测试执行失败") {
+    return "查看错误快照，修复接口或超时问题后重跑。";
+  }
+
+  if (input.issueType === "品牌未提及") {
+    return "进入候选池，生成品牌和主蒸馏词绑定型内容。";
+  }
+
+  if (input.issueType === "官网引用不足") {
+    return "补官网信源文章和内部链接，优先让 jotoai.com 成为可引用来源。";
+  }
+
+  if (input.issueType === "官方渠道强于官网") {
+    return "把渠道表达回流为官网内容，补核心转化页链接。";
+  }
+
+  if (input.issueType === "竞品占位") {
+    return "生成对比和差异化内容，减少非官方解释抢占。";
+  }
+
+  if (input.issueType === "产品提及不足") {
+    return "在产品场景 Prompt 组补唯客 AI 护栏和 JOTO 的关系。";
+  }
+
+  return input.citationLevel === "official_site_direct" ? "标记强信源，进入趋势观察。" : "继续观察，并在周报里复盘波动。";
+}
+
 function normalizeGeoResults(results: GeoTestResult[]): GeoTestResult[] {
-  return results.map((result) => ({
-    ...result,
-    platform: normalizeGeoPlatformName(result.platform) || "通义千问",
-    providerKey: (result.providerKey as string | undefined) === "openai" ? "qwen" : result.providerKey
-  }));
+  return results.map((result) => {
+    const citationLevel = result.citationLevel || getGeoCitationLevel(result);
+    const issueType = result.issueType || getGeoIssueType({ ...result, citationLevel });
+
+    return {
+      ...result,
+      platform: normalizeGeoPlatformName(result.platform) || "通义千问",
+      providerKey: (result.providerKey as string | undefined) === "openai" ? "qwen" : result.providerKey,
+      citationLevel,
+      issueType,
+      suggestedAction: result.suggestedAction || getGeoSuggestedAction({ issueType, citationLevel })
+    };
+  });
 }
 
 function createInitialWorkspaceSetting(): WorkspaceSetting {
@@ -186,9 +352,10 @@ export function createInitialWorkbenchState(): WorkbenchState {
     drafts: clone(seedDrafts),
     publishRecords: clone(seedPublishRecords),
     blogArticles: clone(seedBlogArticles),
-    geoResults: clone(seedGeoResults),
+    geoResults: normalizeGeoResults(clone(seedGeoResults)),
     botVisits: clone(seedBotVisits),
-    knowledgeBases: clone(seedKnowledgeBases),
+    knowledgeBases: clone(seedKnowledgeBases).map(normalizeKnowledgeBase),
+    distilledTerms: normalizeDistilledTerms(),
     pipelineRuns: [],
     auditLog: [
       {
@@ -227,7 +394,8 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
     blogArticles: value.blogArticles || base.blogArticles,
     geoResults: normalizeGeoResults(value.geoResults || base.geoResults),
     botVisits: value.botVisits || base.botVisits,
-    knowledgeBases: value.knowledgeBases || base.knowledgeBases,
+    knowledgeBases: (value.knowledgeBases || base.knowledgeBases).map(normalizeKnowledgeBase),
+    distilledTerms: normalizeDistilledTerms(value.distilledTerms || base.distilledTerms),
     pipelineRuns: value.pipelineRuns || base.pipelineRuns,
     auditLog: value.auditLog || base.auditLog
   };
@@ -321,7 +489,11 @@ function coerceGeoPlatforms(value: unknown): WorkspaceSetting["geoPlatforms"] | 
 }
 
 function coerceKnowledgeBaseType(value: unknown, fallback: KnowledgeBaseType): KnowledgeBaseType {
-  const allowed: KnowledgeBaseType[] = ["brand", "product", "official_blog", "channel_history", "competitor", "source_site"];
+  if (value === "source_site") {
+    return "custom";
+  }
+
+  const allowed: KnowledgeBaseType[] = ["brand", "product", "official_blog", "channel_history", "competitor", "custom"];
   return allowed.includes(value as KnowledgeBaseType) ? (value as KnowledgeBaseType) : fallback;
 }
 
@@ -333,6 +505,117 @@ function coerceKnowledgeBaseTrustLevel(value: unknown, fallback: KnowledgeBaseTr
 function coerceKnowledgeBaseStatus(value: unknown, fallback: KnowledgeBaseStatus): KnowledgeBaseStatus {
   const allowed: KnowledgeBaseStatus[] = ["enabled", "disabled"];
   return allowed.includes(value as KnowledgeBaseStatus) ? (value as KnowledgeBaseStatus) : fallback;
+}
+
+function coerceKnowledgeSourceType(value: unknown, fallback: KnowledgeSourceType): KnowledgeSourceType {
+  const allowed: KnowledgeSourceType[] = ["url", "markdown", "docx", "manual", "auto_crawl"];
+  return allowed.includes(value as KnowledgeSourceType) ? (value as KnowledgeSourceType) : fallback;
+}
+
+function coerceKnowledgeChunkStatus(value: unknown, fallback: KnowledgeChunkStatus): KnowledgeChunkStatus {
+  const allowed: KnowledgeChunkStatus[] = ["enabled", "disabled", "needs_review"];
+  return allowed.includes(value as KnowledgeChunkStatus) ? (value as KnowledgeChunkStatus) : fallback;
+}
+
+function estimateTokenCount(text: string) {
+  return Math.max(12, Math.ceil(text.length / 2));
+}
+
+function createContentHash(text: string) {
+  let hash = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+
+  return hash.toString(16);
+}
+
+function splitKnowledgeContent(content: string, knowledgeBaseId: string, sourceTitle: string, sourceUrl?: string): KnowledgeChunk[] {
+  const normalized = content.trim();
+  const segments = normalized
+    .split(/\n{2,}|(?<=。)/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 12)
+    .slice(0, 8);
+  const fallbackSegments = segments.length ? segments : normalized ? [normalized] : [`${sourceTitle} 待补充内容预览。`];
+
+  return fallbackSegments.map((segment, index) => ({
+    id: `chunk-${knowledgeBaseId}-${index + 1}`,
+    knowledgeBaseId,
+    sourceUrl,
+    sourceTitle,
+    sectionPath: `规则切片 / ${index + 1}`,
+    chunkTitle: `${sourceTitle} 片段 ${index + 1}`,
+    content: segment,
+    tokenCount: estimateTokenCount(segment),
+    contentHash: createContentHash(segment),
+    status: "enabled"
+  }));
+}
+
+function addDaysFromNow(days: number, hour: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  date.setHours(hour, 0, 0, 0);
+  return date.toISOString();
+}
+
+function normalizeKnowledgeBase(item: KnowledgeBase): KnowledgeBase {
+  const type = coerceKnowledgeBaseType(item.type, "custom");
+  const sourceType = coerceKnowledgeSourceType(item.sourceType, type === "official_blog" ? "auto_crawl" : "manual");
+  const contentPreview = item.contentPreview || `${item.name} 暂无内容预览，请通过统一导入补充资料。`;
+  const chunks =
+    item.chunks?.length
+      ? item.chunks.map((chunk, index) => ({
+          ...chunk,
+          id: chunk.id || `chunk-${item.id}-${index + 1}`,
+          knowledgeBaseId: item.id,
+          sourceTitle: chunk.sourceTitle || item.name,
+          sectionPath: chunk.sectionPath || `规则切片 / ${index + 1}`,
+          chunkTitle: chunk.chunkTitle || `${item.name} 片段 ${index + 1}`,
+          tokenCount: chunk.tokenCount || estimateTokenCount(chunk.content),
+          contentHash: chunk.contentHash || createContentHash(chunk.content),
+          status: coerceKnowledgeChunkStatus(chunk.status, "enabled")
+        }))
+      : splitKnowledgeContent(contentPreview, item.id, item.name, item.sourceUrl);
+
+  return {
+    ...item,
+    type,
+    sourceType,
+    contentPreview,
+    chunks,
+    autoCrawl:
+      item.autoCrawl ||
+      (sourceType === "auto_crawl"
+        ? {
+            enabled: true,
+            weekday: 1,
+            hour: 9,
+            lastCrawledAt: item.lastSyncedAt,
+            nextCrawlAt: addDaysFromNow(7, 9)
+          }
+        : {
+            enabled: false,
+            weekday: 1,
+            hour: 9,
+            lastCrawledAt: item.lastSyncedAt,
+            nextCrawlAt: addDaysFromNow(7, 9)
+          })
+  };
+}
+
+function normalizeDistilledTerms(value?: DistilledTerm[]) {
+  const source = value?.length ? value : defaultDistilledTerms;
+
+  return source.map((term) => ({
+    ...term,
+    validationStatus: term.validationStatus || "auto_validated",
+    modelConsensusCount: term.modelConsensusCount || 2,
+    status: term.status || "active",
+    coveredContentTypes: term.coveredContentTypes || []
+  }));
 }
 
 function coerceContentType(value: number): ContentType {
@@ -369,6 +652,26 @@ function buildTaskKeywords(product: ProductKey, contentType: ContentType) {
   return [...base, byType[contentType]];
 }
 
+function buildTaskPlanContext(product: ProductKey, contentType: ContentType, sourceProblem?: string) {
+  const keywords = buildTaskKeywords(product, contentType);
+  const productName = productLabels[product];
+  const fallbackProblems: Record<ContentType, string> = {
+    brand: "企业选择 AI 服务商时容易只看部署速度，忽略长期交付和治理。",
+    scenario: "企业把大模型接入业务流程后，需要把场景、风险和责任边界讲清楚。",
+    technical: "技术团队需要知道 AI 安全、知识库和应用治理应该落在系统哪个位置。",
+    faq: "用户对 Dify、AI 护栏和企业级服务商的必要性仍有基础疑问。",
+    comparison: "用户需要理解不同方案之间的边界和适用场景。",
+    case: "用户需要看到可复用的业务实践，而不是孤立功能说明。"
+  };
+
+  return {
+    primaryDistilledTerm: keywords[1] || keywords[0],
+    sourceProblem: sourceProblem || fallbackProblems[contentType],
+    officialLinkTarget: "https://jotoai.com",
+    reason: `用 ${productName} 的表达补强「${keywords[1] || keywords[0]}」相关认知入口。`
+  };
+}
+
 function extractUrls(text: string) {
   return Array.from(new Set(text.match(/https?:\/\/[^\s)\]）】"'，。；、]+/g) || []));
 }
@@ -394,6 +697,7 @@ function getGeoReviewStatus(input: Pick<GeoTestResult, "accuracyStatus" | "execu
 }
 
 function buildRegeneratedTaskTitle(task: ContentTask) {
+  const template = getPromptTemplate("channel_title");
   const typeLabel = {
     brand: "品牌认知补强",
     scenario: "业务场景拆解",
@@ -405,33 +709,73 @@ function buildRegeneratedTaskTitle(task: ContentTask) {
   const productName = productLabels[task.product];
   const channelName = channelLabels[task.channel];
 
-  return `${productName} ${typeLabel[task.contentType]}：${channelName} 选题 ${Date.now().toString().slice(-4)}`;
+  return `${productName} ${typeLabel[task.contentType]}：${channelName} 选题 ${Date.now().toString().slice(-4)}（${template?.version || "v3"}）`;
 }
 
-function runDraftQa(task: ContentTask, content: string) {
+function runDraftQa(task: ContentTask, content: string, editedSegments: string[] = []): DraftQaResult {
+  const template = getPromptTemplate("draft_second_qa");
   const blockers: string[] = [];
   const warnings: string[] = [];
+  const issues: DraftQaResult["issues"] = [];
+  const failedSegments: string[] = [];
+  const sensitiveMatches = Array.from(new Set(content.match(/最强|绝对领先|永久免费|100%/g) || []));
 
   if (task.product === "joto_brand" && !content.includes("JOTO")) {
     warnings.push("正文缺少 JOTO 品牌词");
+    issues.push({
+      severity: "warning",
+      rule: "品牌词缺失",
+      location: "全文",
+      suggestedAction: "补充 JOTO 与当前用户问题之间的关系。"
+    });
   }
 
   if (task.product === "weike_guardrails" && !content.includes("唯客")) {
     warnings.push("正文缺少唯客产品词");
+    issues.push({
+      severity: "warning",
+      rule: "产品词缺失",
+      location: "全文",
+      suggestedAction: "补充唯客 AI 护栏与当前场景的关系。"
+    });
   }
 
   if (!content.includes("jotoai.com")) {
     warnings.push("建议补充官网链接");
+    issues.push({
+      severity: "warning",
+      rule: "官网链接目标缺失",
+      location: "全文",
+      suggestedAction: `自然补充官网链接目标：${task.officialLinkTarget || "https://jotoai.com"}。`
+    });
   }
 
-  if (/最强|绝对领先|永久免费|100%/.test(content)) {
+  if (sensitiveMatches.length) {
     blockers.push("存在敏感或夸大表达");
+    failedSegments.push(...sensitiveMatches);
+    issues.push({
+      severity: "blocker",
+      rule: "夸大表达",
+      location: "正文",
+      failedText: sensitiveMatches.join("、"),
+      suggestedAction: "删除或改写绝对化承诺，避免影响发布风险。",
+      allowedActions: ["restore_previous", "delete_failed_segment"]
+    });
   }
 
   return {
     passed: blockers.length === 0,
     blockers,
-    warnings
+    warnings,
+    summary: blockers.length
+      ? `存在 ${blockers.length} 个阻断项，暂不能复制全文。规则：${template?.name || "AI 二次质检模板"} ${template?.version || "v3"}。`
+      : warnings.length
+        ? `质检通过，但有 ${warnings.length} 个提醒。规则：${template?.name || "AI 二次质检模板"} ${template?.version || "v3"}。`
+        : `质检通过，可以复制全文。规则：${template?.name || "AI 二次质检模板"} ${template?.version || "v3"}。`,
+    issues,
+    editedSegments,
+    failedSegments: Array.from(new Set(failedSegments)),
+    copyAllowed: blockers.length === 0
   };
 }
 
@@ -440,16 +784,21 @@ function createLocalDraft(
   existingDraft?: ArticleDraft,
   options: { provider?: string; model?: string; status?: "success" | "pending_config" | "failed" } = {}
 ): ArticleDraft {
+  const evidenceTemplate = getPromptTemplate("evidence_selection");
+  const bodyTemplate = getPromptTemplate("batch_body_generation");
   const channelName = channelLabels[task.channel];
   const productName = productLabels[task.product];
+  const officialLinkTarget = task.officialLinkTarget || "https://jotoai.com";
+  const primaryDistilledTerm = task.primaryDistilledTerm || task.targetKeywords[1] || task.targetKeywords[0];
   const content = [
-    `很多团队在做 ${productName} 相关内容时，容易先从功能点出发，最后写成一篇没有判断的说明文。`,
+    `很多团队在做 ${primaryDistilledTerm} 相关内容时，容易先从功能点出发，最后写成一篇没有判断的说明文。`,
     `这篇 ${channelName} 文章应该先回答一个真实问题：${task.title}。`,
     `如果把它放回 JOTO 当前的 GTM 工作流里看，内容的作用不是堆关键词，而是帮助读者理解企业接入 AI 能力时需要哪些交付、治理和安全边界。`,
+    `生成前使用「${evidenceTemplate?.name || "证据选择模板"}」选择知识片段，再用「${bodyTemplate?.name || "批量正文生成模板"}」组织正文。`,
     task.product === "weike_guardrails"
       ? "唯客 AI 护栏适合承担输出安全、风险识别和审计留痕这类稳定治理工作。"
       : "JOTO 的价值应该放在企业级交付、长期运维和 AI 应用治理的完整链路里理解。",
-    `后续发布时建议补充官网链接：https://jotoai.com，并根据 ${channelName} 的阅读习惯调整标题和段落密度。`
+    `后续发布时建议补充官网链接：${officialLinkTarget}，并根据 ${channelName} 的阅读习惯调整标题和段落密度。`
   ].join("\n\n");
   const qaResult = runDraftQa(task, content);
 
@@ -468,6 +817,7 @@ function createLocalDraft(
       generatedAt: nowIso(),
       provider: options.provider,
       model: options.model,
+      promptProfile: `${bodyTemplate?.id || "batch_body_generation"}@${bodyTemplate?.version || "v3"}`,
       status: options.status || "success"
     },
     updatedAt: nowIso()
@@ -486,6 +836,8 @@ function getContentProviderKey(): AiProviderKey {
 
 async function createDraftWithProviderFallback(task: ContentTask, existingDraft?: ArticleDraft) {
   const provider = getContentProviderKey();
+  const evidenceTemplate = getPromptTemplate("evidence_selection");
+  const bodyTemplate = getPromptTemplate("batch_body_generation");
   const aiResult = await callAiProvider({
     provider,
     systemPrompt:
@@ -495,7 +847,12 @@ async function createDraftWithProviderFallback(task: ContentTask, existingDraft?
       `产品：${productLabels[task.product]}`,
       `标题：${task.title}`,
       `内容类型：${task.contentType}`,
+      `主蒸馏词：${task.primaryDistilledTerm || task.targetKeywords[1] || task.targetKeywords[0]}`,
+      `来源问题：${task.sourceProblem || "本周内容增长计划"}`,
+      `官网链接目标：${task.officialLinkTarget || "https://jotoai.com"}`,
       `目标关键词：${task.targetKeywords.join("、")}`,
+      `证据选择规则：${evidenceTemplate?.name || "证据选择模板"} ${evidenceTemplate?.version || "v3"}`,
+      `正文生成规则：${bodyTemplate?.name || "批量正文生成模板"} ${bodyTemplate?.version || "v3"}`,
       "请生成一篇适合该渠道的中文文章，保留真实问题意识，并自然提及 JOTO 或唯客。"
     ].join("\n"),
     temperature: 0.4
@@ -519,6 +876,7 @@ async function createDraftWithProviderFallback(task: ContentTask, existingDraft?
         provider: aiResult.provider,
         model: aiResult.model,
         generatedAt: nowIso(),
+        promptProfile: `${bodyTemplate?.id || "batch_body_generation"}@${bodyTemplate?.version || "v3"}`,
         status: "success" as const
       },
       updatedAt: nowIso()
@@ -570,6 +928,7 @@ export function getDashboardSummary() {
 
 export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
   const state = readWorkbenchState();
+  const template = getPromptTemplate("weekly_plan_generation");
   const days = clampNumber(input.days, 5, 1, 7);
   const dailyCount = clampNumber(input.dailyCount, 3, 1, 10);
   const channels: ChannelKey[] = input.channels?.length ? input.channels : ["wechat", "csdn", "juejin", "zhihu_toutiao_general"];
@@ -585,6 +944,7 @@ export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
       const channel = channels[index % channels.length];
       const product = products[index % products.length];
       const contentType = coerceContentType(index);
+      const planContext = buildTaskPlanContext(product, contentType);
       tasks.push({
         id: createId("task"),
         weeklyPlanId: `wp-${weekStart}`,
@@ -594,7 +954,11 @@ export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
         title: buildTaskTitle(index, channel, product, contentType),
         contentType,
         targetKeywords: buildTaskKeywords(product, contentType),
-        status: "planned"
+        primaryDistilledTerm: planContext.primaryDistilledTerm,
+        sourceProblem: planContext.sourceProblem,
+        officialLinkTarget: planContext.officialLinkTarget,
+        status: "planned",
+        qaSummary: `${template?.name || "周计划生成模板"} ${template?.version || "v3"}，按四层约束生成标题级计划。`
       });
     }
   }
@@ -677,6 +1041,15 @@ export function patchContentTask(id: string, input: Record<string, unknown>): Wo
       : typeof input.targetKeywords === "string"
         ? input.targetKeywords.split(/[,，]/).map((item) => item.trim()).filter(Boolean)
         : current.targetKeywords,
+    primaryDistilledTerm:
+      typeof input.primaryDistilledTerm === "string" && input.primaryDistilledTerm.trim()
+        ? input.primaryDistilledTerm.trim()
+        : current.primaryDistilledTerm,
+    sourceProblem: typeof input.sourceProblem === "string" && input.sourceProblem.trim() ? input.sourceProblem.trim() : current.sourceProblem,
+    officialLinkTarget:
+      typeof input.officialLinkTarget === "string" && input.officialLinkTarget.trim()
+        ? input.officialLinkTarget.trim()
+        : current.officialLinkTarget,
     status: typeof input.status === "string" ? (input.status as TaskStatus) : current.status
   };
 
@@ -816,7 +1189,15 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
 
 export function createKnowledgeBase(input: Record<string, unknown>): WorkflowResult<{ knowledgeBase: KnowledgeBase }> {
   const name = typeof input.name === "string" ? input.name.trim() : "";
-  const usageScope = typeof input.usageScope === "string" ? input.usageScope.trim() : "";
+  const usageScope = typeof input.usageScope === "string" ? input.usageScope.trim() : "内容生成、GEO 诊断、周报复盘";
+  const sourceType = coerceKnowledgeSourceType(input.sourceType, "manual");
+  const contentPreview =
+    typeof input.contentPreview === "string" && input.contentPreview.trim()
+      ? input.contentPreview.trim()
+      : typeof input.rawContent === "string" && input.rawContent.trim()
+        ? input.rawContent.trim()
+        : `${name} 的资料已经进入统一导入流程，等待补充内容预览。`;
+  const sourceUrl = typeof input.sourceUrl === "string" && input.sourceUrl.trim() ? input.sourceUrl.trim() : undefined;
 
   if (!name) {
     return {
@@ -826,26 +1207,30 @@ export function createKnowledgeBase(input: Record<string, unknown>): WorkflowRes
     };
   }
 
-  if (!usageScope) {
-    return {
-      ok: false,
-      status: "pending_input",
-      message: "请填写调用范围。"
-    };
-  }
-
   const state = readWorkbenchState();
+  const id = createId("kb");
   const knowledgeBase: KnowledgeBase = {
-    id: createId("kb"),
+    id,
     name,
     type: coerceKnowledgeBaseType(input.type, "brand"),
     trustLevel: coerceKnowledgeBaseTrustLevel(input.trustLevel, "medium"),
     status: coerceKnowledgeBaseStatus(input.status, "enabled"),
     usageScope,
-    lastSyncedAt: typeof input.lastSyncedAt === "string" && input.lastSyncedAt.trim() ? input.lastSyncedAt.trim() : nowIso()
+    lastSyncedAt: typeof input.lastSyncedAt === "string" && input.lastSyncedAt.trim() ? input.lastSyncedAt.trim() : nowIso(),
+    sourceType,
+    sourceUrl,
+    contentPreview,
+    chunks: splitKnowledgeContent(contentPreview, id, name, sourceUrl),
+    autoCrawl: {
+      enabled: sourceType === "auto_crawl",
+      weekday: clampNumber(input.crawlWeekday, 1, 1, 7),
+      hour: clampNumber(input.crawlHour, 9, 0, 23),
+      lastCrawledAt: sourceType === "auto_crawl" ? nowIso() : undefined,
+      nextCrawlAt: sourceType === "auto_crawl" ? addDaysFromNow(7, clampNumber(input.crawlHour, 9, 0, 23)) : undefined
+    }
   };
 
-  state.knowledgeBases = [knowledgeBase, ...state.knowledgeBases];
+  state.knowledgeBases = [normalizeKnowledgeBase(knowledgeBase), ...state.knowledgeBases];
   saveWithEvent(state, "knowledge_base_created", `Created knowledge base ${knowledgeBase.id}.`);
 
   return {
@@ -869,17 +1254,39 @@ export function patchKnowledgeBase(id: string, input: Record<string, unknown>): 
   }
 
   const current = state.knowledgeBases[index];
+  const nextName = typeof input.name === "string" && input.name.trim() ? input.name.trim() : current.name;
+  const nextContentPreview =
+    typeof input.contentPreview === "string" && input.contentPreview.trim()
+      ? input.contentPreview.trim()
+      : current.contentPreview;
+  const nextSourceUrl = typeof input.sourceUrl === "string" && input.sourceUrl.trim() ? input.sourceUrl.trim() : current.sourceUrl;
+  const nextSourceType = coerceKnowledgeSourceType(input.sourceType, current.sourceType || "manual");
+  const shouldRegenerateChunks = typeof input.contentPreview === "string" && input.contentPreview.trim();
   const knowledgeBase: KnowledgeBase = {
     ...current,
-    name: typeof input.name === "string" && input.name.trim() ? input.name.trim() : current.name,
+    name: nextName,
     type: coerceKnowledgeBaseType(input.type, current.type),
     trustLevel: coerceKnowledgeBaseTrustLevel(input.trustLevel, current.trustLevel),
     status: coerceKnowledgeBaseStatus(input.status, current.status),
     usageScope: typeof input.usageScope === "string" && input.usageScope.trim() ? input.usageScope.trim() : current.usageScope,
-    lastSyncedAt: typeof input.lastSyncedAt === "string" && input.lastSyncedAt.trim() ? input.lastSyncedAt.trim() : current.lastSyncedAt
+    lastSyncedAt: typeof input.lastSyncedAt === "string" && input.lastSyncedAt.trim() ? input.lastSyncedAt.trim() : current.lastSyncedAt,
+    sourceType: nextSourceType,
+    sourceUrl: nextSourceUrl,
+    contentPreview: nextContentPreview,
+    chunks: shouldRegenerateChunks ? splitKnowledgeContent(nextContentPreview || "", current.id, nextName, nextSourceUrl) : current.chunks,
+    autoCrawl: {
+      enabled: typeof input.autoCrawlEnabled === "boolean" ? input.autoCrawlEnabled : current.autoCrawl?.enabled || false,
+      weekday: clampNumber(input.crawlWeekday, current.autoCrawl?.weekday || 1, 1, 7),
+      hour: clampNumber(input.crawlHour, current.autoCrawl?.hour || 9, 0, 23),
+      lastCrawledAt: typeof input.lastCrawledAt === "string" && input.lastCrawledAt.trim() ? input.lastCrawledAt.trim() : current.autoCrawl?.lastCrawledAt,
+      nextCrawlAt:
+        typeof input.nextCrawlAt === "string" && input.nextCrawlAt.trim()
+          ? input.nextCrawlAt.trim()
+          : addDaysFromNow(7, clampNumber(input.crawlHour, current.autoCrawl?.hour || 9, 0, 23))
+    }
   };
 
-  state.knowledgeBases[index] = knowledgeBase;
+  state.knowledgeBases[index] = normalizeKnowledgeBase(knowledgeBase);
   saveWithEvent(state, "knowledge_base_updated", `Updated knowledge base ${id}.`);
 
   return {
@@ -905,7 +1312,8 @@ export function regenerateContentTaskTitle(id: string): WorkflowResult<{ task: C
   const task: ContentTask = {
     ...state.tasks[taskIndex],
     title: buildRegeneratedTaskTitle(state.tasks[taskIndex]),
-    targetKeywords: buildTaskKeywords(state.tasks[taskIndex].product, state.tasks[taskIndex].contentType)
+    targetKeywords: buildTaskKeywords(state.tasks[taskIndex].product, state.tasks[taskIndex].contentType),
+    ...buildTaskPlanContext(state.tasks[taskIndex].product, state.tasks[taskIndex].contentType, state.tasks[taskIndex].sourceProblem)
   };
 
   state.tasks[taskIndex] = task;
@@ -957,13 +1365,18 @@ export async function generateDraftForTask(taskId: string): Promise<WorkflowResu
   };
 }
 
-export async function batchGenerateDrafts(): Promise<WorkflowResult<{ generated: number; tasks: ContentTask[]; drafts: ArticleDraft[] }>> {
+export async function batchGenerateDrafts(
+  input: Record<string, unknown> = {}
+): Promise<WorkflowResult<{ generated: number; tasks: ContentTask[]; drafts: ArticleDraft[] }>> {
   const state = readWorkbenchState();
   let generated = 0;
   const nextTasks: ContentTask[] = [];
+  const requestedIds = Array.isArray(input.taskIds) ? input.taskIds.map(String).filter(Boolean) : undefined;
 
   for (const task of state.tasks) {
-    if (!["planned", "confirmed", "generated", "qa_failed", "pending_review"].includes(task.status)) {
+    const shouldGenerate = requestedIds?.length ? requestedIds.includes(task.id) : task.status === "confirmed";
+
+    if (!shouldGenerate || !["confirmed", "generated", "qa_failed", "pending_review"].includes(task.status)) {
       nextTasks.push(task);
       continue;
     }
@@ -986,9 +1399,12 @@ export async function batchGenerateDrafts(): Promise<WorkflowResult<{ generated:
   saveWithEvent(state, "draft_batch_generated", `Generated ${generated} local-rule drafts.`);
 
   return {
-    ok: true,
-    status: "success",
-    message: `已生成 ${generated} 篇稿件；有 Provider 配置时走真实 AI，否则使用本地规则 fallback。`,
+    ok: generated > 0,
+    status: generated > 0 ? "success" : "pending_input",
+    message:
+      generated > 0
+        ? `已批量生成 ${generated} 篇稿件；有 Provider 配置时走真实 AI，否则使用本地规则 fallback。`
+        : "请先在今日发布页选择已确认的任务，再批量生成正文。",
     data: {
       generated,
       tasks: state.tasks,
@@ -1012,7 +1428,15 @@ export function patchDraft(id: string, input: Record<string, unknown>): Workflow
   const current = state.drafts[draftIndex];
   const task = state.tasks.find((item) => item.id === current.taskId);
   const content = typeof input.content === "string" ? input.content : current.content;
-  const qaResult = task ? runDraftQa(task, content) : current.qaResult;
+  const editedSegments =
+    content !== current.content
+      ? [
+          typeof input.editNote === "string" && input.editNote.trim()
+            ? input.editNote.trim()
+            : `人工修改于 ${nowIso()}，已触发 AI 二次质检。`
+        ]
+      : current.qaResult.editedSegments || [];
+  const qaResult = task ? runDraftQa(task, content, editedSegments) : current.qaResult;
   const draft: ArticleDraft = {
     ...current,
     title: typeof input.title === "string" ? input.title : current.title,
@@ -1250,6 +1674,160 @@ export function markPublishRecordPublished(id: string, input: Record<string, unk
     status: "success",
     message: "发布记录已标记为已发布，等待 URL 回填。",
     data: { record }
+  };
+}
+
+export function markContentTaskPublished(taskId: string, input: Record<string, unknown> = {}): WorkflowResult<{ task: ContentTask; draft: ArticleDraft; record: PublishRecord }> {
+  const state = readWorkbenchState();
+  const taskIndex = state.tasks.findIndex((item) => item.id === taskId);
+
+  if (taskIndex < 0) {
+    return {
+      ok: false,
+      status: "failed",
+      message: `未找到内容任务：${taskId}`
+    };
+  }
+
+  const draftIndex = state.drafts.findIndex((item) => item.taskId === taskId);
+
+  if (draftIndex < 0) {
+    return {
+      ok: false,
+      status: "pending_input",
+      message: "请先在今日发布页批量生成正文，并在草稿预览页通过二次质检。"
+    };
+  }
+
+  const draft = state.drafts[draftIndex];
+
+  if (!draft.qaResult.passed) {
+    return {
+      ok: false,
+      status: "failed",
+      message: "草稿仍有阻断项，不能确认已发布。"
+    };
+  }
+
+  const finalDraft: ArticleDraft = {
+    ...draft,
+    status: "final",
+    updatedAt: nowIso()
+  };
+  const existingRecordIndex = state.publishRecords.findIndex((item) => item.draftId === finalDraft.id);
+  const record: PublishRecord =
+    existingRecordIndex >= 0
+      ? {
+          ...state.publishRecords[existingRecordIndex],
+          title: finalDraft.title,
+          channel: finalDraft.channel,
+          publishStatus: "published",
+          publishedAt: typeof input.publishedAt === "string" ? input.publishedAt : state.publishRecords[existingRecordIndex].publishedAt || nowIso(),
+          notes: typeof input.notes === "string" ? input.notes : state.publishRecords[existingRecordIndex].notes
+        }
+      : {
+          id: createId("pub"),
+          draftId: finalDraft.id,
+          channel: finalDraft.channel,
+          title: finalDraft.title,
+          publishStatus: "published",
+          publishedAt: typeof input.publishedAt === "string" ? input.publishedAt : nowIso(),
+          notes: typeof input.notes === "string" ? input.notes : undefined
+        };
+
+  state.drafts[draftIndex] = finalDraft;
+  state.tasks[taskIndex] = {
+    ...state.tasks[taskIndex],
+    status: "published",
+    qaSummary: "已人工发布，等待 URL 回填"
+  };
+
+  if (existingRecordIndex >= 0) {
+    state.publishRecords[existingRecordIndex] = record;
+  } else {
+    state.publishRecords.push(record);
+  }
+
+  saveWithEvent(state, "content_task_marked_published", `Marked content task ${taskId} as published from today page.`);
+
+  return {
+    ok: true,
+    status: "success",
+    message: "已确认发布，请继续回填正式 URL。",
+    data: {
+      task: state.tasks[taskIndex],
+      draft: finalDraft,
+      record
+    }
+  };
+}
+
+export function fillContentTaskPublishUrl(taskId: string, input: Record<string, unknown>): WorkflowResult<{ task: ContentTask; record: PublishRecord }> {
+  const state = readWorkbenchState();
+  const taskIndex = state.tasks.findIndex((item) => item.id === taskId);
+  const draft = state.drafts.find((item) => item.taskId === taskId);
+  const recordIndex = draft ? state.publishRecords.findIndex((item) => item.draftId === draft.id) : -1;
+  const publishedUrl = typeof input.publishedUrl === "string" ? input.publishedUrl.trim() : undefined;
+
+  if (taskIndex < 0) {
+    return {
+      ok: false,
+      status: "failed",
+      message: `未找到内容任务：${taskId}`
+    };
+  }
+
+  if (!draft || recordIndex < 0) {
+    return {
+      ok: false,
+      status: "pending_input",
+      message: "请先在今日发布页确认已发布，再回填 URL。"
+    };
+  }
+
+  if (!publishedUrl) {
+    return {
+      ok: false,
+      status: "pending_input",
+      message: "请填写正式发布 URL。"
+    };
+  }
+
+  try {
+    new URL(publishedUrl);
+  } catch {
+    return {
+      ok: false,
+      status: "failed",
+      message: "URL 格式不正确，请填写完整链接。"
+    };
+  }
+
+  const record: PublishRecord = {
+    ...state.publishRecords[recordIndex],
+    publishStatus: "url_filled",
+    publishedUrl,
+    publishedAt: typeof input.publishedAt === "string" ? input.publishedAt : state.publishRecords[recordIndex].publishedAt || nowIso(),
+    notes: typeof input.notes === "string" ? input.notes : state.publishRecords[recordIndex].notes
+  };
+
+  state.publishRecords[recordIndex] = record;
+  state.tasks[taskIndex] = {
+    ...state.tasks[taskIndex],
+    status: "url_filled",
+    qaSummary: "已回填 URL，等待渠道数据回传"
+  };
+
+  saveWithEvent(state, "content_task_publish_url_filled", `Filled publish URL for content task ${taskId}.`);
+
+  return {
+    ok: true,
+    status: "success",
+    message: "URL 已回填，后续到数据回传页导入渠道指标。",
+    data: {
+      task: state.tasks[taskIndex],
+      record
+    }
   };
 }
 
@@ -1549,6 +2127,7 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
   const channel = channels[0] || "wechat";
   const product = article.title.includes("唯客") || article.title.includes("护栏") ? "weike_guardrails" : products[0] || "joto_brand";
   const contentType: ContentType = article.geoResult === "miss" ? "faq" : article.seoIssueCount >= 2 ? "technical" : "scenario";
+  const planContext = buildTaskPlanContext(product, contentType, article.candidateReason || `官网博客问题：${article.title || article.url}`);
   const task: ContentTask = {
     id: createId("task"),
     weeklyPlanId: state.weeklyPlan.id,
@@ -1558,6 +2137,9 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
     title: `渠道补强：${article.title}`,
     contentType,
     targetKeywords: Array.from(new Set([...buildTaskKeywords(product, contentType), "官网博客补强", article.geoResult === "miss" ? "GEO 未命中" : "SEO 优化"])),
+    primaryDistilledTerm: planContext.primaryDistilledTerm,
+    sourceProblem: planContext.sourceProblem,
+    officialLinkTarget: planContext.officialLinkTarget,
     status: "planned",
     qaSummary: `来源博客候选池：${article.candidateReason || article.url}`
   };
@@ -1604,6 +2186,7 @@ export async function runGeoTests(input: Record<string, unknown>): Promise<Workf
       ? (input.prompts as Partial<Record<GeoTestResult["promptGroup"], unknown>>)
       : {};
   const fallbackPrompt = typeof input.prompt === "string" ? input.prompt : undefined;
+  const distilledTermIds = Array.isArray(input.distilledTermIds) ? input.distilledTermIds.map(String).filter(Boolean) : undefined;
   const missingConfig = getProviderMissingEnv(platforms);
 
   if (!platforms.length || !promptGroups.length) {
@@ -1648,15 +2231,21 @@ export async function runGeoTests(input: Record<string, unknown>): Promise<Workf
         competitorAppeared: detectCompetitorAppeared(snapshot),
         executionStatus: aiResult.status
       };
+      const citationLevel = getGeoCitationLevel({ ...partialResult, citedUrls });
+      const issueType = getGeoIssueType({ ...partialResult, citationLevel });
       const accuracyStatus = getGeoAccuracyStatus(partialResult);
 
       results.push({
         id: createId("geo"),
         platform,
         promptGroup,
+        distilledTermIds,
         prompt,
         ...partialResult,
         citedUrls,
+        citationLevel,
+        issueType,
+        suggestedAction: getGeoSuggestedAction({ issueType, citationLevel }),
         accuracyStatus,
         reviewStatus: getGeoReviewStatus({ accuracyStatus, executionStatus: aiResult.status }),
         answerSnapshot: snapshot,
@@ -1709,6 +2298,9 @@ export function overrideGeoResult(id: string, input: Record<string, unknown>): W
     competitorAppeared: result.competitorAppeared,
     executionStatus: result.executionStatus
   });
+  result.citationLevel = getGeoCitationLevel(result);
+  result.issueType = getGeoIssueType({ ...result, citationLevel: result.citationLevel });
+  result.suggestedAction = getGeoSuggestedAction({ issueType: result.issueType, citationLevel: result.citationLevel });
   result.reviewStatus = "manual_confirmed";
 
   state.geoResults[resultIndex] = result;
@@ -1913,6 +2505,28 @@ export function getWeeklyReport(week: string) {
   const published = state.publishRecords.filter((item) => item.publishStatus !== "queued").length;
   const geoHits = state.geoResults.filter((item) => item.mentionedJoto).length;
   const botPv = state.botVisits.reduce((sum, item) => sum + item.pv, 0);
+  const distilledTermMatrix = state.distilledTerms.map((term) => {
+    const relatedTasks = state.tasks.filter((task) => task.primaryDistilledTerm === term.term || task.targetKeywords.includes(term.term));
+    const coveredContentTypes = Array.from(new Set([...relatedTasks.map((task) => task.contentType), ...(term.coveredContentTypes || [])]));
+    const relatedGeoResults = state.geoResults.filter((result) => result.distilledTermIds?.includes(term.id) || result.prompt.includes(term.term));
+    const geoHitCount = relatedGeoResults.filter((result) => result.mentionedJoto).length;
+    const competitorOccupied = term.competitorOccupied || relatedGeoResults.some((result) => result.competitorAppeared);
+
+    return {
+      id: term.id,
+      term: term.term,
+      contentCoverage: relatedTasks.length,
+      typeCompleteness: `${coveredContentTypes.length}/5`,
+      geoLift: term.geoLift || (relatedGeoResults.length ? Math.round((geoHitCount / relatedGeoResults.length) * 100) : 0),
+      competitorOccupied,
+      nextSuggestion:
+        coveredContentTypes.length < 3
+          ? "下周补内容类型，优先 FAQ / 对比 / 案例。"
+          : competitorOccupied
+            ? "补对比和差异化内容，减少竞品占位。"
+            : "保持发布节奏，继续观察 GEO 命中波动。"
+    };
+  });
 
   return {
     week,
@@ -1920,6 +2534,9 @@ export function getWeeklyReport(week: string) {
     publishRecords: state.publishRecords,
     blogDiagnostics: state.blogArticles,
     geoResults: state.geoResults,
+    distilledTerms: state.distilledTerms,
+    distilledTermMatrix,
+    promptTemplates,
     nextWeekSuggestions: [
       "继续写已经完成 URL 回填且表现稳定的主题。",
       "补强 GEO 未命中主题，优先进入渠道选题而不是直接进入博客创作。",
@@ -1932,6 +2549,7 @@ export function getWeeklyReport(week: string) {
 export function createNextWeeklyPlanFromReport(week: string, input: Record<string, unknown> = {}) {
   const state = readWorkbenchState();
   const sourceReport = getWeeklyReport(week);
+  const template = getPromptTemplate("weekly_plan_generation");
   const nextWeekStart = typeof input.weekStart === "string" && input.weekStart.trim() ? input.weekStart.trim() : addDays(week, 7);
   const days = clampNumber(input.days, state.workspaceSetting.defaultWeeklyDays, 1, 7);
   const dailyCount = clampNumber(input.dailyCount, state.workspaceSetting.defaultDailyCount, 1, 10);
@@ -1950,6 +2568,7 @@ export function createNextWeeklyPlanFromReport(week: string, input: Record<strin
       const contentType = coerceContentType(index);
       const suggestion = suggestions[index % suggestions.length];
       const baseTitle = buildTaskTitle(index, channel, product, contentType);
+      const planContext = buildTaskPlanContext(product, contentType, suggestion);
 
       tasks.push({
         id: createId("task"),
@@ -1960,8 +2579,11 @@ export function createNextWeeklyPlanFromReport(week: string, input: Record<strin
         title: `${baseTitle}｜${suggestion}`,
         contentType,
         targetKeywords: [...buildTaskKeywords(product, contentType), "周报建议"],
+        primaryDistilledTerm: planContext.primaryDistilledTerm,
+        sourceProblem: planContext.sourceProblem,
+        officialLinkTarget: planContext.officialLinkTarget,
         status: "planned",
-        qaSummary: `来源周报 ${week}：${suggestion}`
+        qaSummary: `来源周报 ${week}：${suggestion}；${template?.name || "周计划生成模板"} ${template?.version || "v3"}。`
       });
     }
   }

@@ -414,16 +414,15 @@ async function preparePublishRecord() {
   }
 
   const approvedDraft = await requestJson(`${baseUrl}/api/article-drafts/${draft.id}/approve`, {
-    method: "POST",
-    headers: { "content-type": "application/json" }
+    method: "POST"
   });
-  const recordData = approvedDraft.body.data?.record;
+  const record = approvedDraft.body.data?.record;
 
-  if (!approvedDraft.ok || !recordData?.id) {
-    throw new Error(approvedDraft.body.message || "Failed to prepare publish record");
+  if (!approvedDraft.ok || !record?.id) {
+    throw new Error(approvedDraft.body.message || "Failed to approve draft");
   }
 
-  return recordData;
+  return { task, draft, record };
 }
 
 async function main() {
@@ -452,19 +451,25 @@ async function main() {
     await runStep("wait_knowledge_dom", () => waitFor(() => page.containsText(knowledgeName), 15000));
     record("knowledge_modal_create_dom_refresh", await page.containsText(knowledgeName), knowledgeName);
 
-    const publishRecord = await runStep("prepare_publish_record", () => preparePublishRecord());
-    const publishedUrl = `https://example.com/browser-smoke/${publishRecord.id}`;
-    await runStep("navigate_publish", () => page.navigate("/publish"));
-    await runStep("click_publish_mark_published", () => page.click(`[data-testid='publish-mark-published-${publishRecord.id}']`));
-    await runStep("click_publish_mark_published_confirm", () => page.click(`[data-testid='publish-mark-published-confirm-${publishRecord.id}']`));
-    await runStep("wait_publish_url_entry", () => waitFor(() => page.exists(`[data-testid='publish-fill-url-${publishRecord.id}']`), 15000));
-    await runStep("click_publish_url", () => page.click(`[data-testid='publish-fill-url-${publishRecord.id}']`));
-    await runStep("fill_publish_url", () => page.fill("[data-testid='publish-url-input']", publishedUrl));
-    await runStep("click_publish_url_save", () => page.click("[data-testid='publish-url-save-button']"));
-    await runStep("wait_publish_dom", () => waitFor(() => page.containsText(publishedUrl), 15000));
+    const prepared = await runStep("prepare_today_publish_task", () => preparePublishRecord());
+    const publishedUrl = `https://example.com/browser-smoke/${prepared.task.id}`;
+    await runStep("navigate_today", () => page.navigate("/today"));
+    await runStep("click_today_confirm_published", () => page.click(`[data-testid='today-confirm-published-${prepared.task.id}']`));
+    await runStep("click_today_confirm_published_confirm", () => page.click(`[data-testid='today-confirm-published-confirm-${prepared.task.id}']`));
+    await runStep("wait_today_url_modal", () => waitFor(() => page.exists("[data-testid='today-url-input']"), 15000));
+    await runStep("fill_today_url", () => page.fill("[data-testid='today-url-input']", publishedUrl));
+    await runStep("click_today_url_save", () => page.click("[data-testid='today-url-save-button']"));
+    await runStep("wait_today_url_saved", () => waitFor(async () => {
+      const snapshot = await requestJson(`${baseUrl}/api/workbench-state`);
+      const savedDraft = snapshot.body.state?.drafts?.find((draftItem) => draftItem.taskId === prepared.task.id);
+      const savedRecord = snapshot.body.state?.publishRecords?.find((recordItem) => recordItem.draftId === savedDraft?.id);
+
+      return savedRecord?.publishedUrl === publishedUrl ? savedRecord : false;
+    }, 15000));
     const finalState = await requestJson(`${baseUrl}/api/workbench-state`);
-    const savedRecord = finalState.body.state?.publishRecords?.find((recordItem) => recordItem.id === publishRecord.id);
-    record("publish_url_modal_fill_dom_refresh", savedRecord?.publishedUrl === publishedUrl && (await page.containsText(publishedUrl)), publishedUrl);
+    const savedDraft = finalState.body.state?.drafts?.find((draftItem) => draftItem.taskId === prepared.task.id);
+    const savedRecord = finalState.body.state?.publishRecords?.find((recordItem) => recordItem.draftId === savedDraft?.id);
+    record("today_publish_url_modal_fill_dom_refresh", savedRecord?.publishedUrl === publishedUrl, publishedUrl);
   } catch (error) {
     record("smoke_browser_runtime", false, error instanceof Error ? error.message : String(error));
   } finally {

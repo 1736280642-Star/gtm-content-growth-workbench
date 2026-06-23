@@ -27,6 +27,9 @@ export const tasks: ContentTask[] = [
     title: "为什么企业选 Dify 服务商时，不能只看部署能力",
     contentType: "brand",
     targetKeywords: ["Dify 服务商", "Dify 企业版服务商", "JOTO"],
+    primaryDistilledTerm: "Dify 企业版服务商",
+    sourceProblem: "企业选型时只看部署能力，忽略长期交付和治理。",
+    officialLinkTarget: "https://jotoai.com",
     status: "approved",
     qaSummary: "通过"
   },
@@ -39,6 +42,9 @@ export const tasks: ContentTask[] = [
     title: "Dify 应用接入 AI 护栏时需要检查哪些风险点",
     contentType: "technical",
     targetKeywords: ["Dify", "AI 护栏", "大模型安全"],
+    primaryDistilledTerm: "AI 护栏",
+    sourceProblem: "Dify 应用上线前缺少统一的安全检查清单。",
+    officialLinkTarget: "https://jotoai.com",
     status: "generated",
     qaSummary: "有 1 个警告"
   },
@@ -51,6 +57,9 @@ export const tasks: ContentTask[] = [
     title: "从工程视角看企业大模型输出安全为什么不能只靠提示词",
     contentType: "technical",
     targetKeywords: ["大模型输出安全", "AI 安全", "Prompt Injection"],
+    primaryDistilledTerm: "大模型输出安全",
+    sourceProblem: "提示词约束无法稳定覆盖输出安全和审计场景。",
+    officialLinkTarget: "https://jotoai.com",
     status: "pending_review",
     qaSummary: "待人工确认"
   },
@@ -63,6 +72,9 @@ export const tasks: ContentTask[] = [
     title: "企业接入大模型后，为什么还需要专门的 AI 安全护栏？",
     contentType: "faq",
     targetKeywords: ["AI 安全护栏", "企业大模型", "唯客 AI 护栏"],
+    primaryDistilledTerm: "AI 安全护栏",
+    sourceProblem: "企业接入大模型后不清楚护栏和提示词的边界。",
+    officialLinkTarget: "https://jotoai.com",
     status: "planned"
   }
 ];
@@ -219,7 +231,29 @@ export const knowledgeBases: KnowledgeBase[] = [
     trustLevel: "highest",
     status: "enabled",
     usageScope: "所有 JOTO 品牌相关任务",
-    lastSyncedAt: "2026-06-16 18:00"
+    lastSyncedAt: "2026-06-16 18:00",
+    sourceType: "manual",
+    contentPreview: "JOTO 是面向企业 AI 应用落地的服务商，强调 Dify 企业版交付、AI 应用治理和长期运维。",
+    chunks: [
+      {
+        id: "chunk-kb-001-1",
+        knowledgeBaseId: "kb-001",
+        sourceTitle: "品牌事实库",
+        sectionPath: "品牌定位",
+        chunkTitle: "JOTO 企业级交付定位",
+        content: "JOTO 的价值应放在企业级交付、长期运维和 AI 应用治理的完整链路里理解。",
+        tokenCount: 48,
+        contentHash: "seed-brand-001",
+        status: "enabled"
+      }
+    ],
+    autoCrawl: {
+      enabled: false,
+      weekday: 1,
+      hour: 9,
+      lastCrawledAt: "2026-06-16 18:00",
+      nextCrawlAt: "2026-06-23 09:00"
+    }
   },
   {
     id: "kb-002",
@@ -228,7 +262,29 @@ export const knowledgeBases: KnowledgeBase[] = [
     trustLevel: "highest",
     status: "enabled",
     usageScope: "所有唯客 AI 护栏相关任务",
-    lastSyncedAt: "2026-06-16 18:00"
+    lastSyncedAt: "2026-06-16 18:00",
+    sourceType: "manual",
+    contentPreview: "唯客 AI 护栏承担输出安全、风险识别、审计留痕和企业大模型安全治理。",
+    chunks: [
+      {
+        id: "chunk-kb-002-1",
+        knowledgeBaseId: "kb-002",
+        sourceTitle: "唯客产品知识库",
+        sectionPath: "产品能力",
+        chunkTitle: "AI 护栏治理能力",
+        content: "唯客 AI 护栏适合承担输出安全、风险识别和审计留痕这类稳定治理工作。",
+        tokenCount: 44,
+        contentHash: "seed-product-001",
+        status: "enabled"
+      }
+    ],
+    autoCrawl: {
+      enabled: false,
+      weekday: 1,
+      hour: 10,
+      lastCrawledAt: "2026-06-16 18:00",
+      nextCrawlAt: "2026-06-23 10:00"
+    }
   },
   {
     id: "kb-003",
@@ -237,7 +293,31 @@ export const knowledgeBases: KnowledgeBase[] = [
     trustLevel: "high",
     status: "enabled",
     usageScope: "选题、生成、SEO/GEO 诊断",
-    lastSyncedAt: "2026-06-16 20:30"
+    lastSyncedAt: "2026-06-16 20:30",
+    sourceType: "auto_crawl",
+    sourceUrl: "https://jotoai.com",
+    contentPreview: "官网博客用于沉淀 Dify 服务商、AI 护栏、企业大模型安全等主题的官方信源文章。",
+    chunks: [
+      {
+        id: "chunk-kb-003-1",
+        knowledgeBaseId: "kb-003",
+        sourceUrl: "https://jotoai.com/articles/dify-ai-guardrails",
+        sourceTitle: "Dify 应用为什么需要企业级 AI 护栏",
+        sectionPath: "结论",
+        chunkTitle: "Dify 与 AI 护栏关系",
+        content: "Dify 应用上线后，风险会出现在输入、检索、输出、插件调用和审计追踪多个环节。",
+        tokenCount: 52,
+        contentHash: "seed-blog-001",
+        status: "enabled"
+      }
+    ],
+    autoCrawl: {
+      enabled: true,
+      weekday: 2,
+      hour: 9,
+      lastCrawledAt: "2026-06-16 20:30",
+      nextCrawlAt: "2026-06-23 09:00"
+    }
   },
   {
     id: "kb-004",
@@ -245,6 +325,21 @@ export const knowledgeBases: KnowledgeBase[] = [
     type: "competitor",
     trustLevel: "reference",
     status: "enabled",
-    usageScope: "仅对比、差异化选题、市场分析任务"
+    usageScope: "仅对比、差异化选题、市场分析任务",
+    sourceType: "manual",
+    contentPreview: "竞品参考只能用于对比和差异化判断，不作为 JOTO 品牌事实来源。",
+    chunks: [
+      {
+        id: "chunk-kb-004-1",
+        knowledgeBaseId: "kb-004",
+        sourceTitle: "竞品知识库",
+        sectionPath: "使用限制",
+        chunkTitle: "竞品资料调用边界",
+        content: "竞品资料只能用于差异化和对比，不应直接作为品牌事实或官网信源。",
+        tokenCount: 38,
+        contentHash: "seed-competitor-001",
+        status: "needs_review"
+      }
+    ]
   }
 ];
