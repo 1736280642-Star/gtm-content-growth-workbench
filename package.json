@@ -1,0 +1,42 @@
+{
+  "name": "joto-gtm-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:local": "powershell -ExecutionPolicy Bypass -File scripts/start-local-3033.ps1",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "validate:structure": "node scripts/validate-structure.mjs",
+    "smoke:pages": "node scripts/smoke-pages.mjs",
+    "smoke:interactions": "node scripts/smoke-interactions.mjs",
+    "smoke:browser": "node scripts/smoke-browser.mjs",
+    "smoke:workflow": "node scripts/smoke-workflow.mjs",
+    "check:mysql": "node scripts/check-mysql-connection.mjs",
+    "init:mysql": "node scripts/init-mysql-schema.mjs",
+    "worker:sync-blog": "node workers/sync-blog.mjs",
+    "worker:run-geo-tests": "node workers/run-geo-tests.mjs",
+    "worker:import-log": "node workers/import-demo-log.mjs",
+    "worker:import-channel-metrics": "node workers/import-channel-metrics.mjs",
+    "worker:run-pipeline": "node workers/run-pipeline.mjs",
+    "worker:schedule-pipeline": "node workers/schedule-pipeline.mjs"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.3.7",
+    "antd": "^5.19.4",
+    "mysql2": "^3.11.0",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.5",
+    "typescript": "^5.5.3"
+  }
+}

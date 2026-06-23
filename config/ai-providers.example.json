@@ -1,0 +1,26 @@
+{
+  "providers": [
+    {
+      "key": "openai",
+      "name": "ChatGPT",
+      "baseUrlEnv": "OPENAI_BASE_URL",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "modelEnv": "OPENAI_MODEL"
+    },
+    {
+      "key": "deepseek",
+      "name": "DeepSeek",
+      "baseUrlEnv": "DEEPSEEK_BASE_URL",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "modelEnv": "DEEPSEEK_MODEL"
+    },
+    {
+      "key": "doubao",
+      "name": "豆包",
+      "baseUrlEnv": "DOUBAO_BASE_URL",
+      "apiKeyEnv": "DOUBAO_API_KEY",
+      "modelEnv": "DOUBAO_MODEL"
+    }
+  ]
+}
+

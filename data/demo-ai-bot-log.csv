@@ -1,0 +1,7 @@
+timestamp,path,status_code,user_agent,referrer,ip,source_type
+2026-06-16 10:30:00,/articles/dify-ai-guardrails,200,GPTBot/1.0,-,1.1.1.1,manual_demo
+2026-06-16 11:05:00,/articles/enterprise-ai-safety,200,ClaudeBot/1.0,-,2.2.2.2,manual_demo
+2026-06-16 11:40:00,/blog,200,PerplexityBot/1.0,-,3.3.3.3,manual_demo
+2026-06-16 13:10:00,/articles/dify-service-provider,200,Bytespider/1.0,-,4.4.4.4,manual_demo
+2026-06-16 15:20:00,/articles/ai-output-security,200,GPTBot/1.0,-,5.5.5.5,manual_demo
+
