@@ -1,4 +1,4 @@
-import { Button, Space } from "antd";
+import { Space } from "antd";
 import type { ReactNode } from "react";
 
 interface PageHeaderProps {
@@ -14,8 +14,7 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
         <h1 className="page-title">{title}</h1>
         {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}
       </div>
-      {actions ? <Space>{actions}</Space> : <Button disabled>同步数据</Button>}
+      {actions ? <Space>{actions}</Space> : null}
     </div>
   );
 }
-

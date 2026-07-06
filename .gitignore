@@ -5,6 +5,7 @@ coverage/
 .env
 .env.local
 data/workbench-state.json
+data/workbench-smoke-state.json
 *.log
 *.tsbuildinfo
 npm-debug.log*

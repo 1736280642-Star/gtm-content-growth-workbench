@@ -14,7 +14,25 @@ export const weeklyPlan: WeeklyPlan = {
   weekStart: "2026-06-16",
   weekEnd: "2026-06-22",
   targetTotalCount: 15,
-  status: "running"
+  status: "running",
+  productPlans: [
+    {
+      product: "joto_brand",
+      weeklyQuota: 5,
+      channels: ["wechat"],
+      knowledgeBaseId: "kb-001",
+      productExpressionRulePackageId: "kb-001",
+      enabled: true
+    },
+    {
+      product: "weike_guardrails",
+      weeklyQuota: 10,
+      channels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
+      knowledgeBaseId: "kb-002",
+      productExpressionRulePackageId: "kb-002",
+      enabled: true
+    }
+  ]
 };
 
 export const tasks: ContentTask[] = [
@@ -234,6 +252,23 @@ export const knowledgeBases: KnowledgeBase[] = [
     lastSyncedAt: "2026-06-16 18:00",
     sourceType: "manual",
     contentPreview: "JOTO 是面向企业 AI 应用落地的服务商，强调 Dify 企业版交付、AI 应用治理和长期运维。",
+    productExpressionSource: true,
+    productExpressionRulePackageMode: "new",
+    productExpressionRuleDraft: {
+      id: "rule-kb-001",
+      version: "v1.0.0",
+      status: "active",
+      sourceKnowledgeBaseId: "kb-001",
+      sourceKnowledgeBaseName: "品牌事实库",
+      sourceChunkCount: 1,
+      generatedAt: "2026-06-16T10:00:00.000Z",
+      activatedAt: "2026-06-16T10:20:00.000Z",
+      summary: "JOTO 官方品牌表达应围绕企业级 Dify 服务、长期交付、治理和可信官网信源展开。",
+      doExpressions: ["强调 Dify 企业版服务商定位", "说明企业级交付和长期运维价值", "自然提及 jotoai.com"],
+      dontExpressions: ["避免夸大为唯一服务商", "避免无证据承诺交付结果"],
+      boundaryNotes: ["品牌文章必须把服务能力落到真实企业选型问题。"],
+      distilledTermSuggestions: ["Dify 企业版服务商", "Dify 服务商", "企业级交付"]
+    },
     chunks: [
       {
         id: "chunk-kb-001-1",
@@ -265,6 +300,23 @@ export const knowledgeBases: KnowledgeBase[] = [
     lastSyncedAt: "2026-06-16 18:00",
     sourceType: "manual",
     contentPreview: "唯客 AI 护栏承担输出安全、风险识别、审计留痕和企业大模型安全治理。",
+    productExpressionSource: true,
+    productExpressionRulePackageMode: "new",
+    productExpressionRuleDraft: {
+      id: "rule-kb-002",
+      version: "v1.0.0",
+      status: "active",
+      sourceKnowledgeBaseId: "kb-002",
+      sourceKnowledgeBaseName: "唯客产品知识库",
+      sourceChunkCount: 1,
+      generatedAt: "2026-06-16T10:00:00.000Z",
+      activatedAt: "2026-06-16T10:20:00.000Z",
+      summary: "唯客 AI 护栏表达应围绕输出安全、风险识别、审计留痕和企业大模型治理展开。",
+      doExpressions: ["说明 AI 护栏适合企业大模型安全治理", "强调输出安全和审计留痕", "结合 Dify 应用上线风险"],
+      dontExpressions: ["避免把护栏写成万能安全方案", "避免没有场景的功能堆叠"],
+      boundaryNotes: ["产品文章必须说明护栏与提示词、应用系统、审计流程之间的边界。"],
+      distilledTermSuggestions: ["AI 护栏", "大模型输出安全", "企业大模型安全"]
+    },
     chunks: [
       {
         id: "chunk-kb-002-1",

@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Card, Input, Popconfirm, Select, Space, Table, Tag, Upload, message } from "antd";
+import { Alert, Button, Card, Input, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from "antd";
 import type { UploadFile } from "antd";
 import Link from "next/link";
 import { ActionEmpty } from "@/components/ActionEmpty";
@@ -135,7 +135,7 @@ function getBlogAuditIndicators(article: BlogArticle): BlogAuditIndicator[] {
   return [
     {
       key: "crawler",
-      label: "AI crawler 可访问性",
+      label: "AI 可读取性",
       passed: crawlerReady,
       severity: crawlerReady ? "low" : "high",
       action: "检查 robots、CDN 或页面访问状态。"
@@ -156,7 +156,7 @@ function getBlogAuditIndicators(article: BlogArticle): BlogAuditIndicator[] {
     },
     {
       key: "schema",
-      label: "FAQ / Schema 完整度",
+      label: "问答结构完整度",
       passed: faqSchemaReady,
       severity: faqSchemaReady ? "low" : "medium",
       action: "补 FAQ、How-to 或结构化问答。"
@@ -177,7 +177,7 @@ function getBlogAuditIndicators(article: BlogArticle): BlogAuditIndicator[] {
     },
     {
       key: "chunk",
-      label: "Chunk 准备度",
+      label: "引用片段准备度",
       passed: chunkReady,
       severity: chunkReady ? "low" : "medium",
       action: "补可独立引用的小段结论和上下文。"
@@ -281,6 +281,8 @@ export default function BlogMonitorPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [syncing, setSyncing] = useState(false);
   const [importingLog, setImportingLog] = useState(false);
+  const [blogImportOpen, setBlogImportOpen] = useState(false);
+  const [logImportOpen, setLogImportOpen] = useState(false);
   const [diagnosingId, setDiagnosingId] = useState<string>();
   const [addingCandidateId, setAddingCandidateId] = useState<string>();
   const [blogSourceUrls, setBlogSourceUrls] = useState(DEFAULT_BLOG_SOURCE_URLS.join("\n"));
@@ -389,6 +391,7 @@ export default function BlogMonitorPage() {
       });
       await refresh();
       messageApi.success(formatApiMessage(result, "博客同步完成"));
+      setBlogImportOpen(false);
     } catch (error) {
       messageApi.warning(error instanceof Error ? error.message : "博客同步缺少配置");
     } finally {
@@ -447,6 +450,7 @@ export default function BlogMonitorPage() {
       await refresh();
       messageApi.success(formatApiMessage(result, "日志导入完成"));
       setLogFiles([]);
+      setLogImportOpen(false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "日志导入失败");
     } finally {
@@ -539,17 +543,21 @@ export default function BlogMonitorPage() {
         title="官网博客监控"
         subtitle="XCrawl 负责内容抓取和 SEO 诊断；AI Bot 指标当前为 Demo CSV，占位未来真实日志接入。"
         actions={
-          <Popconfirm
-            title="确认同步博客内容？"
-            description="会根据当前输入或配置源写入博客监控数据，并刷新候选池判断。"
-            okText="同步"
-            cancelText="取消"
-            onConfirm={handleSync}
-          >
-            <Button type="primary" loading={syncing}>
-              同步博客内容
-            </Button>
-          </Popconfirm>
+          <Space wrap>
+            <Popconfirm
+              title="确认同步博客内容？"
+              description="会根据当前输入或配置源写入博客监控数据，并刷新候选池判断。"
+              okText="同步"
+              cancelText="取消"
+              onConfirm={handleSync}
+            >
+              <Button type="primary" loading={syncing}>
+                同步博客内容
+              </Button>
+            </Popconfirm>
+            <Button onClick={() => setBlogImportOpen(true)}>博客数据导入</Button>
+            <Button onClick={() => setLogImportOpen(true)}>AI 访问日志导入</Button>
+          </Space>
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
@@ -558,14 +566,14 @@ export default function BlogMonitorPage() {
         <MetricCard title="待处理问题" value={auditFailures.length} suffix="个" />
         <MetricCard title="GEO 健康分" value={healthScore} />
         <MetricCard title="引用准备不足" value={citationWeakCount} suffix="篇" />
-        <MetricCard title="Chunk 不足" value={chunkWeakCount} suffix="篇" />
+        <MetricCard title="引用片段不足" value={chunkWeakCount} suffix="篇" />
       </div>
       <div className="two-column" style={{ marginBottom: 16 }}>
         <Card title="问题分布">
           <Alert
             showIcon
             type={auditFailures.length ? "warning" : "success"}
-            message={`当前发现 ${auditFailures.length} 个 GEO optimizer 问题，AI Bot PV ${botVisits.reduce((sum, item) => sum + item.pv, 0)}`}
+            message={`当前发现 ${auditFailures.length} 个 AI 可见度问题，AI 访问量 ${botVisits.reduce((sum, item) => sum + item.pv, 0)}`}
             description={<DataConfidenceTag value={botConfidence} />}
             style={{ marginBottom: 16 }}
           />
@@ -592,7 +600,7 @@ export default function BlogMonitorPage() {
               { label: "可作为信源", value: auditRows.filter((row) => row.healthScore >= 80).length, color: "green" },
               { label: "部分可用", value: auditRows.filter((row) => row.healthScore >= 60 && row.healthScore < 80).length, color: "gold" },
               { label: "不建议引用", value: auditRows.filter((row) => row.healthScore < 60).length, color: "red" },
-              { label: "AI Bot PV", value: botVisits.reduce((sum, item) => sum + item.pv, 0), color: "blue" }
+              { label: "AI 访问量", value: botVisits.reduce((sum, item) => sum + item.pv, 0), color: "blue" }
             ]}
             columns={[
               { title: "状态", dataIndex: "label" },
@@ -634,72 +642,6 @@ export default function BlogMonitorPage() {
           ]}
         />
       </Card>
-      <div className="two-column" style={{ marginBottom: 16 }}>
-        <Card title="博客数据导入">
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Input.TextArea
-              rows={3}
-              placeholder="sourceUrls，一行一个 sitemap / JSON 源"
-              value={blogSourceUrls}
-              onChange={(event) => setBlogSourceUrls(event.target.value)}
-            />
-            <Input placeholder="sourcePath，仅允许 data/、imports/ 或配置目录" value={blogSourcePath} onChange={(event) => setBlogSourcePath(event.target.value)} />
-            <Input.TextArea
-              rows={5}
-              placeholder="JSON / CSV / sitemap XML 文本"
-              value={blogText}
-              onChange={(event) => setBlogText(event.target.value)}
-            />
-            <Popconfirm
-              title="确认导入博客数据？"
-              description="会写入或更新本地博客监控数据，用于后续 SEO/GEO 诊断。"
-              okText="导入"
-              cancelText="取消"
-              onConfirm={handleSync}
-            >
-              <Button type="primary" loading={syncing}>
-                导入博客数据
-              </Button>
-            </Popconfirm>
-          </Space>
-        </Card>
-        <Card title="AI Bot 日志导入">
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Select
-              value={logSourceType}
-              onChange={setLogSourceType}
-              options={[
-                { value: "csv_import", label: "CSV 导入" },
-                { value: "demo_csv", label: "Demo CSV" },
-                { value: "nginx_log", label: "Nginx 日志" },
-                { value: "cdn_log", label: "CDN 日志" }
-              ]}
-            />
-            <Upload
-              multiple
-              accept=".csv,.txt,.log,.gz"
-              beforeUpload={() => false}
-              fileList={logFiles}
-              onChange={({ fileList }) => setLogFiles(fileList)}
-            >
-              <Button>选择日志文件</Button>
-            </Upload>
-            <Input placeholder="filePath，仅允许 data/、imports/ 或配置目录；人工导入优先用上方选择文件" value={logFilePath} onChange={(event) => setLogFilePath(event.target.value)} />
-            <Input.TextArea rows={5} placeholder="CSV 或 Nginx-like 原始日志文本" value={logText} onChange={(event) => setLogText(event.target.value)} />
-            <Popconfirm
-              title="确认导入 AI Bot 日志？"
-              description="会更新 AI Bot PV、来源可信度和博客访问汇总。"
-              okText="导入"
-              cancelText="取消"
-              onConfirm={handleImportLog}
-            >
-              <Button loading={importingLog}>
-                导入日志
-              </Button>
-            </Popconfirm>
-          </Space>
-        </Card>
-      </div>
       <Card title="博客明细">
         <Alert
           showIcon
@@ -790,11 +732,11 @@ export default function BlogMonitorPage() {
               }
             },
             {
-              title: "Chunk 准备度",
+              title: "引用片段准备度",
               render: (_, record) => {
                 const ready = getBlogAuditIndicators(record).find((item) => item.key === "chunk")?.passed;
 
-                return <Tag color={ready ? "green" : "gold"}>{ready ? "可切片" : "不足"}</Tag>;
+                return <Tag color={ready ? "green" : "gold"}>{ready ? "可引用" : "不足"}</Tag>;
               }
             },
             { title: "URL 详情", dataIndex: "url", render: (value) => <span className="mono">{value}</span> },
@@ -835,6 +777,66 @@ export default function BlogMonitorPage() {
           ]}
         />
       </Card>
+      <Modal
+        title="博客数据导入"
+        open={blogImportOpen}
+        okText="导入博客数据"
+        cancelText="关闭"
+        confirmLoading={syncing}
+        onOk={handleSync}
+        onCancel={() => setBlogImportOpen(false)}
+        width={760}
+      >
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Input.TextArea
+            rows={3}
+            placeholder="sourceUrls，一行一个 sitemap / JSON 源"
+            value={blogSourceUrls}
+            onChange={(event) => setBlogSourceUrls(event.target.value)}
+          />
+          <Input placeholder="sourcePath，仅允许 data/、imports/ 或配置目录" value={blogSourcePath} onChange={(event) => setBlogSourcePath(event.target.value)} />
+          <Input.TextArea
+            rows={6}
+            placeholder="JSON / CSV / sitemap XML 文本"
+            value={blogText}
+            onChange={(event) => setBlogText(event.target.value)}
+          />
+        </Space>
+      </Modal>
+      <Modal
+        title="AI 访问日志导入"
+        open={logImportOpen}
+        okText="导入日志"
+        cancelText="关闭"
+        confirmLoading={importingLog}
+        onOk={handleImportLog}
+        onCancel={() => setLogImportOpen(false)}
+        width={760}
+      >
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Select
+            value={logSourceType}
+            onChange={setLogSourceType}
+            options={[
+              { value: "csv_import", label: "CSV 导入" },
+              { value: "demo_csv", label: "Demo CSV" },
+              { value: "nginx_log", label: "Nginx 日志" },
+              { value: "cdn_log", label: "CDN 日志" }
+            ]}
+          />
+          <Upload
+            multiple
+            accept=".csv,.txt,.log,.gz"
+            beforeUpload={() => false}
+            fileList={logFiles}
+            onChange={({ fileList }) => setLogFiles(fileList)}
+          >
+            <Button>选择日志文件</Button>
+          </Upload>
+          <Input placeholder="filePath，仅允许 data/、imports/ 或配置目录；人工导入优先用上方选择文件" value={logFilePath} onChange={(event) => setLogFilePath(event.target.value)} />
+          <Input.TextArea rows={6} placeholder="CSV 或 Nginx-like 原始日志文本" value={logText} onChange={(event) => setLogText(event.target.value)} />
+        </Space>
+      </Modal>
     </>
   );
 }

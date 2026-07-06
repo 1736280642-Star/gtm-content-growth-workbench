@@ -239,7 +239,7 @@ export default function PublishPage() {
 
     if (status === "pending_metrics") {
       return (
-        <Button size="small" type="primary" onClick={() => openMetricsModal(record)}>
+        <Button size="small" type="primary" data-testid={`publish-metrics-${record.id}`} onClick={() => openMetricsModal(record)}>
           手动补录
         </Button>
       );
@@ -384,14 +384,21 @@ export default function PublishPage() {
           ]}
         />
       </Card>
-      <Modal title="手动补录渠道指标" open={Boolean(metricsRecord)} onOk={handleSaveMetrics} confirmLoading={savingMetrics} onCancel={() => setMetricsRecord(undefined)}>
+      <Modal
+        title="手动补录渠道指标"
+        open={Boolean(metricsRecord)}
+        onOk={handleSaveMetrics}
+        confirmLoading={savingMetrics}
+        onCancel={() => setMetricsRecord(undefined)}
+        okButtonProps={{ "data-testid": "publish-metrics-save-button" }}
+      >
         <Space direction="vertical" style={{ width: "100%" }}>
-          <InputNumber addonBefore="展现" min={0} precision={0} value={manualMetrics.impressions} onChange={(value) => updateManualMetric("impressions", value)} style={{ width: "100%" }} />
-          <InputNumber addonBefore="阅读" min={0} precision={0} value={manualMetrics.views} onChange={(value) => updateManualMetric("views", value)} style={{ width: "100%" }} />
-          <InputNumber addonBefore="点赞" min={0} precision={0} value={manualMetrics.likes} onChange={(value) => updateManualMetric("likes", value)} style={{ width: "100%" }} />
-          <InputNumber addonBefore="收藏" min={0} precision={0} value={manualMetrics.favorites} onChange={(value) => updateManualMetric("favorites", value)} style={{ width: "100%" }} />
-          <InputNumber addonBefore="评论" min={0} precision={0} value={manualMetrics.comments} onChange={(value) => updateManualMetric("comments", value)} style={{ width: "100%" }} />
-          <InputNumber addonBefore="分享" min={0} precision={0} value={manualMetrics.shares} onChange={(value) => updateManualMetric("shares", value)} style={{ width: "100%" }} />
+          <InputNumber data-testid="publish-metrics-impressions" addonBefore="展现" min={0} precision={0} value={manualMetrics.impressions} onChange={(value) => updateManualMetric("impressions", value)} style={{ width: "100%" }} />
+          <InputNumber data-testid="publish-metrics-views" addonBefore="阅读" min={0} precision={0} value={manualMetrics.views} onChange={(value) => updateManualMetric("views", value)} style={{ width: "100%" }} />
+          <InputNumber data-testid="publish-metrics-likes" addonBefore="点赞" min={0} precision={0} value={manualMetrics.likes} onChange={(value) => updateManualMetric("likes", value)} style={{ width: "100%" }} />
+          <InputNumber data-testid="publish-metrics-favorites" addonBefore="收藏" min={0} precision={0} value={manualMetrics.favorites} onChange={(value) => updateManualMetric("favorites", value)} style={{ width: "100%" }} />
+          <InputNumber data-testid="publish-metrics-comments" addonBefore="评论" min={0} precision={0} value={manualMetrics.comments} onChange={(value) => updateManualMetric("comments", value)} style={{ width: "100%" }} />
+          <InputNumber data-testid="publish-metrics-shares" addonBefore="分享" min={0} precision={0} value={manualMetrics.shares} onChange={(value) => updateManualMetric("shares", value)} style={{ width: "100%" }} />
         </Space>
       </Modal>
     </>

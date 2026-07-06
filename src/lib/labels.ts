@@ -1,10 +1,49 @@
-import type { ChannelKey, ContentType, DataConfidence, ProductKey, TaskStatus } from "./types";
+import type { ChannelKey, ContentType, DataConfidence, DistributionPlatformKey, DistributionTargetStatus, ProductKey, TaskStatus } from "./types";
 
 export const channelLabels: Record<ChannelKey, string> = {
   wechat: "公众号",
   csdn: "CSDN",
   juejin: "掘金",
   zhihu_toutiao_general: "知乎/头条通用稿"
+};
+
+export const distributionPlatformLabels: Record<DistributionPlatformKey, string> = {
+  weixin: "公众号",
+  csdn: "CSDN",
+  juejin: "掘金",
+  zhihu: "知乎",
+  toutiao: "今日头条"
+};
+
+export const fixedDistributionPlatforms: DistributionPlatformKey[] = ["juejin", "zhihu", "csdn", "weixin"];
+
+export const channelDistributionTargets: Record<ChannelKey, DistributionPlatformKey[]> = {
+  wechat: ["weixin"],
+  csdn: ["csdn"],
+  juejin: ["juejin"],
+  zhihu_toutiao_general: ["zhihu"]
+};
+
+export const distributionTargetStatusLabels: Record<DistributionTargetStatus, string> = {
+  pending: "待发送",
+  checking: "检查中",
+  auth_required: "需登录",
+  ready: "可发送",
+  sending: "发送中",
+  draft_created: "草稿已创建",
+  failed: "发送失败",
+  cancelled: "已取消"
+};
+
+export const distributionTargetStatusColors: Record<DistributionTargetStatus, string> = {
+  pending: "default",
+  checking: "blue",
+  auth_required: "gold",
+  ready: "cyan",
+  sending: "processing",
+  draft_created: "green",
+  failed: "red",
+  cancelled: "default"
 };
 
 export const productLabels: Record<ProductKey, string> = {
@@ -24,6 +63,7 @@ export const contentTypeLabels: Record<ContentType, string> = {
 export const statusLabels: Record<TaskStatus, string> = {
   planned: "计划中",
   confirmed: "已确认",
+  rejected: "已驳回",
   generated: "已生成",
   qa_failed: "质检失败",
   pending_review: "待确认",
@@ -47,4 +87,3 @@ export const confidenceColors: Record<DataConfidence, string> = {
   demo: "default",
   pending: "gold"
 };
-

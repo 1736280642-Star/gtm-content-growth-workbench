@@ -6,7 +6,7 @@ const baseUrl = getBaseUrl(args);
 if (args.help || args.h) {
   printJson({
     worker: "run-geo-tests",
-    usage: "node workers/run-geo-tests.mjs [--base-url URL] [--platforms DeepSeek,豆包,通义千问] [--prompt TEXT] [--prompt-file PATH] [--prompt-group VALUE]"
+    usage: "node workers/run-geo-tests.mjs [--base-url URL] [--platforms DeepSeek,豆包,通义千问] [--prompt TEXT] [--prompt-file PATH] [--prompt-group VALUE] [--prompt-groups 品牌认知,产品场景] [--distilled-term-ids term-dify-enterprise,term-ai-guardrails]"
   });
   process.exit(0);
 }
@@ -36,6 +36,18 @@ if (prompt) {
 
 if (typeof args["prompt-group"] === "string") {
   payload.promptGroup = args["prompt-group"];
+}
+
+const promptGroups = parseList(args["prompt-groups"]);
+
+if (promptGroups.length) {
+  payload.promptGroups = promptGroups;
+}
+
+const distilledTermIds = parseList(args["distilled-term-ids"] || args["distilled-terms"]);
+
+if (distilledTermIds.length) {
+  payload.distilledTermIds = distilledTermIds;
 }
 
 try {

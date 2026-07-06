@@ -32,6 +32,8 @@ const initialState: WorkbenchState = {
     defaultDailyCount: 3,
     enabledChannels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
     enabledProducts: ["joto_brand", "weike_guardrails"],
+    productPlans: weeklyPlan.productPlans,
+    currentRole: "content_publisher",
     finalReviewMode: "default_final",
     geoPlatforms: ["DeepSeek", "豆包", "通义千问"],
     logMode: "demo_csv"
@@ -39,6 +41,8 @@ const initialState: WorkbenchState = {
   tasks,
   drafts,
   publishRecords,
+  platformDraftVariants: [],
+  distributionTargets: [],
   blogArticles,
   geoResults,
   botVisits,
@@ -69,6 +73,11 @@ const initialState: WorkbenchState = {
       competitorOccupied: false
     }
   ],
+  distilledTermExtractionRules: [],
+  distilledTermRuleDrafts: [],
+  promptVersions: [],
+  weeklyReportSnapshots: [],
+  weeklyReportSuggestionDecisions: [],
   pipelineRuns: [],
   auditLog: []
 };

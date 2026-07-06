@@ -6,9 +6,5 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const payload = await readRequestPayload(request);
   const result = patchWeeklyPlan(params.id, payload);
 
-  return NextResponse.json({
-    status: "success",
-    ...result,
-    message: "周计划已保存到本地持久化状态。"
-  });
+  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }
