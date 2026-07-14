@@ -2,6 +2,41 @@ export type ChannelKey = "wechat" | "csdn" | "juejin" | "zhihu_toutiao_general";
 
 export type DistributionPlatformKey = "weixin" | "csdn" | "juejin" | "zhihu" | "toutiao";
 
+export type DirectPublishPlatformKey = "wechat" | "juejin" | "csdn" | "zhihu";
+
+export type PublishScheduleStatus =
+  | "scheduled"
+  | "precheck_failed"
+  | "publishing"
+  | "published_verified"
+  | "published_pending_url"
+  | "pending_verify"
+  | "failed"
+  | "manual_takeover_required"
+  | "pending_config";
+
+export type PublishAttemptStatus =
+  | "precheck_failed"
+  | "publishing"
+  | "published_verified"
+  | "published_pending_url"
+  | "pending_verify"
+  | "failed"
+  | "manual_takeover_required"
+  | "pending_config";
+
+export type PublishFailureCode =
+  | "auth_required"
+  | "pending_config"
+  | "payload_invalid"
+  | "platform_not_supported"
+  | "platform_review_pending"
+  | "verification_failed"
+  | "manual_takeover_required"
+  | "duplicate_protected"
+  | "adapter_failed"
+  | "unknown";
+
 export type DistributionTargetStatus = "pending" | "checking" | "auth_required" | "ready" | "sending" | "draft_created" | "failed" | "cancelled";
 
 export type DistributionTargetErrorCode =
@@ -464,6 +499,64 @@ export interface DistributionTarget {
   sentAt?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface PlatformPublishPayload {
+  title: string;
+  markdown: string;
+  summary?: string;
+  scheduledAt: string;
+  sourceDraftId: string;
+  publishRecordId?: string;
+  matrixItemId?: string;
+  coverMediaId?: string;
+  categoryId?: string;
+  tagIds?: string[];
+  dryRun?: boolean;
+}
+
+export interface PublishSchedule {
+  id: string;
+  platform: DirectPublishPlatformKey;
+  status: PublishScheduleStatus;
+  scheduledAt: string;
+  draftId: string;
+  publishRecordId?: string;
+  matrixItemId?: string;
+  attemptIds: string[];
+  latestAttemptId?: string;
+  publishedAt?: string;
+  platformArticleId?: string;
+  publicUrl?: string;
+  pendingCsvReturn?: boolean;
+  failureCode?: PublishFailureCode;
+  failureReason?: string;
+  nextAction?: string;
+  retryCount: number;
+  manualTakeoverReason?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface PublishAttempt {
+  id: string;
+  scheduleId: string;
+  platform: DirectPublishPlatformKey;
+  status: PublishAttemptStatus;
+  startedAt: string;
+  finishedAt?: string;
+  mode: "mock" | "dry_run" | "real";
+  authStatus: "ready" | "pending_config" | "auth_required" | "manual_takeover_required" | "failed";
+  payloadStatus: "valid" | "invalid";
+  publishStatus?: "submitted" | "confirmed" | "pending_review" | "failed";
+  verifyStatus?: "verified" | "pending" | "failed" | "not_started";
+  platformArticleId?: string;
+  publicUrl?: string;
+  pendingCsvReturn?: boolean;
+  failureCode?: PublishFailureCode;
+  failureReason?: string;
+  nextAction?: string;
+  diagnosticSummary?: string;
 }
 
 export interface KnowledgeChunk {

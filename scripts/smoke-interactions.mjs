@@ -233,6 +233,47 @@ const contracts = [
     ]
   },
   {
+    name: "direct_publish_contract",
+    file: "src/lib/types.ts",
+    includes: [
+      "DirectPublishPlatformKey",
+      "PublishScheduleStatus",
+      "PublishAttemptStatus",
+      "PublishFailureCode",
+      "PlatformPublishPayload",
+      "PublishSchedule",
+      "PublishAttempt",
+      "published_verified",
+      "published_pending_url",
+      "manual_takeover_required"
+    ]
+  },
+  {
+    name: "direct_publish_store_contract",
+    file: "src/lib/workbench-store.ts",
+    includes: [
+      "publishSchedules: PublishSchedule[]",
+      "publishAttempts: PublishAttempt[]",
+      "createPublishSchedules",
+      "runPublishSchedule",
+      "runDuePublishSchedules",
+      "direct_publish_attempt_finished",
+      "正式发布排程已创建"
+    ]
+  },
+  {
+    name: "direct_publish_api_contract",
+    file: "scripts/smoke-workflow.mjs",
+    includes: [
+      "direct_publish_schedule_create",
+      "direct_publish_run_due",
+      "direct_publish_four_platform_attempts",
+      "/api/publish-schedules",
+      "/api/direct-publish",
+      "published_pending_url"
+    ]
+  },
+  {
     name: "draft_second_qa_contract",
     file: "src/app/drafts/[taskId]/page.tsx",
     includes: [

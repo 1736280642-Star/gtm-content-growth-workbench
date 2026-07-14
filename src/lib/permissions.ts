@@ -68,14 +68,12 @@ const roleDefaultRoutes: Record<WorkspaceRole, string> = {
   developer_admin: "/ai-config"
 };
 
-const debugAllRoutes = Object.keys(workspaceRouteLabels);
-
 export function getVisibleRoutesForRole(role: WorkspaceRole) {
-  return debugAllRoutes;
+  return roleVisibleRoutes[role] || roleVisibleRoutes.content_publisher;
 }
 
 export function canViewRoute(role: WorkspaceRole, route: string) {
-  return debugAllRoutes.includes(route);
+  return getVisibleRoutesForRole(role).includes(route);
 }
 
 export function getDefaultRouteForRole(role: WorkspaceRole) {
@@ -87,17 +85,17 @@ export function getRouteLabel(route: string) {
 }
 
 export function canViewAiGovernance(role: WorkspaceRole) {
-  return true;
+  return role === "workbench_operator" || role === "developer_admin";
 }
 
 export function canManagePromptVersions(role: WorkspaceRole) {
-  return true;
+  return role === "workbench_operator" || role === "developer_admin";
 }
 
 export function canManageProductExpressionRules(role: WorkspaceRole) {
-  return true;
+  return role === "knowledge_manager" || role === "workbench_operator" || role === "developer_admin";
 }
 
 export function canManageWeeklyReportSuggestions(role: WorkspaceRole) {
-  return true;
+  return role === "content_growth" || role === "workbench_operator" || role === "developer_admin";
 }

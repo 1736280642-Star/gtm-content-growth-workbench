@@ -85,7 +85,12 @@ function addRegexCheck(label, filePath, patterns) {
   "src/app/api/distribution/wechatsync/check-auth/route.ts",
   "src/app/api/publish-records/[id]/distribution-targets/route.ts",
   "src/app/api/distribution-targets/[id]/send-draft/route.ts",
-  "src/lib/wechatsync-client.ts"
+  "src/app/api/publish-schedules/route.ts",
+  "src/app/api/publish-schedules/[id]/run/route.ts",
+  "src/app/api/direct-publish/route.ts",
+  "src/lib/wechatsync-client.ts",
+  "src/lib/publish-adapters/index.ts",
+  "src/lib/publish-adapters/types.ts"
 ].forEach((filePath) => addFileCheck(`required file: ${filePath}`, filePath));
 
 addContentCheck("dashboard v4 progress", "src/app/page.tsx", [
@@ -226,6 +231,20 @@ addContentCheck("distribution draft data model", "src/lib/types.ts", [
   "mock\" | \"real"
 ]);
 
+addContentCheck("direct publish data model", "src/lib/types.ts", [
+  "DirectPublishPlatformKey",
+  "PublishScheduleStatus",
+  "PublishAttemptStatus",
+  "PublishFailureCode",
+  "PlatformPublishPayload",
+  "PublishSchedule",
+  "PublishAttempt",
+  "published_verified",
+  "published_pending_url",
+  "manual_takeover_required",
+  "pendingCsvReturn"
+]);
+
 addContentCheck("distribution labels and channel mapping", "src/lib/labels.ts", [
   "distributionPlatformLabels",
   "fixedDistributionPlatforms",
@@ -249,6 +268,42 @@ addContentCheck("distribution store invariant", "src/lib/workbench-store.ts", [
   "ensurePlatformDraftVariant",
   "distribution_draft_created",
   "只有待发布状态的记录可以写入平台草稿箱。"
+]);
+
+addContentCheck("direct publish store invariant", "src/lib/workbench-store.ts", [
+  "publishSchedules: PublishSchedule[]",
+  "publishAttempts: PublishAttempt[]",
+  "normalizePublishSchedules",
+  "normalizePublishAttempts",
+  "createPublishSchedules",
+  "runPublishSchedule",
+  "runDuePublishSchedules",
+  "direct_publish_attempt_finished",
+  "正式发布排程已创建",
+  "published_pending_url"
+]);
+
+addContentCheck("direct publish adapter contract", "src/lib/publish-adapters/index.ts", [
+  "WechatDirectPublishAdapter",
+  "JuejinDirectPublishAdapter",
+  "CsdnDirectPublishAdapter",
+  "ZhihuDirectPublishAdapter",
+  "checkAuth",
+  "validatePayload",
+  "publish(",
+  "verify(",
+  "DIRECT_PUBLISH_ENABLED",
+  "manual_takeover_required",
+  "pendingCsvReturn"
+]);
+
+addContentCheck("direct publish api contract", "scripts/smoke-workflow.mjs", [
+  "direct_publish_schedule_create",
+  "direct_publish_run_due",
+  "direct_publish_four_platform_attempts",
+  "/api/publish-schedules",
+  "/api/direct-publish",
+  "published_pending_url"
 ]);
 
 addContentCheck("wechatsync client mock boundary", "src/lib/wechatsync-client.ts", [

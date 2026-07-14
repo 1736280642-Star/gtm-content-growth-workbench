@@ -228,6 +228,50 @@ ZHIHU_AUTH_CHECK_URL=
 
 注意：Cookie、csrf token 和 headers 都属于敏感配置，只写入本机 `.env.local`，不要粘贴到聊天或文档。平台接口如果发生变更，优先通过 `*_DRAFT_API_URL`、`*_HEADERS_JSON`、`*_DRAFT_PAYLOAD_JSON` 做配置覆盖，不先改业务页面。
 
+### P0 正式发布排程
+
+平台草稿分发只代表“写入平台草稿箱”，不代表正式发布。P0 正式发布使用独立排程状态：
+
+完整能力边界、技术方案、四平台字段获取步骤和验收清单见：`docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md`。
+
+```text
+POST /api/publish-schedules
+POST /api/publish-schedules/[id]/run
+POST /api/direct-publish
+GET  /api/publish-schedules
+```
+
+最小调用示例：
+
+```json
+{
+  "publishRecordId": "pub-xxx",
+  "platforms": ["wechat", "juejin", "csdn", "zhihu"],
+  "scheduledAt": "2026-07-09T10:00:00.000Z",
+  "matrixItemId": "monthly-matrix-item-placeholder"
+}
+```
+
+状态口径：
+
+1. `scheduled`：等待执行。
+2. `pending_config`：平台正式发布配置缺失。
+3. `precheck_failed`：登录态、载荷、平台参数等预检查失败。
+4. `publishing`：适配器正在执行。
+5. `published_verified`：平台返回正式发布且可验证结果。
+6. `published_pending_url`：正式发布已确认，但公开 URL 等待后续 CSV 或人工回填。
+7. `pending_verify`：发布动作完成，但平台仍在审核或待验证。
+8. `manual_takeover_required`：验证码、手机确认、安全挑战等需要人工处理。
+9. `failed`：执行或验证失败。
+
+本地 smoke 默认使用 mock direct publish，只验证排程、适配器合同、状态流转和失败分类，不会写入外部平台。真实模式需要显式配置：
+
+```text
+DIRECT_PUBLISH_ENABLED=true
+```
+
+真实模式下缺少微信公众号 AppID、AppSecret、封面 media_id，或缺少掘金 / CSDN / 知乎登录态、分类、标签等配置时，系统只返回 `pending_config` / `auth_required` / `manual_takeover_required`，不会伪造平台文章 ID 或公开 URL。
+
 ## 7. 本地验证命令
 
 开发或修改后建议按顺序运行：
