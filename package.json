@@ -22,6 +22,8 @@
     "smoke:browser:responsive:main": "node scripts/smoke-browser.mjs --scope=responsive",
     "smoke:browser:publish": "node scripts/smoke-browser-isolated.mjs --scope=publish --port 3066 --state-path data/workbench-browser-publish-state.json",
     "smoke:browser:publish:main": "node scripts/smoke-browser.mjs --scope=publish",
+    "smoke:browser:v5": "node scripts/smoke-browser-isolated.mjs --scope=v5 --port 3068 --state-path data/workbench-browser-v5-state.json",
+    "smoke:browser:v5:main": "node scripts/smoke-browser.mjs --scope=v5",
     "smoke:workflow": "node scripts/smoke-workflow-isolated.mjs",
     "smoke:workflow:main": "node scripts/smoke-workflow.mjs",
     "smoke:workflow:isolated": "node scripts/smoke-workflow-isolated.mjs",

@@ -21,14 +21,14 @@ const failures = [];
 if (args.help || args.h) {
   printJson({
     script: "smoke-browser",
-    usage: "node scripts/smoke-browser.mjs [--scope full|roles|content|responsive|publish] [--base-url http://127.0.0.1:3047] [--debug-port 9223]"
+    usage: "node scripts/smoke-browser.mjs [--scope full|roles|content|responsive|publish|v5] [--base-url http://127.0.0.1:3047] [--debug-port 9223]"
   });
   process.exit(0);
 }
 
 function normalizeScope(scope) {
   const value = typeof scope === "string" ? scope : "full";
-  const allowedScopes = new Set(["full", "roles", "content", "responsive", "publish"]);
+  const allowedScopes = new Set(["full", "roles", "content", "responsive", "publish", "v5"]);
 
   if (!allowedScopes.has(value)) {
     throw new Error(`Unsupported smoke browser scope: ${value}`);
@@ -1584,6 +1584,25 @@ async function assertResponsiveLayout(page, { name, pathName, expectedText, befo
   }
 }
 
+async function assertDesktopLayout(page, { name, pathName, expectedText, beforeAudit }) {
+  await page.setViewport(1440, 1000, false);
+  await page.navigate(pathName);
+  await waitFor(() => page.containsText(expectedText), 30000);
+
+  if (beforeAudit) {
+    await beforeAudit(page);
+  }
+
+  await delay(700);
+  const audit = await page.evaluate(buildResponsiveAuditExpression());
+
+  if (!audit.ok) {
+    throw new Error(JSON.stringify(audit));
+  }
+
+  record(name, true, `${pathName} desktop ${audit.viewport.width}x${audit.viewport.height}`);
+}
+
 async function main() {
   let browser;
   let page;
@@ -1593,7 +1612,8 @@ async function main() {
   const shouldRunContent = runFullScope || smokeScope === "content";
   const shouldRunResponsive = runFullScope || smokeScope === "responsive";
   const shouldRunPublish = runFullScope || smokeScope === "publish";
-  const shouldRunOperatorPage = shouldRunContent || shouldRunResponsive || shouldRunPublish;
+  const shouldRunV5 = smokeScope === "v5";
+  const shouldRunOperatorPage = shouldRunContent || shouldRunResponsive || shouldRunPublish || shouldRunV5;
 
   try {
     previousRole = await runStep("prepare_workspace_role_read", () => resolveCurrentRole());
@@ -1674,7 +1694,56 @@ async function main() {
     if (shouldRunOperatorPage) {
       page = await runStep("open_cdp_page", () => openPage());
       await runStep("prepare_workspace_role_operator", () => setCurrentRole("workbench_operator"));
-      await runStep("prepare_weekly_publish_matrix", () => prepareValidPublishMatrix());
+      if (!shouldRunV5) {
+        await runStep("prepare_weekly_publish_matrix", () => prepareValidPublishMatrix());
+      }
+    }
+
+    if (shouldRunV5) {
+      await runStep("v5_dashboard_scoped_replacement_desktop", () => assertDesktopLayout(page, {
+        name: "v5_dashboard_scoped_replacement_desktop",
+        pathName: "/",
+        expectedText: "V5 月度生产概览"
+      }));
+      await runStep("v5_dashboard_scoped_replacement_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_dashboard_scoped_replacement_mobile",
+        pathName: "/",
+        expectedText: "保留能力运行态"
+      }));
+      await runStep("v5_monthly_matrix_desktop", () => assertDesktopLayout(page, {
+        name: "v5_monthly_matrix_desktop",
+        pathName: "/monthly-matrix",
+        expectedText: "月度策略包审核"
+      }));
+      await runStep("v5_monthly_config_modal_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_monthly_config_modal_mobile",
+        pathName: "/monthly-matrix",
+        expectedText: "月度内容矩阵",
+        beforeAudit: async (currentPage) => {
+          await clickButtonByText(currentPage, "月度计划配置");
+          await waitFor(() => currentPage.containsText("产品由已治理的产品表达规则包带出"), 15000);
+        }
+      }));
+      await runStep("v5_batch_generation_desktop", () => assertDesktopLayout(page, {
+        name: "v5_batch_generation_desktop",
+        pathName: "/batch-generation",
+        expectedText: "当月内容生成矩阵"
+      }));
+      await runStep("v5_batch_generation_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_batch_generation_mobile",
+        pathName: "/batch-generation",
+        expectedText: "人工排程日历"
+      }));
+      await runStep("v5_daily_execution_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_daily_execution_mobile",
+        pathName: "/daily-execution",
+        expectedText: "发布执行视图"
+      }));
+      await runStep("v5_monthly_review_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_monthly_review_mobile",
+        pathName: "/monthly-review",
+        expectedText: "下月候选调整"
+      }));
     }
 
     if (shouldRunContent || shouldRunResponsive) {

@@ -70,6 +70,76 @@ const weeklyReportBusinessExcludes = ["置信度", "低置信度", "置信度低
 
 const contracts = [
   {
+    name: "v5_monthly_manual_configuration_contract",
+    file: "src/components/MonthlyPlanConfigPanel.tsx",
+    includes: [
+      "月度计划配置",
+      "产品由已治理的产品表达规则包带出",
+      "isSelectablePackage",
+      "monthlyProductionReady",
+      "mode=\"multiple\"",
+      "发布渠道",
+      "文章数量",
+      "GEO 基线比例",
+      "ratioAdjustmentReason",
+      "新增产品分组",
+      "不能进入生产池",
+      "handleSave",
+      "onSave(cloneConfig(draft))",
+      "mock 草稿",
+      "monthly-plan-save-button"
+    ],
+    excludes: ["fetch(", "/api/", "workbench-state.json"]
+  },
+  {
+    name: "v5_monthly_strategy_embedded_contract",
+    file: "src/app/monthly-matrix/page.tsx",
+    includes: [
+      "月度策略包审核",
+      "GEO 测试分配",
+      "MonthlyStrategyTable",
+      "strategyTermHits",
+      "策略可行不等于正文可生成",
+      "Final Evidence Gate",
+      "进入批量生成中心"
+    ],
+    excludes: ["fetch(", "/api/"]
+  },
+  {
+    name: "v5_batch_production_console_contract",
+    file: "src/app/batch-generation/page.tsx",
+    includes: [
+      "批量确认标题与矩阵",
+      "批量生成当月可生成内容",
+      "只生成通过正式准入的矩阵项",
+      "本次可生成",
+      "证据闸门拦截",
+      "标题未确认",
+      "平台配置缺失",
+      "预计进入异常",
+      "BatchGenerationMatrixTable",
+      "ScheduleCalendarLite",
+      "ExceptionQueuePreview"
+    ],
+    excludes: ["fetch(", "/api/"]
+  },
+  {
+    name: "v5_daily_execution_boundary_contract",
+    file: "src/app/daily-execution/page.tsx",
+    includes: [
+      "昨日",
+      "今日",
+      "明日",
+      "本月已发布",
+      "本月待发布",
+      "已排程待发布",
+      "未排程",
+      "URL 不在本页呈现",
+      "PublishStatusTag"
+    ],
+    excludes: ["月度计划配置", "批量生成当月可生成内容", "回填 URL", "确认 URL", "fetch(", "/api/"]
+  },
+  {
     name: "weekly_plan_preview_contract",
     file: "src/app/weekly-plan/page.tsx",
     includes: [
@@ -768,12 +838,13 @@ const contracts = [
     includes: [
       "setViewport",
       "normalizeScope",
-      "full\", \"roles\", \"content\", \"responsive\", \"publish",
+      "full\", \"roles\", \"content\", \"responsive\", \"publish\", \"v5",
       "scope: smokeScope",
       "shouldRunRoles",
       "shouldRunContent",
       "shouldRunResponsive",
       "shouldRunPublish",
+      "shouldRunV5",
       "buildResponsiveAuditExpression",
       "assertResponsiveLayout",
       "beforeAudit",
@@ -857,6 +928,14 @@ const contracts = [
       "responsive_ai_config_call_log_drawer_mobile",
       "responsive_ai_config_prompt_version_drawer_mobile",
       "responsive_ai_config_quality_drawer_mobile",
+      "v5_dashboard_scoped_replacement_desktop",
+      "v5_dashboard_scoped_replacement_mobile",
+      "v5_monthly_matrix_desktop",
+      "v5_monthly_config_modal_mobile",
+      "v5_batch_generation_desktop",
+      "v5_batch_generation_mobile",
+      "v5_daily_execution_mobile",
+      "v5_monthly_review_mobile",
       "390, 844, false",
       "周计划生成预览",
       "正文 Markdown 编辑",
@@ -896,10 +975,12 @@ const contracts = [
       "smoke:browser:content:isolated",
       "smoke:browser:responsive",
       "smoke:browser:publish",
+      "smoke:browser:v5",
       "--scope=roles",
       "--scope=content",
       "--scope=responsive",
-      "--scope=publish"
+      "--scope=publish",
+      "--scope=v5"
     ]
   },
   {

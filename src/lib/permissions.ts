@@ -10,6 +10,17 @@ export const workspaceRoleLabels: Record<WorkspaceRole, string> = {
 
 export const workspaceRouteLabels: Record<string, string> = {
   "/": "首页",
+  "/agent-foundation": "Agent 底座",
+  "/monthly-strategy": "月度策略包（已并入月度内容矩阵）",
+  "/monthly-matrix": "月度内容矩阵",
+  "/monthly-matrix/strategy": "月度策略包（已并入月度内容矩阵）",
+  "/monthly-matrix/batch-generation": "批量生成中心",
+  "/batch-generation": "批量生成中心",
+  "/exceptions": "异常拦截（已并入批量生成中心）",
+  "/publish-schedule": "人工排程（已并入批量生成中心）",
+  "/publish-schedule/daily-execution": "当日执行",
+  "/daily-execution": "当日执行",
+  "/monthly-review": "月度复盘",
   "/weekly-plan": "周计划",
   "/today": "今日发布",
   "/publish": "数据回传",

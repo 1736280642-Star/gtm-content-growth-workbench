@@ -47,6 +47,17 @@ const currentGeoResultId = await resolveCurrentGeoResultId();
 
 const targets = [
   { name: "dashboard_page", path: "/", expect: "JOTO GTM" },
+  { name: "agent_foundation_page", path: "/agent-foundation", expect: "Agent 底座" },
+  { name: "monthly_matrix_page", path: "/monthly-matrix", expect: "月度内容矩阵" },
+  { name: "monthly_matrix_strategy_compat_page", path: "/monthly-matrix/strategy", expect: "月度内容矩阵" },
+  { name: "monthly_matrix_batch_generation_page", path: "/monthly-matrix/batch-generation", expect: "批量生成中心" },
+  { name: "monthly_strategy_compat_page", path: "/monthly-strategy", expect: "月度内容矩阵" },
+  { name: "batch_generation_compat_page", path: "/batch-generation", expect: "批量生成中心" },
+  { name: "exceptions_compat_page", path: "/exceptions", expect: "批量生成中心" },
+  { name: "publish_schedule_compat_page", path: "/publish-schedule", expect: "批量生成中心" },
+  { name: "publish_schedule_daily_execution_page", path: "/publish-schedule/daily-execution", expect: "当日执行" },
+  { name: "daily_execution_page", path: "/daily-execution", expect: "当日执行" },
+  { name: "monthly_review_page", path: "/monthly-review", expect: "月度复盘" },
   { name: "weekly_plan_page", path: "/weekly-plan", expect: "周计划" },
   { name: "today_page", path: "/today", expect: "今日发布" },
   { name: "publish_page", path: "/publish", expect: "数据回传" },

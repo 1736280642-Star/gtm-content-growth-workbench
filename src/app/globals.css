@@ -170,6 +170,22 @@ body {
   font-weight: 650;
 }
 
+.page-header-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-title-extra {
+  display: flex;
+  align-items: center;
+}
+
+.page-title-extra .ant-tag {
+  margin-inline-end: 0;
+}
+
 .page-subtitle {
   margin: 6px 0 0;
   color: var(--muted);
@@ -761,6 +777,386 @@ body {
   overflow-wrap: anywhere;
 }
 
+.v5-status-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dashboard-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 12px;
+}
+
+.dashboard-section-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.dashboard-section-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.dashboard-section-heading .ant-tag {
+  flex: 0 0 auto;
+  margin-inline-end: 0;
+}
+
+.v5-status-card {
+  min-width: 0;
+}
+
+.v5-status-card .ant-card-body {
+  display: grid;
+  gap: 6px;
+}
+
+.v5-status-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.v5-status-label,
+.v5-status-helper {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.v5-status-value {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.v5-page-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.v5-summary-text {
+  margin-top: 0;
+  line-height: 1.7;
+}
+
+.v5-title-cell {
+  display: block;
+  inline-size: 16em;
+  max-inline-size: 100%;
+  line-height: 1.55;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.monthly-plan-base-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.55fr) minmax(260px, 0.8fr) minmax(360px, 1.8fr);
+  gap: 12px;
+}
+
+.monthly-plan-base-form .ant-form-item {
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.monthly-plan-goal-field {
+  min-width: 0;
+}
+
+.monthly-plan-ratio-control {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.monthly-plan-ratio-control .ant-slider {
+  margin-inline: 6px;
+}
+
+.monthly-plan-groups-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.monthly-plan-section-caption {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.monthly-plan-group-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.monthly-plan-group-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(150px, 0.7fr) minmax(250px, 1.3fr) minmax(130px, 0.55fr) 32px;
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafbfc;
+}
+
+.monthly-plan-group-row .ant-form-item {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.monthly-plan-group-row .ant-input-number-group-wrapper {
+  width: 100%;
+}
+
+.monthly-plan-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #c9d9ff;
+  border-radius: 6px;
+  background: #f5f8ff;
+}
+
+.monthly-plan-summary-bar strong {
+  margin-right: 4px;
+  color: #1746a2;
+  font-size: 17px;
+}
+
+.monthly-plan-balance-alert,
+.monthly-plan-unavailable-alert {
+  margin-top: 16px;
+}
+
+.monthly-plan-issue-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+.v5-goal-band .ant-card-body,
+.v5-strategy-footer,
+.v5-geo-allocation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.v5-goal-band {
+  margin-bottom: 16px;
+  border-left: 3px solid var(--brand);
+}
+
+.v5-goal-band .ant-card-body > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.v5-kicker {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.v5-strategy-card,
+.v5-batch-matrix-card,
+.v5-review-allocation-card {
+  min-width: 0;
+}
+
+.v5-geo-allocation {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafbfc;
+}
+
+.v5-geo-allocation-copy {
+  display: grid;
+  flex: 0 1 380px;
+  gap: 4px;
+}
+
+.v5-geo-allocation-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.v5-geo-allocation-bars {
+  display: grid;
+  flex: 1 1 420px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.v5-geo-allocation-bars span,
+.v5-review-allocation span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.v5-table-stack {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  line-height: 1.5;
+}
+
+.v5-table-stack > span:not(.ant-tag),
+.v5-table-stack .muted {
+  white-space: normal !important;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.v5-expanded-detail .ant-descriptions-item-content {
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.v5-strategy-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.v5-strategy-footer > div {
+  display: grid;
+  gap: 3px;
+}
+
+.v5-strategy-footer span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.v5-section-anchor {
+  scroll-margin-top: 18px;
+  margin-top: 16px;
+}
+
+.v5-schedule-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.7fr);
+  gap: 16px;
+}
+
+.v5-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--line);
+}
+
+.v5-calendar-weekday {
+  padding: 8px 4px;
+  background: #f3f5f8;
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.v5-calendar-day {
+  display: flex;
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px;
+  border: 0;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.v5-calendar-day:hover:not(:disabled),
+.v5-calendar-day:focus-visible:not(:disabled) {
+  background: #f2f6ff;
+  outline: 2px solid #91b8ff;
+  outline-offset: -2px;
+}
+
+.v5-calendar-day.is-empty {
+  background: #fafafa;
+}
+
+.v5-calendar-day strong {
+  color: #1746a2;
+  font-size: 12px;
+}
+
+.v5-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.v5-inline-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid #91b8ff;
+  background: #f5f8ff;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.v5-exception-context {
+  display: grid;
+  gap: 5px;
+  padding: 4px 8px;
+}
+
+.v5-exception-context p {
+  margin: 0;
+}
+
+.v5-review-allocation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.v5-review-progress {
+  min-width: 160px;
+}
+
+.v5-review-progress > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 @media (max-width: 1100px) {
   .metric-grid,
   .metric-grid-five,
@@ -775,10 +1171,24 @@ body {
   .report-kpi-grid,
   .report-two-column,
   .ai-call-log-summary-grid,
-  .knowledge-detail-two-column,
-  .geo-detail-grid,
-  .draft-footer-actions {
+    .knowledge-detail-two-column,
+    .geo-detail-grid,
+    .v5-status-rail,
+    .v5-page-grid,
+    .monthly-plan-base-form,
+    .v5-schedule-layout,
+    .v5-review-allocation,
+    .draft-footer-actions {
     grid-template-columns: 1fr;
+  }
+
+  .monthly-plan-group-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v5-geo-allocation {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .draft-header-actions,
@@ -788,6 +1198,36 @@ body {
 }
 
 @media (max-width: 760px) {
+  .dashboard-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .monthly-plan-group-row,
+  .v5-geo-allocation-bars {
+    grid-template-columns: 1fr;
+  }
+
+  .v5-strategy-footer,
+  .v5-goal-band .ant-card-body {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .v5-schedule-layout .ant-card-head-wrapper {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .v5-schedule-layout .ant-card-extra {
+    margin-inline-start: 0;
+  }
+
+  .v5-calendar-day {
+    min-height: 54px;
+    padding: 6px 4px;
+  }
+
   .app-shell.ant-layout-has-sider {
     flex-direction: column;
   }
