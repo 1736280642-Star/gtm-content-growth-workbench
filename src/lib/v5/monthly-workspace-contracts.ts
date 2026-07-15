@@ -1,0 +1,229 @@
+export type RulePackageStatus = "active" | "draft" | "pending" | "deprecated" | "rolled_back";
+export type EvidenceReadinessStatus =
+  | "ready"
+  | "ready_with_auto_downgrade"
+  | "needs_material"
+  | "needs_review"
+  | "blocked"
+  | "pending_config";
+export type StrategyRowStatus = "ready" | "ready_with_conditions" | "needs_material" | "needs_review" | "quota_error" | "blocked";
+export type GeoTestMode = "baseline" | "exploration";
+export type MatrixDisplayStatus = "preparing" | "ready" | "generating" | "qualified" | "exception" | "scheduled" | "published" | "publish_failed";
+export type GenerationStatus = "title_pending" | "pending" | "generating" | "generated" | "provider_failed" | "input_expired";
+export type FinalEvidenceGateStatus = "not_created" | "ready" | "needs_review" | "blocked" | "pending_config";
+export type ScheduleDraftStatus = "unscheduled" | "draft" | "active" | "pending_config";
+export type PublishStatus = "scheduled" | "waiting" | "publishing" | "published" | "failed" | "manual_takeover";
+
+export interface RulePackageOption {
+  id: string;
+  productId: string;
+  productName: string;
+  version: string;
+  status: RulePackageStatus;
+  monthlyProductionReady: boolean;
+  allowedChannels: string[];
+  disabledReason?: string;
+  readinessSource?: "derived_v4" | "v5_governance" | "seed_fallback";
+}
+
+export interface MonthlyPlanGroupQuota {
+  groupQuotaId: string;
+  rulePackageVersionId: string;
+  productId: string;
+  productName: string;
+  selectedChannels: string[];
+  articleQuota: number;
+}
+
+export interface MonthlyPlanConfig {
+  month: string;
+  businessGoal: string;
+  baselineRatio: number;
+  ratioAdjustmentReason: string;
+  groups: MonthlyPlanGroupQuota[];
+}
+
+export interface StrategyTermHit {
+  id: string;
+  priority: "P0" | "P1" | "P2" | "Hold";
+  term: string;
+  source: string;
+  priorityReason: string;
+  previousGeoSummary: string;
+  productName: string;
+  rulePackageVersion: string;
+  allocatedQuota: number;
+  channelAllocation: string[];
+  contentTypeSuggestions: string[];
+  geoTestMode: GeoTestMode;
+  testHypothesis: string;
+  querySet: string;
+  successSignal: string;
+  evidenceStatus: EvidenceReadinessStatus;
+  estimatedReadyItemCount: number;
+  estimatedAutoDowngradeItemCount: number;
+  estimatedMissingEvidenceItemCount: number;
+  requiredClaims: string[];
+  evidenceGaps: string[];
+  status: StrategyRowStatus;
+}
+
+export interface BatchQueueItem {
+  id: string;
+  monthlyPlanId: string;
+  matrixVersionId: string;
+  matrixItemId: string;
+  title: string;
+  primaryDistilledTerm: string;
+  priority: "P0" | "P1" | "P2";
+  geoTestMode: GeoTestMode;
+  contentType: string;
+  product: string;
+  rulePackageVersion: string;
+  channel: string;
+  platformExpressionType: string;
+  titleConfirmed: boolean;
+  evidencePreview: EvidenceReadinessStatus;
+  finalEvidenceGate: FinalEvidenceGateStatus;
+  claimCount: number;
+  generationStatus: GenerationStatus;
+  hardRuleStatus: "pending" | "passed" | "blocked";
+  softQualityScore?: number;
+  qualityResult: "pending" | "passed" | "exception";
+  scheduleStatus: ScheduleDraftStatus;
+  scheduleDate?: string;
+  scheduleTime?: string;
+  platformAccount?: string;
+  prepublishConfirmed: boolean;
+  displayStatus: MatrixDisplayStatus;
+}
+
+export interface ExceptionItem {
+  id: string;
+  matrixItemId: string;
+  code:
+    | "rule_package_inactive"
+    | "distilled_term_product_mismatch"
+    | "evidence_missing"
+    | "title_unprovable"
+    | "role_boundary_risk"
+    | "provider_pending_config"
+    | "hard_rule_blocked"
+    | "soft_quality_failed"
+    | "publish_pending_config";
+  productId: string;
+  product: string;
+  distilledTermId: string;
+  distilledTerm: string;
+  title: string;
+  stage: string;
+  reason: string;
+  claimContext: string;
+  evidenceItemContext: string;
+  blocking: boolean;
+  nextAction: string;
+  governanceLayer: string;
+  missingClaimType: string;
+  requiredEvidenceLevel: string;
+  currentTitlePromise: string;
+  status: "open" | "auto_resolved";
+  severity: "high" | "medium" | "low";
+}
+
+export interface ScheduleDraftItem {
+  id: string;
+  matrixItemId: string;
+  title: string;
+  product: string;
+  channel: string;
+  date?: string;
+  time?: string;
+  platformAccount?: string;
+  status: ScheduleDraftStatus;
+  qualityReady: boolean;
+}
+
+export interface DailyExecutionItem {
+  id: string;
+  dateKey: "yesterday" | "today" | "tomorrow";
+  date: string;
+  time: string;
+  title: string;
+  product: string;
+  channel: string;
+  status: PublishStatus;
+  failureReason: string;
+}
+
+export interface MonthlyTermReview {
+  id: string;
+  term: string;
+  product: string;
+  mode: GeoTestMode;
+  planned: number;
+  published: number;
+  visibilityChange: string;
+  citationChange: string;
+  entityAccuracy: string;
+  coverageChange: string;
+  gapConclusion: string;
+  issueSource: string;
+}
+
+export interface NextMonthCandidate {
+  id: string;
+  term: string;
+  product: string;
+  source: string;
+  reason: string;
+  proposedAction: string;
+  status: "pending_review" | "confirmed" | "hold";
+}
+
+export interface V5MonthlyPlanRecord {
+  id: string;
+  version: number;
+  status: "draft" | "confirmed" | "running" | "completed";
+  config: MonthlyPlanConfig;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export type V5RuntimeSource = "persisted" | "empty";
+export type V5ReferenceSource = "v4_runtime" | "seed_fallback";
+
+export interface V5MonthlyWorkspace {
+  schemaVersion: 1;
+  month: string;
+  plan: V5MonthlyPlanRecord | null;
+  draftPlan: MonthlyPlanConfig;
+  rulePackages: RulePackageOption[];
+  channels: string[];
+  strategyRows: StrategyTermHit[];
+  batchQueueItems: BatchQueueItem[];
+  exceptionItems: ExceptionItem[];
+  scheduleDraftItems: ScheduleDraftItem[];
+  source: {
+    monthlyData: V5RuntimeSource;
+    referenceData: V5ReferenceSource;
+  };
+}
+
+export interface SaveMonthlyPlanRequest {
+  config: MonthlyPlanConfig;
+  expectedVersion: number;
+}
+
+export interface V5ApiError {
+  code: string;
+  message: string;
+  details?: string[];
+}
+
+export type V5ApiEnvelope<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: V5ApiError };
+
+

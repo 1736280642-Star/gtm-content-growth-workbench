@@ -120,7 +120,13 @@ function addRegexCheck(label, filePath, patterns) {
   "src/components/ExceptionQueuePreview.tsx",
   "src/components/ScheduleCalendarLite.tsx",
   "src/components/V5StatusRail.tsx",
-  "src/lib/v5-ui-mock-data.ts"
+  "src/lib/v5-ui-mock-data.ts",
+  "src/lib/v5/monthly-workspace-contracts.ts",
+  "src/lib/v5/monthly-repository.ts",
+  "src/lib/v5/monthly-service.ts",
+  "src/lib/v5/use-monthly-workspace.ts",
+  "src/app/api/v5/monthly-workspace/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/route.ts"
 ].forEach((filePath) => addFileCheck(`v5 ui file: ${filePath}`, filePath));
 
 addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
@@ -180,7 +186,8 @@ addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx
   "MonthlyStrategyTable",
   "strategyTermHits",
   "进入批量生成中心",
-  "v5DemoLabel",
+  "useMonthlyWorkspace",
+  "尚未配置本月业务目标",
   "MonthlyPlanConfigPanel"
 ]);
 
@@ -202,7 +209,51 @@ addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanCo
   "不能进入生产池",
   "保存配置",
   "monthly-plan-save-button",
-  "mock 草稿"
+  "已保存到 V5 数据源"
+]);
+
+addContentCheck("v5 monthly workspace api contract", "src/lib/v5/monthly-workspace-contracts.ts", [
+  "V5MonthlyWorkspace",
+  "V5MonthlyPlanRecord",
+  "SaveMonthlyPlanRequest",
+  "V5ApiEnvelope",
+  "expectedVersion"
+]);
+
+addContentCheck("v5 monthly repository boundary", "src/lib/v5/monthly-repository.ts", [
+  "V5_MONTHLY_STATE_PATH",
+  "data/v5-monthly-workbench.json",
+  "readV5MonthlyState",
+  "updateV5MonthlyState",
+  "temporaryPath",
+  "rename(temporaryPath, statePath)",
+  "idempotency",
+  "auditLog"
+]);
+
+addContentCheck("v5 monthly service guards", "src/lib/v5/monthly-service.ts", [
+  "WORKBENCH_STATE_PATH",
+  "seed_fallback",
+  "WRITE_ROLES",
+  "assertWritableRole",
+  "validateMonthlyPlan",
+  "expectedVersion",
+  "IDEMPOTENCY_KEY_REUSED",
+  "MONTHLY_PLAN_VERSION_CONFLICT"
+]);
+
+addContentCheck("v5 monthly read api", "src/app/api/v5/monthly-workspace/route.ts", [
+  "force-dynamic",
+  "getV5MonthlyWorkspace",
+  "cache-control",
+  "no-store"
+]);
+
+addContentCheck("v5 monthly write api", "src/app/api/v5/monthly-plans/[month]/route.ts", [
+  "PUT",
+  "parseSaveMonthlyPlanRequest",
+  "saveV5MonthlyPlan",
+  "x-idempotency-key"
 ]);
 
 addContentCheck("v5 strategy page merged redirect", "src/app/monthly-matrix/strategy/page.tsx", [
@@ -345,7 +396,8 @@ addContentCheck("v5 mock data boundary", "src/lib/v5-ui-mock-data.ts", [
   "nextMonthCandidates"
 ]);
 
-addAbsentCheck("v5 pages no real backend calls", "src/app/monthly-matrix/page.tsx", ["fetch(", "/api/"]);
+addAbsentCheck("v5 connected pages no direct mock imports", "src/app/monthly-matrix/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
+addAbsentCheck("v5 batch page no direct mock imports", "src/app/batch-generation/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 monthly config no real backend calls", "src/components/MonthlyPlanConfigPanel.tsx", ["fetch(", "/api/"]);
 addAbsentCheck("v5 batch no real backend calls", "src/app/batch-generation/page.tsx", ["fetch(", "/api/"]);
 addAbsentCheck("v5 daily execution no real backend calls", "src/app/daily-execution/page.tsx", ["fetch(", "/api/"]);

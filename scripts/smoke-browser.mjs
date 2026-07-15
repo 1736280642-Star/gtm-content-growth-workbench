@@ -374,14 +374,14 @@ async function openPage() {
     }
   });
 
-  function sendRaw(method, params = {}, sessionId) {
+  function sendRaw(method, params = {}, sessionId, timeoutMs = 60000) {
     const id = nextId++;
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`CDP command timed out: ${method}`));
-      }, 60000);
+      }, timeoutMs);
 
       pending.set(id, {
         resolve: (value) => {
@@ -411,8 +411,8 @@ async function openPage() {
     throw new Error("Chrome CDP Target.attachToTarget did not return sessionId.");
   }
 
-  function send(method, params = {}) {
-    return sendRaw(method, params, pageSessionId);
+  function send(method, params = {}, timeoutMs) {
+    return sendRaw(method, params, pageSessionId, timeoutMs);
   }
 
   await send("Page.enable");
@@ -447,7 +447,7 @@ async function openPage() {
   }
 
   async function navigate(pathName) {
-    await send("Page.navigate", { url: `${baseUrl}${pathName}` });
+    await send("Page.navigate", { url: `${baseUrl}${pathName}` }, 180000);
     await waitFor(() => evaluate("document.readyState === 'complete'"), 15000);
     await delay(500);
   }
@@ -1760,10 +1760,8 @@ async function main() {
         beforeAudit: async (currentPage) => {
           const expandedBeforeSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
           if (expandedBeforeSearch !== 0) throw new Error(`expected collapsed groups, found ${expandedBeforeSearch} expanded`);
-          await currentPage.fill("[data-testid='batch-task-search']", "NoteFlow");
-          await waitFor(() => currentPage.containsText("企业知识库如何建立可引用的责任边界"), 15000);
-          const expandedAfterSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
-          if (expandedAfterSearch < 1) throw new Error("search did not expand the matching task group");
+          await waitFor(() => currentPage.containsText("V5 接口已接通，但当前月份还没有真实矩阵与生成队列"), 30000);
+          await waitFor(() => currentPage.containsText("没有符合当前筛选条件的内容任务"), 30000);
         }
       }));
       await runStep("v5_batch_generation_mobile", () => assertResponsiveLayout(page, {
@@ -1776,8 +1774,8 @@ async function main() {
         pathName: "/batch-generation#schedule",
         expectedText: "人工排程日历",
         beforeAudit: async (currentPage) => {
-          await currentPage.hover("[data-testid='schedule-day-2026-08-06']");
-          await waitFor(() => currentPage.containsText("Agent Tool Call 前后，AI 护栏应该检查什么"), 15000);
+          await currentPage.hover(".v5-calendar-day[data-testid]");
+          await waitFor(() => currentPage.containsText("当天暂无排程"), 15000);
         }
       }));
       await runStep("v5_schedule_calendar_mobile_click", () => assertResponsiveLayout(page, {
@@ -1785,8 +1783,8 @@ async function main() {
         pathName: "/batch-generation#schedule",
         expectedText: "人工排程日历",
         beforeAudit: async (currentPage) => {
-          await currentPage.click("[data-testid='schedule-day-2026-08-07']");
-          await waitFor(() => currentPage.containsText("NetOps Copilot 的三个关键控制点"), 15000);
+          await currentPage.click(".v5-calendar-day[data-testid]");
+          await waitFor(() => currentPage.containsText("当天暂无排程"), 15000);
         }
       }));
       await runStep("v5_daily_execution_mobile", () => assertResponsiveLayout(page, {

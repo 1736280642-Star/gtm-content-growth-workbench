@@ -1,12 +1,12 @@
-# AGENTS.md - V5 Monthly Matrix UI
+# AGENTS.md - V5 Backend Integration
 
 ## 0. Branch Purpose
 
-This worktree is dedicated to branch `feat/v5-ui-monthly-matrix`.
+This worktree is dedicated to branch `codex/v5-backend-integration`.
 
-Goal: build the V5 front-end UI shell and low-risk page structure for the monthly content matrix system.
+Goal: connect the validated V5 monthly UI to explicit API contracts and repository-backed runtime data without changing unrelated V4 capabilities.
 
-The UI branch should prepare visual and interaction slots for:
+The integration branch should deliver backend contracts and real runtime data for:
 
 1. Monthly content matrix.
 2. Monthly strategy package review.
@@ -16,7 +16,7 @@ The UI branch should prepare visual and interaction slots for:
 6. Daily execution board.
 7. Monthly review.
 
-This branch must not implement real backend publishing, knowledge base RAG, or Agent orchestration.
+This branch may implement monthly read models, local JSON persistence, repository adapters and guarded API mutations. It must not implement real external publishing, credentials, full RAG generation or Workflow Agent orchestration unless separately requested.
 
 ## 1. Required Context Loading
 
@@ -39,35 +39,33 @@ If these V5 docs are missing, continue with this `AGENTS.md` as the branch truth
 
 This branch is responsible for:
 
-1. Navigation structure for V5 monthly matrix pages.
-2. Page shells and layout.
-3. Static or mock data rendering.
-4. Responsive low-to-mid fidelity UI implementation.
-5. Front-end components that accept props and can later connect to real APIs.
-6. Empty states, pending config states, failed states, and disabled action states.
-7. Chinese business-facing page language.
+1. Typed V5 API request and response contracts.
+2. Repository-backed monthly plan, matrix, generation, schedule and review read models.
+3. Local JSON persistence as the single-user runtime adapter, with a future MySQL boundary.
+4. Guarded mutations with validation, role checks, audit fields and idempotent behavior.
+5. Replacing page-local mock imports with API-backed loading, error and empty states.
+6. Preserving all V4 pages, APIs and data behavior outside the explicit V5 surface.
+7. Chinese business-facing page language and mock/real/pending_config source labels.
 
 This branch is not responsible for:
 
-1. Real monthly matrix backend APIs.
-2. Real `MonthlyPlan` / `ContentMatrixItem` persistence.
-3. Direct publish adapters.
-4. Playwright automation.
-5. RAG / EvidencePack generation.
-6. Product expression rule package data model expansion.
-7. Rule engine implementation.
-8. Agent orchestration.
-9. Real platform credentials or secrets.
+1. Direct external platform publish adapters.
+2. Real platform credentials or secrets.
+3. Full RAG / EvidencePack generation.
+4. Rule engine or evaluation Runner implementation beyond persisted status contracts.
+5. Workflow Agent orchestration.
+6. Rewriting unrelated V4 knowledge, AI configuration, GEO, blog or data-return flows.
 
-## 3. UI Branch Non-Negotiables
+## 3. Integration Non-Negotiables
 
-1. Do not change backend business behavior.
+1. Do not change unrelated V4 backend business behavior.
 2. Do not edit `data/workbench-state.json`.
-3. Do not add real API calls for future V5 systems unless explicitly requested.
+3. Store V5 runtime data in a dedicated file or repository namespace.
 4. Do not make current V4 pages unusable.
-5. Do not remove existing navigation entries.
+5. Do not make page-local mock constants the source of truth after a page is connected.
 6. Do not expose internal fields such as full Prompt, model trace, raw model logs, raw answers, raw citation URLs, citation rank, or embedding similarity on business pages.
-7. Do not represent mock data as real data.
+7. Do not represent seeded, fallback or pending_config data as real data.
+8. Every mutation must validate input, check role permission and return an actionable business error.
 
 Use clear labels:
 
@@ -78,9 +76,9 @@ pending_config
 待接入
 ```
 
-## 4. Recommended Page Scope
+## 4. Recommended Integration Scope
 
-Safe to add page shells:
+Primary pages to connect:
 
 ```text
 src/app/monthly-matrix/page.tsx
@@ -92,7 +90,7 @@ src/app/daily-execution/page.tsx
 src/app/monthly-review/page.tsx
 ```
 
-Safe to add presentational components:
+Presentational components should remain prop-driven:
 
 ```text
 src/components/MonthlyMatrixTable.tsx
@@ -113,20 +111,15 @@ src/app/globals.css
 src/app/page.tsx
 ```
 
-Avoid modifying:
+Modify shared V4 files only when a V5 adapter cannot be isolated. Prefer new files under:
 
 ```text
-src/lib/types.ts
-src/lib/workbench-store.ts
-src/lib/repositories/*
-src/app/api/*
-src/lib/ai-provider.ts
-src/lib/embedding-provider.ts
-src/lib/wechatsync-client.ts
-data/workbench-state.json
+src/lib/v5/*
+src/app/api/v5/*
+data/v5-*.json
 ```
 
-If a type is needed for UI mock data, define a local page/component type instead of changing shared domain types.
+Do not modify `src/lib/types.ts`, `src/lib/workbench-store.ts`, existing V4 routes or `data/workbench-state.json` unless the user explicitly approves a cross-version migration.
 
 ## 5. Required V5 Information Architecture
 

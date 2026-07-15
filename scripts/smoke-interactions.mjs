@@ -86,7 +86,7 @@ const contracts = [
       "不能进入生产池",
       "handleSave",
       "onSave(cloneConfig(draft))",
-      "mock 草稿",
+      "已保存到 V5 数据源",
       "monthly-plan-save-button"
     ],
     excludes: ["fetch(", "/api/", "workbench-state.json"]
@@ -101,9 +101,11 @@ const contracts = [
       "strategyTermHits",
       "策略可行不等于正文可生成",
       "Final Evidence Gate",
-      "进入批量生成中心"
+      "进入批量生成中心",
+      "useMonthlyWorkspace",
+      "尚未配置本月业务目标"
     ],
-    excludes: ["fetch(", "/api/"]
+    excludes: ["fetch(", "/api/", "v5-ui-mock-data", "v5DemoLabel"]
   },
   {
     name: "v5_batch_production_console_contract",
@@ -121,7 +123,56 @@ const contracts = [
       "ScheduleCalendarLite",
       "ExceptionQueuePreview"
     ],
-    excludes: ["fetch(", "/api/"]
+    excludes: ["fetch(", "/api/", "v5-ui-mock-data", "v5DemoLabel"]
+  },
+  {
+    name: "v5_monthly_repository_contract",
+    file: "src/lib/v5/monthly-repository.ts",
+    includes: [
+      "V5_MONTHLY_STATE_PATH",
+      "data/v5-monthly-workbench.json",
+      "readV5MonthlyState",
+      "updateV5MonthlyState",
+      "temporaryPath",
+      "rename(temporaryPath, statePath)",
+      "idempotency",
+      "auditLog"
+    ],
+    excludes: ["workbench-state.json", "apiKey", "secretKey"]
+  },
+  {
+    name: "v5_monthly_service_guard_contract",
+    file: "src/lib/v5/monthly-service.ts",
+    includes: [
+      "WORKBENCH_STATE_PATH",
+      "WRITE_ROLES",
+      "assertWritableRole",
+      "validateMonthlyPlan",
+      "expectedVersion",
+      "idempotencyHeader",
+      "IDEMPOTENCY_KEY_REUSED",
+      "MONTHLY_PLAN_VERSION_CONFLICT"
+    ],
+    excludes: ["API_KEY", "process.env.OPENAI"]
+  },
+  {
+    name: "v5_monthly_api_routes_contract",
+    file: "src/app/api/v5/monthly-plans/[month]/route.ts",
+    includes: ["PUT", "parseSaveMonthlyPlanRequest", "saveV5MonthlyPlan", "x-idempotency-key", "V5ServiceError"],
+    excludes: ["currentRole", "role:"]
+  },
+  {
+    name: "v5_monthly_client_dedup_contract",
+    file: "src/lib/v5/use-monthly-workspace.ts",
+    includes: [
+      "workspaceCache",
+      "inFlightRequests",
+      "/api/v5/monthly-workspace",
+      "/api/v5/monthly-plans/",
+      "expectedVersion",
+      "x-idempotency-key"
+    ],
+    excludes: ["v5-ui-mock-data"]
   },
   {
     name: "v5_batch_grouping_contract",

@@ -7,6 +7,7 @@ const args = parseArgs();
 const host = typeof args.host === "string" ? args.host : "127.0.0.1";
 const port = Number.parseInt(typeof args.port === "string" ? args.port : "3058", 10);
 const statePath = typeof args["state-path"] === "string" ? args["state-path"] : "data/workbench-browser-smoke-state.json";
+const v5StatePath = typeof args["v5-state-path"] === "string" ? args["v5-state-path"] : statePath.replace(/\.json$/i, "-v5.json");
 const scope = typeof args.scope === "string" ? args.scope : "content";
 const keepState = Boolean(args["keep-state"]);
 const baseUrl = `http://${host}:${port}`;
@@ -21,6 +22,7 @@ const devEnv = sanitizeEnv({
   ...process.env,
   NEXT_DIST_DIR: isolatedNextDir,
   WORKBENCH_STATE_PATH: statePath,
+  V5_MONTHLY_STATE_PATH: v5StatePath,
   WORKBENCH_BASE_URL: baseUrl
 });
 const recentLogs = [];
@@ -47,6 +49,11 @@ if (!keepState) {
   }
 
   rmSync(absoluteStatePath, { force: true });
+  const absoluteV5StatePath = resolve(root, v5StatePath);
+  if (!absoluteV5StatePath.startsWith(`${absoluteRoot}${process.platform === "win32" ? "\\" : "/"}`)) {
+    throw new Error(`Refuse to remove V5 state file outside workspace: ${absoluteV5StatePath}`);
+  }
+  rmSync(absoluteV5StatePath, { force: true });
 }
 
 removeInsideWorkspace(isolatedNextDir);
@@ -62,6 +69,7 @@ console.log(
       action: "start",
       baseUrl,
       statePath,
+      v5StatePath,
       scope,
       keepState
     },

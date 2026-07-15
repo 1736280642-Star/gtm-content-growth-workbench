@@ -4,7 +4,7 @@ interface V5StatusRailItem {
   label: string;
   value: string | number;
   helper: string;
-  status?: "demo" | "mock" | "pending_config" | "待接入";
+  status?: "real" | "demo" | "mock" | "pending_config" | "待接入";
 }
 export function V5StatusRail({ items }: { items: V5StatusRailItem[] }) {
   return (

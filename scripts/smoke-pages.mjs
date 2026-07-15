@@ -72,6 +72,7 @@ const targets = [
   { name: "ai_config_page", path: "/ai-config", expect: "AI 配置" },
   { name: "settings_page", path: "/settings", expect: "工作台设置" },
   { name: "workbench_state_api", path: "/api/workbench-state", expect: "workspaceSetting" },
+  { name: "v5_monthly_workspace_api", path: "/api/v5/monthly-workspace", expect: "rulePackages" },
   { name: "runtime_config_api", path: "/api/runtime-config/status", expect: "capabilities" },
   { name: "config_diagnostics_api", path: "/api/config-diagnostics", expect: "results" },
   { name: "weekly_report_api", path: "/api/weekly-reports/2026-06-17", expect: "executiveSummary" },

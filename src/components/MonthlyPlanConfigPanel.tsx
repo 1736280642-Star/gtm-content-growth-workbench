@@ -3,14 +3,15 @@
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { Alert, Button, Form, Input, InputNumber, Modal, Select, Slider, Space, Tag, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { existingChannels, rulePackageOptions } from "@/lib/v5-ui-mock-data";
-import type { MonthlyPlanConfig, MonthlyPlanGroupQuota, RulePackageOption } from "@/lib/v5-ui-mock-data";
+import type { MonthlyPlanConfig, MonthlyPlanGroupQuota, RulePackageOption } from "@/lib/v5/monthly-workspace-contracts";
 
 interface MonthlyPlanConfigPanelProps {
   open: boolean;
   value: MonthlyPlanConfig;
+  rulePackages: RulePackageOption[];
+  channels: string[];
   onClose: () => void;
-  onSave: (value: MonthlyPlanConfig) => void;
+  onSave: (value: MonthlyPlanConfig) => Promise<unknown>;
 }
 
 function cloneConfig(value: MonthlyPlanConfig): MonthlyPlanConfig {
@@ -20,17 +21,13 @@ function cloneConfig(value: MonthlyPlanConfig): MonthlyPlanConfig {
   };
 }
 
-function getRulePackage(packageId: string) {
-  return rulePackageOptions.find((item) => item.id === packageId);
-}
-
 function isSelectablePackage(item: RulePackageOption) {
   return item.status === "active" && item.monthlyProductionReady;
 }
 
 function buildGroup(item: RulePackageOption): MonthlyPlanGroupQuota {
   return {
-    groupQuotaId: `group-${item.productId}`,
+    groupQuotaId: `group-${item.id}`,
     rulePackageVersionId: item.id,
     productId: item.productId,
     productName: item.productName,
@@ -39,9 +36,10 @@ function buildGroup(item: RulePackageOption): MonthlyPlanGroupQuota {
   };
 }
 
-export function MonthlyPlanConfigPanel({ open, value, onClose, onSave }: MonthlyPlanConfigPanelProps) {
+export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, onClose, onSave }: MonthlyPlanConfigPanelProps) {
   const [messageApi, contextHolder] = message.useMessage();
   const [draft, setDraft] = useState<MonthlyPlanConfig>(() => cloneConfig(value));
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -50,8 +48,8 @@ export function MonthlyPlanConfigPanel({ open, value, onClose, onSave }: Monthly
   }, [open, value]);
 
   const selectedPackageIds = useMemo(() => new Set(draft.groups.map((group) => group.rulePackageVersionId)), [draft.groups]);
-  const availablePackages = rulePackageOptions.filter(isSelectablePackage);
-  const unavailablePackages = rulePackageOptions.filter((item) => !isSelectablePackage(item));
+  const availablePackages = rulePackages.filter(isSelectablePackage);
+  const unavailablePackages = rulePackages.filter((item) => !isSelectablePackage(item));
   const unusedPackages = availablePackages.filter((item) => !selectedPackageIds.has(item.id));
   const monthlyTotal = draft.groups.reduce((total, group) => total + group.articleQuota, 0);
   const coveredChannels = Array.from(new Set(draft.groups.flatMap((group) => group.selectedChannels)));
@@ -65,6 +63,10 @@ export function MonthlyPlanConfigPanel({ open, value, onClose, onSave }: Monthly
     selectedPackageIds.size !== draft.groups.length ? "同一个产品规则包不能重复配置。" : "",
     draft.baselineRatio !== 20 && !draft.ratioAdjustmentReason.trim() ? "调整默认 20/80 测试比例时必须填写原因。" : ""
   ].filter(Boolean);
+
+  function getRulePackage(packageId: string) {
+    return rulePackages.find((item) => item.id === packageId);
+  }
 
   function updateGroup(index: number, patch: Partial<MonthlyPlanGroupQuota>) {
     setDraft((current) => ({
@@ -101,15 +103,22 @@ export function MonthlyPlanConfigPanel({ open, value, onClose, onSave }: Monthly
     setDraft((current) => ({ ...current, groups: current.groups.filter((_, groupIndex) => groupIndex !== index) }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (issues.length) {
       messageApi.warning("请先处理配置缺口。");
       return;
     }
 
-    onSave(cloneConfig(draft));
-    messageApi.success("月度计划已保存为页面 mock 草稿，尚未同步后端。");
-    onClose();
+    setSaving(true);
+    try {
+      await onSave(cloneConfig(draft));
+      messageApi.success("月度计划已保存到 V5 数据源。");
+      onClose();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "月度计划保存失败，请稍后重试。");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -120,14 +129,15 @@ export function MonthlyPlanConfigPanel({ open, value, onClose, onSave }: Monthly
         width={980}
         open={open}
         title="月度计划配置"
-        onCancel={onClose}
+        onCancel={saving ? undefined : onClose}
         footer={
           <Space wrap>
-            <Button onClick={onClose}>取消</Button>
+            <Button disabled={saving} onClick={onClose}>取消</Button>
             <Button
               type="primary"
               icon={<SaveOutlined />}
               disabled={Boolean(issues.length)}
+              loading={saving}
               onClick={handleSave}
               data-testid="monthly-plan-save-button"
             >
@@ -202,7 +212,7 @@ export function MonthlyPlanConfigPanel({ open, value, onClose, onSave }: Monthly
         <div className="monthly-plan-group-list">
           {draft.groups.map((group, index) => {
             const selectedPackage = getRulePackage(group.rulePackageVersionId);
-            const allowedChannels = selectedPackage?.allowedChannels || existingChannels;
+            const allowedChannels = selectedPackage?.allowedChannels || channels;
 
             return (
               <div className="monthly-plan-group-row" key={group.groupQuotaId}>
@@ -210,7 +220,7 @@ export function MonthlyPlanConfigPanel({ open, value, onClose, onSave }: Monthly
                   <Select
                     value={group.rulePackageVersionId}
                     onChange={(packageId) => handlePackageChange(index, packageId)}
-                    options={rulePackageOptions.map((item) => ({
+                    options={rulePackages.map((item) => ({
                       value: item.id,
                       disabled: !isSelectablePackage(item) || (selectedPackageIds.has(item.id) && item.id !== group.rulePackageVersionId),
                       label: `${item.productName} · ${item.status} ${item.version}${item.disabledReason ? ` · ${item.disabledReason}` : ""}`
