@@ -10,13 +10,11 @@ The UI branch should prepare visual and interaction slots for:
 
 1. Monthly content matrix.
 2. Monthly strategy package review.
-3. Agent foundation overview.
-4. Batch generation center.
-5. Exception queue.
-6. Scheduled publish board.
-7. Daily execution board.
-8. Monthly review.
-9. AI governance log tabs for Agent / RAG / Rule / Eval / Publish.
+3. Batch generation center.
+4. Exception queue.
+5. Scheduled publish board.
+6. Daily execution board.
+7. Monthly review.
 
 This branch must not implement real backend publishing, knowledge base RAG, or Agent orchestration.
 
@@ -87,7 +85,6 @@ Safe to add page shells:
 ```text
 src/app/monthly-matrix/page.tsx
 src/app/monthly-strategy/page.tsx
-src/app/agent-foundation/page.tsx
 src/app/batch-generation/page.tsx
 src/app/exceptions/page.tsx
 src/app/publish-schedule/page.tsx
@@ -101,7 +98,6 @@ Safe to add presentational components:
 src/components/MonthlyMatrixTable.tsx
 src/components/EvidenceGateTag.tsx
 src/components/PublishStatusTag.tsx
-src/components/ProductionReadinessPanel.tsx
 src/components/ExceptionQueuePreview.tsx
 src/components/ScheduleCalendarLite.tsx
 src/components/V5StatusRail.tsx
@@ -137,8 +133,7 @@ If a type is needed for UI mock data, define a local page/component type instead
 The V5 main flow is monthly, not weekly:
 
 ```text
-Agent foundation
--> monthly goal
+monthly goal
 -> monthly strategy package
 -> monthly content matrix
 -> batch generation
@@ -160,23 +155,7 @@ UI should make this clear:
 
 ## 6. Page-Level Goals
 
-### 6.1 Agent Foundation Overview
-
-Show:
-
-1. Active rule package count.
-2. Available knowledge base count.
-3. Monthly producible matrix items.
-4. Pending exceptions.
-5. Product readiness table.
-
-Do not show:
-
-1. Raw prompt.
-2. Raw trace.
-3. Raw embeddings.
-
-### 6.2 Monthly Content Matrix
+### 6.1 Monthly Content Matrix
 
 Show:
 
@@ -198,7 +177,7 @@ Actions can be visual placeholders:
 
 Use disabled state or mock toast unless backend is explicitly requested.
 
-### 6.3 Monthly Strategy Review
+### 6.2 Monthly Strategy Review
 
 Show:
 
@@ -209,7 +188,7 @@ Show:
 5. Evidence check.
 6. Risk summary.
 
-### 6.4 Batch Generation Center
+### 6.3 Batch Generation Center
 
 Show:
 
@@ -220,7 +199,7 @@ Show:
 5. Queue table.
 6. EvidencePack / rule / evaluation status columns.
 
-### 6.5 Scheduled Publish Board
+### 6.4 Scheduled Publish Board
 
 Show:
 
@@ -232,7 +211,7 @@ Show:
 
 Do not implement real publish calls.
 
-### 6.6 Exception Queue
+### 6.5 Exception Queue
 
 Show:
 
@@ -243,7 +222,7 @@ Show:
 5. Recommended next action.
 6. Drawer or panel for handling context.
 
-### 6.7 Daily Execution
+### 6.6 Daily Execution
 
 Show:
 
@@ -254,7 +233,7 @@ Show:
 
 This page must not become the generation entry.
 
-### 6.8 Monthly Review
+### 6.7 Monthly Review
 
 Show:
 

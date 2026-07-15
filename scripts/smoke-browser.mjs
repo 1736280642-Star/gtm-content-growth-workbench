@@ -544,6 +544,34 @@ async function openPage() {
     await delay(100);
   }
 
+  async function hover(selector) {
+    await waitFor(() => evaluate(`
+      (() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        return Boolean(element && element.offsetParent !== null);
+      })()
+    `), 10000);
+    const point = await evaluate(`
+      (() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        if (!element) return undefined;
+        element.scrollIntoView({ block: "center", inline: "center" });
+        const rect = element.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()
+    `);
+
+    if (!point) throw new Error(`Unable to hover ${selector}`);
+
+    await send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: point.x,
+      y: point.y,
+      button: "none"
+    });
+    await delay(350);
+  }
+
   async function fill(selector, value) {
     await waitFor(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), 10000);
     await evaluate(`
@@ -574,6 +602,7 @@ async function openPage() {
     setViewport,
     navigate,
     click,
+    hover,
     fill,
     exists,
     containsText,
@@ -1727,12 +1756,38 @@ async function main() {
       await runStep("v5_batch_generation_desktop", () => assertDesktopLayout(page, {
         name: "v5_batch_generation_desktop",
         pathName: "/batch-generation",
-        expectedText: "当月内容生成矩阵"
+        expectedText: "内容任务",
+        beforeAudit: async (currentPage) => {
+          const expandedBeforeSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
+          if (expandedBeforeSearch !== 0) throw new Error(`expected collapsed groups, found ${expandedBeforeSearch} expanded`);
+          await currentPage.fill("[data-testid='batch-task-search']", "NoteFlow");
+          await waitFor(() => currentPage.containsText("企业知识库如何建立可引用的责任边界"), 15000);
+          const expandedAfterSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
+          if (expandedAfterSearch < 1) throw new Error("search did not expand the matching task group");
+        }
       }));
       await runStep("v5_batch_generation_mobile", () => assertResponsiveLayout(page, {
         name: "v5_batch_generation_mobile",
         pathName: "/batch-generation",
-        expectedText: "人工排程日历"
+        expectedText: "内容任务"
+      }));
+      await runStep("v5_schedule_calendar_desktop_hover", () => assertDesktopLayout(page, {
+        name: "v5_schedule_calendar_desktop_hover",
+        pathName: "/batch-generation#schedule",
+        expectedText: "人工排程日历",
+        beforeAudit: async (currentPage) => {
+          await currentPage.hover("[data-testid='schedule-day-2026-08-06']");
+          await waitFor(() => currentPage.containsText("Agent Tool Call 前后，AI 护栏应该检查什么"), 15000);
+        }
+      }));
+      await runStep("v5_schedule_calendar_mobile_click", () => assertResponsiveLayout(page, {
+        name: "v5_schedule_calendar_mobile_click",
+        pathName: "/batch-generation#schedule",
+        expectedText: "人工排程日历",
+        beforeAudit: async (currentPage) => {
+          await currentPage.click("[data-testid='schedule-day-2026-08-07']");
+          await waitFor(() => currentPage.containsText("NetOps Copilot 的三个关键控制点"), 15000);
+        }
       }));
       await runStep("v5_daily_execution_mobile", () => assertResponsiveLayout(page, {
         name: "v5_daily_execution_mobile",

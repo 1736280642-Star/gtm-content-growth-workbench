@@ -1060,10 +1060,214 @@ body {
   margin-top: 16px;
 }
 
+.v5-production-tabs,
+.v5-batch-table-shell,
+.v5-grouped-task-list,
+.v5-compact-task-table,
+.v5-schedule-calendar-card,
+.v5-unscheduled-collapse {
+  min-width: 0;
+}
+
+.v5-batch-table-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.v5-batch-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) repeat(3, minmax(140px, 0.7fr)) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.v5-batch-toolbar .ant-input-affix-wrapper,
+.v5-batch-toolbar .ant-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.v5-group-toggle-actions {
+  white-space: nowrap;
+}
+
+.v5-batch-result-count {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.v5-grouped-task-list {
+  display: grid;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+}
+
+.v5-grouped-task-list > .ant-collapse-item {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px !important;
+  background: #fff;
+}
+
+.v5-grouped-task-list > .ant-collapse-item > .ant-collapse-header {
+  align-items: center;
+  padding: 12px 14px;
+}
+
+.v5-grouped-task-list .ant-collapse-content {
+  border-top: 1px solid var(--line);
+}
+
+.v5-grouped-task-list .ant-collapse-content-box {
+  padding: 0;
+}
+
+.v5-group-header,
+.v5-group-header-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.v5-group-header {
+  width: 100%;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v5-group-header-main {
+  gap: 6px;
+}
+
+.v5-group-header-main strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v5-group-header > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.v5-compact-task-table table {
+  min-width: 820px;
+  table-layout: fixed !important;
+}
+
+.v5-compact-task-table .ant-table-thead > tr > th,
+.v5-compact-task-table .ant-table-tbody > tr > td {
+  padding: 9px 10px;
+}
+
+.v5-task-primary,
+.v5-schedule-summary {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.v5-task-title-single-line {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v5-task-primary > span,
+.v5-schedule-summary > strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.v5-stage-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.v5-stage-item {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #e4e7ec;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.v5-stage-item span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.v5-stage-item strong {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v5-stage-item.is-success {
+  border-color: #b7dfc5;
+  background: #f1fbf4;
+  color: #176b3a;
+}
+
+.v5-stage-item.is-active {
+  border-color: #bad0ff;
+  background: #f2f6ff;
+  color: #1746a2;
+}
+
+.v5-stage-item.is-warning {
+  border-color: #f3d49c;
+  background: #fff9eb;
+  color: #925c13;
+}
+
+.v5-stage-item.is-danger {
+  border-color: #efb5b5;
+  background: #fff3f2;
+  color: #a12d2d;
+}
+
+.v5-task-expanded-detail {
+  padding: 12px 14px;
+  background: #fafbfc;
+}
+
+.v5-task-expanded-detail .ant-descriptions-item-content {
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.v5-batch-empty {
+  padding: 36px 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
 .v5-schedule-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.7fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
 }
 
 .v5-calendar-grid {
@@ -1088,7 +1292,7 @@ body {
 .v5-calendar-day {
   display: flex;
   min-width: 0;
-  min-height: 62px;
+  min-height: 96px;
   padding: 8px;
   border: 0;
   background: #fff;
@@ -1115,11 +1319,124 @@ body {
   font-size: 12px;
 }
 
+.v5-calendar-date-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.v5-calendar-date-row > span {
+  font-weight: 600;
+}
+
+.v5-calendar-status-summary {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+}
+
+.v5-calendar-status-summary span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: #475467;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.v5-calendar-status-summary i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #98a2b3;
+}
+
+.v5-calendar-status-summary i.is-active {
+  background: #2f9e5b;
+}
+
+.v5-calendar-status-summary i.is-draft {
+  background: #3973d6;
+}
+
+.v5-calendar-status-summary i.is-pending {
+  background: #d88719;
+}
+
+.v5-calendar-status-summary b,
+.v5-calendar-status-summary em {
+  overflow: hidden;
+  font-style: normal;
+  font-weight: 400;
+  text-overflow: ellipsis;
+}
+
+.v5-calendar-empty-label {
+  color: #98a2b3;
+  font-size: 11px;
+}
+
 .v5-calendar-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
+}
+
+.v5-calendar-popover .ant-popover-inner {
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+}
+
+.v5-calendar-popover-content {
+  width: 400px;
+  max-width: calc(100vw - 56px);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.v5-calendar-popover-heading {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.v5-calendar-popover-content .ant-list-item {
+  align-items: flex-start;
+  padding: 9px 0;
+}
+
+.v5-calendar-popover-content .ant-list-item-meta {
+  min-width: 0;
+}
+
+.v5-calendar-popover-content .ant-list-item-meta-title {
+  margin-bottom: 4px;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.v5-calendar-popover-time {
+  display: inline-flex;
+  width: 74px;
+  align-items: center;
+  gap: 4px;
+  color: #1746a2;
+  font-size: 12px;
+}
+
+.v5-calendar-popover-empty {
+  width: 220px;
+  margin: 12px 0;
+}
+
+.v5-unscheduled-collapse > .ant-collapse-item {
+  border-radius: 6px !important;
 }
 
 .v5-inline-note {
@@ -1186,6 +1503,19 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .v5-batch-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v5-batch-toolbar > .ant-input-affix-wrapper {
+    grid-column: 1 / -1;
+  }
+
+  .v5-group-toggle-actions,
+  .v5-batch-result-count {
+    justify-self: start;
+  }
+
   .v5-geo-allocation {
     align-items: stretch;
     flex-direction: column;
@@ -1223,9 +1553,88 @@ body {
     margin-inline-start: 0;
   }
 
+  .v5-batch-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .v5-batch-toolbar > .ant-input-affix-wrapper {
+    grid-column: auto;
+  }
+
+  .v5-group-toggle-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v5-group-toggle-actions .ant-space-item,
+  .v5-group-toggle-actions .ant-btn {
+    width: 100%;
+  }
+
+  .v5-group-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .v5-group-header-main {
+    width: 100%;
+  }
+
+  .v5-group-header > span {
+    white-space: normal;
+  }
+
+  .v5-stage-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .v5-calendar-day {
-    min-height: 54px;
+    min-height: 64px;
     padding: 6px 4px;
+  }
+
+  .v5-calendar-weekday {
+    padding: 7px 2px;
+  }
+
+  .v5-calendar-date-row > span {
+    font-size: 12px;
+  }
+
+  .v5-calendar-date-row strong,
+  .v5-calendar-status-summary span {
+    font-size: 10px;
+  }
+
+  .v5-calendar-status-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 5px;
+  }
+
+  .v5-calendar-status-summary span {
+    gap: 2px;
+  }
+
+  .v5-calendar-status-summary em,
+  .v5-calendar-empty-label {
+    display: none;
+  }
+
+  .v5-calendar-legend .ant-tag:last-child {
+    width: 100%;
+    margin-inline-end: 0;
+    white-space: normal;
+  }
+
+  .v5-calendar-popover-content {
+    width: 310px;
+  }
+
+  .v5-calendar-popover-time {
+    width: 62px;
   }
 
   .app-shell.ant-layout-has-sider {

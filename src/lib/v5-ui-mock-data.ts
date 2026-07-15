@@ -179,14 +179,6 @@ export interface NextMonthCandidate {
   status: "pending_review" | "confirmed" | "hold";
 }
 
-export interface ReadinessRow {
-  key: string;
-  area: string;
-  status: EvidenceReadinessStatus;
-  owner: string;
-  impact: string;
-}
-
 export const v5DemoLabel = "demo / mock，待接入真实 V5 后端";
 
 export const existingChannels = ["官网博客", "微信公众号", "知乎", "CSDN", "掘金", "今日头条"];
@@ -608,11 +600,4 @@ export const nextMonthCandidates: NextMonthCandidate[] = [
   { id: "nc-001", term: "Agent Tool Call 护栏", product: "唯客 AI 护栏", source: "本月探索结果", reason: "可见率和覆盖率均提升，固定问题表达已具备可比较性。", proposedAction: "升级为下月 baseline，并补 2 条公开案例证据。", status: "pending_review" },
   { id: "nc-002", term: "NetOps Copilot 控制点", product: "Pharaoh Command", source: "连续两月 baseline", reason: "指标趋稳且实体准确率保持 94%。", proposedAction: "降低复测配额，把 2 篇转给新问题探索。", status: "pending_review" },
   { id: "nc-003", term: "企业知识库引用边界", product: "NoteFlow", source: "本月未改善缺口", reason: "官方引用率未提升，现有证据无法支持限制与责任边界。", proposedAction: "保持 Hold，先补知识库证据后再恢复生产。", status: "hold" }
-];
-
-export const readinessRows: ReadinessRow[] = [
-  { key: "rules", area: "产品表达规则包", status: "ready", owner: "知识库维护", impact: "3 个 active 且 monthlyProductionReady 的规则包可进入月度计划。" },
-  { key: "knowledge", area: "知识库证据容量", status: "needs_material", owner: "内容增长", impact: "预计 24 / 30 个矩阵项具备可生成证据角色。" },
-  { key: "geo", area: "GEO 测试分配", status: "ready", owner: "内容增长", impact: "全月 baseline 6 篇，exploration 24 篇。" },
-  { key: "publish", area: "正式发布能力", status: "pending_config", owner: "发布", impact: "当前仅验证排程草稿和人工接管界面。" }
 ];

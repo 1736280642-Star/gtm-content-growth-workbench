@@ -106,7 +106,6 @@ function addRegexCheck(label, filePath, patterns) {
   "src/app/monthly-matrix/strategy/page.tsx",
   "src/app/monthly-matrix/batch-generation/page.tsx",
   "src/app/monthly-strategy/page.tsx",
-  "src/app/agent-foundation/page.tsx",
   "src/app/batch-generation/page.tsx",
   "src/app/exceptions/page.tsx",
   "src/app/publish-schedule/page.tsx",
@@ -118,7 +117,6 @@ function addRegexCheck(label, filePath, patterns) {
   "src/components/MonthlyPlanConfigPanel.tsx",
   "src/components/EvidenceGateTag.tsx",
   "src/components/PublishStatusTag.tsx",
-  "src/components/ProductionReadinessPanel.tsx",
   "src/components/ExceptionQueuePreview.tsx",
   "src/components/ScheduleCalendarLite.tsx",
   "src/components/V5StatusRail.tsx",
@@ -126,7 +124,6 @@ function addRegexCheck(label, filePath, patterns) {
 ].forEach((filePath) => addFileCheck(`v5 ui file: ${filePath}`, filePath));
 
 addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
-  "Agent 底座总览",
   "月度内容矩阵",
   "/batch-generation",
   "批量生成中心",
@@ -155,8 +152,11 @@ addAbsentCheck("v5 replaced v4 routes not primary navigation", "src/components/A
   "href=\"/weekly-report\""
 ]);
 
+addAbsentCheck("agent foundation removed from navigation", "src/components/AppShell.tsx", ["/agent-foundation", "Agent 底座"]);
+addAbsentCheck("agent foundation removed from route labels", "src/lib/permissions.ts", ["/agent-foundation", "Agent 底座"]);
+addAbsentCheck("agent foundation removed from page smoke", "scripts/smoke-pages.mjs", ["/agent-foundation", "agent_foundation_page"]);
+
 addContentCheck("v5 route labels", "src/lib/permissions.ts", [
-  "/agent-foundation",
   "/monthly-strategy",
   "/monthly-matrix",
   "/monthly-matrix/strategy",
@@ -215,15 +215,6 @@ addContentCheck("v5 strategy old route redirects", "src/app/monthly-strategy/pag
   "/monthly-matrix#strategy-package"
 ]);
 
-addContentCheck("v5 foundation page shell", "src/app/agent-foundation/page.tsx", [
-  "Agent 底座总览",
-  "active 规则包",
-  "可用知识库",
-  "预计可生成项",
-  "月度生产池"
-]);
-
-addAbsentCheck("v5 foundation no governance log tabs", "src/app/agent-foundation/page.tsx", ["V5GovernanceLogTabs"]);
 addAbsentCheck("v4 ai config unchanged by v5 ui", "src/app/ai-config/page.tsx", ["V5GovernanceLogTabs", "V5 治理日志"]);
 
 addContentCheck("v5 batch page shell", "src/app/batch-generation/page.tsx", [
@@ -231,12 +222,44 @@ addContentCheck("v5 batch page shell", "src/app/batch-generation/page.tsx", [
   "批量确认标题与矩阵",
   "批量生成当月可生成内容",
   "Final Evidence Gate",
-  "当月内容生成矩阵",
+  "内容任务",
+  "Tabs",
   "BatchGenerationMatrixTable",
   "ScheduleCalendarLite",
   "ExceptionQueuePreview",
   "只生成通过正式准入的矩阵项",
   "异常项保留原状态和原因"
+]);
+
+addContentCheck("v5 batch grouped task list", "src/components/BatchGenerationMatrixTable.tsx", [
+  "按产品分组",
+  "按渠道分组",
+  "按状态分组",
+  "按内容类型分组",
+  "按主蒸馏词分组",
+  "全部收起",
+  "v5-task-title-single-line",
+  "Tooltip",
+  "Collapse",
+  "batch-task-search"
+]);
+
+addContentCheck("v5 schedule full calendar details", "src/components/ScheduleCalendarLite.tsx", [
+  "人工排程日历",
+  "悬浮日期查看具体排程",
+  "trigger={[\"hover\", \"click\"]}",
+  "v5-calendar-status-summary",
+  "schedule-day-",
+  "未排程内容"
+]);
+
+addContentCheck("v5 batch and schedule responsive styles", "src/app/globals.css", [
+  ".v5-grouped-task-list",
+  ".v5-task-title-single-line",
+  ".v5-stage-strip",
+  ".v5-calendar-status-summary",
+  ".v5-calendar-popover-content",
+  ".v5-unscheduled-collapse"
 ]);
 
 addContentCheck("v5 batch nested route redirects", "src/app/monthly-matrix/batch-generation/page.tsx", [

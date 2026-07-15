@@ -49,7 +49,6 @@ const contentStyle: CSSProperties = {
 
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
-  { key: "/agent-foundation", icon: <ApiOutlined />, label: <Link href="/agent-foundation">Agent 底座总览</Link> },
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
   { key: "/batch-generation", icon: <RocketOutlined />, label: <Link href="/batch-generation">批量生成中心</Link> },
   { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },

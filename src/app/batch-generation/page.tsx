@@ -1,15 +1,17 @@
 "use client";
 
 import { PauseOutlined, SafetyCertificateOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Space, Tag } from "antd";
+import { Alert, Button, Space, Tabs, Tag } from "antd";
 import { BatchGenerationMatrixTable } from "@/components/BatchGenerationMatrixTable";
 import { ExceptionQueuePreview } from "@/components/ExceptionQueuePreview";
 import { PageHeader } from "@/components/PageHeader";
 import { ScheduleCalendarLite } from "@/components/ScheduleCalendarLite";
 import { V5StatusRail } from "@/components/V5StatusRail";
 import { batchQueueItems, exceptionItems, scheduleDraftItems, v5DemoLabel } from "@/lib/v5-ui-mock-data";
+import { useEffect, useState } from "react";
 
 export default function BatchGenerationPage() {
+  const [activeTab, setActiveTab] = useState("tasks");
   const generatableCount = batchQueueItems.filter(
     (item) => item.titleConfirmed && item.finalEvidenceGate === "ready" && ["pending", "input_expired"].includes(item.generationStatus)
   ).length;
@@ -17,6 +19,23 @@ export default function BatchGenerationPage() {
   const titlePendingCount = batchQueueItems.filter((item) => !item.titleConfirmed).length;
   const platformPendingCount = batchQueueItems.filter((item) => item.scheduleStatus === "pending_config" || item.finalEvidenceGate === "pending_config").length;
   const openExceptionCount = exceptionItems.filter((item) => item.status === "open").length;
+
+  useEffect(() => {
+    function syncTabFromHash() {
+      const hash = window.location.hash.replace("#", "");
+      if (hash === "schedule" || hash === "exceptions") setActiveTab(hash);
+    }
+
+    syncTabFromHash();
+    window.addEventListener("hashchange", syncTabFromHash);
+    return () => window.removeEventListener("hashchange", syncTabFromHash);
+  }, []);
+
+  function handleTabChange(key: string) {
+    setActiveTab(key);
+    const hash = key === "tasks" ? "" : `#${key}`;
+    window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
+  }
 
   return (
     <>
@@ -51,27 +70,28 @@ export default function BatchGenerationPage() {
         ]}
       />
 
-      <Card
-        className="v5-batch-matrix-card"
-        title="当月内容生成矩阵"
-        size="small"
-        extra={
-          <Space wrap>
-            <Tag>monthlyPlanId: mp-2026-08</Tag>
-            <Tag>matrixVersion: draft-01</Tag>
-          </Space>
-        }
-      >
-        <BatchGenerationMatrixTable items={batchQueueItems} />
-      </Card>
-
-      <section id="schedule" className="v5-section-anchor">
-        <ScheduleCalendarLite items={scheduleDraftItems} month="2026-08" />
-      </section>
-
-      <section id="exceptions" className="v5-section-anchor">
-        <ExceptionQueuePreview items={exceptionItems} />
-      </section>
+      <Tabs
+        className="v5-production-tabs"
+        activeKey={activeTab}
+        onChange={handleTabChange}
+        items={[
+          {
+            key: "tasks",
+            label: `内容任务 ${batchQueueItems.length}`,
+            children: <BatchGenerationMatrixTable items={batchQueueItems} />
+          },
+          {
+            key: "schedule",
+            label: `人工排程 ${scheduleDraftItems.filter((item) => item.date).length}`,
+            children: <div id="schedule"><ScheduleCalendarLite items={scheduleDraftItems} month="2026-08" /></div>
+          },
+          {
+            key: "exceptions",
+            label: `异常处理 ${openExceptionCount}`,
+            children: <div id="exceptions"><ExceptionQueuePreview items={exceptionItems} /></div>
+          }
+        ]}
+      />
     </>
   );
 }

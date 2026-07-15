@@ -10,7 +10,6 @@ export const workspaceRoleLabels: Record<WorkspaceRole, string> = {
 
 export const workspaceRouteLabels: Record<string, string> = {
   "/": "首页",
-  "/agent-foundation": "Agent 底座",
   "/monthly-strategy": "月度策略包（已并入月度内容矩阵）",
   "/monthly-matrix": "月度内容矩阵",
   "/monthly-matrix/strategy": "月度策略包（已并入月度内容矩阵）",

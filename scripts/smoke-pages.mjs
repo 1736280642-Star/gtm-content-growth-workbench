@@ -47,7 +47,6 @@ const currentGeoResultId = await resolveCurrentGeoResultId();
 
 const targets = [
   { name: "dashboard_page", path: "/", expect: "JOTO GTM" },
-  { name: "agent_foundation_page", path: "/agent-foundation", expect: "Agent 底座" },
   { name: "monthly_matrix_page", path: "/monthly-matrix", expect: "月度内容矩阵" },
   { name: "monthly_matrix_strategy_compat_page", path: "/monthly-matrix/strategy", expect: "月度内容矩阵" },
   { name: "monthly_matrix_batch_generation_page", path: "/monthly-matrix/batch-generation", expect: "批量生成中心" },

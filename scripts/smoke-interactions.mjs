@@ -124,6 +124,35 @@ const contracts = [
     excludes: ["fetch(", "/api/"]
   },
   {
+    name: "v5_batch_grouping_contract",
+    file: "src/components/BatchGenerationMatrixTable.tsx",
+    includes: [
+      "按产品分组",
+      "按渠道分组",
+      "按状态分组",
+      "按内容类型分组",
+      "按主蒸馏词分组",
+      "全部收起",
+      "v5-task-title-single-line",
+      "batch-task-search",
+      "setActiveGroupKeys(groupKeys)"
+    ],
+    excludes: ["fetch(", "/api/"]
+  },
+  {
+    name: "v5_schedule_calendar_contract",
+    file: "src/components/ScheduleCalendarLite.tsx",
+    includes: [
+      "人工排程日历",
+      "悬浮日期查看具体排程",
+      "trigger={[\"hover\", \"click\"]}",
+      "v5-calendar-status-summary",
+      "schedule-day-",
+      "未排程内容"
+    ],
+    excludes: ["fetch(", "/api/"]
+  },
+  {
     name: "v5_daily_execution_boundary_contract",
     file: "src/app/daily-execution/page.tsx",
     includes: [
