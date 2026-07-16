@@ -58,12 +58,22 @@ export default function MonthlyMatrixPage() {
       ) : (
         <Alert
           showIcon
-          type={workspace?.source.referenceData === "seed_fallback" ? "warning" : workspace?.source.monthlyData === "persisted" ? "success" : "info"}
-          message={workspace?.source.monthlyData === "persisted" ? "已读取 V5 月度计划真实数据" : "V5 接口已接通，当前月份尚未建立计划"}
+          type={workspace?.source.governanceData === "failed" ? "error" : workspace?.source.governanceData === "pending_config" || workspace?.source.referenceData === "seed_fallback" ? "warning" : workspace?.source.monthlyData === "persisted" ? "success" : "info"}
+          message={
+            workspace?.source.governanceData === "failed"
+              ? "正式 V5 治理数据读取失败"
+              : workspace?.source.governanceData === "pending_config"
+                ? "正式 V5 治理数据待配置"
+                : workspace?.source.monthlyData === "persisted"
+                  ? "已读取 V5 月度计划真实数据"
+                  : "V5 接口已接通，当前月份尚未建立计划"
+          }
           description={
-            workspace?.source.referenceData === "seed_fallback"
+            workspace?.formal.message
+              ? `${workspace.formal.message} V4 数据仅用于候选产品名称与渠道映射，不作为生产准入依据。`
+              : workspace?.source.referenceData === "seed_fallback"
               ? "未找到 WORKBENCH_STATE_PATH 指向的真实 V4 状态；规则包仅作 seed_fallback 展示，不能进入月度生产池。"
-              : "规则包与渠道来自 V4 真实工作台状态；月度计划保存到独立 V5 数据源，不会改写 V4 状态。"
+              : "产品名称与候选渠道来自 V4 兼容映射；规则包状态、G6 准备度和生产池准入来自正式 V5 Repository / Service。"
           }
           style={{ marginBottom: 16 }}
         />

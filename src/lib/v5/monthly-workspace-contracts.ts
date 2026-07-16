@@ -23,7 +23,7 @@ export interface RulePackageOption {
   monthlyProductionReady: boolean;
   allowedChannels: string[];
   disabledReason?: string;
-  readinessSource?: "derived_v4" | "v5_governance" | "seed_fallback";
+  readinessSource?: "derived_v4" | "v5_governance" | "seed_fallback" | "pending_config";
 }
 
 export interface MonthlyPlanGroupQuota {
@@ -193,8 +193,9 @@ export interface V5MonthlyPlanRecord {
 
 export type V5RuntimeSource = "persisted" | "empty";
 export type V5ReferenceSource = "v4_runtime" | "seed_fallback";
+export type V5GovernanceSource = "v5_mysql" | "pending_config" | "failed";
 
-export interface V5MonthlyWorkspace {
+export interface MonthlyWorkspaceBase {
   schemaVersion: 1;
   month: string;
   plan: V5MonthlyPlanRecord | null;
@@ -211,6 +212,20 @@ export interface V5MonthlyWorkspace {
   };
 }
 
+export interface MonthlyWorkspaceReadModel extends MonthlyWorkspaceBase {
+  source: MonthlyWorkspaceBase["source"] & {
+    governanceData: V5GovernanceSource;
+  };
+  formal: {
+    monthlyPlan: V5MonthlyPlan | null;
+    productionReadiness: V5MonthlyProductionReadiness[];
+    productionPoolEntries: V5ProductionPoolEntry[];
+    message?: string;
+  };
+}
+
+export type V5MonthlyWorkspace = MonthlyWorkspaceReadModel;
+
 export interface SaveMonthlyPlanRequest {
   config: MonthlyPlanConfig;
   expectedVersion: number;
@@ -226,4 +241,5 @@ export type V5ApiEnvelope<T> =
   | { ok: true; data: T }
   | { ok: false; error: V5ApiError };
 
+import type { V5MonthlyPlan, V5MonthlyProductionReadiness, V5ProductionPoolEntry } from "./monthly-contracts";
 

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { V5ApiEnvelope, V5MonthlyWorkspace } from "@/lib/v5/monthly-workspace-contracts";
-import { getV5MonthlyWorkspace, V5ServiceError } from "@/lib/v5/monthly-service";
+import { getMonthlyWorkspaceReadModel } from "@/lib/v5/monthly-workspace-read-model";
+import { V5ServiceError } from "@/lib/v5/monthly-service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
     const month = request.nextUrl.searchParams.get("month") || undefined;
-    const data = await getV5MonthlyWorkspace(month);
+    const data = await getMonthlyWorkspaceReadModel(month);
     return NextResponse.json<V5ApiEnvelope<V5MonthlyWorkspace>>(
       { ok: true, data },
       { headers: { "cache-control": "no-store" } }

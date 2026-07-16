@@ -122,8 +122,13 @@ function addRegexCheck(label, filePath, patterns) {
   "src/components/V5StatusRail.tsx",
   "src/lib/v5-ui-mock-data.ts",
   "src/lib/v5/monthly-workspace-contracts.ts",
+  "src/lib/v5/monthly-contracts.ts",
   "src/lib/v5/monthly-repository.ts",
   "src/lib/v5/monthly-service.ts",
+  "src/lib/v5/monthly-plan-repository.ts",
+  "src/lib/v5/monthly-plan-service.ts",
+  "src/lib/v5/monthly-workspace-governance.ts",
+  "src/lib/v5/monthly-workspace-read-model.ts",
   "src/lib/v5/use-monthly-workspace.ts",
   "src/app/api/v5/monthly-workspace/route.ts",
   "src/app/api/v5/monthly-plans/[month]/route.ts"
@@ -214,10 +219,28 @@ addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanCo
 
 addContentCheck("v5 monthly workspace api contract", "src/lib/v5/monthly-workspace-contracts.ts", [
   "V5MonthlyWorkspace",
+  "MonthlyWorkspaceReadModel",
+  "V5GovernanceSource",
+  "governanceData",
+  "formal",
   "V5MonthlyPlanRecord",
   "SaveMonthlyPlanRequest",
   "V5ApiEnvelope",
   "expectedVersion"
+]);
+
+addAbsentCheck("v5 formal monthly contract has no ui dto", "src/lib/v5/monthly-contracts.ts", [
+  "V5MonthlyWorkspace",
+  "MonthlyWorkspaceReadModel",
+  "SaveMonthlyPlanRequest",
+  "V5ApiEnvelope",
+  "RulePackageOption"
+]);
+
+addContentCheck("v5 formal monthly contract source", "src/lib/v5/monthly-contracts.ts", [
+  "V5MonthlyPlan",
+  "V5MonthlyProductionReadiness",
+  "V5ProductionPoolEntry"
 ]);
 
 addContentCheck("v5 monthly repository boundary", "src/lib/v5/monthly-repository.ts", [
@@ -242,9 +265,40 @@ addContentCheck("v5 monthly service guards", "src/lib/v5/monthly-service.ts", [
   "MONTHLY_PLAN_VERSION_CONFLICT"
 ]);
 
+addContentCheck("v5 formal monthly plan repository", "src/lib/v5/monthly-plan-repository.ts", [
+  "monthly-contracts",
+  "getV5GovernancePool",
+  "readV5MonthlyPlanRecord",
+  "SELECT * FROM monthly_plan WHERE plan_month = ? LIMIT 1"
+]);
+
+addContentCheck("v5 formal monthly plan service", "src/lib/v5/monthly-plan-service.ts", [
+  "monthly-contracts",
+  "readV5MonthlyPlanRecord",
+  "getV5MonthlyPlan"
+]);
+
+addContentCheck("v5 monthly workspace governance adapter", "src/lib/v5/monthly-workspace-governance.ts", [
+  "monthly-contracts",
+  "getV5MonthlyPlan",
+  "getV5MonthlyProductionReadiness",
+  "getV5MonthlyProductionPool",
+  "pending_config",
+  "monthlyProductionReady"
+]);
+
+addContentCheck("v5 monthly workspace read model adapter", "src/lib/v5/monthly-workspace-read-model.ts", [
+  "monthly-contracts",
+  "getMonthlyWorkspaceBase",
+  "loadMonthlyWorkspaceGovernance",
+  "getMonthlyWorkspaceReadModel",
+  "governanceData",
+  "formal"
+]);
+
 addContentCheck("v5 monthly read api", "src/app/api/v5/monthly-workspace/route.ts", [
   "force-dynamic",
-  "getV5MonthlyWorkspace",
+  "getMonthlyWorkspaceReadModel",
   "cache-control",
   "no-store"
 ]);

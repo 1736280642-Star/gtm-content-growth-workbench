@@ -156,6 +156,69 @@ const contracts = [
     excludes: ["API_KEY", "process.env.OPENAI"]
   },
   {
+    name: "v5_formal_monthly_contract_boundary",
+    file: "src/lib/v5/monthly-contracts.ts",
+    includes: ["V5MonthlyPlan", "V5MonthlyProductionReadiness", "V5ProductionPoolEntry"],
+    excludes: [
+      "V5MonthlyWorkspace",
+      "MonthlyWorkspaceReadModel",
+      "SaveMonthlyPlanRequest",
+      "V5ApiEnvelope",
+      "RulePackageOption"
+    ]
+  },
+  {
+    name: "v5_formal_monthly_plan_repository_contract",
+    file: "src/lib/v5/monthly-plan-repository.ts",
+    includes: [
+      "monthly-contracts",
+      "getV5GovernancePool",
+      "readV5MonthlyPlanRecord",
+      "SELECT * FROM monthly_plan WHERE plan_month = ? LIMIT 1"
+    ],
+    excludes: ["data/v5-monthly-workbench.json", "workbench-state.json"]
+  },
+  {
+    name: "v5_formal_monthly_plan_service_contract",
+    file: "src/lib/v5/monthly-plan-service.ts",
+    includes: ["monthly-contracts", "readV5MonthlyPlanRecord", "getV5MonthlyPlan"],
+    excludes: ["monthly-workspace-contracts", "workbench-state.json"]
+  },
+  {
+    name: "v5_monthly_workspace_governance_contract",
+    file: "src/lib/v5/monthly-workspace-governance.ts",
+    includes: [
+      "monthly-contracts",
+      "getV5MonthlyPlan",
+      "getV5MonthlyProductionReadiness",
+      "getV5MonthlyProductionPool",
+      "pending_config",
+      "monthlyProductionReady",
+      "approvedAt",
+      "approvedBy"
+    ],
+    excludes: ["derived_v4"]
+  },
+  {
+    name: "v5_monthly_workspace_read_model_contract",
+    file: "src/lib/v5/monthly-workspace-read-model.ts",
+    includes: [
+      "monthly-contracts",
+      "getMonthlyWorkspaceBase",
+      "loadMonthlyWorkspaceGovernance",
+      "getMonthlyWorkspaceReadModel",
+      "governanceData",
+      "formal"
+    ],
+    excludes: ["v5-ui-mock-data"]
+  },
+  {
+    name: "v5_monthly_workspace_read_api_contract",
+    file: "src/app/api/v5/monthly-workspace/route.ts",
+    includes: ["getMonthlyWorkspaceReadModel", "cache-control", "no-store"],
+    excludes: ["getV5MonthlyWorkspace"]
+  },
+  {
     name: "v5_monthly_api_routes_contract",
     file: "src/app/api/v5/monthly-plans/[month]/route.ts",
     includes: ["PUT", "parseSaveMonthlyPlanRequest", "saveV5MonthlyPlan", "x-idempotency-key", "V5ServiceError"],

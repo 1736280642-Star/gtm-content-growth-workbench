@@ -68,10 +68,12 @@ export default function BatchGenerationPage() {
       ) : (
         <Alert
           showIcon
-          type={workspace?.source.monthlyData === "persisted" ? "warning" : "info"}
+          type={workspace?.source.governanceData === "failed" ? "error" : workspace?.source.governanceData === "pending_config" ? "warning" : workspace?.source.monthlyData === "persisted" ? "warning" : "info"}
           message="只生成通过正式准入的矩阵项"
           description={
-            workspace?.source.monthlyData === "persisted"
+            workspace?.formal.message
+              ? `${workspace.formal.message} 当前不会把 V4 派生状态或页面 mock 当作可生成许可。`
+              : workspace?.source.monthlyData === "persisted"
               ? "当前队列来自 V5 持久化数据；批次只执行 ready 或自动安全降级后复检通过的项目，异常项保留原状态和原因并独立分流。"
               : "V5 接口已接通，但当前月份还没有真实矩阵与生成队列，不再回退展示页面 mock。"
           }

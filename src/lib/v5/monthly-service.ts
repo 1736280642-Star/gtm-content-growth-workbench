@@ -6,13 +6,14 @@ import { createInitialWorkbenchState, normalizeWorkbenchState } from "@/lib/work
 import type { ProductPlanConfig, WorkspaceRole } from "@/lib/types";
 import type {
   MonthlyPlanConfig,
+  MonthlyWorkspaceBase,
   RulePackageOption,
   SaveMonthlyPlanRequest,
   V5MonthlyPlanRecord,
-  V5MonthlyWorkspace,
   V5ReferenceSource
 } from "./monthly-workspace-contracts";
 import { readV5MonthlyState, updateV5MonthlyState } from "./monthly-repository";
+import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
 
 type WorkbenchState = ReturnType<typeof createInitialWorkbenchState>;
 
@@ -148,7 +149,7 @@ function selectMonth(requestedMonth: string | undefined, availableMonths: string
   return [...availableMonths].sort().at(-1) || getDefaultMonth();
 }
 
-export async function getV5MonthlyWorkspace(requestedMonth?: string): Promise<V5MonthlyWorkspace> {
+export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<MonthlyWorkspaceBase> {
   const [monthlyState, reference] = await Promise.all([readV5MonthlyState(), readV4Reference()]);
   const availableMonths = Array.from(
     new Set([
@@ -303,8 +304,16 @@ export async function saveV5MonthlyPlan(
   const reference = await readV4Reference();
   const role = reference.state.workspaceSetting.currentRole;
   assertWritableRole(role);
-  const rulePackages = buildRulePackages(reference.state, reference.source);
-  const config = validateMonthlyPlan(request.config, month, rulePackages);
+  const candidateRulePackages = buildRulePackages(reference.state, reference.source);
+  const governance = await loadMonthlyWorkspaceGovernance(month, candidateRulePackages, `monthly-plan-${month}`);
+  if (governance.source !== "v5_mysql") {
+    throw new V5ServiceError(
+      503,
+      "V5_GOVERNANCE_PENDING_CONFIG",
+      governance.message || "正式 V5 治理数据不可用，不能保存月度计划。"
+    );
+  }
+  const config = validateMonthlyPlan(request.config, month, governance.rulePackages);
 
   const requestHash = createHash("sha256")
     .update(JSON.stringify({ month, expectedVersion: request.expectedVersion, config }))
