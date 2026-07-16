@@ -27,12 +27,20 @@ export const promptTemplates: PromptTemplate[] = [
   },
   {
     id: "channel_title",
-    name: "渠道标题模板",
-    version: "v3.0.0",
-    usedAt: "周计划标题生成或编辑",
-    inputContract: ["渠道", "产品", "内容类型", "主蒸馏词", "来源问题"],
-    outputContract: ["title", "titleReason", "riskNote"],
-    failureRules: ["标题必须体现用户问题", "标题不能堆关键词", "标题不能使用绝对化承诺"]
+    name: "平台表达准备模板",
+    version: "v5.0.0",
+    usedAt: "周计划平台内容类型与标题生成或编辑",
+    inputContract: ["渠道", "产品", "任务内容意图", "主蒸馏词", "来源问题", "产品表达规则包", "EvidencePack 摘要", "平台内容类型规则", "产品标题体系", "标题类别", "目标用户", "证据依据"],
+    outputContract: ["platformContentType", "platformExpressionProfileId", "title", "titleCategory", "targetAudience", "evidenceBasis", "titleReason", "riskNote", "evidenceSupported", "bodyProvable", "roleBoundarySafe"],
+    failureRules: [
+      "不得混淆任务内容意图与平台内容类型",
+      "标题必须体现用户问题",
+      "标题不能堆关键词",
+      "数字、规模、速度和绝对化判断必须有证据",
+      "内容结构与标题承诺必须能被正文直接证明",
+      "标题不能把 AI 辅助能力写成独立决策或结果保证",
+      "三项检查未通过不得进入人工确认"
+    ]
   },
   {
     id: "evidence_selection",

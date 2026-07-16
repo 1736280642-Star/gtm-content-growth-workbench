@@ -61,6 +61,7 @@ import type {
   ProductKey,
   ProductExpressionRuleDraft,
   ProductExpressionRuleSnapshot,
+  PlatformContentType,
   PlatformDraftVariant,
   PlatformPublishPayload,
   PromptVersionRecord,
@@ -3861,6 +3862,85 @@ function buildTaskTitle(index: number, contentType: ContentType) {
   return pickTaskTitle(contentType, Math.floor(index / contentTypeOrder.length));
 }
 
+const titleCategoryByContentType: Record<ContentType, string> = {
+  brand: "品牌定位判断型",
+  scenario: "场景问题型",
+  technical: "工程选型型",
+  faq: "FAQ解释型",
+  comparison: "认知反差辨析型",
+  case: "场景纪实型"
+};
+
+const titleAudienceByContentType: Record<ContentType, string> = {
+  brand: "企业技术决策者",
+  scenario: "业务负责人和一线使用者",
+  technical: "技术负责人和工程团队",
+  faq: "正在了解产品的潜在用户",
+  comparison: "选型负责人和采购评估者",
+  case: "同类场景的业务与技术负责人"
+};
+
+const platformContentTypeByTaskIntent: Record<ContentType, PlatformContentType> = {
+  brand: "implicit_trend_judgment",
+  scenario: "implicit_painpoint_education",
+  technical: "implicit_tool_guide",
+  faq: "explicit_product_intro",
+  comparison: "implicit_trend_judgment",
+  case: "implicit_painpoint_education"
+};
+
+const platformContentTypes: PlatformContentType[] = [
+  "explicit_product_intro",
+  "explicit_launch_matrix",
+  "implicit_personal_review",
+  "implicit_painpoint_education",
+  "implicit_tool_guide",
+  "implicit_trend_judgment"
+];
+
+function buildPlatformExpressionPreparation(
+  task: Pick<ContentTask, "title" | "product" | "contentType" | "platformContentType" | "sourceProblem" | "titleEvidenceBasis" | "titleCategory" | "targetAudience">
+) {
+  const evidenceClaims = /(?:\d+(?:\.\d+)?%|\d+\+|上百|上千|第一|唯一|最强|最快|零风险|完全替代|重新定义)/;
+  const roleBoundaryClaims = /(?:只靠聊天|自动管好|无需人工|无人审批|直接替代|一键解决|零风险|100%安全|自动拍板)/;
+  const evidenceSupported = !evidenceClaims.test(task.title) || Boolean(task.titleEvidenceBasis?.length);
+  const bodyProvable = Boolean(task.sourceProblem && task.sourceProblem.trim().length >= 8);
+  const roleBoundarySafe = !roleBoundaryClaims.test(task.title);
+  const notes: string[] = [];
+
+  if (!evidenceSupported) {
+    notes.push("标题含数字、规模或绝对化判断，但未绑定证据依据");
+  }
+
+  if (!bodyProvable) {
+    notes.push("标题缺少可供正文兑现的来源问题");
+  }
+
+  if (!roleBoundarySafe) {
+    notes.push("标题可能把 AI 辅助能力写成独立决策或结果保证");
+  }
+
+  const platformExpressionProfileId = task.product === "weike_guardrails" ? "weike-ai-guardrail-wechat-expression" : "general-product-wechat-expression";
+  const platformExpressionPrecheck = {
+    evidenceSupported,
+    bodyProvable,
+    roleBoundarySafe,
+    notes
+  };
+
+  return {
+    platformContentType: task.platformContentType || platformContentTypeByTaskIntent[task.contentType],
+    platformExpressionProfileId,
+    platformExpressionProfileVersion: "v1.0.0",
+    titleCategory: task.titleCategory || titleCategoryByContentType[task.contentType],
+    targetAudience: task.targetAudience || titleAudienceByContentType[task.contentType],
+    platformExpressionPrecheck,
+    titleRulePackageId: platformExpressionProfileId,
+    titleRuleVersion: "v1.0.0",
+    titlePrecheck: platformExpressionPrecheck
+  };
+}
+
 function buildTaskKeywords(product: ProductKey, contentType: ContentType) {
   const base = product === "joto_brand" ? ["JOTO", "Dify 服务商"] : ["唯客 AI 护栏", "AI 安全"];
   const byType: Record<ContentType, string> = {
@@ -3968,6 +4048,8 @@ function createPlanTaskFromProductPlan(
     status: "planned",
     qaSummary: `${input.template.name} ${input.template.version}，按产品分组配额生成标题级计划。`
   };
+
+  Object.assign(task, buildPlatformExpressionPreparation(task));
 
   task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
     matrixDay: input.matrixDay,
@@ -4105,7 +4187,7 @@ function appendContentTaskRejectionRecord(task: ContentTask, record: ContentTask
 }
 
 function getContentTaskReviewReasons(task: ContentTask) {
-  const reasons: string[] = [];
+  const reasons: string[] = [...getPlatformExpressionBlockingReasons(task)];
 
   if ((task.confidence ?? 1) < 0.65) {
     reasons.push("未达到自动确认阈值");
@@ -4121,6 +4203,34 @@ function getContentTaskReviewReasons(task: ContentTask) {
 
   if (isBlockingContentTaskRiskNote(task.riskNote)) {
     reasons.push("风险说明需复核");
+  }
+
+  return reasons;
+}
+
+function getPlatformExpressionBlockingReasons(task: ContentTask) {
+  const reasons: string[] = [];
+  const platformPrecheck = task.platformExpressionPrecheck || task.titlePrecheck;
+
+  if (!task.platformContentType || !task.platformExpressionProfileId) {
+    reasons.push("平台表达准备待补");
+  }
+
+  if (!platformPrecheck) {
+    reasons.push("三项前置检查待补");
+    return reasons;
+  }
+
+  if (!platformPrecheck.evidenceSupported) {
+    reasons.push("标题证据依据待补");
+  }
+
+  if (!platformPrecheck.bodyProvable) {
+    reasons.push("标题承诺缺少正文来源问题");
+  }
+
+  if (!platformPrecheck.roleBoundarySafe) {
+    reasons.push("标题人机角色边界需复核");
   }
 
   return reasons;
@@ -5050,13 +5160,30 @@ export function patchContentTask(id: string, input: Record<string, unknown>): Wo
         ? input.officialLinkTarget.trim()
         : current.officialLinkTarget,
     titleReason: typeof input.titleReason === "string" && input.titleReason.trim() ? input.titleReason.trim() : current.titleReason,
+    platformContentType:
+      typeof input.platformContentType === "string" && platformContentTypes.includes(input.platformContentType as PlatformContentType)
+        ? (input.platformContentType as PlatformContentType)
+        : current.platformContentType,
+    titleCategory:
+      typeof input.titleCategory === "string" && input.titleCategory.trim() ? input.titleCategory.trim() : current.titleCategory,
+    targetAudience:
+      typeof input.targetAudience === "string" && input.targetAudience.trim() ? input.targetAudience.trim() : current.targetAudience,
+    titleEvidenceBasis: Array.isArray(input.titleEvidenceBasis)
+      ? input.titleEvidenceBasis.map(String).map((item) => item.trim()).filter(Boolean)
+      : typeof input.titleEvidenceBasis === "string"
+        ? input.titleEvidenceBasis.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean)
+        : current.titleEvidenceBasis,
     riskNote: typeof input.riskNote === "string" && input.riskNote.trim() ? input.riskNote.trim() : current.riskNote,
     evidenceNeed: typeof input.evidenceNeed === "string" && input.evidenceNeed.trim() ? input.evidenceNeed.trim() : current.evidenceNeed,
     confidence: typeof input.confidence === "number" ? Math.min(Math.max(input.confidence, 0), 1) : current.confidence,
     locked: typeof input.locked === "boolean" ? input.locked : current.locked,
     status: typeof input.status === "string" ? (input.status as TaskStatus) : current.status
   };
-  const task = appendContentTaskEditRecords(taskPatch, buildContentTaskEditRecords(current, taskPatch, "manual"));
+  const governedTaskPatch: ContentTask = {
+    ...taskPatch,
+    ...buildPlatformExpressionPreparation(taskPatch)
+  };
+  const task = appendContentTaskEditRecords(governedTaskPatch, buildContentTaskEditRecords(current, governedTaskPatch, "manual"));
 
   state.tasks[taskIndex] = task;
   saveWithEvent(state, "content_task_updated", `Updated content task ${id}.`);
@@ -5081,6 +5208,26 @@ export function confirmContentTasks(
   if (isSingleConfirm && requestedIds?.[0]) {
     const task = state.tasks.find((item) => item.id === requestedIds[0]);
     const reasons = task ? getContentTaskReviewReasons(task) : [];
+    const platformBlockingReasons = task ? getPlatformExpressionBlockingReasons(task) : [];
+
+    if (task?.status === "planned" && platformBlockingReasons.length) {
+      return {
+        ok: false,
+        status: "pending_input",
+        message: "平台表达准备未完成或三项前置检查未通过，请先修改计划项。",
+        data: {
+          confirmed: 0,
+          tasks: state.tasks,
+          reviewRequired: [
+            {
+              taskId: task.id,
+              title: task.title,
+              reasons: platformBlockingReasons
+            }
+          ]
+        }
+      };
+    }
 
     if (task?.status === "planned" && reasons.length && !riskAcceptanceReason) {
       return {
@@ -6280,11 +6427,16 @@ export function regenerateContentTaskTitle(id: string): WorkflowResult<{ task: C
   }
 
   const current = state.tasks[taskIndex];
-  const taskPatch: ContentTask = {
+  const nextTitle = buildRegeneratedTaskTitle(current);
+  const taskPatchBase: ContentTask = {
     ...current,
-    title: buildRegeneratedTaskTitle(current),
+    title: nextTitle,
     ...buildTaskPlanContext(current.product, current.contentType, current.sourceProblem, current.primaryDistilledTerm),
     confidence: 0.78
+  };
+  const taskPatch: ContentTask = {
+    ...taskPatchBase,
+    ...buildPlatformExpressionPreparation(taskPatchBase)
   };
   const task = appendContentTaskEditRecords(taskPatch, buildContentTaskEditRecords(current, taskPatch, "ai_regenerate"));
 
@@ -8021,6 +8173,7 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
     status: "planned",
     qaSummary: `来源博客候选池：${article.candidateReason || article.url}`
   };
+  Object.assign(task, buildPlatformExpressionPreparation(task));
   task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
     businessSignal: {
       key: "blog_diagnosis",
@@ -8344,6 +8497,7 @@ export function createContentTaskFromGeoGap(id: string): WorkflowResult<{ task: 
     status: "planned",
     qaSummary: `来源 GEO 测试：${result.platform} / ${result.promptGroup}`
   };
+  Object.assign(task, buildPlatformExpressionPreparation(task));
   task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
     businessSignal: {
       key: "geo_gap",
@@ -8973,6 +9127,7 @@ export function createNextWeeklyPlanFromReport(week: string, input: Record<strin
         status: "planned",
         qaSummary: `来源周报 ${week}：${suggestion}；${template.name} ${template.version}。`
       };
+      Object.assign(task, buildPlatformExpressionPreparation(task));
       task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
         businessSignal,
         promptVersion: template.version

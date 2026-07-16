@@ -75,6 +75,9 @@ function addRegexCheck(label, filePath, patterns) {
   "scripts/smoke-browser-isolated.mjs",
   "scripts/smoke-workflow.mjs",
   "scripts/smoke-workflow-isolated.mjs",
+  "scripts/v5-knowledge-workflow-policy.test.mjs",
+  "src/lib/v5-knowledge-workflow-policy.ts",
+  "docs/V5 07-07/01-真实开发准入审计与流程规则映射.md",
   "src/app/api/content-tasks/[id]/published/route.ts",
   "src/app/api/content-tasks/[id]/url/route.ts",
   "src/app/api/content-tasks/[id]/review/route.ts",
@@ -1435,6 +1438,59 @@ addContentCheck("prompt templates fixed", "src/lib/prompt-templates.ts", [
   "inputContract",
   "outputContract",
   "failureRules"
+]);
+
+addContentCheck("platform expression precheck contract", "src/lib/prompt-templates.ts", [
+  "platformContentType",
+  "platformExpressionProfileId",
+  "titleCategory",
+  "targetAudience",
+  "evidenceBasis",
+  "evidenceSupported",
+  "bodyProvable",
+  "roleBoundarySafe"
+]);
+
+addContentCheck("V5 knowledge workflow policy", "src/lib/v5-knowledge-workflow-policy.ts", [
+  "evaluateV5KnowledgeWorkflow",
+  "V5_KNOWLEDGE_WORKFLOW_RULES",
+  "V5-KB-001",
+  "V5-KB-005",
+  "V5-KB-009",
+  "V5-KB-010",
+  "V5-KB-014",
+  "V5-KB-015"
+]);
+addContentCheck("V5 knowledge workflow policy tests", "scripts/v5-knowledge-workflow-policy.test.mjs", [
+  "sensitive data blocks claim extraction",
+  "approved matrix with final evidence",
+  "local preview cannot enter publish schedule",
+  "published state requires external success"
+]);
+addContentCheck("V5 knowledge workflow package script", "package.json", ["test:v5-workflow"]);
+addContentCheck("platform expression task fields", "src/lib/types.ts", [
+  "platformContentType",
+  "platformExpressionProfileId",
+  "platformExpressionProfileVersion",
+  "titleCategory",
+  "targetAudience",
+  "titleEvidenceBasis",
+  "platformExpressionPrecheck"
+]);
+addContentCheck("platform expression confirmation guard", "src/lib/workbench-store.ts", [
+  "buildPlatformExpressionPreparation",
+  "getPlatformExpressionBlockingReasons",
+  "平台表达准备未完成或三项前置检查未通过",
+  "标题证据依据待补",
+  "标题承诺缺少正文来源问题",
+  "标题人机角色边界需复核"
+]);
+addContentCheck("weekly plan platform expression display", "src/app/weekly-plan/page.tsx", [
+  "平台表达准备",
+  "平台内容类型",
+  "标题类别 / 受众",
+  "标题证据依据",
+  "三项前置检查"
 ]);
 
 addRegexCheck("new task publish api", "src/app/api/content-tasks/[id]/published/route.ts", [/export\s+async\s+function\s+PATCH/]);

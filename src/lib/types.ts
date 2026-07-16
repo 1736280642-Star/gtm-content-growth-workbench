@@ -166,6 +166,14 @@ export type TaskStatus =
 
 export type ContentType = "brand" | "scenario" | "technical" | "faq" | "comparison" | "case";
 
+export type PlatformContentType =
+  | "explicit_product_intro"
+  | "explicit_launch_matrix"
+  | "implicit_personal_review"
+  | "implicit_painpoint_education"
+  | "implicit_tool_guide"
+  | "implicit_trend_judgment";
+
 export interface WeeklyPublishMatrixDay {
   date: string;
   weekday: string;
@@ -400,6 +408,27 @@ export interface ContentTask {
   sourceProblem?: string;
   officialLinkTarget?: string;
   titleReason?: string;
+  platformContentType?: PlatformContentType;
+  platformExpressionProfileId?: string;
+  platformExpressionProfileVersion?: string;
+  platformExpressionPrecheck?: {
+    evidenceSupported: boolean;
+    bodyProvable: boolean;
+    roleBoundarySafe: boolean;
+    notes: string[];
+  };
+  /** Legacy title-only fields retained while local task data migrates to platform-expression fields. */
+  titleRulePackageId?: string;
+  titleRuleVersion?: string;
+  titleCategory?: string;
+  targetAudience?: string;
+  titleEvidenceBasis?: string[];
+  titlePrecheck?: {
+    evidenceSupported: boolean;
+    bodyProvable: boolean;
+    roleBoundarySafe: boolean;
+    notes: string[];
+  };
   riskNote?: string;
   evidenceNeed?: string;
   confidence?: number;

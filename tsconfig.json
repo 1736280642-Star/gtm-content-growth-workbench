@@ -34,7 +34,9 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next-smoke-workflow-3057/types/**/*.ts"
+    ".next-smoke-workflow-3057/types/**/*.ts",
+    ".next-smoke-workflow-3061/types/**/*.ts",
+    ".next-smoke-workflow-3062/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
