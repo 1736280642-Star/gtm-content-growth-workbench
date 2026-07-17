@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { WorkbenchState } from "../workbench-store";
 import type { WorkbenchRepository } from "./types";
 
 export function createLocalJsonRepository(createInitialState: () => WorkbenchState, normalizeState: (state: Partial<WorkbenchState>) => WorkbenchState): WorkbenchRepository {
-  const statePath = join(process.cwd(), process.env.WORKBENCH_STATE_PATH || "data/workbench-state.json");
+  const statePath = resolve(process.cwd(), process.env.WORKBENCH_STATE_PATH || "data/workbench-state.json");
   let cachedState: WorkbenchState | undefined;
   let cachedFileSignature = "";
 

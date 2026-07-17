@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { isDateInWeek } from "@/lib/date-utils";
-import { channelLabels, contentTypeLabels, productLabels, statusLabels } from "@/lib/labels";
+import { channelLabels, contentTypeLabels, platformContentTypeLabels, productLabels, statusLabels } from "@/lib/labels";
 import type { ChannelKey, ContentTask, KnowledgeBase, ProductKey, ProductPlanConfig, TaskStatus, WeeklyPlanGenerationSignal, WeeklyPublishMatrixDay } from "@/lib/types";
 
 const weekdayOrder = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
@@ -1117,6 +1117,49 @@ export default function WeeklyPlanPage() {
           </span>
         </div>
         <div className="weekly-plan-detail-item">
+          <span className="weekly-plan-detail-label">平台表达准备</span>
+          <span className="weekly-plan-detail-value">
+            {record.platformExpressionProfileId
+              ? record.platformExpressionProfileId + "@" + (record.platformExpressionProfileVersion || "unknown")
+              : record.titleRulePackageId
+                ? record.titleRulePackageId + "@" + (record.titleRuleVersion || "unknown")
+                : "未绑定"}
+          </span>
+        </div>
+        <div className="weekly-plan-detail-item">
+          <span className="weekly-plan-detail-label">平台内容类型</span>
+          <span className="weekly-plan-detail-value">
+            {record.platformContentType ? platformContentTypeLabels[record.platformContentType] : "待补平台表达准备"}
+          </span>
+        </div>
+        <div className="weekly-plan-detail-item">
+          <span className="weekly-plan-detail-label">标题类别 / 受众</span>
+          <span className="weekly-plan-detail-value">
+            {renderOptionalValue(record.titleCategory)} / {renderOptionalValue(record.targetAudience)}
+          </span>
+        </div>
+        <div className="weekly-plan-detail-item">
+          <span className="weekly-plan-detail-label">标题证据依据</span>
+          <span className="weekly-plan-detail-value">
+            {record.titleEvidenceBasis?.length ? record.titleEvidenceBasis.join("；") : "未填写"}
+          </span>
+        </div>
+        <div className="weekly-plan-detail-item">
+          <span className="weekly-plan-detail-label">三项前置检查</span>
+          <span className="weekly-plan-detail-value">
+            {record.platformExpressionPrecheck || record.titlePrecheck ? (
+              <Space size={6} wrap>
+                <Tag color={(record.platformExpressionPrecheck || record.titlePrecheck)!.evidenceSupported ? "green" : "red"}>证据支持</Tag>
+                <Tag color={(record.platformExpressionPrecheck || record.titlePrecheck)!.bodyProvable ? "green" : "red"}>正文可证明</Tag>
+                <Tag color={(record.platformExpressionPrecheck || record.titlePrecheck)!.roleBoundarySafe ? "green" : "red"}>角色边界</Tag>
+                {(record.platformExpressionPrecheck || record.titlePrecheck)!.notes.length ? <span className="muted">{(record.platformExpressionPrecheck || record.titlePrecheck)!.notes.join("；")}</span> : null}
+              </Space>
+            ) : (
+              "待补平台表达准备"
+            )}
+          </span>
+        </div>
+        <div className="weekly-plan-detail-item">
           <span className="weekly-plan-detail-label">AI 生成理由</span>
           <span className="weekly-plan-detail-value">{renderOptionalValue(record.titleReason)}</span>
         </div>
@@ -1567,6 +1610,9 @@ export default function WeeklyPlanPage() {
           <Form.Item label="内容类型" name="contentType">
             <Select options={Object.entries(contentTypeLabels).map(([value, label]) => ({ value, label }))} />
           </Form.Item>
+          <Form.Item label="平台内容类型" name="platformContentType">
+            <Select options={Object.entries(platformContentTypeLabels).map(([value, label]) => ({ value, label }))} />
+          </Form.Item>
           <Form.Item label="绑定知识库" name="knowledgeBaseIds">
             <Select mode="multiple" allowClear options={knowledgeBaseOptions} placeholder="选择本任务优先引用的知识库" />
           </Form.Item>
@@ -1575,6 +1621,15 @@ export default function WeeklyPlanPage() {
           </Form.Item>
           <Form.Item label="标题" name="title">
             <Input />
+          </Form.Item>
+          <Form.Item label="标题类别" name="titleCategory">
+            <Input placeholder="例如：风险现场还原型" />
+          </Form.Item>
+          <Form.Item label="目标用户" name="targetAudience">
+            <Input placeholder="本标题只选择一个主要受众" />
+          </Form.Item>
+          <Form.Item label="标题证据依据" name="titleEvidenceBasis">
+            <Select mode="tags" allowClear placeholder="填写官网、案例、产品文档或调研依据" />
           </Form.Item>
           <Form.Item label="主蒸馏词" name="primaryDistilledTerm">
             <Input />

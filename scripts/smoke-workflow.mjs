@@ -820,6 +820,55 @@ async function main() {
   });
   assertCondition("publish_record_fill_url", filledUrl.ok && filledUrl.body.data?.record?.publishStatus === "url_filled", filledUrl.body.message || `http ${filledUrl.httpStatus}`);
 
+  const directPublishSchedules = await request("/api/publish-schedules", {
+    method: "POST",
+    body: JSON.stringify({
+      publishRecordId: record.id,
+      platforms: ["wechat", "juejin", "csdn", "zhihu"],
+      scheduledAt: new Date(Date.now() - 1000).toISOString(),
+      matrixItemId: `smoke-matrix-${record.id}`
+    })
+  });
+  assertCondition(
+    "direct_publish_schedule_create",
+    directPublishSchedules.ok &&
+      directPublishSchedules.body.data?.schedules?.length === 4 &&
+      directPublishSchedules.body.data.schedules.every((item) => item.status === "scheduled"),
+    directPublishSchedules.body.message || `http ${directPublishSchedules.httpStatus}`
+  );
+
+  const directPublishRun = await request("/api/direct-publish", {
+    method: "POST",
+    body: JSON.stringify({
+      now: new Date().toISOString(),
+      limit: 10
+    })
+  });
+  assertCondition(
+    "direct_publish_run_due",
+    directPublishRun.ok &&
+      directPublishRun.body.data?.schedules?.length >= 4 &&
+      directPublishRun.body.data.schedules.every((item) => ["published_pending_url", "published_verified"].includes(item.status)),
+    directPublishRun.body.message || `http ${directPublishRun.httpStatus}`
+  );
+
+  const directPublishState = await request("/api/publish-schedules");
+  const directPublishAttempts = directPublishState.body.data?.attempts || [];
+  assertCondition(
+    "direct_publish_four_platform_attempts",
+    directPublishState.ok &&
+      ["wechat", "juejin", "csdn", "zhihu"].every((platform) =>
+        directPublishAttempts.some(
+          (attempt) =>
+            attempt.platform === platform &&
+            attempt.status === "published_pending_url" &&
+            attempt.verifyStatus === "verified" &&
+            attempt.pendingCsvReturn === true
+        )
+      ),
+    `${directPublishAttempts.length} direct publish attempts`
+  );
+
   const metricImport = await request("/api/channel-metrics/import", {
     method: "POST",
     body: JSON.stringify({

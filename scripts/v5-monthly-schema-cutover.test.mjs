@@ -47,10 +47,24 @@ test("cutover migration drops exactly the obsolete V4 weekly tables", async () =
   }
 });
 
-test("migration plan marks the V4 drop as destructive", async () => {
+test("default migration plan excludes the V4 drop migration", async () => {
   const { stdout } = await execFileAsync(process.execPath, ["scripts/init-v5-monthly-schema.mjs", "--plan"], {
     cwd: process.cwd()
   });
+  const result = JSON.parse(stdout.trim());
+  const dropMigration = result.migrations.find((migration) => migration.name === "20260714_002_drop_v4_weekly_tables.sql");
+
+  assert.equal(result.status, "planned");
+  assert.equal(dropMigration, undefined);
+  assert.deepEqual(result.excludedMigrations, ["20260714_002_drop_v4_weekly_tables.sql"]);
+});
+
+test("explicit cutover plan marks the V4 drop as destructive", async () => {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ["scripts/init-v5-monthly-schema.mjs", "--plan", "--include-drop-v4"],
+    { cwd: process.cwd() }
+  );
   const result = JSON.parse(stdout.trim());
   const dropMigration = result.migrations.find((migration) => migration.name === "20260714_002_drop_v4_weekly_tables.sql");
 
@@ -59,14 +73,31 @@ test("migration plan marks the V4 drop as destructive", async () => {
   assert.equal(dropMigration.requiresConfirmation, true);
 });
 
-test("migration runner refuses destructive cutover without explicit confirmation", async () => {
-  const { stdout } = await execFileAsync(process.execPath, ["scripts/init-v5-monthly-schema.mjs"], {
-    cwd: process.cwd()
+test("explicitly included cutover still requires destructive confirmation", async () => {
+  const { stdout } = await execFileAsync(process.execPath, ["scripts/init-v5-monthly-schema.mjs", "--include-drop-v4"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      MYSQL_HOST: "",
+      MYSQL_PORT: "",
+      MYSQL_DATABASE: "",
+      MYSQL_USER: "",
+      MYSQL_PASSWORD: ""
+    }
   });
   const result = JSON.parse(stdout.trim());
 
   assert.equal(result.status, "confirmation_required");
   assert.deepEqual(result.destructiveMigrations, ["20260714_002_drop_v4_weekly_tables.sql"]);
+});
+
+test("schema verification rejects an applied V4 drop instead of requiring it", async () => {
+  const verification = await readFile("scripts/check-v5-schema-cutover.mjs", "utf8");
+
+  assert.match(verification, /foundationMigrationVerified/);
+  assert.match(verification, /dropV4MigrationApplied/);
+  assert.match(verification, /!dropV4MigrationApplied/);
+  assert.doesNotMatch(verification, /remainingV4Tables\.length\s*===\s*0/);
 });
 
 test("monthly TypeScript contract contains only native V5 entities", async () => {

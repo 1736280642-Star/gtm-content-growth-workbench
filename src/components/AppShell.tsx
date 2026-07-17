@@ -19,7 +19,7 @@ import {
 import { Alert, Button, Layout, Menu, Space, Tag, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { canViewRoute, getDefaultRouteForRole, getRouteLabel, getVisibleRoutesForRole, workspaceRoleLabels } from "@/lib/permissions";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 
@@ -84,6 +84,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const defaultRoute = getDefaultRouteForRole(workspaceSetting.currentRole);
   const restrictedPageLabel = currentPageKey ? getRouteLabel(currentPageKey) : "当前页面";
 
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true);
+  }, []);
+
   return (
     <Layout className="app-shell" style={shellStyle}>
       <Sider
@@ -117,7 +121,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             type="text"
           />
         </div>
-        <Menu mode="inline" selectedKeys={[selectedKey || "/"]} items={visibleNavItems} />
+        <Menu
+          mode="inline"
+          selectedKeys={[selectedKey || "/"]}
+          items={visibleNavItems}
+          onClick={() => {
+            if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true);
+          }}
+        />
       </Sider>
       <Layout style={mainLayoutStyle}>
         <Header

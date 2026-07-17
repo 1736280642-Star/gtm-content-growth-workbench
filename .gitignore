@@ -2,10 +2,15 @@
 node_modules/
 dist/
 coverage/
+.obsidian/
+.tmp/
 .env
 .env.local
 data/workbench-state.json
 data/workbench-smoke-state.json
+data/workbench-*-state.json
+data/workbench-state.before-*.json
+artifacts/v5-generation/
 *.log
 *.tsbuildinfo
 npm-debug.log*

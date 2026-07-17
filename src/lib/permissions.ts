@@ -20,6 +20,7 @@ export const workspaceRouteLabels: Record<string, string> = {
   "/publish-schedule/daily-execution": "当日执行",
   "/daily-execution": "当日执行",
   "/monthly-review": "月度复盘",
+  "/v5/drafts": "正式 Markdown 正文",
   "/weekly-plan": "周计划",
   "/today": "今日发布",
   "/publish": "数据回传",
@@ -39,6 +40,11 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   content_growth: ["/", "/weekly-plan", "/weekly-report", "/distilled-terms", "/blog-monitor", "/blog-candidates", "/geo-test", "/settings"],
   workbench_operator: [
     "/",
+    "/monthly-matrix",
+    "/batch-generation",
+    "/daily-execution",
+    "/monthly-review",
+    "/v5/drafts",
     "/weekly-plan",
     "/today",
     "/publish",
@@ -55,6 +61,11 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   knowledge_manager: ["/", "/knowledge", "/distilled-terms", "/geo-test", "/weekly-report", "/settings"],
   developer_admin: [
     "/",
+    "/monthly-matrix",
+    "/batch-generation",
+    "/daily-execution",
+    "/monthly-review",
+    "/v5/drafts",
     "/weekly-plan",
     "/today",
     "/publish",
@@ -78,14 +89,13 @@ const roleDefaultRoutes: Record<WorkspaceRole, string> = {
   developer_admin: "/ai-config"
 };
 
-const debugAllRoutes = Object.keys(workspaceRouteLabels);
-
 export function getVisibleRoutesForRole(role: WorkspaceRole) {
-  return debugAllRoutes;
+  return roleVisibleRoutes[role] || roleVisibleRoutes.content_publisher;
 }
 
 export function canViewRoute(role: WorkspaceRole, route: string) {
-  return debugAllRoutes.includes(route);
+  const visibleRoutes = getVisibleRoutesForRole(role);
+  return visibleRoutes.some((allowedRoute) => route === allowedRoute || route.startsWith(`${allowedRoute}/`));
 }
 
 export function getDefaultRouteForRole(role: WorkspaceRole) {
@@ -97,17 +107,17 @@ export function getRouteLabel(route: string) {
 }
 
 export function canViewAiGovernance(role: WorkspaceRole) {
-  return true;
+  return role === "workbench_operator" || role === "developer_admin";
 }
 
 export function canManagePromptVersions(role: WorkspaceRole) {
-  return true;
+  return role === "workbench_operator" || role === "developer_admin";
 }
 
 export function canManageProductExpressionRules(role: WorkspaceRole) {
-  return true;
+  return role === "knowledge_manager" || role === "workbench_operator" || role === "developer_admin";
 }
 
 export function canManageWeeklyReportSuggestions(role: WorkspaceRole) {
-  return true;
+  return role === "content_growth" || role === "workbench_operator" || role === "developer_admin";
 }

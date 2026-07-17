@@ -43,6 +43,8 @@ const initialState: WorkbenchState = {
   publishRecords,
   platformDraftVariants: [],
   distributionTargets: [],
+  publishSchedules: [],
+  publishAttempts: [],
   blogArticles,
   geoResults,
   botVisits,

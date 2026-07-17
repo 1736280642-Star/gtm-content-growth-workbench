@@ -17,6 +17,7 @@ import { callEmbeddingProvider } from "./embedding-provider";
 import { channelDistributionTargets, channelLabels, distributionPlatformLabels, productLabels } from "./labels";
 import { parseBotLogInput } from "./log-import-adapter";
 import { canViewAiGovernance } from "./permissions";
+import { coerceDirectPublishPlatform, getPublishAdapter } from "./publish-adapters";
 import { getPromptTemplate, promptTemplates } from "./prompt-templates";
 import { getWorkbenchRepository } from "./repositories";
 import type {
@@ -35,6 +36,7 @@ import type {
   DistilledTerm,
   DistilledTermExtractionRule,
   DistilledTermRuleDraft,
+  DirectPublishPlatformKey,
   DraftQaResult,
   DraftEditAction,
   DraftRiskKeepReasonCategory,
@@ -59,10 +61,17 @@ import type {
   ProductKey,
   ProductExpressionRuleDraft,
   ProductExpressionRuleSnapshot,
+  PlatformContentType,
   PlatformDraftVariant,
+  PlatformPublishPayload,
   PromptVersionRecord,
   PromptVersionStatus,
+  PublishAttempt,
+  PublishAttemptStatus,
+  PublishFailureCode,
   PublishRecord,
+  PublishSchedule,
+  PublishScheduleStatus,
   TaskStatus,
   WeeklyPublishMatrixDay,
   WorkspaceRole,
@@ -121,6 +130,8 @@ export interface WorkbenchState {
   publishRecords: PublishRecord[];
   platformDraftVariants: PlatformDraftVariant[];
   distributionTargets: DistributionTarget[];
+  publishSchedules: PublishSchedule[];
+  publishAttempts: PublishAttempt[];
   blogArticles: BlogArticle[];
   geoResults: GeoTestResult[];
   botVisits: BotVisitSummary[];
@@ -627,6 +638,8 @@ export function createInitialWorkbenchState(): WorkbenchState {
     publishRecords: clone(seedPublishRecords),
     platformDraftVariants: [],
     distributionTargets: [],
+    publishSchedules: [],
+    publishAttempts: [],
     blogArticles: clone(seedBlogArticles),
     geoResults: normalizeGeoResults(clone(seedGeoResults)),
     botVisits: clone(seedBotVisits),
@@ -671,6 +684,8 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
   const normalizedPublishRecords = value.publishRecords || base.publishRecords;
   const normalizedPlatformDraftVariants = normalizePlatformDraftVariants(value.platformDraftVariants || base.platformDraftVariants);
   const normalizedDistributionTargets = normalizeDistributionTargets(value.distributionTargets || base.distributionTargets);
+  const normalizedPublishSchedules = normalizePublishSchedules(value.publishSchedules || base.publishSchedules);
+  const normalizedPublishAttempts = normalizePublishAttempts(value.publishAttempts || base.publishAttempts);
 
   return {
     ...base,
@@ -715,6 +730,8 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
     publishRecords: normalizedPublishRecords,
     platformDraftVariants: normalizedPlatformDraftVariants,
     distributionTargets: normalizedDistributionTargets,
+    publishSchedules: normalizedPublishSchedules,
+    publishAttempts: normalizedPublishAttempts,
     blogArticles: value.blogArticles || base.blogArticles,
     geoResults: normalizeGeoResults(value.geoResults || base.geoResults),
     botVisits: value.botVisits || base.botVisits,
@@ -3402,6 +3419,111 @@ function normalizeDistributionTargets(value?: DistributionTarget[]): Distributio
     .filter((target): target is DistributionTarget => Boolean(target));
 }
 
+function normalizePublishScheduleStatus(value: unknown): PublishScheduleStatus {
+  const allowed: PublishScheduleStatus[] = [
+    "scheduled",
+    "precheck_failed",
+    "publishing",
+    "published_verified",
+    "published_pending_url",
+    "pending_verify",
+    "failed",
+    "manual_takeover_required",
+    "pending_config"
+  ];
+
+  return allowed.includes(value as PublishScheduleStatus) ? (value as PublishScheduleStatus) : "scheduled";
+}
+
+function normalizePublishAttemptStatus(value: unknown): PublishAttemptStatus {
+  const allowed: PublishAttemptStatus[] = [
+    "precheck_failed",
+    "publishing",
+    "published_verified",
+    "published_pending_url",
+    "pending_verify",
+    "failed",
+    "manual_takeover_required",
+    "pending_config"
+  ];
+
+  return allowed.includes(value as PublishAttemptStatus) ? (value as PublishAttemptStatus) : "failed";
+}
+
+function normalizePublishFailureCode(value: unknown): PublishFailureCode | undefined {
+  const allowed: PublishFailureCode[] = [
+    "auth_required",
+    "pending_config",
+    "payload_invalid",
+    "platform_not_supported",
+    "platform_review_pending",
+    "verification_failed",
+    "manual_takeover_required",
+    "duplicate_protected",
+    "adapter_failed",
+    "unknown"
+  ];
+
+  return allowed.includes(value as PublishFailureCode) ? (value as PublishFailureCode) : undefined;
+}
+
+function normalizePublishSchedules(value?: PublishSchedule[]): PublishSchedule[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.reduce<PublishSchedule[]>((schedules, schedule) => {
+    const platform = coerceDirectPublishPlatform(schedule.platform);
+
+    if (!platform || !schedule.id || !schedule.draftId || !schedule.scheduledAt) {
+      return schedules;
+    }
+
+    schedules.push({
+      ...schedule,
+      platform,
+      status: normalizePublishScheduleStatus(schedule.status),
+      attemptIds: Array.isArray(schedule.attemptIds) ? schedule.attemptIds.filter((id): id is string => typeof id === "string") : [],
+      pendingCsvReturn: Boolean(schedule.pendingCsvReturn),
+      failureCode: normalizePublishFailureCode(schedule.failureCode),
+      retryCount: typeof schedule.retryCount === "number" && schedule.retryCount >= 0 ? schedule.retryCount : 0,
+      createdAt: schedule.createdAt || nowIso()
+    });
+
+    return schedules;
+  }, []);
+}
+
+function normalizePublishAttempts(value?: PublishAttempt[]): PublishAttempt[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.reduce<PublishAttempt[]>((attempts, attempt) => {
+    const platform = coerceDirectPublishPlatform(attempt.platform);
+
+    if (!platform || !attempt.id || !attempt.scheduleId || !attempt.startedAt) {
+      return attempts;
+    }
+
+    attempts.push({
+      ...attempt,
+      platform,
+      status: normalizePublishAttemptStatus(attempt.status),
+      mode: ["mock", "dry_run", "real"].includes(attempt.mode) ? attempt.mode : "dry_run",
+      authStatus: ["ready", "pending_config", "auth_required", "manual_takeover_required", "failed"].includes(attempt.authStatus)
+        ? attempt.authStatus
+        : "failed",
+      payloadStatus: attempt.payloadStatus === "valid" ? "valid" : "invalid",
+      verifyStatus: ["verified", "pending", "failed", "not_started"].includes(attempt.verifyStatus || "") ? attempt.verifyStatus : "not_started",
+      pendingCsvReturn: Boolean(attempt.pendingCsvReturn),
+      failureCode: normalizePublishFailureCode(attempt.failureCode)
+    });
+
+    return attempts;
+  }, []);
+}
+
 function splitKnowledgeContent(content: string, knowledgeBaseId: string, sourceTitle: string, sourceUrl?: string): KnowledgeChunk[] {
   const source = createLegacyKnowledgeSource(knowledgeBaseId, sourceTitle, content, sourceUrl);
   return buildStructuredKnowledgeChunks([source], knowledgeBaseId, "rule", undefined);
@@ -3740,6 +3862,85 @@ function buildTaskTitle(index: number, contentType: ContentType) {
   return pickTaskTitle(contentType, Math.floor(index / contentTypeOrder.length));
 }
 
+const titleCategoryByContentType: Record<ContentType, string> = {
+  brand: "品牌定位判断型",
+  scenario: "场景问题型",
+  technical: "工程选型型",
+  faq: "FAQ解释型",
+  comparison: "认知反差辨析型",
+  case: "场景纪实型"
+};
+
+const titleAudienceByContentType: Record<ContentType, string> = {
+  brand: "企业技术决策者",
+  scenario: "业务负责人和一线使用者",
+  technical: "技术负责人和工程团队",
+  faq: "正在了解产品的潜在用户",
+  comparison: "选型负责人和采购评估者",
+  case: "同类场景的业务与技术负责人"
+};
+
+const platformContentTypeByTaskIntent: Record<ContentType, PlatformContentType> = {
+  brand: "implicit_trend_judgment",
+  scenario: "implicit_painpoint_education",
+  technical: "implicit_tool_guide",
+  faq: "explicit_product_intro",
+  comparison: "implicit_trend_judgment",
+  case: "implicit_painpoint_education"
+};
+
+const platformContentTypes: PlatformContentType[] = [
+  "explicit_product_intro",
+  "explicit_launch_matrix",
+  "implicit_personal_review",
+  "implicit_painpoint_education",
+  "implicit_tool_guide",
+  "implicit_trend_judgment"
+];
+
+function buildPlatformExpressionPreparation(
+  task: Pick<ContentTask, "title" | "product" | "contentType" | "platformContentType" | "sourceProblem" | "titleEvidenceBasis" | "titleCategory" | "targetAudience">
+) {
+  const evidenceClaims = /(?:\d+(?:\.\d+)?%|\d+\+|上百|上千|第一|唯一|最强|最快|零风险|完全替代|重新定义)/;
+  const roleBoundaryClaims = /(?:只靠聊天|自动管好|无需人工|无人审批|直接替代|一键解决|零风险|100%安全|自动拍板)/;
+  const evidenceSupported = !evidenceClaims.test(task.title) || Boolean(task.titleEvidenceBasis?.length);
+  const bodyProvable = Boolean(task.sourceProblem && task.sourceProblem.trim().length >= 8);
+  const roleBoundarySafe = !roleBoundaryClaims.test(task.title);
+  const notes: string[] = [];
+
+  if (!evidenceSupported) {
+    notes.push("标题含数字、规模或绝对化判断，但未绑定证据依据");
+  }
+
+  if (!bodyProvable) {
+    notes.push("标题缺少可供正文兑现的来源问题");
+  }
+
+  if (!roleBoundarySafe) {
+    notes.push("标题可能把 AI 辅助能力写成独立决策或结果保证");
+  }
+
+  const platformExpressionProfileId = task.product === "weike_guardrails" ? "weike-ai-guardrail-wechat-expression" : "general-product-wechat-expression";
+  const platformExpressionPrecheck = {
+    evidenceSupported,
+    bodyProvable,
+    roleBoundarySafe,
+    notes
+  };
+
+  return {
+    platformContentType: task.platformContentType || platformContentTypeByTaskIntent[task.contentType],
+    platformExpressionProfileId,
+    platformExpressionProfileVersion: "v1.0.0",
+    titleCategory: task.titleCategory || titleCategoryByContentType[task.contentType],
+    targetAudience: task.targetAudience || titleAudienceByContentType[task.contentType],
+    platformExpressionPrecheck,
+    titleRulePackageId: platformExpressionProfileId,
+    titleRuleVersion: "v1.0.0",
+    titlePrecheck: platformExpressionPrecheck
+  };
+}
+
 function buildTaskKeywords(product: ProductKey, contentType: ContentType) {
   const base = product === "joto_brand" ? ["JOTO", "Dify 服务商"] : ["唯客 AI 护栏", "AI 安全"];
   const byType: Record<ContentType, string> = {
@@ -3847,6 +4048,8 @@ function createPlanTaskFromProductPlan(
     status: "planned",
     qaSummary: `${input.template.name} ${input.template.version}，按产品分组配额生成标题级计划。`
   };
+
+  Object.assign(task, buildPlatformExpressionPreparation(task));
 
   task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
     matrixDay: input.matrixDay,
@@ -3984,7 +4187,7 @@ function appendContentTaskRejectionRecord(task: ContentTask, record: ContentTask
 }
 
 function getContentTaskReviewReasons(task: ContentTask) {
-  const reasons: string[] = [];
+  const reasons: string[] = [...getPlatformExpressionBlockingReasons(task)];
 
   if ((task.confidence ?? 1) < 0.65) {
     reasons.push("未达到自动确认阈值");
@@ -4000,6 +4203,34 @@ function getContentTaskReviewReasons(task: ContentTask) {
 
   if (isBlockingContentTaskRiskNote(task.riskNote)) {
     reasons.push("风险说明需复核");
+  }
+
+  return reasons;
+}
+
+function getPlatformExpressionBlockingReasons(task: ContentTask) {
+  const reasons: string[] = [];
+  const platformPrecheck = task.platformExpressionPrecheck || task.titlePrecheck;
+
+  if (!task.platformContentType || !task.platformExpressionProfileId) {
+    reasons.push("平台表达准备待补");
+  }
+
+  if (!platformPrecheck) {
+    reasons.push("三项前置检查待补");
+    return reasons;
+  }
+
+  if (!platformPrecheck.evidenceSupported) {
+    reasons.push("标题证据依据待补");
+  }
+
+  if (!platformPrecheck.bodyProvable) {
+    reasons.push("标题承诺缺少正文来源问题");
+  }
+
+  if (!platformPrecheck.roleBoundarySafe) {
+    reasons.push("标题人机角色边界需复核");
   }
 
   return reasons;
@@ -4807,7 +5038,7 @@ export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
     ok: true,
     status: "success" as const,
     weeklyPlan: state.weeklyPlan,
-    tasks: state.tasks,
+    tasks: nextTasks,
     matrixIssues
   };
 }
@@ -4929,13 +5160,30 @@ export function patchContentTask(id: string, input: Record<string, unknown>): Wo
         ? input.officialLinkTarget.trim()
         : current.officialLinkTarget,
     titleReason: typeof input.titleReason === "string" && input.titleReason.trim() ? input.titleReason.trim() : current.titleReason,
+    platformContentType:
+      typeof input.platformContentType === "string" && platformContentTypes.includes(input.platformContentType as PlatformContentType)
+        ? (input.platformContentType as PlatformContentType)
+        : current.platformContentType,
+    titleCategory:
+      typeof input.titleCategory === "string" && input.titleCategory.trim() ? input.titleCategory.trim() : current.titleCategory,
+    targetAudience:
+      typeof input.targetAudience === "string" && input.targetAudience.trim() ? input.targetAudience.trim() : current.targetAudience,
+    titleEvidenceBasis: Array.isArray(input.titleEvidenceBasis)
+      ? input.titleEvidenceBasis.map(String).map((item) => item.trim()).filter(Boolean)
+      : typeof input.titleEvidenceBasis === "string"
+        ? input.titleEvidenceBasis.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean)
+        : current.titleEvidenceBasis,
     riskNote: typeof input.riskNote === "string" && input.riskNote.trim() ? input.riskNote.trim() : current.riskNote,
     evidenceNeed: typeof input.evidenceNeed === "string" && input.evidenceNeed.trim() ? input.evidenceNeed.trim() : current.evidenceNeed,
     confidence: typeof input.confidence === "number" ? Math.min(Math.max(input.confidence, 0), 1) : current.confidence,
     locked: typeof input.locked === "boolean" ? input.locked : current.locked,
     status: typeof input.status === "string" ? (input.status as TaskStatus) : current.status
   };
-  const task = appendContentTaskEditRecords(taskPatch, buildContentTaskEditRecords(current, taskPatch, "manual"));
+  const governedTaskPatch: ContentTask = {
+    ...taskPatch,
+    ...buildPlatformExpressionPreparation(taskPatch)
+  };
+  const task = appendContentTaskEditRecords(governedTaskPatch, buildContentTaskEditRecords(current, governedTaskPatch, "manual"));
 
   state.tasks[taskIndex] = task;
   saveWithEvent(state, "content_task_updated", `Updated content task ${id}.`);
@@ -4960,6 +5208,26 @@ export function confirmContentTasks(
   if (isSingleConfirm && requestedIds?.[0]) {
     const task = state.tasks.find((item) => item.id === requestedIds[0]);
     const reasons = task ? getContentTaskReviewReasons(task) : [];
+    const platformBlockingReasons = task ? getPlatformExpressionBlockingReasons(task) : [];
+
+    if (task?.status === "planned" && platformBlockingReasons.length) {
+      return {
+        ok: false,
+        status: "pending_input",
+        message: "平台表达准备未完成或三项前置检查未通过，请先修改计划项。",
+        data: {
+          confirmed: 0,
+          tasks: state.tasks,
+          reviewRequired: [
+            {
+              taskId: task.id,
+              title: task.title,
+              reasons: platformBlockingReasons
+            }
+          ]
+        }
+      };
+    }
 
     if (task?.status === "planned" && reasons.length && !riskAcceptanceReason) {
       return {
@@ -6159,11 +6427,16 @@ export function regenerateContentTaskTitle(id: string): WorkflowResult<{ task: C
   }
 
   const current = state.tasks[taskIndex];
-  const taskPatch: ContentTask = {
+  const nextTitle = buildRegeneratedTaskTitle(current);
+  const taskPatchBase: ContentTask = {
     ...current,
-    title: buildRegeneratedTaskTitle(current),
+    title: nextTitle,
     ...buildTaskPlanContext(current.product, current.contentType, current.sourceProblem, current.primaryDistilledTerm),
     confidence: 0.78
+  };
+  const taskPatch: ContentTask = {
+    ...taskPatchBase,
+    ...buildPlatformExpressionPreparation(taskPatchBase)
   };
   const task = appendContentTaskEditRecords(taskPatch, buildContentTaskEditRecords(current, taskPatch, "ai_regenerate"));
 
@@ -6922,6 +7195,384 @@ export async function sendDistributionTargetDraft(id: string): Promise<WorkflowR
   };
 }
 
+function getDefaultDirectPublishPlatformsForDraft(draft: Pick<ArticleDraft, "channel">): DirectPublishPlatformKey[] {
+  if (draft.channel === "wechat") return ["wechat"];
+  if (draft.channel === "csdn") return ["csdn"];
+  if (draft.channel === "juejin") return ["juejin"];
+  if (draft.channel === "zhihu_toutiao_general") return ["zhihu"];
+  return ["wechat"];
+}
+
+function getDirectPublishPlatforms(input: Record<string, unknown>, draft: Pick<ArticleDraft, "channel">): DirectPublishPlatformKey[] {
+  const requested = Array.isArray(input.platforms)
+    ? input.platforms.map(coerceDirectPublishPlatform).filter((platform): platform is DirectPublishPlatformKey => Boolean(platform))
+    : [];
+  const singlePlatform = coerceDirectPublishPlatform(input.platform);
+  const platforms = requested.length ? requested : singlePlatform ? [singlePlatform] : getDefaultDirectPublishPlatformsForDraft(draft);
+
+  return Array.from(new Set(platforms));
+}
+
+function getScheduleStatusFromPrecheck(status: "ready" | "pending_config" | "auth_required" | "manual_takeover_required" | "failed"): PublishScheduleStatus {
+  if (status === "pending_config") return "pending_config";
+  if (status === "manual_takeover_required") return "manual_takeover_required";
+  return "precheck_failed";
+}
+
+function getFailureCodeFromPrecheck(status: "ready" | "pending_config" | "auth_required" | "manual_takeover_required" | "failed"): PublishFailureCode {
+  if (status === "pending_config") return "pending_config";
+  if (status === "auth_required") return "auth_required";
+  if (status === "manual_takeover_required") return "manual_takeover_required";
+  return "adapter_failed";
+}
+
+function buildDirectPublishPayload(schedule: PublishSchedule, draft: ArticleDraft): PlatformPublishPayload {
+  return {
+    title: draft.title,
+    markdown: draft.content,
+    summary: draft.summary,
+    scheduledAt: schedule.scheduledAt,
+    sourceDraftId: draft.id,
+    publishRecordId: schedule.publishRecordId,
+    matrixItemId: schedule.matrixItemId,
+    categoryId: schedule.platform === "juejin" ? process.env.JUEJIN_CATEGORY_ID : undefined,
+    tagIds:
+      schedule.platform === "juejin" && process.env.JUEJIN_TAG_IDS
+        ? process.env.JUEJIN_TAG_IDS.split(",").map((item) => item.trim()).filter(Boolean)
+        : undefined,
+    coverMediaId: schedule.platform === "wechat" ? process.env.WECHAT_MP_THUMB_MEDIA_ID : undefined,
+    dryRun: process.env.DIRECT_PUBLISH_ENABLED !== "true"
+  };
+}
+
+function findOrCreatePublishRecordForSchedule(state: WorkbenchState, draft: ArticleDraft): PublishRecord {
+  const existingRecord = state.publishRecords.find((item) => item.draftId === draft.id);
+
+  if (existingRecord) {
+    return existingRecord;
+  }
+
+  const record: PublishRecord = {
+    id: createId("pub"),
+    draftId: draft.id,
+    channel: draft.channel,
+    title: draft.title,
+    publishStatus: "queued",
+    ...buildPublishRecordWeekFields(state, draft)
+  };
+  state.publishRecords.push(record);
+  return record;
+}
+
+export function createPublishSchedules(input: Record<string, unknown>): WorkflowResult<{ schedules: PublishSchedule[]; record: PublishRecord }> {
+  const state = readWorkbenchState();
+  const draftId = typeof input.draftId === "string" ? input.draftId : undefined;
+  const publishRecordId = typeof input.publishRecordId === "string" ? input.publishRecordId : undefined;
+  const recordFromInput = publishRecordId ? state.publishRecords.find((item) => item.id === publishRecordId) : undefined;
+  const draft = draftId
+    ? state.drafts.find((item) => item.id === draftId)
+    : recordFromInput
+      ? state.drafts.find((item) => item.id === recordFromInput.draftId)
+      : undefined;
+
+  if (!draft) {
+    return {
+      ok: false,
+      status: "pending_input",
+      message: "请传入可发布终稿 draftId 或 publishRecordId。"
+    };
+  }
+
+  if (draft.status !== "final" || !draft.qaResult.passed || draft.qaResult.distributionAllowed === false) {
+    return {
+      ok: false,
+      status: "failed",
+      message: "只有已确认且质检通过的终稿可以创建正式发布排程。"
+    };
+  }
+
+  const scheduledAt =
+    typeof input.scheduledAt === "string" && !Number.isNaN(new Date(input.scheduledAt).getTime())
+      ? input.scheduledAt
+      : draft.updatedAt || nowIso();
+  const platforms = getDirectPublishPlatforms(input, draft);
+  const record = recordFromInput || findOrCreatePublishRecordForSchedule(state, draft);
+  const schedules: PublishSchedule[] = [];
+
+  for (const platform of platforms) {
+    const existing = state.publishSchedules.find(
+      (item) =>
+        item.draftId === draft.id &&
+        item.platform === platform &&
+        item.scheduledAt === scheduledAt &&
+        !["failed", "precheck_failed", "manual_takeover_required", "pending_config"].includes(item.status)
+    );
+
+    if (existing) {
+      schedules.push(existing);
+      continue;
+    }
+
+    const schedule: PublishSchedule = {
+      id: createId("schedule"),
+      platform,
+      status: "scheduled",
+      scheduledAt,
+      draftId: draft.id,
+      publishRecordId: record.id,
+      matrixItemId: typeof input.matrixItemId === "string" ? input.matrixItemId : undefined,
+      attemptIds: [],
+      retryCount: 0,
+      pendingCsvReturn: false,
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    };
+    state.publishSchedules.push(schedule);
+    schedules.push(schedule);
+  }
+
+  saveWithEvent(state, "publish_schedule_created", `Created ${schedules.length} direct publish schedules for draft ${draft.id}.`);
+
+  return {
+    ok: true,
+    status: "success",
+    message: "正式发布排程已创建。",
+    data: {
+      schedules,
+      record
+    }
+  };
+}
+
+export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ schedule: PublishSchedule; attempt: PublishAttempt }>> {
+  const state = readWorkbenchState();
+  const scheduleIndex = state.publishSchedules.findIndex((item) => item.id === id);
+
+  if (scheduleIndex < 0) {
+    return {
+      ok: false,
+      status: "failed",
+      message: `未找到正式发布排程：${id}`
+    };
+  }
+
+  const schedule = state.publishSchedules[scheduleIndex];
+
+  if (["published_verified", "published_pending_url"].includes(schedule.status)) {
+    const attempt: PublishAttempt = {
+      id: createId("attempt"),
+      scheduleId: schedule.id,
+      platform: schedule.platform,
+      status: schedule.status === "published_verified" ? "published_verified" : "published_pending_url",
+      startedAt: nowIso(),
+      finishedAt: nowIso(),
+      mode: "dry_run",
+      authStatus: "ready",
+      payloadStatus: "valid",
+      publishStatus: "confirmed",
+      verifyStatus: "verified",
+      platformArticleId: schedule.platformArticleId,
+      publicUrl: schedule.publicUrl,
+      pendingCsvReturn: schedule.pendingCsvReturn,
+      failureCode: "duplicate_protected",
+      diagnosticSummary: "Duplicate execution skipped because schedule is already published."
+    };
+
+    return {
+      ok: true,
+      status: "success",
+      message: "该排程已完成发布，重复执行已被保护。",
+      data: {
+        schedule,
+        attempt
+      }
+    };
+  }
+
+  const draft = state.drafts.find((item) => item.id === schedule.draftId);
+
+  if (!draft) {
+    return {
+      ok: false,
+      status: "failed",
+      message: "发布排程缺少对应终稿。"
+    };
+  }
+
+  const adapter = getPublishAdapter(schedule.platform);
+  const startedAt = nowIso();
+  const payload = buildDirectPublishPayload(schedule, draft);
+  const auth = await adapter.checkAuth();
+  const validation = await adapter.validatePayload(payload);
+  const attemptBase: PublishAttempt = {
+    id: createId("attempt"),
+    scheduleId: schedule.id,
+    platform: schedule.platform,
+    status: "publishing",
+    startedAt,
+    mode: "dry_run",
+    authStatus: auth.status,
+    payloadStatus: validation.ok ? "valid" : "invalid",
+    verifyStatus: "not_started"
+  };
+
+  const finishAttempt = (attempt: PublishAttempt, status: PublishScheduleStatus, message: string): WorkflowResult<{ schedule: PublishSchedule; attempt: PublishAttempt }> => {
+    const finishedAttempt: PublishAttempt = {
+      ...attempt,
+      finishedAt: attempt.finishedAt || nowIso()
+    };
+    const nextSchedule: PublishSchedule = {
+      ...schedule,
+      status,
+      latestAttemptId: finishedAttempt.id,
+      attemptIds: Array.from(new Set([...schedule.attemptIds, finishedAttempt.id])),
+      publishedAt: finishedAttempt.status === "published_verified" || finishedAttempt.status === "published_pending_url" ? finishedAttempt.finishedAt : schedule.publishedAt,
+      platformArticleId: finishedAttempt.platformArticleId,
+      publicUrl: finishedAttempt.publicUrl,
+      pendingCsvReturn: Boolean(finishedAttempt.pendingCsvReturn),
+      failureCode: finishedAttempt.failureCode,
+      failureReason: finishedAttempt.failureReason,
+      nextAction: finishedAttempt.nextAction,
+      retryCount: status === "failed" || status === "pending_verify" ? schedule.retryCount + 1 : schedule.retryCount,
+      manualTakeoverReason: status === "manual_takeover_required" ? finishedAttempt.failureReason || finishedAttempt.nextAction : schedule.manualTakeoverReason,
+      updatedAt: nowIso()
+    };
+
+    state.publishSchedules[scheduleIndex] = nextSchedule;
+    state.publishAttempts.push(finishedAttempt);
+
+    const recordIndex = nextSchedule.publishRecordId ? state.publishRecords.findIndex((item) => item.id === nextSchedule.publishRecordId) : -1;
+
+    if (recordIndex >= 0 && ["published_verified", "published_pending_url"].includes(nextSchedule.status)) {
+      state.publishRecords[recordIndex] = {
+        ...state.publishRecords[recordIndex],
+        publishStatus: nextSchedule.publicUrl ? "url_filled" : "published",
+        publishedAt: nextSchedule.publishedAt || nowIso(),
+        publishedUrl: nextSchedule.publicUrl || state.publishRecords[recordIndex].publishedUrl,
+        notes: nextSchedule.pendingCsvReturn ? "正式发布已确认，公开 URL 等待 CSV 回传或人工回填。" : state.publishRecords[recordIndex].notes
+      };
+    }
+
+    saveWithEvent(state, "direct_publish_attempt_finished", `Direct publish schedule ${id} finished with ${status}.`);
+
+    return {
+      ok: ["published_verified", "published_pending_url", "pending_verify"].includes(status),
+      status: status === "pending_config" ? "pending_config" : status === "manual_takeover_required" ? "pending_input" : status === "failed" || status === "precheck_failed" ? "failed" : "success",
+      message,
+      data: {
+        schedule: nextSchedule,
+        attempt: finishedAttempt
+      }
+    };
+  };
+
+  if (!auth.ok) {
+    const status = getScheduleStatusFromPrecheck(auth.status);
+    return finishAttempt(
+      {
+        ...attemptBase,
+        status: status === "pending_config" ? "pending_config" : status === "manual_takeover_required" ? "manual_takeover_required" : "precheck_failed",
+        failureCode: getFailureCodeFromPrecheck(auth.status),
+        failureReason: auth.message,
+        nextAction: auth.nextAction,
+        diagnosticSummary: auth.missingConfig?.length ? `missing_config=${auth.missingConfig.join(",")}` : auth.message
+      },
+      status,
+      auth.message
+    );
+  }
+
+  if (!validation.ok) {
+    return finishAttempt(
+      {
+        ...attemptBase,
+        status: "precheck_failed",
+        failureCode: validation.failureCode || "payload_invalid",
+        failureReason: validation.message,
+        nextAction: validation.nextAction
+      },
+      "precheck_failed",
+      validation.message
+    );
+  }
+
+  state.publishSchedules[scheduleIndex] = {
+    ...schedule,
+    status: "publishing",
+    updatedAt: nowIso()
+  };
+  writeWorkbenchState(state);
+
+  const publishResult = await adapter.publish(payload);
+
+  if (!publishResult.ok) {
+    return finishAttempt(
+      {
+        ...attemptBase,
+        status: publishResult.status,
+        mode: publishResult.mode,
+        publishStatus: publishResult.publishStatus,
+        failureCode: publishResult.failureCode || "adapter_failed",
+        failureReason: publishResult.failureReason,
+        nextAction: publishResult.nextAction,
+        diagnosticSummary: publishResult.diagnosticSummary
+      },
+      publishResult.status,
+      publishResult.failureReason || "正式发布执行失败。"
+    );
+  }
+
+  const verifyResult = await adapter.verify(publishResult);
+  const finalStatus = verifyResult.status;
+
+  return finishAttempt(
+    {
+      ...attemptBase,
+      status: finalStatus,
+      mode: publishResult.mode,
+      publishStatus: publishResult.publishStatus,
+      verifyStatus: verifyResult.verifyStatus,
+      platformArticleId: verifyResult.platformArticleId,
+      publicUrl: verifyResult.publicUrl,
+      pendingCsvReturn: verifyResult.pendingCsvReturn,
+      failureCode: verifyResult.failureCode,
+      failureReason: verifyResult.failureReason,
+      nextAction: verifyResult.nextAction,
+      diagnosticSummary: publishResult.diagnosticSummary
+    },
+    finalStatus,
+    verifyResult.ok ? "正式发布执行完成，并已记录验证结果。" : verifyResult.failureReason || "正式发布验证失败。"
+  );
+}
+
+export async function runDuePublishSchedules(input: Record<string, unknown> = {}): Promise<WorkflowResult<{ schedules: PublishSchedule[]; attempts: PublishAttempt[] }>> {
+  const state = readWorkbenchState();
+  const now = typeof input.now === "string" && !Number.isNaN(new Date(input.now).getTime()) ? new Date(input.now) : new Date();
+  const limit = typeof input.limit === "number" && input.limit > 0 ? Math.floor(input.limit) : 20;
+  const dueSchedules = state.publishSchedules
+    .filter((schedule) => schedule.status === "scheduled" && new Date(schedule.scheduledAt).getTime() <= now.getTime())
+    .slice(0, limit);
+  const schedules: PublishSchedule[] = [];
+  const attempts: PublishAttempt[] = [];
+
+  for (const schedule of dueSchedules) {
+    const result = await runPublishSchedule(schedule.id);
+
+    if (result.data?.schedule) schedules.push(result.data.schedule);
+    if (result.data?.attempt) attempts.push(result.data.attempt);
+  }
+
+  return {
+    ok: true,
+    status: "success",
+    message: `已执行 ${attempts.length} 条到期正式发布排程。`,
+    data: {
+      schedules,
+      attempts
+    }
+  };
+}
+
 export function fillPublishUrl(id: string, input: Record<string, unknown>): WorkflowResult<{ record: PublishRecord }> {
   const state = readWorkbenchState();
   const recordIndex = state.publishRecords.findIndex((item) => item.id === id);
@@ -7522,6 +8173,7 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
     status: "planned",
     qaSummary: `来源博客候选池：${article.candidateReason || article.url}`
   };
+  Object.assign(task, buildPlatformExpressionPreparation(task));
   task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
     businessSignal: {
       key: "blog_diagnosis",
@@ -7845,6 +8497,7 @@ export function createContentTaskFromGeoGap(id: string): WorkflowResult<{ task: 
     status: "planned",
     qaSummary: `来源 GEO 测试：${result.platform} / ${result.promptGroup}`
   };
+  Object.assign(task, buildPlatformExpressionPreparation(task));
   task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
     businessSignal: {
       key: "geo_gap",
@@ -8474,6 +9127,7 @@ export function createNextWeeklyPlanFromReport(week: string, input: Record<strin
         status: "planned",
         qaSummary: `来源周报 ${week}：${suggestion}；${template.name} ${template.version}。`
       };
+      Object.assign(task, buildPlatformExpressionPreparation(task));
       task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
         businessSignal,
         promptVersion: template.version

@@ -164,6 +164,17 @@ body {
   margin-bottom: 18px;
 }
 
+.page-header > :first-child {
+  min-width: 0;
+}
+
+.page-header > .ant-space {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .page-title {
   margin: 0;
   font-size: 22px;
@@ -1665,6 +1676,10 @@ body {
     width: 100%;
   }
 
+  .app-sider.ant-layout-sider-collapsed .ant-menu {
+    display: none;
+  }
+
   .app-shell > .ant-layout,
   .app-shell .ant-layout-content,
   .app-shell .ant-layout-header {
@@ -1854,5 +1869,50 @@ body {
   .report-kpi-value {
     flex-wrap: wrap;
     font-size: 24px;
+  }
+}
+.v5-formal-draft-loading {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #667085;
+}
+
+.v5-formal-draft-layout {
+  display: grid;
+  gap: 24px;
+}
+
+.v5-formal-draft-section {
+  min-width: 0;
+  padding-top: 4px;
+  border-top: 1px solid #e6e8ef;
+}
+
+.v5-formal-draft-section h4 {
+  margin: 16px 0 12px;
+}
+
+.v5-formal-markdown-source {
+  max-width: 100%;
+  min-height: 360px;
+  margin: 0;
+  padding: 20px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #172033;
+  background: #f8fafc;
+  border: 1px solid #dce2ea;
+  border-radius: 6px;
+  font: 14px/1.75 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+@media (max-width: 640px) {
+  .v5-formal-markdown-source {
+    min-height: 280px;
+    padding: 14px;
   }
 }

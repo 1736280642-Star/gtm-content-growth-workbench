@@ -88,6 +88,9 @@ function addRegexCheck(label, filePath, patterns) {
   "scripts/smoke-browser-isolated.mjs",
   "scripts/smoke-workflow.mjs",
   "scripts/smoke-workflow-isolated.mjs",
+  "scripts/v5-knowledge-workflow-policy.test.mjs",
+  "src/lib/v5-knowledge-workflow-policy.ts",
+  "docs/V5 07-07/01-真实开发准入审计与流程规则映射.md",
   "src/app/api/content-tasks/[id]/published/route.ts",
   "src/app/api/content-tasks/[id]/url/route.ts",
   "src/app/api/content-tasks/[id]/review/route.ts",
@@ -98,7 +101,12 @@ function addRegexCheck(label, filePath, patterns) {
   "src/app/api/distribution/wechatsync/check-auth/route.ts",
   "src/app/api/publish-records/[id]/distribution-targets/route.ts",
   "src/app/api/distribution-targets/[id]/send-draft/route.ts",
-  "src/lib/wechatsync-client.ts"
+  "src/app/api/publish-schedules/route.ts",
+  "src/app/api/publish-schedules/[id]/run/route.ts",
+  "src/app/api/direct-publish/route.ts",
+  "src/lib/wechatsync-client.ts",
+  "src/lib/publish-adapters/index.ts",
+  "src/lib/publish-adapters/types.ts"
 ].forEach((filePath) => addFileCheck(`required file: ${filePath}`, filePath));
 
 [
@@ -452,7 +460,15 @@ addContentCheck("v5 mock data boundary", "src/lib/v5-ui-mock-data.ts", [
 addAbsentCheck("v5 connected pages no direct mock imports", "src/app/monthly-matrix/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 batch page no direct mock imports", "src/app/batch-generation/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 monthly config no real backend calls", "src/components/MonthlyPlanConfigPanel.tsx", ["fetch(", "/api/"]);
-addAbsentCheck("v5 batch no real backend calls", "src/app/batch-generation/page.tsx", ["fetch(", "/api/"]);
+addContentCheck("v5 batch single formal generation call", "src/app/batch-generation/page.tsx", [
+  "fetch(",
+  "/api/v5/content-tasks/",
+  "prepare-and-generate",
+  "x-idempotency-key",
+  "generatingTaskId",
+  "问题已处理，重新尝试"
+]);
+addAbsentCheck("v5 batch keeps bulk generation disabled", "src/app/batch-generation/page.tsx", ["/api/content-tasks/batch-generate"]);
 addAbsentCheck("v5 daily execution no real backend calls", "src/app/daily-execution/page.tsx", ["fetch(", "/api/"]);
 addAbsentCheck("v5 monthly review no real backend calls", "src/app/monthly-review/page.tsx", ["fetch(", "/api/"]);
 
@@ -604,6 +620,20 @@ addContentCheck("distribution draft data model", "src/lib/types.ts", [
   "mock\" | \"real"
 ]);
 
+addContentCheck("direct publish data model", "src/lib/types.ts", [
+  "DirectPublishPlatformKey",
+  "PublishScheduleStatus",
+  "PublishAttemptStatus",
+  "PublishFailureCode",
+  "PlatformPublishPayload",
+  "PublishSchedule",
+  "PublishAttempt",
+  "published_verified",
+  "published_pending_url",
+  "manual_takeover_required",
+  "pendingCsvReturn"
+]);
+
 addContentCheck("distribution labels and channel mapping", "src/lib/labels.ts", [
   "distributionPlatformLabels",
   "fixedDistributionPlatforms",
@@ -627,6 +657,42 @@ addContentCheck("distribution store invariant", "src/lib/workbench-store.ts", [
   "ensurePlatformDraftVariant",
   "distribution_draft_created",
   "只有待发布状态的记录可以写入平台草稿箱。"
+]);
+
+addContentCheck("direct publish store invariant", "src/lib/workbench-store.ts", [
+  "publishSchedules: PublishSchedule[]",
+  "publishAttempts: PublishAttempt[]",
+  "normalizePublishSchedules",
+  "normalizePublishAttempts",
+  "createPublishSchedules",
+  "runPublishSchedule",
+  "runDuePublishSchedules",
+  "direct_publish_attempt_finished",
+  "正式发布排程已创建",
+  "published_pending_url"
+]);
+
+addContentCheck("direct publish adapter contract", "src/lib/publish-adapters/index.ts", [
+  "WechatDirectPublishAdapter",
+  "JuejinDirectPublishAdapter",
+  "CsdnDirectPublishAdapter",
+  "ZhihuDirectPublishAdapter",
+  "checkAuth",
+  "validatePayload",
+  "publish(",
+  "verify(",
+  "DIRECT_PUBLISH_ENABLED",
+  "manual_takeover_required",
+  "pendingCsvReturn"
+]);
+
+addContentCheck("direct publish api contract", "scripts/smoke-workflow.mjs", [
+  "direct_publish_schedule_create",
+  "direct_publish_run_due",
+  "direct_publish_four_platform_attempts",
+  "/api/publish-schedules",
+  "/api/direct-publish",
+  "published_pending_url"
 ]);
 
 addContentCheck("wechatsync client mock boundary", "src/lib/wechatsync-client.ts", [
@@ -1765,6 +1831,59 @@ addContentCheck("prompt templates fixed", "src/lib/prompt-templates.ts", [
   "inputContract",
   "outputContract",
   "failureRules"
+]);
+
+addContentCheck("platform expression precheck contract", "src/lib/prompt-templates.ts", [
+  "platformContentType",
+  "platformExpressionProfileId",
+  "titleCategory",
+  "targetAudience",
+  "evidenceBasis",
+  "evidenceSupported",
+  "bodyProvable",
+  "roleBoundarySafe"
+]);
+
+addContentCheck("V5 knowledge workflow policy", "src/lib/v5-knowledge-workflow-policy.ts", [
+  "evaluateV5KnowledgeWorkflow",
+  "V5_KNOWLEDGE_WORKFLOW_RULES",
+  "V5-KB-001",
+  "V5-KB-005",
+  "V5-KB-009",
+  "V5-KB-010",
+  "V5-KB-014",
+  "V5-KB-015"
+]);
+addContentCheck("V5 knowledge workflow policy tests", "scripts/v5-knowledge-workflow-policy.test.mjs", [
+  "sensitive data blocks claim extraction",
+  "approved matrix with final evidence",
+  "local preview cannot enter publish schedule",
+  "published state requires external success"
+]);
+addContentCheck("V5 knowledge workflow package script", "package.json", ["test:v5-workflow"]);
+addContentCheck("platform expression task fields", "src/lib/types.ts", [
+  "platformContentType",
+  "platformExpressionProfileId",
+  "platformExpressionProfileVersion",
+  "titleCategory",
+  "targetAudience",
+  "titleEvidenceBasis",
+  "platformExpressionPrecheck"
+]);
+addContentCheck("platform expression confirmation guard", "src/lib/workbench-store.ts", [
+  "buildPlatformExpressionPreparation",
+  "getPlatformExpressionBlockingReasons",
+  "平台表达准备未完成或三项前置检查未通过",
+  "标题证据依据待补",
+  "标题承诺缺少正文来源问题",
+  "标题人机角色边界需复核"
+]);
+addContentCheck("weekly plan platform expression display", "src/app/weekly-plan/page.tsx", [
+  "平台表达准备",
+  "平台内容类型",
+  "标题类别 / 受众",
+  "标题证据依据",
+  "三项前置检查"
 ]);
 
 addRegexCheck("new task publish api", "src/app/api/content-tasks/[id]/published/route.ts", [/export\s+async\s+function\s+PATCH/]);

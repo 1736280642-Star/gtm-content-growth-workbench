@@ -121,9 +121,14 @@ const contracts = [
       "预计进入异常",
       "BatchGenerationMatrixTable",
       "ScheduleCalendarLite",
-      "ExceptionQueuePreview"
+      "ExceptionQueuePreview",
+      "/api/v5/content-tasks/",
+      "prepare-and-generate",
+      "x-idempotency-key",
+      "generatingTaskId",
+      "问题已处理，重新尝试"
     ],
-    excludes: ["fetch(", "/api/", "v5-ui-mock-data", "v5DemoLabel"]
+    excludes: ["/api/content-tasks/batch-generate", "v5-ui-mock-data", "v5DemoLabel"]
   },
   {
     name: "v5_monthly_repository_contract",
@@ -443,6 +448,47 @@ const contracts = [
       "/api/publish-records/${record.id}/distribution-targets",
       "/api/distribution-targets/${preparedTarget.id}/send-draft",
       "publishStatus === \"queued\""
+    ]
+  },
+  {
+    name: "direct_publish_contract",
+    file: "src/lib/types.ts",
+    includes: [
+      "DirectPublishPlatformKey",
+      "PublishScheduleStatus",
+      "PublishAttemptStatus",
+      "PublishFailureCode",
+      "PlatformPublishPayload",
+      "PublishSchedule",
+      "PublishAttempt",
+      "published_verified",
+      "published_pending_url",
+      "manual_takeover_required"
+    ]
+  },
+  {
+    name: "direct_publish_store_contract",
+    file: "src/lib/workbench-store.ts",
+    includes: [
+      "publishSchedules: PublishSchedule[]",
+      "publishAttempts: PublishAttempt[]",
+      "createPublishSchedules",
+      "runPublishSchedule",
+      "runDuePublishSchedules",
+      "direct_publish_attempt_finished",
+      "正式发布排程已创建"
+    ]
+  },
+  {
+    name: "direct_publish_api_contract",
+    file: "scripts/smoke-workflow.mjs",
+    includes: [
+      "direct_publish_schedule_create",
+      "direct_publish_run_due",
+      "direct_publish_four_platform_attempts",
+      "/api/publish-schedules",
+      "/api/direct-publish",
+      "published_pending_url"
     ]
   },
   {

@@ -1,4 +1,4 @@
-import type { ChannelKey, ContentType, DataConfidence, DistributionPlatformKey, DistributionTargetStatus, ProductKey, TaskStatus } from "./types";
+import type { ChannelKey, ContentType, DataConfidence, DistributionPlatformKey, DistributionTargetStatus, PlatformContentType, ProductKey, TaskStatus } from "./types";
 
 export const channelLabels: Record<ChannelKey, string> = {
   wechat: "公众号",
@@ -58,6 +58,15 @@ export const contentTypeLabels: Record<ContentType, string> = {
   faq: "FAQ",
   comparison: "对比",
   case: "案例"
+};
+
+export const platformContentTypeLabels: Record<PlatformContentType, string> = {
+  explicit_product_intro: "显性强推广-产品自研与功能介绍",
+  explicit_launch_matrix: "显性强推广-新品发布与产品矩阵",
+  implicit_personal_review: "隐性软种草-个人体验评测",
+  implicit_painpoint_education: "隐性软种草-场景痛点科普",
+  implicit_tool_guide: "隐性软种草-工具方法指南",
+  implicit_trend_judgment: "隐性软推广-行业趋势与产品判断"
 };
 
 export const statusLabels: Record<TaskStatus, string> = {
