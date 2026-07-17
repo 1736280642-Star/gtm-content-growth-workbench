@@ -49,10 +49,11 @@ const contentStyle: CSSProperties = {
 
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
-  { key: "/weekly-plan", icon: <CalendarOutlined />, label: <Link href="/weekly-plan">周计划</Link> },
-  { key: "/today", icon: <CheckSquareOutlined />, label: <Link href="/today">今日发布</Link> },
+  { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
+  { key: "/batch-generation", icon: <RocketOutlined />, label: <Link href="/batch-generation">批量生成中心</Link> },
+  { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
+  { key: "/monthly-review", icon: <BarChartOutlined />, label: <Link href="/monthly-review">月度复盘</Link> },
   { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },
-  { key: "/weekly-report", icon: <BarChartOutlined />, label: <Link href="/weekly-report">周度复盘</Link> },
   { key: "/knowledge", icon: <BookOutlined />, label: <Link href="/knowledge">知识库</Link> },
   { key: "/distilled-terms", icon: <FontSizeOutlined />, label: <Link href="/distilled-terms">蒸馏词池</Link> },
   { key: "/blog-monitor", icon: <FileSearchOutlined />, label: <Link href="/blog-monitor">官网博客监控</Link> },
@@ -104,7 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Typography.Title level={4} style={{ margin: 0 }}>
                 JOTO GTM
               </Typography.Title>
-              <Typography.Text type="secondary">内容增长工作台 V4</Typography.Text>
+              <Typography.Text type="secondary">内容增长工作台</Typography.Text>
             </div>
           )}
           <Button
@@ -128,7 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             justifyContent: "space-between"
           }}
         >
-          <Typography.Text strong>{"周计划 -> 今日发布 -> 草稿质检 -> 数据回传 -> 周度复盘"}</Typography.Text>
+          <Typography.Text strong>{"月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘"}</Typography.Text>
           <Space>
             <Tag color="blue">{workspaceRoleLabels[workspaceSetting.currentRole]}</Tag>
             <Typography.Text type="secondary">AI 可控、效果可评估、复盘能回流</Typography.Text>

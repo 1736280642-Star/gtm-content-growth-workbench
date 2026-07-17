@@ -2,15 +2,28 @@
 import { join } from "node:path";
 
 const root = process.cwd();
+const canonicalWorkbenchRoot = process.env.WORKBENCH_CANONICAL_ROOT || join(root, "..", "工作台");
 const checks = [];
 
+function resolveFilePath(filePath) {
+  const projectPath = join(root, filePath);
+  if (existsSync(projectPath)) return projectPath;
+
+  const canonicalPath = join(canonicalWorkbenchRoot, filePath);
+  if (filePath.startsWith("docs/") && existsSync(canonicalPath)) return canonicalPath;
+
+  return projectPath;
+}
+
 function read(filePath) {
-  const fullPath = join(root, filePath);
+  const fullPath = resolveFilePath(filePath);
   return existsSync(fullPath) ? readFileSync(fullPath, "utf8") : "";
 }
 
 function addFileCheck(label, filePath) {
-  checks.push({ label, pass: existsSync(join(root, filePath)), detail: filePath });
+  const resolvedPath = resolveFilePath(filePath);
+  const projectPath = join(root, filePath);
+  checks.push({ label, pass: existsSync(resolvedPath), detail: resolvedPath === projectPath ? filePath : `${filePath} via ${canonicalWorkbenchRoot}` });
 }
 
 function addContentCheck(label, filePath, needles) {
@@ -96,18 +109,379 @@ function addRegexCheck(label, filePath, patterns) {
   "src/lib/publish-adapters/types.ts"
 ].forEach((filePath) => addFileCheck(`required file: ${filePath}`, filePath));
 
-addContentCheck("dashboard v4 progress", "src/app/page.tsx", [
+[
+  "src/app/monthly-matrix/page.tsx",
+  "src/app/monthly-matrix/strategy/page.tsx",
+  "src/app/monthly-matrix/batch-generation/page.tsx",
+  "src/app/monthly-strategy/page.tsx",
+  "src/app/batch-generation/page.tsx",
+  "src/app/exceptions/page.tsx",
+  "src/app/publish-schedule/page.tsx",
+  "src/app/publish-schedule/daily-execution/page.tsx",
+  "src/app/daily-execution/page.tsx",
+  "src/app/monthly-review/page.tsx",
+  "src/components/MonthlyMatrixTable.tsx",
+  "src/components/BatchGenerationMatrixTable.tsx",
+  "src/components/MonthlyPlanConfigPanel.tsx",
+  "src/components/EvidenceGateTag.tsx",
+  "src/components/PublishStatusTag.tsx",
+  "src/components/ExceptionQueuePreview.tsx",
+  "src/components/ScheduleCalendarLite.tsx",
+  "src/components/V5StatusRail.tsx",
+  "src/lib/v5-ui-mock-data.ts",
+  "src/lib/v5/monthly-workspace-contracts.ts",
+  "src/lib/v5/monthly-contracts.ts",
+  "src/lib/v5/monthly-repository.ts",
+  "src/lib/v5/monthly-service.ts",
+  "src/lib/v5/monthly-plan-repository.ts",
+  "src/lib/v5/monthly-plan-service.ts",
+  "src/lib/v5/monthly-workspace-governance.ts",
+  "src/lib/v5/monthly-workspace-read-model.ts",
+  "src/lib/v5/use-monthly-workspace.ts",
+  "src/app/api/v5/monthly-workspace/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/route.ts"
+].forEach((filePath) => addFileCheck(`v5 ui file: ${filePath}`, filePath));
+
+addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
+  "月度内容矩阵",
+  "/batch-generation",
+  "批量生成中心",
+  "/daily-execution",
+  "当日执行",
+  "月度复盘",
+  "数据回传",
+  "知识库",
+  "AI 配置",
+  "GEO 测试",
+  "月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘"
+]);
+
+addAbsentCheck("v5 merged flow routes not top-level nav", "src/components/AppShell.tsx", [
+  "href=\"/monthly-strategy\"",
+  "href=\"/monthly-matrix/strategy\"",
+  "href=\"/monthly-matrix/batch-generation\"",
+  "href=\"/exceptions\"",
+  "href=\"/publish-schedule\"",
+  "href=\"/publish-schedule/daily-execution\""
+]);
+
+addAbsentCheck("v5 replaced v4 routes not primary navigation", "src/components/AppShell.tsx", [
+  "href=\"/weekly-plan\"",
+  "href=\"/today\"",
+  "href=\"/weekly-report\""
+]);
+
+addAbsentCheck("agent foundation removed from navigation", "src/components/AppShell.tsx", ["/agent-foundation", "Agent 底座"]);
+addAbsentCheck("agent foundation removed from route labels", "src/lib/permissions.ts", ["/agent-foundation", "Agent 底座"]);
+addAbsentCheck("agent foundation removed from page smoke", "scripts/smoke-pages.mjs", ["/agent-foundation", "agent_foundation_page"]);
+
+addContentCheck("v5 route labels", "src/lib/permissions.ts", [
+  "/monthly-strategy",
+  "/monthly-matrix",
+  "/monthly-matrix/strategy",
+  "/monthly-matrix/batch-generation",
+  "/batch-generation",
+  "/exceptions",
+  "/publish-schedule",
+  "/publish-schedule/daily-execution",
+  "/daily-execution",
+  "/monthly-review"
+]);
+
+addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx", [
+  "月度内容矩阵",
+  "月度计划配置",
+  "月度策略包审核",
+  "生成策略包",
+  "确认策略包",
+  "GEO 测试分配",
+  "策略可行不等于正文可生成",
+  "MonthlyStrategyTable",
+  "strategyTermHits",
+  "进入批量生成中心",
+  "useMonthlyWorkspace",
+  "尚未配置本月业务目标",
+  "MonthlyPlanConfigPanel"
+]);
+
+addAbsentCheck("v5 monthly kpi rail no duplicate period", "src/app/monthly-matrix/page.tsx", ['label: "月份"']);
+addAbsentCheck("v5 strategy package has no article title table", "src/components/MonthlyMatrixTable.tsx", ["文章标题", "人工排程", "plannedPublishAt"]);
+
+addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanConfigPanel.tsx", [
+  "月度计划配置",
+  "产品由已治理的产品表达规则包带出",
+  "monthlyProductionReady",
+  "isSelectablePackage",
+  "mode=\"multiple\"",
+  "发布渠道",
+  "文章数量",
+  "GEO 基线比例",
+  "ratioAdjustmentReason",
+  "月度总量",
+  "当前可用规则包",
+  "不能进入生产池",
+  "保存配置",
+  "monthly-plan-save-button",
+  "已保存到 V5 数据源"
+]);
+
+addContentCheck("v5 monthly workspace api contract", "src/lib/v5/monthly-workspace-contracts.ts", [
+  "V5MonthlyWorkspace",
+  "MonthlyWorkspaceReadModel",
+  "V5GovernanceSource",
+  "governanceData",
+  "formal",
+  "V5MonthlyPlanRecord",
+  "SaveMonthlyPlanRequest",
+  "V5ApiEnvelope",
+  "expectedVersion"
+]);
+
+addAbsentCheck("v5 formal monthly contract has no ui dto", "src/lib/v5/monthly-contracts.ts", [
+  "V5MonthlyWorkspace",
+  "MonthlyWorkspaceReadModel",
+  "SaveMonthlyPlanRequest",
+  "V5ApiEnvelope",
+  "RulePackageOption"
+]);
+
+addContentCheck("v5 formal monthly contract source", "src/lib/v5/monthly-contracts.ts", [
+  "V5MonthlyPlan",
+  "V5MonthlyProductionReadiness",
+  "V5ProductionPoolEntry"
+]);
+
+addContentCheck("v5 monthly repository boundary", "src/lib/v5/monthly-repository.ts", [
+  "V5_MONTHLY_STATE_PATH",
+  "data/v5-monthly-workbench.json",
+  "readV5MonthlyState",
+  "updateV5MonthlyState",
+  "temporaryPath",
+  "rename(temporaryPath, statePath)",
+  "idempotency",
+  "auditLog"
+]);
+
+addContentCheck("v5 monthly service guards", "src/lib/v5/monthly-service.ts", [
+  "WORKBENCH_STATE_PATH",
+  "seed_fallback",
+  "WRITE_ROLES",
+  "assertWritableRole",
+  "validateMonthlyPlan",
+  "expectedVersion",
+  "IDEMPOTENCY_KEY_REUSED",
+  "MONTHLY_PLAN_VERSION_CONFLICT"
+]);
+
+addContentCheck("v5 formal monthly plan repository", "src/lib/v5/monthly-plan-repository.ts", [
+  "monthly-contracts",
+  "getV5GovernancePool",
+  "readV5MonthlyPlanRecord",
+  "SELECT * FROM monthly_plan WHERE plan_month = ? LIMIT 1"
+]);
+
+addContentCheck("v5 formal monthly plan service", "src/lib/v5/monthly-plan-service.ts", [
+  "monthly-contracts",
+  "readV5MonthlyPlanRecord",
+  "getV5MonthlyPlan"
+]);
+
+addContentCheck("v5 monthly workspace governance adapter", "src/lib/v5/monthly-workspace-governance.ts", [
+  "monthly-contracts",
+  "getV5MonthlyPlan",
+  "getV5MonthlyProductionReadiness",
+  "getV5MonthlyProductionPool",
+  "pending_config",
+  "monthlyProductionReady"
+]);
+
+addContentCheck("v5 monthly workspace read model adapter", "src/lib/v5/monthly-workspace-read-model.ts", [
+  "monthly-contracts",
+  "getMonthlyWorkspaceBase",
+  "loadMonthlyWorkspaceGovernance",
+  "getMonthlyWorkspaceReadModel",
+  "governanceData",
+  "formal"
+]);
+
+addContentCheck("v5 monthly read api", "src/app/api/v5/monthly-workspace/route.ts", [
+  "force-dynamic",
+  "getMonthlyWorkspaceReadModel",
+  "cache-control",
+  "no-store"
+]);
+
+addContentCheck("v5 monthly write api", "src/app/api/v5/monthly-plans/[month]/route.ts", [
+  "PUT",
+  "parseSaveMonthlyPlanRequest",
+  "saveV5MonthlyPlan",
+  "x-idempotency-key"
+]);
+
+addContentCheck("v5 strategy page merged redirect", "src/app/monthly-matrix/strategy/page.tsx", [
+  "redirect",
+  "/monthly-matrix#strategy-package"
+]);
+
+addContentCheck("v5 strategy old route redirects", "src/app/monthly-strategy/page.tsx", [
+  "redirect",
+  "/monthly-matrix#strategy-package"
+]);
+
+addAbsentCheck("v4 ai config unchanged by v5 ui", "src/app/ai-config/page.tsx", ["V5GovernanceLogTabs", "V5 治理日志"]);
+
+addContentCheck("v5 batch page shell", "src/app/batch-generation/page.tsx", [
+  "批量生成中心",
+  "批量确认标题与矩阵",
+  "批量生成当月可生成内容",
+  "Final Evidence Gate",
+  "内容任务",
+  "Tabs",
+  "BatchGenerationMatrixTable",
+  "ScheduleCalendarLite",
+  "ExceptionQueuePreview",
+  "只生成通过正式准入的矩阵项",
+  "异常项保留原状态和原因"
+]);
+
+addContentCheck("v5 batch grouped task list", "src/components/BatchGenerationMatrixTable.tsx", [
+  "按产品分组",
+  "按渠道分组",
+  "按状态分组",
+  "按内容类型分组",
+  "按主蒸馏词分组",
+  "全部收起",
+  "v5-task-title-single-line",
+  "Tooltip",
+  "Collapse",
+  "batch-task-search"
+]);
+
+addContentCheck("v5 schedule full calendar details", "src/components/ScheduleCalendarLite.tsx", [
+  "人工排程日历",
+  "悬浮日期查看具体排程",
+  "trigger={[\"hover\", \"click\"]}",
+  "v5-calendar-status-summary",
+  "schedule-day-",
+  "未排程内容"
+]);
+
+addContentCheck("v5 batch and schedule responsive styles", "src/app/globals.css", [
+  ".v5-grouped-task-list",
+  ".v5-task-title-single-line",
+  ".v5-stage-strip",
+  ".v5-calendar-status-summary",
+  ".v5-calendar-popover-content",
+  ".v5-unscheduled-collapse"
+]);
+
+addContentCheck("v5 batch nested route redirects", "src/app/monthly-matrix/batch-generation/page.tsx", [
+  "redirect",
+  "/batch-generation"
+]);
+
+addContentCheck("v5 exception old route redirects", "src/app/exceptions/page.tsx", [
+  "redirect",
+  "/batch-generation#exceptions"
+]);
+
+addContentCheck("v5 publish schedule old route redirects", "src/app/publish-schedule/page.tsx", [
+  "redirect",
+  "/batch-generation#schedule"
+]);
+
+addContentCheck("v5 daily execution page shell", "src/app/daily-execution/page.tsx", [
+  "当日执行",
+  "昨日",
+  "今日",
+  "明日",
+  "本月已发布",
+  "本月待发布",
+  "已排程待发布",
+  "未排程",
+  "发布执行视图",
+  "URL 不在本页呈现",
+  "PublishStatusTag"
+]);
+
+addAbsentCheck("v5 daily execution has no planning or generation actions", "src/app/daily-execution/page.tsx", [
+  "月度计划配置",
+  "批量生成当月可生成内容",
+  "回填 URL",
+  "确认 URL"
+]);
+
+addContentCheck("v5 daily execution nested route redirects", "src/app/publish-schedule/daily-execution/page.tsx", [
+  "redirect",
+  "/daily-execution"
+]);
+
+addContentCheck("v5 monthly review page shell", "src/app/monthly-review/page.tsx", [
+  "月度复盘",
+  "蒸馏词和产品",
+  "baseline",
+  "exploration",
+  "GEO 缺口",
+  "主蒸馏词月度结果",
+  "下月候选调整",
+  "Agent 草稿 · 人工确认"
+]);
+
+addContentCheck("v5 evidence gate labels", "src/components/EvidenceGateTag.tsx", [
+  "可生成",
+  "自动降级后可生成",
+  "需补证据",
+  "已阻断",
+  "待配置",
+  "需人工确认"
+]);
+
+addContentCheck("v5 mock data boundary", "src/lib/v5-ui-mock-data.ts", [
+  "demo / mock，待接入真实 V5 后端",
+  "MonthlyPlanGroupQuota",
+  "StrategyTermHit",
+  "BatchQueueItem",
+  "ExceptionItem",
+  "ScheduleDraftItem",
+  "DailyExecutionItem",
+  "MonthlyTermReview",
+  "NextMonthCandidate",
+  "PublishStatus",
+  "MonthlyPlanConfig",
+  "rulePackageOptions",
+  "strategyTermHits",
+  "exceptionItems",
+  "scheduleDraftItems",
+  "batchQueueItems",
+  "dailyExecutionItems",
+  "monthlyTermReviews",
+  "nextMonthCandidates"
+]);
+
+addAbsentCheck("v5 connected pages no direct mock imports", "src/app/monthly-matrix/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
+addAbsentCheck("v5 batch page no direct mock imports", "src/app/batch-generation/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
+addAbsentCheck("v5 monthly config no real backend calls", "src/components/MonthlyPlanConfigPanel.tsx", ["fetch(", "/api/"]);
+addAbsentCheck("v5 batch no real backend calls", "src/app/batch-generation/page.tsx", ["fetch(", "/api/"]);
+addAbsentCheck("v5 daily execution no real backend calls", "src/app/daily-execution/page.tsx", ["fetch(", "/api/"]);
+addAbsentCheck("v5 monthly review no real backend calls", "src/app/monthly-review/page.tsx", ["fetch(", "/api/"]);
+
+addContentCheck("dashboard scoped v5 replacement", "src/app/page.tsx", [
   "首页数据看板",
-  "本周计划",
-  "已生成",
-  "已发布",
+  "V5 月度生产概览",
+  "本月内容矩阵",
+  "样例已生成",
+  "异常待处理",
+  "V5 生产数据与现有运行态分开呈现",
+  "保留能力运行态",
+  "V4 保持不变",
   "待回填 URL",
   "待数据回传",
-  "今日发布待处理",
-  "执行队列",
-  "数据回传"
+  "博客监控",
+  "GEO 测试",
+  "主流程与保留能力"
 ]);
 addAbsentCheck("dashboard focused business queue", "src/app/page.tsx", [
+  "本周内容生产和发布执行队列的总览",
   "官网博客与 GEO 概览",
   "Pipeline 运行记录"
 ]);

@@ -21,14 +21,14 @@ const failures = [];
 if (args.help || args.h) {
   printJson({
     script: "smoke-browser",
-    usage: "node scripts/smoke-browser.mjs [--scope full|roles|content|responsive|publish] [--base-url http://127.0.0.1:3047] [--debug-port 9223]"
+    usage: "node scripts/smoke-browser.mjs [--scope full|roles|content|responsive|publish|v5] [--base-url http://127.0.0.1:3047] [--debug-port 9223]"
   });
   process.exit(0);
 }
 
 function normalizeScope(scope) {
   const value = typeof scope === "string" ? scope : "full";
-  const allowedScopes = new Set(["full", "roles", "content", "responsive", "publish"]);
+  const allowedScopes = new Set(["full", "roles", "content", "responsive", "publish", "v5"]);
 
   if (!allowedScopes.has(value)) {
     throw new Error(`Unsupported smoke browser scope: ${value}`);
@@ -374,14 +374,14 @@ async function openPage() {
     }
   });
 
-  function sendRaw(method, params = {}, sessionId) {
+  function sendRaw(method, params = {}, sessionId, timeoutMs = 60000) {
     const id = nextId++;
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`CDP command timed out: ${method}`));
-      }, 60000);
+      }, timeoutMs);
 
       pending.set(id, {
         resolve: (value) => {
@@ -411,8 +411,8 @@ async function openPage() {
     throw new Error("Chrome CDP Target.attachToTarget did not return sessionId.");
   }
 
-  function send(method, params = {}) {
-    return sendRaw(method, params, pageSessionId);
+  function send(method, params = {}, timeoutMs) {
+    return sendRaw(method, params, pageSessionId, timeoutMs);
   }
 
   await send("Page.enable");
@@ -447,7 +447,7 @@ async function openPage() {
   }
 
   async function navigate(pathName) {
-    await send("Page.navigate", { url: `${baseUrl}${pathName}` });
+    await send("Page.navigate", { url: `${baseUrl}${pathName}` }, 180000);
     await waitFor(() => evaluate("document.readyState === 'complete'"), 15000);
     await delay(500);
   }
@@ -544,6 +544,34 @@ async function openPage() {
     await delay(100);
   }
 
+  async function hover(selector) {
+    await waitFor(() => evaluate(`
+      (() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        return Boolean(element && element.offsetParent !== null);
+      })()
+    `), 10000);
+    const point = await evaluate(`
+      (() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        if (!element) return undefined;
+        element.scrollIntoView({ block: "center", inline: "center" });
+        const rect = element.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()
+    `);
+
+    if (!point) throw new Error(`Unable to hover ${selector}`);
+
+    await send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: point.x,
+      y: point.y,
+      button: "none"
+    });
+    await delay(350);
+  }
+
   async function fill(selector, value) {
     await waitFor(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), 10000);
     await evaluate(`
@@ -574,6 +602,7 @@ async function openPage() {
     setViewport,
     navigate,
     click,
+    hover,
     fill,
     exists,
     containsText,
@@ -1584,6 +1613,25 @@ async function assertResponsiveLayout(page, { name, pathName, expectedText, befo
   }
 }
 
+async function assertDesktopLayout(page, { name, pathName, expectedText, beforeAudit }) {
+  await page.setViewport(1440, 1000, false);
+  await page.navigate(pathName);
+  await waitFor(() => page.containsText(expectedText), 30000);
+
+  if (beforeAudit) {
+    await beforeAudit(page);
+  }
+
+  await delay(700);
+  const audit = await page.evaluate(buildResponsiveAuditExpression());
+
+  if (!audit.ok) {
+    throw new Error(JSON.stringify(audit));
+  }
+
+  record(name, true, `${pathName} desktop ${audit.viewport.width}x${audit.viewport.height}`);
+}
+
 async function main() {
   let browser;
   let page;
@@ -1593,7 +1641,8 @@ async function main() {
   const shouldRunContent = runFullScope || smokeScope === "content";
   const shouldRunResponsive = runFullScope || smokeScope === "responsive";
   const shouldRunPublish = runFullScope || smokeScope === "publish";
-  const shouldRunOperatorPage = shouldRunContent || shouldRunResponsive || shouldRunPublish;
+  const shouldRunV5 = smokeScope === "v5";
+  const shouldRunOperatorPage = shouldRunContent || shouldRunResponsive || shouldRunPublish || shouldRunV5;
 
   try {
     previousRole = await runStep("prepare_workspace_role_read", () => resolveCurrentRole());
@@ -1674,7 +1723,80 @@ async function main() {
     if (shouldRunOperatorPage) {
       page = await runStep("open_cdp_page", () => openPage());
       await runStep("prepare_workspace_role_operator", () => setCurrentRole("workbench_operator"));
-      await runStep("prepare_weekly_publish_matrix", () => prepareValidPublishMatrix());
+      if (!shouldRunV5) {
+        await runStep("prepare_weekly_publish_matrix", () => prepareValidPublishMatrix());
+      }
+    }
+
+    if (shouldRunV5) {
+      await runStep("v5_dashboard_scoped_replacement_desktop", () => assertDesktopLayout(page, {
+        name: "v5_dashboard_scoped_replacement_desktop",
+        pathName: "/",
+        expectedText: "V5 月度生产概览"
+      }));
+      await runStep("v5_dashboard_scoped_replacement_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_dashboard_scoped_replacement_mobile",
+        pathName: "/",
+        expectedText: "保留能力运行态"
+      }));
+      await runStep("v5_monthly_matrix_desktop", () => assertDesktopLayout(page, {
+        name: "v5_monthly_matrix_desktop",
+        pathName: "/monthly-matrix",
+        expectedText: "月度策略包审核"
+      }));
+      await runStep("v5_monthly_config_modal_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_monthly_config_modal_mobile",
+        pathName: "/monthly-matrix",
+        expectedText: "月度内容矩阵",
+        beforeAudit: async (currentPage) => {
+          await clickButtonByText(currentPage, "月度计划配置");
+          await waitFor(() => currentPage.containsText("产品由已治理的产品表达规则包带出"), 15000);
+        }
+      }));
+      await runStep("v5_batch_generation_desktop", () => assertDesktopLayout(page, {
+        name: "v5_batch_generation_desktop",
+        pathName: "/batch-generation",
+        expectedText: "内容任务",
+        beforeAudit: async (currentPage) => {
+          const expandedBeforeSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
+          if (expandedBeforeSearch !== 0) throw new Error(`expected collapsed groups, found ${expandedBeforeSearch} expanded`);
+          await waitFor(() => currentPage.containsText("V5 接口已接通，但当前月份还没有真实矩阵与生成队列"), 30000);
+          await waitFor(() => currentPage.containsText("没有符合当前筛选条件的内容任务"), 30000);
+        }
+      }));
+      await runStep("v5_batch_generation_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_batch_generation_mobile",
+        pathName: "/batch-generation",
+        expectedText: "内容任务"
+      }));
+      await runStep("v5_schedule_calendar_desktop_hover", () => assertDesktopLayout(page, {
+        name: "v5_schedule_calendar_desktop_hover",
+        pathName: "/batch-generation#schedule",
+        expectedText: "人工排程日历",
+        beforeAudit: async (currentPage) => {
+          await currentPage.hover(".v5-calendar-day[data-testid]");
+          await waitFor(() => currentPage.containsText("当天暂无排程"), 15000);
+        }
+      }));
+      await runStep("v5_schedule_calendar_mobile_click", () => assertResponsiveLayout(page, {
+        name: "v5_schedule_calendar_mobile_click",
+        pathName: "/batch-generation#schedule",
+        expectedText: "人工排程日历",
+        beforeAudit: async (currentPage) => {
+          await currentPage.click(".v5-calendar-day[data-testid]");
+          await waitFor(() => currentPage.containsText("当天暂无排程"), 15000);
+        }
+      }));
+      await runStep("v5_daily_execution_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_daily_execution_mobile",
+        pathName: "/daily-execution",
+        expectedText: "发布执行视图"
+      }));
+      await runStep("v5_monthly_review_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_monthly_review_mobile",
+        pathName: "/monthly-review",
+        expectedText: "下月候选调整"
+      }));
     }
 
     if (shouldRunContent || shouldRunResponsive) {

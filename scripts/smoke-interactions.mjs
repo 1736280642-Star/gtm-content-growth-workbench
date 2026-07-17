@@ -70,6 +70,219 @@ const weeklyReportBusinessExcludes = ["置信度", "低置信度", "置信度低
 
 const contracts = [
   {
+    name: "v5_monthly_manual_configuration_contract",
+    file: "src/components/MonthlyPlanConfigPanel.tsx",
+    includes: [
+      "月度计划配置",
+      "产品由已治理的产品表达规则包带出",
+      "isSelectablePackage",
+      "monthlyProductionReady",
+      "mode=\"multiple\"",
+      "发布渠道",
+      "文章数量",
+      "GEO 基线比例",
+      "ratioAdjustmentReason",
+      "新增产品分组",
+      "不能进入生产池",
+      "handleSave",
+      "onSave(cloneConfig(draft))",
+      "已保存到 V5 数据源",
+      "monthly-plan-save-button"
+    ],
+    excludes: ["fetch(", "/api/", "workbench-state.json"]
+  },
+  {
+    name: "v5_monthly_strategy_embedded_contract",
+    file: "src/app/monthly-matrix/page.tsx",
+    includes: [
+      "月度策略包审核",
+      "GEO 测试分配",
+      "MonthlyStrategyTable",
+      "strategyTermHits",
+      "策略可行不等于正文可生成",
+      "Final Evidence Gate",
+      "进入批量生成中心",
+      "useMonthlyWorkspace",
+      "尚未配置本月业务目标"
+    ],
+    excludes: ["fetch(", "/api/", "v5-ui-mock-data", "v5DemoLabel"]
+  },
+  {
+    name: "v5_batch_production_console_contract",
+    file: "src/app/batch-generation/page.tsx",
+    includes: [
+      "批量确认标题与矩阵",
+      "批量生成当月可生成内容",
+      "只生成通过正式准入的矩阵项",
+      "本次可生成",
+      "证据闸门拦截",
+      "标题未确认",
+      "平台配置缺失",
+      "预计进入异常",
+      "BatchGenerationMatrixTable",
+      "ScheduleCalendarLite",
+      "ExceptionQueuePreview"
+    ],
+    excludes: ["fetch(", "/api/", "v5-ui-mock-data", "v5DemoLabel"]
+  },
+  {
+    name: "v5_monthly_repository_contract",
+    file: "src/lib/v5/monthly-repository.ts",
+    includes: [
+      "V5_MONTHLY_STATE_PATH",
+      "data/v5-monthly-workbench.json",
+      "readV5MonthlyState",
+      "updateV5MonthlyState",
+      "temporaryPath",
+      "rename(temporaryPath, statePath)",
+      "idempotency",
+      "auditLog"
+    ],
+    excludes: ["workbench-state.json", "apiKey", "secretKey"]
+  },
+  {
+    name: "v5_monthly_service_guard_contract",
+    file: "src/lib/v5/monthly-service.ts",
+    includes: [
+      "WORKBENCH_STATE_PATH",
+      "WRITE_ROLES",
+      "assertWritableRole",
+      "validateMonthlyPlan",
+      "expectedVersion",
+      "idempotencyHeader",
+      "IDEMPOTENCY_KEY_REUSED",
+      "MONTHLY_PLAN_VERSION_CONFLICT"
+    ],
+    excludes: ["API_KEY", "process.env.OPENAI"]
+  },
+  {
+    name: "v5_formal_monthly_contract_boundary",
+    file: "src/lib/v5/monthly-contracts.ts",
+    includes: ["V5MonthlyPlan", "V5MonthlyProductionReadiness", "V5ProductionPoolEntry"],
+    excludes: [
+      "V5MonthlyWorkspace",
+      "MonthlyWorkspaceReadModel",
+      "SaveMonthlyPlanRequest",
+      "V5ApiEnvelope",
+      "RulePackageOption"
+    ]
+  },
+  {
+    name: "v5_formal_monthly_plan_repository_contract",
+    file: "src/lib/v5/monthly-plan-repository.ts",
+    includes: [
+      "monthly-contracts",
+      "getV5GovernancePool",
+      "readV5MonthlyPlanRecord",
+      "SELECT * FROM monthly_plan WHERE plan_month = ? LIMIT 1"
+    ],
+    excludes: ["data/v5-monthly-workbench.json", "workbench-state.json"]
+  },
+  {
+    name: "v5_formal_monthly_plan_service_contract",
+    file: "src/lib/v5/monthly-plan-service.ts",
+    includes: ["monthly-contracts", "readV5MonthlyPlanRecord", "getV5MonthlyPlan"],
+    excludes: ["monthly-workspace-contracts", "workbench-state.json"]
+  },
+  {
+    name: "v5_monthly_workspace_governance_contract",
+    file: "src/lib/v5/monthly-workspace-governance.ts",
+    includes: [
+      "monthly-contracts",
+      "getV5MonthlyPlan",
+      "getV5MonthlyProductionReadiness",
+      "getV5MonthlyProductionPool",
+      "pending_config",
+      "monthlyProductionReady",
+      "approvedAt",
+      "approvedBy"
+    ],
+    excludes: ["derived_v4"]
+  },
+  {
+    name: "v5_monthly_workspace_read_model_contract",
+    file: "src/lib/v5/monthly-workspace-read-model.ts",
+    includes: [
+      "monthly-contracts",
+      "getMonthlyWorkspaceBase",
+      "loadMonthlyWorkspaceGovernance",
+      "getMonthlyWorkspaceReadModel",
+      "governanceData",
+      "formal"
+    ],
+    excludes: ["v5-ui-mock-data"]
+  },
+  {
+    name: "v5_monthly_workspace_read_api_contract",
+    file: "src/app/api/v5/monthly-workspace/route.ts",
+    includes: ["getMonthlyWorkspaceReadModel", "cache-control", "no-store"],
+    excludes: ["getV5MonthlyWorkspace"]
+  },
+  {
+    name: "v5_monthly_api_routes_contract",
+    file: "src/app/api/v5/monthly-plans/[month]/route.ts",
+    includes: ["PUT", "parseSaveMonthlyPlanRequest", "saveV5MonthlyPlan", "x-idempotency-key", "V5ServiceError"],
+    excludes: ["currentRole", "role:"]
+  },
+  {
+    name: "v5_monthly_client_dedup_contract",
+    file: "src/lib/v5/use-monthly-workspace.ts",
+    includes: [
+      "workspaceCache",
+      "inFlightRequests",
+      "/api/v5/monthly-workspace",
+      "/api/v5/monthly-plans/",
+      "expectedVersion",
+      "x-idempotency-key"
+    ],
+    excludes: ["v5-ui-mock-data"]
+  },
+  {
+    name: "v5_batch_grouping_contract",
+    file: "src/components/BatchGenerationMatrixTable.tsx",
+    includes: [
+      "按产品分组",
+      "按渠道分组",
+      "按状态分组",
+      "按内容类型分组",
+      "按主蒸馏词分组",
+      "全部收起",
+      "v5-task-title-single-line",
+      "batch-task-search",
+      "setActiveGroupKeys(groupKeys)"
+    ],
+    excludes: ["fetch(", "/api/"]
+  },
+  {
+    name: "v5_schedule_calendar_contract",
+    file: "src/components/ScheduleCalendarLite.tsx",
+    includes: [
+      "人工排程日历",
+      "悬浮日期查看具体排程",
+      "trigger={[\"hover\", \"click\"]}",
+      "v5-calendar-status-summary",
+      "schedule-day-",
+      "未排程内容"
+    ],
+    excludes: ["fetch(", "/api/"]
+  },
+  {
+    name: "v5_daily_execution_boundary_contract",
+    file: "src/app/daily-execution/page.tsx",
+    includes: [
+      "昨日",
+      "今日",
+      "明日",
+      "本月已发布",
+      "本月待发布",
+      "已排程待发布",
+      "未排程",
+      "URL 不在本页呈现",
+      "PublishStatusTag"
+    ],
+    excludes: ["月度计划配置", "批量生成当月可生成内容", "回填 URL", "确认 URL", "fetch(", "/api/"]
+  },
+  {
     name: "weekly_plan_preview_contract",
     file: "src/app/weekly-plan/page.tsx",
     includes: [
@@ -809,12 +1022,13 @@ const contracts = [
     includes: [
       "setViewport",
       "normalizeScope",
-      "full\", \"roles\", \"content\", \"responsive\", \"publish",
+      "full\", \"roles\", \"content\", \"responsive\", \"publish\", \"v5",
       "scope: smokeScope",
       "shouldRunRoles",
       "shouldRunContent",
       "shouldRunResponsive",
       "shouldRunPublish",
+      "shouldRunV5",
       "buildResponsiveAuditExpression",
       "assertResponsiveLayout",
       "beforeAudit",
@@ -898,6 +1112,14 @@ const contracts = [
       "responsive_ai_config_call_log_drawer_mobile",
       "responsive_ai_config_prompt_version_drawer_mobile",
       "responsive_ai_config_quality_drawer_mobile",
+      "v5_dashboard_scoped_replacement_desktop",
+      "v5_dashboard_scoped_replacement_mobile",
+      "v5_monthly_matrix_desktop",
+      "v5_monthly_config_modal_mobile",
+      "v5_batch_generation_desktop",
+      "v5_batch_generation_mobile",
+      "v5_daily_execution_mobile",
+      "v5_monthly_review_mobile",
       "390, 844, false",
       "周计划生成预览",
       "正文 Markdown 编辑",
@@ -937,10 +1159,12 @@ const contracts = [
       "smoke:browser:content:isolated",
       "smoke:browser:responsive",
       "smoke:browser:publish",
+      "smoke:browser:v5",
       "--scope=roles",
       "--scope=content",
       "--scope=responsive",
-      "--scope=publish"
+      "--scope=publish",
+      "--scope=v5"
     ]
   },
   {

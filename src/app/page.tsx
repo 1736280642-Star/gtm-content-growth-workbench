@@ -3,251 +3,68 @@
 import { Alert, Button, Card, Table, Tag } from "antd";
 import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
-import { PageHeader } from "@/components/PageHeader";
 import { PageErrorState } from "@/components/PageErrorState";
+import { PageHeader } from "@/components/PageHeader";
+import { V5StatusRail } from "@/components/V5StatusRail";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
-import { isDateInWeek } from "@/lib/date-utils";
-import type { ArticleDraft, BlogArticle, ContentTask, GeoTestResult, PublishRecord } from "@/lib/types";
+import type { BlogArticle, GeoTestResult } from "@/lib/types";
+import {
+  batchQueueItems,
+  dailyExecutionItems,
+  exceptionItems,
+  monthlyGoal,
+  nextMonthCandidates,
+  strategyTermHits,
+  v5DemoLabel
+} from "@/lib/v5-ui-mock-data";
 import { useMemo } from "react";
 
-type PlanNextStep = "confirm" | "generate" | "fix_generation" | "fix_qa" | "review_draft" | "publish" | "fill_url" | "record_metrics" | "retrospect" | "failed";
-type BlogNextStep = "diagnose" | "add_candidate" | "candidate_pool" | "planned" | "observe" | "dismissed";
-type GeoNextStep = "configure_models" | "inspect_failure" | "add_candidate" | "fix_citation" | "candidate_pool" | "planned" | "dismissed" | "observe";
-type DashboardActionStep = "confirm_plan" | "generate_draft" | "review_draft" | "publish" | "blog" | "geo" | "retrospect";
+type DashboardActionSource = "v5_mock" | "current_runtime";
 
 interface DashboardActionItem {
-  key: DashboardActionStep;
+  key: string;
   title: string;
   count: number;
-  step: DashboardActionStep;
-  href: string;
-  currentAction: string;
-  entryLabel: string;
+  source: DashboardActionSource;
+  status: string;
+  statusColor: string;
   description: string;
+  href: string;
+  entryLabel: string;
 }
 
-const dashboardActionStepLabels: Record<DashboardActionStep, string> = {
-  confirm_plan: "待确认",
-  generate_draft: "待生成/排查",
-  review_draft: "待终稿处理",
-  publish: "待发布/回填",
-  blog: "博客待处置",
-  geo: "GEO 待处置",
-  retrospect: "可复盘"
-};
-
-const dashboardActionStepColors: Record<DashboardActionStep, string> = {
-  confirm_plan: "gold",
-  generate_draft: "blue",
-  review_draft: "purple",
-  publish: "volcano",
-  blog: "cyan",
-  geo: "magenta",
-  retrospect: "green"
-};
-
-function getDraftHandoffStatus(draft: ArticleDraft | undefined) {
-  if (!draft) {
-    return "none" as const;
+function needsBlogAction(article: BlogArticle) {
+  if (article.candidateStatus === "planned" || article.candidateStatus === "dismissed") {
+    return false;
   }
 
-  const generationStatus = draft.generationSource?.status;
-
-  if (generationStatus === "pending_config") {
-    return "pending_config" as const;
-  }
-
-  if (generationStatus === "failed") {
-    return "failed" as const;
-  }
-
-  if (!draft.qaResult.passed) {
-    return "blocked" as const;
-  }
-
-  if (draft.status === "final") {
-    return "final" as const;
-  }
-
-  return "draft" as const;
+  return article.candidateStatus === "candidate" || article.geoResult === "miss" || article.seoIssueCount > 0 || article.indexedStatus !== "indexed";
 }
 
-function getPublishHandoffStatus(record: PublishRecord | undefined) {
-  if (!record) {
-    return "none" as const;
-  }
-
-  if (record.publishStatus === "failed") {
-    return "failed" as const;
-  }
-
-  if (record.channelMetrics) {
-    return "measured" as const;
-  }
-
-  if (record.publishStatus === "url_filled") {
-    return "url_filled" as const;
-  }
-
-  if (record.publishStatus === "published") {
-    return "published" as const;
-  }
-
-  return "queued" as const;
-}
-
-function getPlanNextStep(task: ContentTask, draft?: ArticleDraft, record?: PublishRecord): PlanNextStep {
-  const draftHandoff = getDraftHandoffStatus(draft);
-  const publishHandoff = getPublishHandoffStatus(record);
-
-  if (publishHandoff === "failed") {
-    return "failed";
-  }
-
-  if (publishHandoff === "queued") {
-    return "publish";
-  }
-
-  if (publishHandoff === "published") {
-    return "fill_url";
-  }
-
-  if (publishHandoff === "url_filled") {
-    return "record_metrics";
-  }
-
-  if (publishHandoff === "measured") {
-    return "retrospect";
-  }
-
-  if (draftHandoff === "pending_config" || draftHandoff === "failed") {
-    return "fix_generation";
-  }
-
-  if (draftHandoff === "blocked") {
-    return "fix_qa";
-  }
-
-  if (draftHandoff === "draft" || draftHandoff === "final") {
-    return "review_draft";
-  }
-
-  if (task.status === "planned") {
-    return "confirm";
-  }
-
-  return "generate";
-}
-
-function getBlogNextStep(article: BlogArticle): BlogNextStep {
-  if (article.candidateStatus === "planned") {
-    return "planned";
-  }
-
-  if (article.candidateStatus === "candidate") {
-    return "candidate_pool";
-  }
-
-  if (article.candidateStatus === "dismissed") {
-    return "dismissed";
-  }
-
-  if (article.geoResult === "miss" || article.seoIssueCount > 0 || article.indexedStatus === "not_indexed") {
-    return "add_candidate";
-  }
-
-  if (article.indexedStatus === "unknown") {
-    return "diagnose";
-  }
-
-  return "observe";
-}
-
-function getGeoNextStep(result: GeoTestResult, candidateArticle?: BlogArticle): GeoNextStep {
+function needsGeoAction(result: GeoTestResult, candidateArticle?: BlogArticle) {
   const executionStatus = result.executionStatus || "success";
   const candidateStatus = candidateArticle?.candidateStatus || "none";
 
-  if (executionStatus === "pending_config") {
-    return "configure_models";
+  if (candidateStatus === "planned" || candidateStatus === "dismissed") {
+    return false;
   }
 
-  if (executionStatus === "failed") {
-    return "inspect_failure";
-  }
-
-  if (candidateStatus === "planned") {
-    return "planned";
-  }
-
-  if (candidateStatus === "dismissed") {
-    return "dismissed";
-  }
-
-  if (candidateStatus === "candidate") {
-    return "candidate_pool";
-  }
-
-  if (!result.mentionedJoto) {
-    return "add_candidate";
-  }
-
-  if (!result.citedOfficialUrl) {
-    return "fix_citation";
-  }
-
-  return "observe";
-}
-
-function getDashboardActionText(step: DashboardActionStep, count: number) {
-  if (step === "confirm_plan") {
-    return count ? `还有 ${count} 条计划中任务未进入今日生成队列，先完成确认。` : "当前没有待确认的周计划任务。";
-  }
-
-  if (step === "generate_draft") {
-    return count ? `还有 ${count} 条任务需要生成稿件或排查生成配置，先补齐稿件承接。` : "当前没有待生成稿件或待排查生成的问题。";
-  }
-
-  if (step === "review_draft") {
-    return count ? `还有 ${count} 条任务卡在质检或终稿确认阶段，先处理稿件质量闭环。` : "当前没有待终稿处理的稿件。";
-  }
-
-  if (step === "publish") {
-    return count ? `还有 ${count} 条记录等待人工发布确认、URL 回填、指标录入或失败排查。` : "当前没有今日发布侧待处理记录。";
-  }
-
-  if (step === "blog") {
-    return count ? `还有 ${count} 条博客记录需要诊断、进入候选池或继续候选处理。` : "当前没有博客侧待处理记录。";
-  }
-
-  if (step === "geo") {
-    return count ? `还有 ${count} 条 GEO 结果需要补配置、排查失败、补官网引用或转入候选池。` : "当前没有 GEO 待处理结果。";
-  }
-
-  return count ? `已有 ${count} 条任务完成发布与指标回填，可以进入周报复盘。` : "当前还没有可直接进入周报复盘的任务。";
+  return executionStatus !== "success" || candidateStatus === "candidate" || !result.mentionedJoto || !result.citedOfficialUrl;
 }
 
 export default function DashboardPage() {
   const { state, summary, loading, error, refresh } = useWorkbenchSnapshot();
-  const { metrics } = summary;
-  const draftById = useMemo(() => new Map(state.drafts.map((draft) => [draft.id, draft])), [state.drafts]);
-  const draftByTaskId = useMemo(() => new Map(state.drafts.map((draft) => [draft.taskId, draft])), [state.drafts]);
-  const publishRecordByTaskId = useMemo(
-    () =>
-      new Map(
-        state.publishRecords
-          .map((record) => {
-            const draft = draftById.get(record.draftId);
-
-            return draft ? ([draft.taskId, record] as const) : undefined;
-          })
-          .filter((item): item is readonly [string, PublishRecord] => Boolean(item))
-      ),
-    [draftById, state.publishRecords]
-  );
-  const currentWeekTasks = useMemo(
-    () => state.tasks.filter((task) => task.weeklyPlanId === state.weeklyPlan.id || isDateInWeek(task.publishDate, state.weeklyPlan.weekStart)),
-    [state.tasks, state.weeklyPlan.id, state.weeklyPlan.weekStart]
-  );
+  const monthlyQuota = monthlyGoal.groups.reduce((sum, group) => sum + group.articleQuota, 0);
+  const generatedSampleCount = batchQueueItems.filter((item) => item.generationStatus === "generated").length;
+  const passedSampleCount = batchQueueItems.filter((item) => item.qualityResult === "passed").length;
+  const openExceptionCount = exceptionItems.filter((item) => item.status === "open").length;
+  const strategyAttentionCount = strategyTermHits.filter((item) => item.status !== "ready").length;
+  const batchAttentionCount = batchQueueItems.filter((item) => item.qualityResult !== "passed").length;
+  const todayExecutionCount = dailyExecutionItems.filter((item) => item.dateKey === "today").length;
+  const pendingReviewCount = nextMonthCandidates.filter((item) => item.status === "pending_review").length;
+  const pendingDataReturnCount = state.publishRecords.filter(
+    (record) => record.publishStatus === "published" || (record.publishStatus === "url_filled" && !record.channelMetrics)
+  ).length;
   const candidateByGeoResultId = useMemo(
     () =>
       new Map(
@@ -263,142 +80,145 @@ export default function DashboardPage() {
       ),
     [state.blogArticles]
   );
-  const taskNextSteps = useMemo(
-    () =>
-      currentWeekTasks.map((task) => ({
-        task,
-        nextStep: getPlanNextStep(task, draftByTaskId.get(task.id), publishRecordByTaskId.get(task.id))
-      })),
-    [currentWeekTasks, draftByTaskId, publishRecordByTaskId]
-  );
-  const pendingConfirmCount = taskNextSteps.filter((item) => item.nextStep === "confirm").length;
-  const pendingGenerateCount = taskNextSteps.filter((item) => item.nextStep === "generate" || item.nextStep === "fix_generation").length;
-  const pendingReviewCount = taskNextSteps.filter((item) => item.nextStep === "review_draft" || item.nextStep === "fix_qa").length;
-  const pendingPublishCount = taskNextSteps.filter(
-    (item) => item.nextStep === "publish" || item.nextStep === "fill_url" || item.nextStep === "record_metrics" || item.nextStep === "failed"
-  ).length;
-  const retrospectCount = taskNextSteps.filter((item) => item.nextStep === "retrospect").length;
-  const blogActionCount = state.blogArticles.filter((article) => {
-    const nextStep = getBlogNextStep(article);
+  const blogActionCount = state.blogArticles.filter(needsBlogAction).length;
+  const geoActionCount = state.geoResults.filter((result) => needsGeoAction(result, candidateByGeoResultId.get(result.id))).length;
 
-    return nextStep === "diagnose" || nextStep === "add_candidate" || nextStep === "candidate_pool";
-  }).length;
-  const geoActionCount = state.geoResults.filter((result) => {
-    const nextStep = getGeoNextStep(result, candidateByGeoResultId.get(result.id));
-
-    return nextStep === "configure_models" || nextStep === "inspect_failure" || nextStep === "add_candidate" || nextStep === "fix_citation" || nextStep === "candidate_pool";
-  }).length;
   const dashboardActionItems: DashboardActionItem[] = [
     {
-      key: "confirm_plan",
-      title: "周计划待确认",
-      count: pendingConfirmCount,
-      step: "confirm_plan" as const,
-      href: "/weekly-plan",
-      currentAction: getDashboardActionText("confirm_plan", pendingConfirmCount),
-      entryLabel: "去确认",
-      description: pendingConfirmCount ? `还有 ${pendingConfirmCount} 条计划中任务未进入今日生成队列。` : "当前没有待确认的周计划任务。"
+      key: "monthly-matrix",
+      title: "月度策略与矩阵",
+      count: strategyAttentionCount,
+      source: "v5_mock",
+      status: "需人工判断",
+      statusColor: "gold",
+      description: "确认月度目标、产品配额、蒸馏词命中和 Evidence Preview。",
+      href: "/monthly-matrix",
+      entryLabel: "进入月度矩阵"
     },
     {
-      key: "generate_draft",
-      title: "稿件待生成/排查",
-      count: pendingGenerateCount,
-      step: "generate_draft" as const,
-      href: "/today",
-      currentAction: getDashboardActionText("generate_draft", pendingGenerateCount),
-      entryLabel: "去生成",
-      description: pendingGenerateCount ? `还有 ${pendingGenerateCount} 条任务需要生成稿件或排查模型配置。` : "当前没有待生成稿件或生成异常任务。"
+      key: "batch-generation",
+      title: "批量生成与人工排程",
+      count: batchAttentionCount,
+      source: "v5_mock",
+      status: "待生产处理",
+      statusColor: "blue",
+      description: "处理标题确认、Final Evidence Gate、生成质检、异常和文章级排程。",
+      href: "/batch-generation",
+      entryLabel: "进入生成中心"
     },
     {
-      key: "review_draft",
-      title: "终稿待处理",
-      count: pendingReviewCount,
-      step: "review_draft" as const,
-      href: "/today",
-      currentAction: getDashboardActionText("review_draft", pendingReviewCount),
-      entryLabel: "去处理",
-      description: pendingReviewCount ? `还有 ${pendingReviewCount} 条任务卡在质检或终稿确认阶段。` : "当前没有待终稿处理的稿件。"
+      key: "daily-execution",
+      title: "当日执行",
+      count: todayExecutionCount,
+      source: "v5_mock",
+      status: "今日任务",
+      statusColor: "cyan",
+      description: "查看今日发布状态、失败原因以及重试或人工接管入口。",
+      href: "/daily-execution",
+      entryLabel: "查看当日执行"
     },
     {
-      key: "publish",
-      title: "今日发布待处理",
-      count: pendingPublishCount,
-      step: "publish" as const,
-      href: "/today",
-      currentAction: getDashboardActionText("publish", pendingPublishCount),
-      entryLabel: "去今日发布",
-      description: pendingPublishCount ? `还有 ${pendingPublishCount} 条记录等待人工发布确认、URL 回填或数据回传。` : "当前没有今日发布侧待处理记录。"
+      key: "data-return",
+      title: "数据回传",
+      count: pendingDataReturnCount,
+      source: "current_runtime",
+      status: "V4 保持不变",
+      statusColor: "green",
+      description: "继续使用现有渠道数据导入、URL 匹配和手动指标补录能力。",
+      href: "/publish",
+      entryLabel: "进入数据回传"
     },
     {
-      key: "blog",
-      title: "博客待处置",
+      key: "blog-monitor",
+      title: "博客监控",
       count: blogActionCount,
-      step: "blog" as const,
+      source: "current_runtime",
+      status: "V4 保持不变",
+      statusColor: "green",
+      description: "继续使用现有博客诊断、问题分布和候选池处理流程。",
       href: "/blog-monitor",
-      currentAction: getDashboardActionText("blog", blogActionCount),
-      entryLabel: "去博客侧",
-      description: blogActionCount ? `还有 ${blogActionCount} 条博客记录需要诊断、入候选池或转入候选池继续处理。` : "当前没有博客侧待处置记录。"
+      entryLabel: "查看博客监控"
     },
     {
-      key: "geo",
-      title: "GEO 待处置",
+      key: "geo-test",
+      title: "GEO 测试",
       count: geoActionCount,
-      step: "geo" as const,
+      source: "current_runtime",
+      status: "V4 保持不变",
+      statusColor: "green",
+      description: "继续使用现有平台测试、引用诊断和 GEO 缺口处理能力。",
       href: "/geo-test",
-      currentAction: getDashboardActionText("geo", geoActionCount),
-      entryLabel: "去 GEO",
-      description: geoActionCount ? `还有 ${geoActionCount} 条 GEO 结果需要补配置、排查失败、补官网引用或转入候选池。` : "当前没有 GEO 待处置结果。"
+      entryLabel: "查看 GEO 测试"
     },
     {
-      key: "retrospect",
-      title: "可进入复盘",
-      count: retrospectCount,
-      step: "retrospect" as const,
-      href: "/weekly-report",
-      currentAction: getDashboardActionText("retrospect", retrospectCount),
-      entryLabel: "去复盘",
-      description: retrospectCount ? `已有 ${retrospectCount} 条任务完成发布与指标回填，可以进入周报复盘。` : "当前还没有可直接进入周报复盘的任务。"
+      key: "monthly-review",
+      title: "月度复盘",
+      count: pendingReviewCount,
+      source: "v5_mock",
+      status: "候选待确认",
+      statusColor: "purple",
+      description: "回看 baseline / exploration、GEO 缺口并审核下月策略候选。",
+      href: "/monthly-review",
+      entryLabel: "进入月度复盘"
     }
   ];
-  const dashboardActionTotal = dashboardActionItems.reduce((sum, item) => sum + item.count, 0);
-  const highestPriorityAction = dashboardActionItems.find((item) => item.count > 0);
 
   return (
     <>
       <PageHeader
         title="首页数据看板"
-        subtitle="本周内容生产和发布执行队列的总览。"
+        subtitle="月度内容生产主流程，以及数据回传、博客和 GEO 等原有能力的统一入口。"
         actions={
           <>
-            <Link href="/today">
-              <Button type="primary">去今日发布</Button>
+            <Link href="/monthly-matrix">
+              <Button type="primary">进入月度内容矩阵</Button>
             </Link>
-            <Link href="/geo-test">
-              <Button>运行 GEO 测试</Button>
+            <Link href="/daily-execution">
+              <Button>查看当日执行</Button>
             </Link>
           </>
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
-      <div className="metric-grid metric-grid-five">
-        <MetricCard title="本周计划" value={metrics.targetTotal} suffix="篇" />
-        <MetricCard title="已生成" value={metrics.generated} suffix="篇" />
-        <MetricCard title="已发布" value={metrics.published} suffix="篇" />
-        <MetricCard title="待回填 URL" value={metrics.pendingUrl} suffix="条" />
-        <MetricCard title="待数据回传" value={pendingPublishCount} suffix="条" />
+
+      <div className="dashboard-section-heading">
+        <div>
+          <h2>V5 月度生产概览</h2>
+          <p>只展示月度矩阵、生成准入和异常状态；当前数据尚未接入真实 V5 后端。</p>
+        </div>
+        <Tag>demo / mock</Tag>
       </div>
-      <Card title="执行队列">
-        <Alert
-          showIcon
-          type={dashboardActionTotal ? (pendingConfirmCount || pendingGenerateCount || pendingReviewCount ? "warning" : "info") : "success"}
-          message={
-            dashboardActionTotal
-              ? `执行队列共 ${dashboardActionTotal} 条，当前优先处理「${highestPriorityAction?.title || "首页执行队列"}」`
-              : "当前没有阻塞项，可以进入周报复盘或继续观察发布结果。"
-          }
-          description={`终稿待处理 ${pendingReviewCount} 条，发布侧待处理 ${pendingPublishCount} 条，博客 / GEO 待处置 ${blogActionCount + geoActionCount} 条。`}
-          style={{ marginBottom: 16 }}
-        />
+      <V5StatusRail
+        items={[
+          { label: "本月内容矩阵", value: `${monthlyQuota} 篇`, helper: "月度计划总配额", status: "mock" },
+          { label: "样例已生成", value: generatedSampleCount, helper: `当前展示 ${batchQueueItems.length} 条队列样例`, status: "mock" },
+          { label: "样例质检通过", value: passedSampleCount, helper: "硬规则与软质量均通过", status: "mock" },
+          { label: "异常待处理", value: openExceptionCount, helper: "仅阻断受影响矩阵项", status: "mock" }
+        ]}
+      />
+      <Alert
+        showIcon
+        type="info"
+        message="V5 生产数据与现有运行态分开呈现"
+        description={`${v5DemoLabel}；待回填 URL、数据回传、博客监控和 GEO 测试继续读取当前工作台运行态。`}
+        style={{ marginBottom: 16 }}
+      />
+
+      <div className="dashboard-section-heading">
+        <div>
+          <h2>保留能力运行态</h2>
+          <p>这些功能未被 V5 重构，继续沿用 V4 页面、接口和数据逻辑。</p>
+        </div>
+        <Tag color="green">当前运行态</Tag>
+      </div>
+      <div className="metric-grid metric-grid-four">
+        <MetricCard title="待回填 URL" value={summary.metrics.pendingUrl} suffix="条" />
+        <MetricCard title="待数据回传" value={pendingDataReturnCount} suffix="条" />
+        <MetricCard title="博客待处置" value={blogActionCount} suffix="条" />
+        <MetricCard title="GEO 待处置" value={geoActionCount} suffix="条" />
+      </div>
+
+      <Card title="主流程与保留能力">
         <Table
           rowKey="key"
           size="small"
@@ -406,25 +226,26 @@ export default function DashboardPage() {
           dataSource={dashboardActionItems}
           columns={[
             { title: "事项", dataIndex: "title" },
-            { title: "当前状态", dataIndex: "description" },
+            {
+              title: "数据来源",
+              dataIndex: "source",
+              render: (value: DashboardActionSource) => <Tag>{value === "v5_mock" ? "V5 mock" : "当前运行态"}</Tag>
+            },
             { title: "数量", dataIndex: "count", render: (value) => <Tag>{value} 条</Tag> },
             {
-              title: "下一步",
-              dataIndex: "step",
-              render: (value) => <Tag color={dashboardActionStepColors[value as DashboardActionStep]}>{dashboardActionStepLabels[value as DashboardActionStep]}</Tag>
+              title: "状态",
+              render: (_, record) => <Tag color={record.statusColor}>{record.status}</Tag>
             },
-            { title: "处理动作", dataIndex: "currentAction" },
+            { title: "当前职责", dataIndex: "description" },
             {
-              title: "可执行入口",
-              render: (_, record) => {
-                return (
-                  <Link href={record.href}>
-                    <Button size="small" type={record.count ? "primary" : "default"}>
-                      {record.entryLabel}
-                    </Button>
-                  </Link>
-                );
-              }
+              title: "入口",
+              render: (_, record) => (
+                <Link href={record.href}>
+                  <Button size="small" type={record.source === "v5_mock" ? "primary" : "default"}>
+                    {record.entryLabel}
+                  </Button>
+                </Link>
+              )
             }
           ]}
         />
