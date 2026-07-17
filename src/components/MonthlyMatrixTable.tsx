@@ -41,7 +41,7 @@ export function MonthlyStrategyTable({ items }: { items: StrategyTermHit[] }) {
             <Descriptions.Item label="上月 GEO 指标">{record.previousGeoSummary}</Descriptions.Item>
             <Descriptions.Item label="测试假设">{record.testHypothesis}</Descriptions.Item>
             <Descriptions.Item label="成功信号">{record.successSignal}</Descriptions.Item>
-            <Descriptions.Item label="必需 Claim">{record.requiredClaims.join("、")}</Descriptions.Item>
+            <Descriptions.Item label="必需事实依据">{record.requiredClaims.join("、")}</Descriptions.Item>
             <Descriptions.Item label="证据缺口">{record.evidenceGaps.length ? record.evidenceGaps.join("；") : "当前无缺口"}</Descriptions.Item>
           </Descriptions>
         )
@@ -70,7 +70,6 @@ export function MonthlyStrategyTable({ items }: { items: StrategyTermHit[] }) {
             <div className="v5-table-stack">
               <Space size={6} wrap>
                 <strong>{record.productName}</strong>
-                <Tag>{record.rulePackageVersion}</Tag>
                 <Tag color="blue">{record.allocatedQuota} 篇</Tag>
               </Space>
               <span>{record.channelAllocation.join(" · ")}</span>
@@ -105,7 +104,7 @@ export function MonthlyStrategyTable({ items }: { items: StrategyTermHit[] }) {
                   <strong>{`${estimatedGeneratable}/${record.allocatedQuota} 项预计可生成`}</strong>
                 </Space>
                 <span>{`直接 ${record.estimatedReadyItemCount} · 自动降级 ${record.estimatedAutoDowngradeItemCount} · 待补 ${record.estimatedMissingEvidenceItemCount}`}</span>
-                <span className="muted">策略可行不等于正文可生成，最终以标题冻结后的 Final Evidence Gate 为准。</span>
+                <span className="muted">标题确认后还会逐篇检查事实依据，检查通过才可生成正文。</span>
               </div>
             );
           }

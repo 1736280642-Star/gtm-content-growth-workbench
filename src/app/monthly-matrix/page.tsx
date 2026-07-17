@@ -38,7 +38,7 @@ export default function MonthlyMatrixPage() {
       <PageHeader
         title="月度内容矩阵"
         titleExtra={<Tag color="blue">{configuredGoal.month || "读取中"}</Tag>}
-        subtitle="V5 唯一计划真源：确认产品规则包、月度配额、蒸馏词命中、GEO 测试目标和证据准备度。"
+        subtitle="确认本月产品、内容配额、主题方向、GEO 测试目标和证据准备度。"
         actions={
           <Button type="primary" icon={<SettingOutlined />} loading={loading} disabled={!workspace} onClick={() => setConfigOpen(true)}>
             月度计划配置
@@ -50,7 +50,7 @@ export default function MonthlyMatrixPage() {
         <Alert
           showIcon
           type="error"
-          message="V5 月度数据读取失败"
+          message="月度计划读取失败"
           description={error}
           action={<Button size="small" onClick={() => void refresh().catch(() => undefined)}>重新读取</Button>}
           style={{ marginBottom: 16 }}
@@ -61,34 +61,34 @@ export default function MonthlyMatrixPage() {
           type={workspace?.source.governanceData === "failed" ? "error" : workspace?.source.governanceData === "pending_config" || workspace?.source.referenceData === "seed_fallback" ? "warning" : workspace?.source.monthlyData === "persisted" ? "success" : "info"}
           message={
             workspace?.source.governanceData === "failed"
-              ? "正式 V5 治理数据读取失败"
+              ? "部分产品暂不可加入本月计划"
               : workspace?.source.governanceData === "pending_config"
-                ? "正式 V5 治理数据待配置"
+                ? "部分产品尚未完成生产准备"
                 : workspace?.source.monthlyData === "persisted"
-                  ? "已读取 V5 月度计划真实数据"
-                  : "V5 接口已接通，当前月份尚未建立计划"
+                  ? "本月计划已更新"
+                  : "开始配置本月计划"
           }
           description={
-            workspace?.formal.message
-              ? `${workspace.formal.message} V4 数据仅用于候选产品名称与渠道映射，不作为生产准入依据。`
-              : workspace?.source.referenceData === "seed_fallback"
-              ? "未找到 WORKBENCH_STATE_PATH 指向的真实 V4 状态；规则包仅作 seed_fallback 展示，不能进入月度生产池。"
-              : "产品名称与候选渠道来自 V4 兼容映射；规则包状态、G6 准备度和生产池准入来自正式 V5 Repository / Service。"
+            workspace?.source.governanceData === "failed" || workspace?.source.governanceData === "pending_config" || workspace?.source.referenceData === "seed_fallback"
+              ? "请先完善产品资料并完成表达规则审核，再配置月度配额。"
+              : workspace?.source.monthlyData === "persisted"
+                ? "请核对业务目标、产品配额和渠道分配，再确认月度策略。"
+                : "先选择本月产品与渠道并填写内容配额，系统将据此生成策略建议。"
           }
           style={{ marginBottom: 16 }}
         />
       )}
 
-      {loading && !workspace ? <div style={{ marginBottom: 16, textAlign: "center" }}><Spin /><span style={{ marginLeft: 8 }}>正在读取 V5 月度工作区</span></div> : null}
+      {loading && !workspace ? <div style={{ marginBottom: 16, textAlign: "center" }}><Spin /><span style={{ marginLeft: 8 }}>正在加载月度计划</span></div> : null}
 
       <V5StatusRail
         items={[
-          { label: "本月计划", value: `${totalQuota} 篇`, helper: "月度矩阵总配额", status: workspace?.source.monthlyData === "persisted" ? "real" : "pending_config" },
-          { label: "产品规则包", value: configuredGoal.groups.length, helper: "active 且生产就绪" },
-          { label: "覆盖渠道", value: channelCount, helper: "沿用现有渠道命名" },
+          { label: "本月计划", value: `${totalQuota} 篇`, helper: "月度矩阵总配额" },
+          { label: "可用产品", value: configuredGoal.groups.length, helper: "已审核且资料充分" },
+          { label: "覆盖渠道", value: channelCount, helper: "已选择的发布渠道" },
           { label: "GEO 基线", value: `${baselineCount} 篇`, helper: `${configuredGoal.baselineRatio}% 稳定复测` },
           { label: "动态探索", value: `${explorationCount} 篇`, helper: `${100 - configuredGoal.baselineRatio}% 新缺口验证` },
-          { label: "策略包", value: "待确认", helper: "草稿版本，需人工审核" },
+          { label: "策略建议", value: "待确认", helper: "确认后进入内容生产" },
           { label: "证据异常", value: evidenceExceptionCount, helper: "仅阻断受影响矩阵项" }
         ]}
       />
@@ -98,7 +98,7 @@ export default function MonthlyMatrixPage() {
           <span className="v5-kicker">本月业务目标</span>
           <strong>{configuredGoal.businessGoal || "尚未配置本月业务目标"}</strong>
         </div>
-        <Tag>{workspace?.plan ? `V5 persisted · v${workspace.plan.version}` : "pending_config"}</Tag>
+        <Tag color={workspace?.plan ? "green" : "default"}>{workspace?.plan ? "计划已保存" : "尚未保存"}</Tag>
       </Card>
 
       <Card
@@ -134,15 +134,15 @@ export default function MonthlyMatrixPage() {
         <Alert
           showIcon
           type="warning"
-          message="策略可行不等于正文可生成"
-          description="本表只展示 Evidence Preview 摘要，不生成文章标题，也不授予正文生成许可。标题冻结后的 Final Evidence Pack 与 Final Evidence Gate 才决定正文生成许可。"
+          message="策略方向确认后仍需检查单篇证据"
+          description="本表用于审核选题方向和预计证据准备度；标题确认后，系统会逐篇检查事实依据，再决定是否可以生成正文。"
           style={{ marginBottom: 12 }}
         />
 
         {strategyTermHits.length ? (
           <MonthlyStrategyTable items={strategyTermHits} />
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前月份还没有真实策略包；保存月度计划后，等待策略生成接口写入。" />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="本月还没有策略建议；请先保存月度计划，再生成并审核策略。" />
         )}
 
         <div className="v5-strategy-footer">

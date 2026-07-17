@@ -59,7 +59,7 @@ const navItems = [
   { key: "/blog-monitor", icon: <FileSearchOutlined />, label: <Link href="/blog-monitor">官网博客监控</Link> },
   { key: "/blog-candidates", icon: <FileSearchOutlined />, label: <Link href="/blog-candidates">博客候选池</Link> },
   { key: "/geo-test", icon: <RocketOutlined />, label: <Link href="/geo-test">GEO 测试</Link> },
-  { key: "/real-integration", icon: <CloudSyncOutlined />, label: <Link href="/real-integration">真实接入</Link> },
+  { key: "/real-integration", icon: <CloudSyncOutlined />, label: <Link href="/real-integration">连接管理</Link> },
   { key: "/ai-config", icon: <ApiOutlined />, label: <Link href="/ai-config">AI 配置</Link> },
   { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">工作台设置</Link> }
 ];

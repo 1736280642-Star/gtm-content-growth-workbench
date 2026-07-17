@@ -136,90 +136,90 @@ const integrationItems: IntegrationItem[] = [
   {
     key: "mysql_repository",
     group: "storage",
-    stage: "生产数据底座",
+    stage: "团队数据存储",
     owner: "开发 / 运维",
-    evidence: "npm.cmd run check:mysql 与 npm.cmd run init:mysql 通过",
-    nextAction: "补齐 MYSQL_* 后先跑连接检查，再初始化 schema。"
+    evidence: "团队数据存储连接可用，内容记录可以正常保存",
+    nextAction: "填写数据库连接信息并完成连接检查。"
   },
   {
     key: "qwen",
     group: "ai_provider",
     stage: "通义千问 GEO 与生成",
     owner: "业务负责人 / 开发",
-    evidence: "配置诊断返回 ready，通义千问平台测试不再 pending_config",
-    nextAction: "提供 DASHSCOPE_API_KEY、QWEN_MODEL，可选 QWEN_BASE_URL。"
+    evidence: "通义千问可以正常返回 GEO 测试结果",
+    nextAction: "填写通义千问模型和授权信息。"
   },
   {
     key: "deepseek",
     group: "ai_provider",
     stage: "DeepSeek GEO 与生成",
     owner: "业务负责人 / 开发",
-    evidence: "配置诊断返回 ready，DeepSeek 平台测试有回答快照",
-    nextAction: "提供 DEEPSEEK_API_KEY、DEEPSEEK_MODEL，可选 DEEPSEEK_BASE_URL。"
+    evidence: "DeepSeek 可以正常返回 GEO 测试结果",
+    nextAction: "填写 DeepSeek 模型和授权信息。"
   },
   {
     key: "doubao",
     group: "ai_provider",
     stage: "豆包 GEO 测试",
     owner: "业务负责人 / 开发",
-    evidence: "配置诊断返回 ready，豆包平台测试有回答快照",
-    nextAction: "提供 DOUBAO_API_KEY、DOUBAO_MODEL，可选 DOUBAO_BASE_URL。"
+    evidence: "豆包可以正常返回 GEO 测试结果",
+    nextAction: "填写豆包模型和授权信息。"
   },
   {
     key: "knowledge_url_crawler",
     group: "blog_source",
     stage: "知识库 URL 抓取",
     owner: "开发 / 内容负责人",
-    evidence: "URL 导入能通过 XCrawl 或代理抓取真实正文，失败时返回 blocked / timeout / empty_content 等原因",
-    nextAction: "提供 XCRAWL_API_KEY，或提供 KNOWLEDGE_PROXY_FETCH_BASE_URL；可选配置超时、限速和主 provider。"
+    evidence: "网页资料可以正常解析，失败时会显示可操作的原因",
+    nextAction: "选择网页解析服务并填写授权信息。"
   },
   {
     key: "xcrawl_blog_sync",
     group: "blog_source",
     stage: "官网博客同步",
     owner: "开发 / 内容负责人",
-    evidence: "博客同步能从真实源导入 URL、标题、正文 hash",
-    nextAction: "提供 XCRAWL_BLOG_INDEX_URL 或稳定 sitemap / JSON 源。"
+    evidence: "官网博客可以正常同步 URL、标题和正文",
+    nextAction: "填写官网博客目录或站点地图地址。"
   },
   {
     key: "wechatsync_bridge",
     group: "distribution",
-    stage: "本机平台草稿 Bridge",
+    stage: "平台草稿连接",
     owner: "开发 / 内容发布",
-    evidence: "GET /status 返回 ready，工作台处于 WECHATSYNC_ENABLED=true 真实模式",
-    nextAction: "启动 npm.cmd run bridge:wechatsync，并让 3047 服务带 WECHATSYNC_ENABLED=true。"
+    evidence: "工作台可以向发布平台发送草稿",
+    nextAction: "启用平台草稿连接并完成连接检查。"
   },
   {
     key: "wechat_mp_draft",
     group: "distribution",
     stage: "微信公众号草稿",
     owner: "内容发布 / 公众号管理员",
-    evidence: "微信公众号 token 检查通过，/sync_article 能返回真实 media_id",
-    nextAction: "配置公众号 AppID/AppSecret 与封面 media_id，只创建草稿，不自动发布。"
+    evidence: "微信公众号可以正常接收草稿",
+    nextAction: "填写公众号授权和默认封面；工作台只创建草稿，不自动发布。"
   },
   {
     key: "csdn_draft",
     group: "distribution",
     stage: "CSDN 草稿",
     owner: "内容发布 / CSDN 账号管理员",
-    evidence: "CSDN_COOKIE 可用，/sync_article 能返回草稿编辑入口",
-    nextAction: "先配置 CSDN_COOKIE；如平台接口变动，再补 CSDN_DRAFT_API_URL、CSDN_HEADERS_JSON 或 CSDN_DRAFT_PAYLOAD_JSON。"
+    evidence: "CSDN 可以正常接收草稿",
+    nextAction: "填写 CSDN 登录授权；如授权失效，请重新连接账号。"
   },
   {
     key: "juejin_draft",
     group: "distribution",
     stage: "掘金草稿",
     owner: "内容发布 / 掘金账号管理员",
-    evidence: "JUEJIN_COOKIE 与 JUEJIN_TAG_IDS 可用，/sync_article 能返回草稿 ID",
-    nextAction: "先配置 JUEJIN_COOKIE 和 JUEJIN_TAG_IDS；如需指定分类，再补 JUEJIN_CATEGORY_ID。"
+    evidence: "掘金可以正常接收草稿",
+    nextAction: "填写掘金登录授权、默认标签和内容分类。"
   },
   {
     key: "zhihu_draft",
     group: "distribution",
     stage: "知乎草稿",
     owner: "内容发布 / 知乎账号管理员",
-    evidence: "ZHIHU_COOKIE 可用，/sync_article 能返回知乎写作草稿入口",
-    nextAction: "先配置 ZHIHU_COOKIE；如果知乎拦截写作接口，再补 ZHIHU_HEADERS_JSON、ZHIHU_XSRF_TOKEN 或切换浏览器扩展 relay。"
+    evidence: "知乎可以正常接收草稿",
+    nextAction: "填写知乎登录授权；如授权失效，请重新连接账号。"
   },
   {
     key: "nginx_log_import",
@@ -227,7 +227,7 @@ const integrationItems: IntegrationItem[] = [
     stage: "Nginx 访问日志",
     owner: "运维",
     evidence: "日志路径可访问，AI 访问量标记为真实数据",
-    nextAction: "提供 NGINX_ACCESS_LOG_PATH，并确认 Codex/Worker 有读取权限。"
+    nextAction: "填写网站访问日志位置并确认可读取。"
   },
   {
     key: "cdn_log_import",
@@ -235,36 +235,36 @@ const integrationItems: IntegrationItem[] = [
     stage: "CDN 访问日志",
     owner: "运维",
     evidence: "CDN 导出文件可访问，AI 访问量标记为真实数据",
-    nextAction: "提供 CDN_LOG_EXPORT_PATH，并固定导出字段。"
+    nextAction: "填写 CDN 数据文件位置并确认导出字段。"
   }
 ];
 
 const scheduledTasks: ScheduledTask[] = [
   {
     key: "pipeline_manual",
-    item: "命令行试跑 Pipeline",
+    item: "手动运行自动任务",
     status: "ready",
-    evidence: "worker:run-pipeline 和 /api/pipeline/run 已接通",
+    evidence: "自动任务可以手动运行",
     nextStep: "run_manual_pipeline",
-    actionText: "在本地命令行试跑 worker:run-pipeline，确认博客同步、日志导入、渠道数据和 GEO 试跑的串联结果。",
+    actionText: "运行一次自动任务，确认博客、访问数据、渠道数据和 GEO 测试可以顺利衔接。",
     entry: { type: "command", label: "npm.cmd run worker:run-pipeline" }
   },
   {
     key: "pipeline_worker",
-    item: "本地 Worker 运行 Pipeline",
+    item: "后台运行自动任务",
     status: "ready",
-    evidence: "npm.cmd run worker:run-pipeline 已存在",
+    evidence: "自动任务可以在后台运行",
     nextStep: "run_worker",
-    actionText: "在本地命令行跑 worker:run-pipeline，确认无浏览器介入时也能写入 Pipeline 运行记录。",
+    actionText: "运行一次后台任务，确认任务记录和业务结果均可正常更新。",
     entry: { type: "command", label: "npm.cmd run worker:run-pipeline" }
   },
   {
     key: "pipeline_scheduler",
-    item: "定时运行 Pipeline",
+    item: "定时运行自动任务",
     status: "pending_config",
-    evidence: "npm.cmd run worker:schedule-pipeline 已存在，尚未接入系统级计划任务",
+    evidence: "定时规则尚未启用",
     nextStep: "configure_scheduler",
-    actionText: "先确认运行间隔和机器环境，再接 Windows Task Scheduler、cron 或生产队列。",
+    actionText: "先确认运行频率和执行时间，再启用定时任务。",
     entry: { type: "command", label: "npm.cmd run worker:schedule-pipeline" }
   },
   {
@@ -342,24 +342,24 @@ function getIntegrationActionText(item: IntegrationItem, capability?: RuntimeCap
   }
 
   if (nextStep === "verify_storage") {
-    return "先执行 MySQL 连接检查和 schema 初始化，再跑一周 workflow smoke 验证持久化链路。";
+    return "先完成数据存储连接检查，再确认内容记录可以正常保存和读取。";
   }
 
   if (nextStep === "sync_blog") {
-    return "去博客监控页同步真实官网博客源，确认文章 URL、标题和正文 hash 能写入台账。";
+    return "去博客监控页同步官网内容，确认文章 URL、标题和正文可以正常更新。";
   }
 
   if (nextStep === "import_log") {
-    return "去博客监控页导入真实日志，确认 AI 访问量不再只停留在 Demo 数据。";
+    return "去博客监控页导入访问数据，确认 AI 访问趋势可以正常更新。";
   }
 
   if (nextStep === "send_platform_draft") {
     return item.key === "wechatsync_bridge"
-      ? "先启动本机 bridge，再去今日发布页准备并发送平台草稿，确认返回 real 模式而不是 mock。"
+      ? "先启用平台连接，再去今日发布页发送一篇草稿并确认平台已收到。"
       : "去今日发布页发送一篇微信草稿；成功后到公众号后台草稿箱人工预览、发布，再回工作台填 URL。";
   }
 
-  return "去 GEO 测试页对该平台跑真实测试问题，确认回答快照、引用和候选池承接正常。";
+    return "去 GEO 测试页运行一组问题，确认回答、引用和候选池均可正常使用。";
 }
 
 function getIntegrationEntry(item: IntegrationItem, capability?: RuntimeCapability, diagnostic?: DiagnosticResult) {
@@ -441,16 +441,16 @@ function createIntegrationSequenceSteps(input: {
   return [
     {
       key: "local_json_chain",
-      step: "本地 JSON 主链路",
+      step: "内容数据存储",
       status: storageStatus,
-      evidence: `当前存储模式：${state.runtime.storage}；状态文件：${state.runtime.statePath}`,
-      nextStep: storageStatus === "ready" ? "继续保留 JSON 主链路可跑" : "先恢复 JSON 主链路",
-      actionText: storageStatus === "ready" ? "先用本地 JSON 把页面、流程和状态结构跑通，再继续外部接入。" : "先检查运行态和状态文件，避免外部配置问题掩盖页面闭环问题。",
+      evidence: storageStatus === "ready" ? "内容记录可以正常保存和读取" : "内容记录暂时无法保存",
+      nextStep: storageStatus === "ready" ? "继续检查其他连接" : "先恢复内容数据存储",
+      actionText: storageStatus === "ready" ? "内容数据存储可用，可以继续检查模型、采集和发布连接。" : "先恢复内容数据存储，再继续处理其他连接。",
       entry: { type: "link", href: "/", label: "去首页" }
     },
     {
       key: "mysql_storage",
-      step: "MySQL 持久化",
+      step: "团队数据存储",
       status: mysqlStatus,
       evidence: mysqlItem?.evidence || "待补 MySQL 连接检查",
       nextStep: integrationNextStepLabels[mysqlStep as IntegrationNextStep] || "补配置",
@@ -459,39 +459,39 @@ function createIntegrationSequenceSteps(input: {
     },
     {
       key: "ai_provider_sequence",
-      step: "模型接入试跑",
+      step: "模型连接",
       status: aiStatus,
       evidence: `已就绪 ${aiReadyCount}/${aiItems.length} 个模型接入；GEO 平台：${state.workspaceSetting.geoPlatforms.join("、")}`,
       nextStep: aiStatus === "ready" ? "进入 GEO 试跑" : aiFailedCount ? "先排查失败模型接入" : "补齐模型配置并诊断",
       actionText:
         aiStatus === "ready"
-          ? "逐个平台跑真实 GEO 测试问题，确认回答快照、官网引用和候选池承接正常。"
+          ? "逐个平台运行 GEO 测试，确认回答、官网引用和候选池承接正常。"
           : aiFailedCount
             ? "先在 AI 配置页排查失败的模型接入，再决定是否继续试跑其他平台。"
-            : "先补必填配置并完成诊断，再进入 GEO 和内容生成试跑。",
-      entry: aiStatus === "ready" ? { type: "link", href: "/geo-test", label: "去试跑" } : { type: "link", href: "/ai-config", label: "看配置" }
+            : "先补齐必填信息并完成检查，再进入 GEO 和内容生成。",
+      entry: aiStatus === "ready" ? { type: "link", href: "/geo-test", label: "去测试" } : { type: "link", href: "/ai-config", label: "看配置" }
     },
     {
       key: "blog_log_sources",
       step: "博客源与日志源",
       status: sourceStatus,
-      evidence: `日志模式：${state.workspaceSetting.logMode}；Pipeline 运行记录：${state.pipelineRuns?.length || 0} 次`,
-      nextStep: sourceStatus === "ready" ? "导入真实博客与日志" : sourceStatus === "failed" ? "排查导入失败" : "补齐博客源或日志路径",
+      evidence: `采集方式：${state.workspaceSetting.logMode}；自动任务 ${state.pipelineRuns?.length || 0} 次`,
+      nextStep: sourceStatus === "ready" ? "同步博客与访问数据" : sourceStatus === "failed" ? "排查导入失败" : "补齐博客源或访问数据路径",
       actionText:
         sourceStatus === "ready"
-          ? "去博客监控页同步真实博客与日志，确认 URL、标题、正文 hash 和 AI 访问量已不再停留在 Demo。"
+          ? "去博客监控页同步博客与访问数据，确认内容和 AI 访问趋势可以正常更新。"
           : sourceStatus === "failed"
-            ? "先排查博客同步、日志路径或读取权限失败，再恢复真实数据导入。"
-            : "先补 XCRAWL_BLOG_INDEX_URL、日志路径和日志模式，再进入博客监控页做导入验证。",
+            ? "先排查博客同步、访问数据路径或读取权限，再恢复数据导入。"
+            : "先完善博客来源和访问数据路径，再进入博客监控页确认数据。",
       entry: { type: "link", href: "/blog-monitor", label: "去导入" }
     },
     {
       key: "pipeline_automation",
-      step: "自动化与模板收口",
+      step: "自动任务与渠道模板",
       status: automationStatus,
-      evidence: hasPipelineRun ? `最近 Pipeline：${state.pipelineRuns?.[0]?.status || "unknown"} / ${state.pipelineRuns?.[0]?.finishedAt || "-"}` : "尚无 Pipeline 运行记录",
-      nextStep: hasPipelineRun ? "继续接定时任务和模板" : "先手动试跑 Pipeline",
-      actionText: hasPipelineRun ? "在自动化与模板表继续确认定时任务和渠道模板，避免真实回填时字段错位。" : "先用命令行手动运行一次 worker:run-pipeline，确认博客、日志、渠道数据和 GEO 试跑已串起来。",
+      evidence: hasPipelineRun ? `最近自动任务：${state.pipelineRuns?.[0]?.status || "unknown"} / ${state.pipelineRuns?.[0]?.finishedAt || "-"}` : "尚无自动任务记录",
+      nextStep: hasPipelineRun ? "继续确认定时任务和模板" : "先运行一次自动任务",
+      actionText: hasPipelineRun ? "继续确认定时任务和渠道模板，避免数据回填时字段错位。" : "先运行一次自动任务，确认博客、访问数据、渠道数据和 GEO 测试可以顺利衔接。",
       entry: hasPipelineRun ? { type: "link", href: "/publish", label: "看模板" } : { type: "command", label: "npm.cmd run worker:run-pipeline" }
     }
   ] satisfies IntegrationSequenceStep[];
@@ -630,8 +630,8 @@ export default function RealIntegrationPage() {
     <>
       {contextHolder}
       <PageHeader
-        title="真实接入"
-        subtitle="把外部配置、真实数据源、Pipeline 定时任务和当前运行态集中到一个交接页，避免配置散在文档和页面里。"
+        title="连接管理"
+        subtitle="集中管理内容来源、模型、数据采集和发布渠道连接。"
         actions={
           <>
             <Button loading={runningAll} onClick={handleRunAllDiagnostics}>
@@ -640,11 +640,11 @@ export default function RealIntegrationPage() {
             <Button loading={loadingCapabilities} onClick={() => void loadCapabilities()}>
               刷新配置状态
             </Button>
-            <Button onClick={() => refresh()}>刷新运行态</Button>
+            <Button onClick={() => refresh()}>刷新工作台数据</Button>
             <GovernanceEntry
               label="查看 .env 模板"
               type="primary"
-              reason="真实接入配置属于工作台运营和开发管理员职责；普通业务角色只需要看到配置是否就绪。"
+              reason="连接信息由工作台运营或管理员维护；业务人员只需要关注是否可用。"
             />
           </>
         }
@@ -655,7 +655,7 @@ export default function RealIntegrationPage() {
         message={capabilityError}
         loading={loadingCapabilities}
         onRetry={loadCapabilities}
-        description={capabilityError ? `${capabilityError}。当前外部能力就绪度可能不准确，请重试后再做真实接入判断。` : undefined}
+        description={capabilityError ? `${capabilityError}。请重试并确认连接状态后再继续。` : undefined}
       />
 
       <Alert
@@ -666,8 +666,8 @@ export default function RealIntegrationPage() {
           capabilityError
             ? "外部配置状态暂不可用。"
             : pendingCount || failedCount
-              ? "当前仍处在真实接入前的可试运行状态。"
-              : "外部能力已全部就绪，可以进入真实数据验收。"
+              ? "部分连接尚未完成，请按优先级继续处理。"
+              : "所有连接均可用，可以开始业务验证。"
         }
         description="页面只展示配置项名称、状态和缺失字段，不读取或显示任何密钥值。"
       />
@@ -683,7 +683,7 @@ export default function RealIntegrationPage() {
                 capabilityByKey[highestPriorityIntegrationItem.key],
                 diagnostics[highestPriorityIntegrationItem.key]
               )}`
-            : `可试跑入口 ${visibleReadyEntryCount} 项，建议逐项进入对应业务页面验证真实数据。`
+            : `可用入口 ${visibleReadyEntryCount} 项，建议逐项进入对应业务页面确认结果。`
         }
       />
 
@@ -698,18 +698,16 @@ export default function RealIntegrationPage() {
       </div>
 
       <div className="two-column">
-        <Card title="运行态证据">
+        <Card title="工作台概况">
           <List
             loading={loading}
             dataSource={[
-              `存储模式：${state.runtime.storage}`,
-              `状态文件：${state.runtime.statePath}`,
-              `工作台设置：每周 ${state.workspaceSetting.defaultWeeklyDays} 天，每天 ${state.workspaceSetting.defaultDailyCount} 篇`,
+              `内容节奏：每周 ${state.workspaceSetting.defaultWeeklyDays} 天，每天 ${state.workspaceSetting.defaultDailyCount} 篇`,
               `GEO 平台：${state.workspaceSetting.geoPlatforms.join("、")}`,
               `日志模式：${state.workspaceSetting.logMode}`,
-              `AI 访问数据可信度：${botConfidence}`,
-              `Pipeline 运行记录：${state.pipelineRuns?.length || 0} 次`,
-              `最近 Pipeline：${lastPipelineRun ? `${lastPipelineRun.status} / ${lastPipelineRun.finishedAt}` : "暂无"}`
+              `AI 访问数据：${botConfidence}`,
+              `自动任务记录：${state.pipelineRuns?.length || 0} 次`,
+              `最近自动任务：${lastPipelineRun ? `${lastPipelineRun.status} / ${lastPipelineRun.finishedAt}` : "暂无"}`
             ]}
             renderItem={(item) => <List.Item>{item}</List.Item>}
           />
@@ -733,7 +731,7 @@ export default function RealIntegrationPage() {
                 title: "可执行入口",
                 render: (_, record) =>
                   record.entry.type === "link" && record.entry.href === "/ai-config" ? (
-                    <GovernanceEntry label={record.entry.label} reason="真实接入配置需要工作台运营或开发管理员处理。" />
+                    <GovernanceEntry label={record.entry.label} reason="连接信息需要工作台运营或管理员处理。" />
                   ) : record.entry.type === "link" ? (
                     <Link href={record.entry.href}>
                       <Button size="small">{record.entry.label}</Button>
@@ -747,12 +745,12 @@ export default function RealIntegrationPage() {
         </Card>
       </div>
 
-      <Card title="外部配置交接表" style={{ marginTop: 16 }}>
+        <Card title="连接清单" style={{ marginTop: 16 }}>
         <Space wrap style={{ width: "100%", marginBottom: 16 }}>
           <Select
             mode="multiple"
             allowClear
-            placeholder="按接入类型筛选"
+            placeholder="按连接类型筛选"
             value={integrationGroupFilter}
             onChange={(value) => setIntegrationGroupFilter(value)}
             options={Object.entries(integrationGroupLabels).map(([value, label]) => ({ value, label }))}
@@ -779,8 +777,8 @@ export default function RealIntegrationPage() {
           locale={{
             emptyText: (
               <ActionEmpty
-                title="当前筛选没有真实接入项"
-                description="清空筛选或调整接入类型、配置状态后再查看。"
+                title="当前筛选没有连接项"
+                description="清空筛选或调整连接类型、可用状态后再查看。"
                 action={
                   <Button type="primary" onClick={clearIntegrationFilters}>
                     清空筛选
@@ -867,7 +865,7 @@ export default function RealIntegrationPage() {
           description={
             highestPriorityScheduledTask
               ? `当前优先处理：${highestPriorityScheduledTask.item}，${highestPriorityScheduledTask.actionText}`
-              : "手动 Pipeline、本地 Worker、定时入口和渠道模板都已具备试跑入口。"
+              : "自动任务、定时入口和渠道模板均已可用。"
           }
         />
         <Table

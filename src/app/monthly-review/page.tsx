@@ -3,7 +3,7 @@
 import { Alert, Button, Card, Progress, Space, Table, Tag } from "antd";
 import { PageHeader } from "@/components/PageHeader";
 import { V5StatusRail } from "@/components/V5StatusRail";
-import { monthlyTermReviews, nextMonthCandidates, v5DemoLabel } from "@/lib/v5-ui-mock-data";
+import { monthlyTermReviews, nextMonthCandidates } from "@/lib/v5-ui-mock-data";
 import type { MonthlyTermReview, NextMonthCandidate } from "@/lib/v5-ui-mock-data";
 
 const candidateStatusLabels: Record<NextMonthCandidate["status"], string> = {
@@ -29,13 +29,13 @@ export default function MonthlyReviewPage() {
       <Alert
         showIcon
         type="info"
-        message="复盘数据为 mock"
-        description={`${v5DemoLabel}。下月候选只能由 Agent 生成草稿，必须人工确认，不能自动批准策略调整。`}
+        message="下月建议需人工确认"
+        description="系统会根据本月表现生成调整建议；确认前不会改变下月内容策略。"
         style={{ marginBottom: 16 }}
       />
       <V5StatusRail
         items={[
-          { label: "矩阵完成率", value: `${publishedCount}/${plannedCount}`, helper: "按主蒸馏词汇总", status: "mock" },
+          { label: "矩阵完成率", value: `${publishedCount}/${plannedCount}`, helper: "按主蒸馏词汇总" },
           { label: "baseline 实际", value: baselinePublished, helper: "稳定问题集复测" },
           { label: "exploration 实际", value: explorationPublished, helper: "新缺口和新变量验证" },
           { label: "GEO 缺口缩小", value: 3, helper: "可形成下月候选动作" },
@@ -63,7 +63,7 @@ export default function MonthlyReviewPage() {
           ]}
         />
       </Card>
-      <Card title="下月候选调整" size="small" style={{ marginTop: 16 }} extra={<Tag>Agent 草稿 · 人工确认</Tag>}>
+      <Card title="下月候选调整" size="small" style={{ marginTop: 16 }} extra={<Tag>系统建议 · 人工确认</Tag>}>
         <Table
           rowKey="id"
           size="small"

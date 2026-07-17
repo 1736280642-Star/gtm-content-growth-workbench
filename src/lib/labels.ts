@@ -86,8 +86,8 @@ export const statusLabels: Record<TaskStatus, string> = {
 export const confidenceLabels: Record<DataConfidence, string> = {
   real: "真实数据",
   imported: "导入数据",
-  demo: "Demo 数据",
-  pending: "待接入"
+  demo: "样例数据",
+  pending: "数据待补"
 };
 
 export const confidenceColors: Record<DataConfidence, string> = {

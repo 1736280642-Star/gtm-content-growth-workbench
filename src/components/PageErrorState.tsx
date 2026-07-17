@@ -10,7 +10,7 @@ interface PageErrorStateProps {
   onRetry?: () => void | Promise<unknown>;
 }
 
-export function PageErrorState({ title = "运行态数据同步失败", message, description, loading, onRetry }: PageErrorStateProps) {
+export function PageErrorState({ title = "数据加载失败", message, description, loading, onRetry }: PageErrorStateProps) {
   if (!message) {
     return null;
   }
@@ -21,7 +21,7 @@ export function PageErrorState({ title = "运行态数据同步失败", message,
       showIcon
       style={{ marginBottom: 16 }}
       message={title}
-      description={description || `${message}。当前页面仍保留上一次成功加载的数据或本地兜底数据，请重试后再做关键判断。`}
+      description={description || `${message}。请重试并确认数据已更新，再继续处理关键事项。`}
       action={
         onRetry ? (
           <Button size="small" loading={loading} onClick={() => void onRetry()}>

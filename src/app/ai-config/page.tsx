@@ -165,7 +165,7 @@ const ragChunkingStrategyOptions = [
 
 const capabilityStatusLabels: Record<RuntimeCapabilityStatus, string> = {
   ready: "就绪",
-  pending_config: "待配置"
+  pending_config: "未完成"
 };
 
 type CapabilityNextStep = "fill_required_env" | "run_diagnostic" | "inspect_failure" | "local_fallback" | "ready";
@@ -174,8 +174,8 @@ const capabilityNextStepLabels: Record<CapabilityNextStep, string> = {
   fill_required_env: "补必填配置",
   run_diagnostic: "执行诊断",
   inspect_failure: "排查失败",
-  local_fallback: "本地可跑",
-  ready: "可试跑"
+  local_fallback: "备用能力可用",
+  ready: "可用"
 };
 
 const capabilityNextStepColors: Record<CapabilityNextStep, string> = {
@@ -196,7 +196,7 @@ const capabilityNextStepPriority: Record<CapabilityNextStep, number> = {
 
 const callLogStatusLabels: Record<AiCallLogStatus, string> = {
   success: "成功",
-  pending_config: "待配置",
+  pending_config: "未完成",
   failed: "失败",
   partial: "部分完成"
 };
@@ -242,22 +242,22 @@ function getCapabilityActionText(capability: RuntimeCapability | undefined, diag
   const nextStep = getCapabilityNextStep(capability, diagnostic);
 
   if (nextStep === "fill_required_env") {
-    return "先补齐必填环境变量，再刷新状态或运行诊断。";
+    return "先补齐必填信息，再刷新状态或运行检查。";
   }
 
   if (nextStep === "inspect_failure") {
-    return diagnostic?.message || "配置存在但诊断失败，先检查 model、base_url 或路径权限。";
+    return diagnostic?.message || "连接检查失败，请核对模型、服务地址或读取权限。";
   }
 
   if (nextStep === "local_fallback") {
-    return "当前本地 fallback 可用，先保证主链路可跑，再逐步切到真实接入。";
+    return "备用能力可用，可以继续业务流程；建议尽快完善主连接。";
   }
 
   if (nextStep === "run_diagnostic") {
-    return "环境变量已齐，下一步先测试连接，再进入真实场景试跑。";
+    return "必填信息已齐，下一步先检查连接，再进入业务页面验证。";
   }
 
-  return "能力已就绪，可进入对应页面做真实试跑。";
+  return "能力已就绪，可进入对应页面使用。";
 }
 
 function getCapabilityLink(capability: RuntimeCapability | undefined, diagnostic?: DiagnosticResult) {
@@ -268,7 +268,7 @@ function getCapabilityLink(capability: RuntimeCapability | undefined, diagnostic
   const nextStep = getCapabilityNextStep(capability, diagnostic);
 
   if (capability.key === "qwen" || capability.key === "deepseek" || capability.key === "doubao") {
-    return nextStep === "ready" ? { href: "/geo-test", label: "去试跑" } : { href: "/real-integration", label: "看缺口" };
+    return nextStep === "ready" ? { href: "/geo-test", label: "去测试" } : { href: "/real-integration", label: "看缺口" };
   }
 
   if (capability.key === "knowledge_url_crawler") {
@@ -284,10 +284,10 @@ function getCapabilityLink(capability: RuntimeCapability | undefined, diagnostic
   }
 
   if (capability.key === "local_json_repository") {
-    return { href: "/weekly-plan", label: "去试跑" };
+    return { href: "/weekly-plan", label: "去使用" };
   }
 
-  return { href: "/real-integration", label: "看接入" };
+  return { href: "/real-integration", label: "看连接" };
 }
 
 function shouldRunCapabilityDiagnostic(capability: RuntimeCapability | undefined, diagnostic?: DiagnosticResult) {
@@ -513,7 +513,7 @@ export default function AiConfigPage() {
   const visibleInspectFailureCount = filteredCapabilities.filter((capability) => getCapabilityNextStep(capability, diagnostics[capability.key]) === "inspect_failure").length;
   const visibleFallbackCount = filteredCapabilities.filter((capability) => getCapabilityNextStep(capability, diagnostics[capability.key]) === "local_fallback").length;
   const visibleReadyCount = filteredCapabilities.filter((capability) => getCapabilityNextStep(capability, diagnostics[capability.key]) === "ready").length;
-  const capabilityQueueSummary = `诊断失败 ${visibleInspectFailureCount} 项，本地 fallback ${visibleFallbackCount} 项，可直接试跑 ${visibleReadyCount} 项。`;
+  const capabilityQueueSummary = `检查失败 ${visibleInspectFailureCount} 项，备用能力可用 ${visibleFallbackCount} 项，可直接使用 ${visibleReadyCount} 项。`;
   const highestPriorityCapability = [...filteredCapabilities]
     .sort((a, b) => capabilityNextStepPriority[getCapabilityNextStep(a, diagnostics[a.key])] - capabilityNextStepPriority[getCapabilityNextStep(b, diagnostics[b.key])])
     .find((capability) => {
@@ -942,7 +942,7 @@ export default function AiConfigPage() {
         message={capabilityError}
         loading={loadingCapabilities}
         onRetry={loadConfigStatus}
-        description={capabilityError ? `${capabilityError}。当前不会展示密钥值，请重试后再判断 ready / pending_config 状态。` : undefined}
+        description={capabilityError ? `${capabilityError}。请重试并确认连接状态后再继续。` : undefined}
       />
       <Alert
         type={!hasLoadedCapabilities ? "warning" : pendingCapabilities.length ? "warning" : "success"}
@@ -952,14 +952,14 @@ export default function AiConfigPage() {
           !hasLoadedCapabilities
             ? "配置状态待加载，暂不能据此判断外部能力是否就绪。"
             : pendingCapabilities.length
-              ? "还有真实配置未接入，当前会继续走 fallback。"
+              ? "部分能力尚未完成，请按优先级继续配置。"
               : "所有核心能力已就绪。"
         }
         description={
           !hasLoadedCapabilities
             ? "请先刷新状态或运行全部诊断；页面只展示配置项名称和缺失字段，不展示密钥值。"
             : pendingCapabilities.length
-              ? "先保留这些占位符，等你后续提供真实 API / 密钥 / 路径时再补齐。"
+              ? "请按缺失项补齐模型、授权或数据路径。"
               : "页面当前未发现缺失配置。"
         }
       />
@@ -987,9 +987,9 @@ export default function AiConfigPage() {
         items={[
           {
             key: "provider",
-            label: "Provider",
+            label: "模型服务",
             children: (
-              <Card title="Provider">
+              <Card title="模型服务">
                 <Space wrap style={{ width: "100%", marginBottom: 16 }}>
                   <Select
                     mode="multiple"
@@ -1011,7 +1011,7 @@ export default function AiConfigPage() {
                   locale={{
                     emptyText: (
                       <ActionEmpty
-                        title="当前筛选没有 Provider"
+                        title="当前筛选没有模型服务"
                         description="清空筛选或调整配置状态后再查看。"
                         action={
                           <Button type="primary" onClick={clearCapabilityFilters}>
@@ -1022,7 +1022,7 @@ export default function AiConfigPage() {
                     )
                   }}
                   columns={[
-                    { title: "Provider", dataIndex: "name" },
+                    { title: "模型服务", dataIndex: "name" },
                     { title: "用途", dataIndex: "usage" },
                     { title: "Model Env", dataIndex: "model" },
                     {
@@ -1077,8 +1077,8 @@ export default function AiConfigPage() {
                 <Alert
                   showIcon
                   type={ragConfig?.embeddingModelProvider ? "info" : "warning"}
-                  message={ragConfig?.embeddingModelProvider ? "已选择 embedding 模型，仍需真实接口配置后才能写入真实向量。" : "当前 embedding 未配置，知识库向量状态会显示 pending_config。"}
-                  description="这里保存全局 RAG 策略，不设置默认值；未选择模型时不会用 fallback hash 冒充真实向量。切片可先走规则切片，AI 语义切片需要选择切片模型并完成真实 Provider 配置。"
+                  message={ragConfig?.embeddingModelProvider ? "已选择向量模型" : "请选择向量模型"}
+                  description="向量模型用于知识检索，切片模型用于语义切分；完成选择和授权后才能处理知识库内容。"
                   style={{ marginBottom: 16 }}
                 />
                 <Form form={ragForm} layout="vertical">
@@ -1107,9 +1107,9 @@ export default function AiConfigPage() {
                         <Select allowClear placeholder="请选择 keyword / vector / hybrid" options={ragRetrievalStrategyOptions} />
                       </Form.Item>
                       <Space wrap>
-                        <Tag color={ragConfig?.chunkingModelProvider ? "blue" : "gold"}>切片模型：{ragConfig?.chunkingModelProvider || "pending_config"}</Tag>
-                        <Tag color={ragConfig?.embeddingModelProvider ? "blue" : "gold"}>Embedding：{ragConfig?.embeddingModelProvider || "pending_config"}</Tag>
-                        <Tag color={ragConfig?.retrievalStrategy ? "blue" : "gold"}>检索策略：{ragConfig?.retrievalStrategy || "pending_config"}</Tag>
+                        <Tag color={ragConfig?.chunkingModelProvider ? "blue" : "gold"}>切片模型：{ragConfig?.chunkingModelProvider || "未选择"}</Tag>
+                        <Tag color={ragConfig?.embeddingModelProvider ? "blue" : "gold"}>向量模型：{ragConfig?.embeddingModelProvider || "未选择"}</Tag>
+                        <Tag color={ragConfig?.retrievalStrategy ? "blue" : "gold"}>检索策略：{ragConfig?.retrievalStrategy || "未选择"}</Tag>
                       </Space>
                     </Card>
                   </div>
@@ -1172,11 +1172,11 @@ export default function AiConfigPage() {
             label: "本地规则",
             children: (
               <div className="two-column">
-                <Card title="本地规则与 fallback">
+                <Card title="本地规则与备用能力">
                   <List
                     dataSource={[
                       "周计划：发布日期、渠道、产品、官网链接目标仍由系统规则或人工确认。",
-                      "正文生成：Provider 不可用时生成 local_rule 草稿，并保留生成来源。",
+                      "正文生成：模型服务不可用时使用备用规则生成草稿，并标记生成方式。",
                       "草稿质检：阻断项、复制权限和高风险片段处理仍由本地规则兜底。",
                       "蒸馏词：confidence >= 0.65 自动入池，低于阈值直接丢弃。",
                       "GEO：原始回答和引用 URL 进入详情，不进入普通业务页。"
@@ -1184,7 +1184,7 @@ export default function AiConfigPage() {
                     renderItem={(item) => <List.Item>{item}</List.Item>}
                   />
                 </Card>
-                <Card title="真实接入 Checklist">
+                <Card title="连接清单">
                   <Table
                     rowKey="key"
                     size="small"
@@ -1222,15 +1222,15 @@ export default function AiConfigPage() {
                     <strong>{filteredCallLogs.length}</strong>
                   </div>
                   <div className="ai-call-log-summary-item">
-                    <span>异常 / 待配置</span>
+                    <span>异常 / 未完成</span>
                     <strong>{filteredCallLogIssueCount}</strong>
                   </div>
                   <div className="ai-call-log-summary-item">
-                    <span>Provider / Model</span>
+                    <span>模型服务</span>
                     <strong>{filteredProviderCallLogCount}</strong>
                   </div>
                   <div className="ai-call-log-summary-item">
-                    <span>fallback</span>
+                    <span>备用生成</span>
                     <strong>{filteredCallLogFallbackCount}</strong>
                   </div>
                 </div>
@@ -1267,7 +1267,7 @@ export default function AiConfigPage() {
                     { title: "时间", dataIndex: "createdAt" },
                     { title: "模块", dataIndex: "moduleLabel", render: (value) => <Tag>{value}</Tag> },
                     {
-                      title: "Provider / Model",
+                      title: "模型服务",
                       render: (_, record) => [record.provider, record.model].filter(Boolean).join(" / ") || "-"
                     },
                     { title: "Prompt 版本", dataIndex: "promptVersion", render: (value) => value || "-" },
@@ -1288,7 +1288,7 @@ export default function AiConfigPage() {
                       render: (value) => <Tag color={callLogStatusColors[value as AiCallLogStatus]}>{callLogStatusLabels[value as AiCallLogStatus]}</Tag>
                     },
                     {
-                      title: "fallback 是否触发",
+                      title: "是否使用备用生成",
                       dataIndex: "fallbackTriggered",
                       render: (value) => <Tag color={value ? "gold" : "green"}>{value ? "已触发" : "未触发"}</Tag>
                     },
@@ -1334,11 +1334,11 @@ export default function AiConfigPage() {
                     size="small"
                     dataSource={governanceData.draftSources}
                     pagination={{ pageSize: 6, showSizeChanger: false }}
-                    locale={{ emptyText: <ActionEmpty title="暂无正文生成记录" description="批量生成正文后会在这里显示 Provider、Model、Prompt 版本和 fallback 状态。" /> }}
+                    locale={{ emptyText: <ActionEmpty title="暂无正文生成记录" description="批量生成正文后会在这里显示模型、内容要求和备用生成情况。" /> }}
                     columns={[
                       { title: "标题", dataIndex: "title" },
                       { title: "来源", dataIndex: "mode", render: (value) => <Tag color={value === "ai_provider" ? "green" : "default"}>{value}</Tag> },
-                      { title: "Provider", dataIndex: "provider", render: (value) => value || "-" },
+                      { title: "模型服务", dataIndex: "provider", render: (value) => value || "-" },
                       { title: "Prompt 版本", dataIndex: "promptProfile", render: (value) => value || "-" },
                       {
                         title: "规则包",
@@ -1385,9 +1385,9 @@ export default function AiConfigPage() {
                 <Card title="效果摘要">
                   <List
                     dataSource={[
-                      `AI Provider 生成：${aiProviderDraftCount} 篇`,
-                      `本地规则 fallback：${localRuleDraftCount} 篇`,
-                      `fallback 触发：${fallbackTriggeredCount} 次`,
+                      `模型生成：${aiProviderDraftCount} 篇`,
+                      `备用规则生成：${localRuleDraftCount} 篇`,
+                      `使用备用生成：${fallbackTriggeredCount} 次`,
                       `人工处理动作：${editActionCount} 次`,
                       `人工直接编辑：${manualEditActionCount} 次`,
                       `局部改写：${rewriteActionCount} 次`,
@@ -1407,7 +1407,7 @@ export default function AiConfigPage() {
                       `已发布：${publishedDraftCount} 篇`,
                       `已回传数据：${dataReturnedDraftCount} 篇`,
                       `待配置或失败：${failedDraftSourceCount} 篇`,
-                      `最近 Pipeline：${governanceData.pipelineRuns[0]?.status || "暂无"}`
+                      `最近自动任务：${governanceData.pipelineRuns[0]?.status || "暂无"}`
                     ]}
                     renderItem={(item) => <List.Item>{item}</List.Item>}
                   />
@@ -1418,8 +1418,8 @@ export default function AiConfigPage() {
                     message="运营判断摘要"
                     description={
                       failedDraftSourceCount || fallbackTriggeredCount || qaSuspectedFalsePositiveCount || qaSuspectedMissCount || heavyEditDraftCount
-                        ? "当前需要优先查看失败原因、fallback、规则包版本分布、质检反馈和正文改动强度，判断问题来自 Provider、Prompt、知识库证据、产品表达规则还是质检规则。"
-                        : "当前生成链路没有明显失败、fallback、质检反馈异常或重度编辑信号，可继续观察 Prompt 和规则包表现。"
+                        ? "当前需要优先查看失败原因、备用生成、产品规则、质检反馈和正文改动强度，判断问题来自模型、内容要求、知识证据、产品表达还是质检规则。"
+                        : "当前内容生成没有明显失败、备用生成、质检异常或重度编辑信号，可继续观察内容要求和产品规则表现。"
                     }
                   />
                   <List
@@ -1527,7 +1527,7 @@ export default function AiConfigPage() {
                     dataSource={qualityAssociationRows}
                     pagination={false}
                     scroll={{ x: 1480 }}
-                    locale={{ emptyText: <ActionEmpty title="暂无质量关联数据" description="生成记录积累后，这里会按 Provider、Prompt、规则包、渠道、产品和蒸馏词展示质量表现。" /> }}
+                    locale={{ emptyText: <ActionEmpty title="暂无质量关联数据" description="生成记录积累后，这里会按模型服务、内容要求、产品规则、渠道、产品和蒸馏词展示质量表现。" /> }}
                     columns={[
                       { title: "维度", dataIndex: "dimension", width: 90 },
                       { title: "对象", dataIndex: "label" },
@@ -1545,7 +1545,7 @@ export default function AiConfigPage() {
                       { title: "疑似误报", dataIndex: "suspectedFalsePositive", width: 100 },
                       { title: "疑似漏检", dataIndex: "suspectedMiss", width: 100 },
                       { title: "异常", dataIndex: "issue", width: 80, render: (value) => <Tag color={value ? "red" : "green"}>{value}</Tag> },
-                      { title: "fallback", dataIndex: "fallback", width: 90, render: (value) => <Tag color={value ? "gold" : "green"}>{value}</Tag> },
+                      { title: "备用生成", dataIndex: "fallback", width: 90, render: (value) => <Tag color={value ? "gold" : "green"}>{value}</Tag> },
                       {
                         title: "详情",
                         width: 80,
@@ -1578,11 +1578,11 @@ export default function AiConfigPage() {
             <Space wrap>
               <Tag>{selectedLog.moduleLabel}</Tag>
               <Tag color={callLogStatusColors[selectedLog.outputStatus]}>{callLogStatusLabels[selectedLog.outputStatus]}</Tag>
-              <Tag color={selectedLog.fallbackTriggered ? "gold" : "green"}>{selectedLog.fallbackTriggered ? "fallback 已触发" : "fallback 未触发"}</Tag>
+              <Tag color={selectedLog.fallbackTriggered ? "gold" : "green"}>{selectedLog.fallbackTriggered ? "已使用备用生成" : "未使用备用生成"}</Tag>
             </Space>
             <span className="muted">{selectedLog.createdAt}</span>
-            <Card size="small" title="Provider / Model">
-              {[selectedLog.provider, selectedLog.model].filter(Boolean).join(" / ") || "无 Provider / Model 记录"}
+            <Card size="small" title="模型服务">
+              {[selectedLog.provider, selectedLog.model].filter(Boolean).join(" / ") || "无模型记录"}
             </Card>
             <Card size="small" title="Prompt 版本">
               {selectedLog.promptVersion || "无 Prompt 版本记录"}
@@ -1631,7 +1631,7 @@ export default function AiConfigPage() {
               </Tag>
               {selectedPromptVersion.previousVersion ? <Tag>上一版本 {selectedPromptVersion.previousVersion}</Tag> : null}
             </Space>
-            <Alert showIcon type="info" message={selectedPromptVersion.releaseNote || "当前版本只展示治理摘要，不展示 Prompt 原文。"} />
+            <Alert showIcon type="info" message={selectedPromptVersion.releaseNote || "这里只展示使用说明和变更摘要，不展示完整指令内容。"} />
             <Card size="small" title="使用位置">
               {selectedPromptVersion.usedAt}
             </Card>

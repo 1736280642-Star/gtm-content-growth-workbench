@@ -74,7 +74,7 @@ const contracts = [
     file: "src/components/MonthlyPlanConfigPanel.tsx",
     includes: [
       "月度计划配置",
-      "产品由已治理的产品表达规则包带出",
+      "选择已审核的产品表达规则",
       "isSelectablePackage",
       "monthlyProductionReady",
       "mode=\"multiple\"",
@@ -86,7 +86,7 @@ const contracts = [
       "不能进入生产池",
       "handleSave",
       "onSave(cloneConfig(draft))",
-      "已保存到 V5 数据源",
+      "月度计划已保存",
       "monthly-plan-save-button"
     ],
     excludes: ["fetch(", "/api/", "workbench-state.json"]
@@ -99,8 +99,8 @@ const contracts = [
       "GEO 测试分配",
       "MonthlyStrategyTable",
       "strategyTermHits",
-      "策略可行不等于正文可生成",
-      "Final Evidence Gate",
+      "策略方向确认后仍需检查单篇证据",
+      "逐篇检查事实依据",
       "进入批量生成中心",
       "useMonthlyWorkspace",
       "尚未配置本月业务目标"
@@ -113,11 +113,11 @@ const contracts = [
     includes: [
       "批量确认标题与矩阵",
       "批量生成当月可生成内容",
-      "只生成通过正式准入的矩阵项",
+      "只生成已通过检查的内容",
       "本次可生成",
       "证据闸门拦截",
       "标题未确认",
-      "平台配置缺失",
+      "暂不可自动发布",
       "预计进入异常",
       "BatchGenerationMatrixTable",
       "ScheduleCalendarLite",
@@ -282,7 +282,7 @@ const contracts = [
       "本月待发布",
       "已排程待发布",
       "未排程",
-      "URL 不在本页呈现",
+      "发布后的 URL 与效果数据统一在数据回传中补全",
       "PublishStatusTag"
     ],
     excludes: ["月度计划配置", "批量生成当月可生成内容", "回填 URL", "确认 URL", "fetch(", "/api/"]
@@ -613,7 +613,7 @@ const contracts = [
   {
     name: "real_integration_business_wording_contract",
     file: "src/app/real-integration/page.tsx",
-    includes: ["真实接入", "模型接入", "模型接入试跑", "真实测试问题", "AI 访问量", "AI 访问数据可信度", "GovernanceEntry"],
+    includes: ["连接管理", "模型连接", "GEO 测试", "AI 访问量", "AI 访问数据", "GovernanceEntry"],
     excludes: ["AI Provider", "AI Bot PV", "AI Bot 数据可信度", "真实 Prompt", "GEO Prompt"]
   },
   {
@@ -948,9 +948,9 @@ const contracts = [
       "callLogModuleFilter",
       "callLogStatusFilter",
       "filteredCallLogs",
-      "Provider / Model",
+      "模型服务",
       "输出状态",
-      "fallback 是否触发",
+      "是否使用备用生成",
       "产品表达规则包",
       "productExpressionRuleVersion",
       "productExpressionRuleSource",

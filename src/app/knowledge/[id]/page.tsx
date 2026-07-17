@@ -308,8 +308,8 @@ export default function KnowledgeDetailPage({ params }: { params: { id: string }
               <Descriptions.Item label="最近同步">{knowledgeBase.lastSyncedAt || "-"}</Descriptions.Item>
               <Descriptions.Item label="来源 URL">{knowledgeBase.sourceUrl || "-"}</Descriptions.Item>
               <Descriptions.Item label="切片策略">{knowledgeBase.chunkingStrategy || "rule"}</Descriptions.Item>
-              <Descriptions.Item label="向量模型">{knowledgeBase.embeddingModel || "pending_config"}</Descriptions.Item>
-              <Descriptions.Item label="检索策略">{knowledgeBase.retrievalStrategy || "pending_config"}</Descriptions.Item>
+              <Descriptions.Item label="向量模型">{knowledgeBase.embeddingModel || "未选择"}</Descriptions.Item>
+              <Descriptions.Item label="检索策略">{knowledgeBase.retrievalStrategy || "未选择"}</Descriptions.Item>
               <Descriptions.Item label="规则包处理">{getRulePackageModeLabel(knowledgeBase, knowledgeBases)}</Descriptions.Item>
               <Descriptions.Item label="自动导入状态">{knowledgeBase.autoCrawl?.enabled ? knowledgeBase.autoCrawl.status || "idle" : "未启用"}</Descriptions.Item>
               <Descriptions.Item label="发现文章">{knowledgeBase.autoCrawl?.totalDiscovered ?? "-"}</Descriptions.Item>
@@ -376,8 +376,8 @@ export default function KnowledgeDetailPage({ params }: { params: { id: string }
                         message={`当前状态：${embeddingStatusLabels[vectorStatus]}`}
                         description={
                           vectorStatus === "real_embedding"
-                            ? "当前知识库已经写入真实向量。"
-                            : "如果没有配置真实 Embedding provider，系统会显示 pending_config，不会伪装成真实向量。"
+                            ? "当前知识库已经完成向量化。"
+                            : "选择向量模型后，可开始处理知识库内容。"
                         }
                       />
                       <Button type="primary" loading={vectorizing} onClick={handleVectorize}>

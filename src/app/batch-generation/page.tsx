@@ -80,7 +80,7 @@ export default function BatchGenerationPage() {
       <PageHeader
         title="批量生成中心"
         titleExtra={<Tag color="blue">{workspace?.month || "读取中"}</Tag>}
-        subtitle="当月正文生产操作台：标题确认、Final Evidence Gate、生成质检、异常分流和文章级人工排程。"
+        subtitle="当月正文生产操作台：标题确认、证据检查、内容质检、异常处理和文章级排程。"
         actions={
           <Space wrap>
             <Button icon={<PauseOutlined />} disabled>暂停批次</Button>
@@ -102,14 +102,14 @@ export default function BatchGenerationPage() {
       ) : (
         <Alert
           showIcon
-          type={workspace?.source.governanceData === "failed" ? "error" : workspace?.source.governanceData === "pending_config" ? "warning" : workspace?.source.monthlyData === "persisted" ? "warning" : "info"}
-          message="只生成通过正式准入的矩阵项"
+          type={workspace?.source.governanceData === "failed" ? "error" : workspace?.source.governanceData === "pending_config" ? "warning" : "info"}
+          message={workspace?.source.governanceData === "failed" || workspace?.source.governanceData === "pending_config" ? "部分内容暂不可生成" : "只生成已通过检查的内容"}
           description={
-            workspace?.formal.message
-              ? `${workspace.formal.message} 当前不会把 V4 派生状态或页面 mock 当作可生成许可。`
-              : workspace?.source.monthlyData === "persisted"
-              ? "当前队列来自 V5 持久化数据；批次只执行 ready 或自动安全降级后复检通过的项目，异常项保留原状态和原因并独立分流。"
-              : "V5 接口已接通，但当前月份还没有真实矩阵与生成队列，不再回退展示页面 mock。"
+            workspace?.source.governanceData === "failed" || workspace?.source.governanceData === "pending_config"
+              ? "请先补齐产品资料、证据或生成条件；其他已通过检查的内容不受影响。"
+              : batchQueueItems.length
+                ? "批次只处理标题已确认且证据检查通过的内容，异常内容会保留原因并单独进入处理队列。"
+                : "本月还没有内容任务，请先完成月度计划和策略确认。"
           }
           style={{ marginBottom: 16 }}
         />
@@ -141,10 +141,10 @@ export default function BatchGenerationPage() {
 
       <V5StatusRail
         items={[
-          { label: "本次可生成", value: generatableCount, helper: "正式标题冻结且前置治理可检查", status: workspace?.source.productionQueue === "v5_mysql" ? "real" : "pending_config" },
+          { label: "本次可生成", value: generatableCount, helper: "标题确认且证据检查通过" },
           { label: "证据闸门拦截", value: evidenceBlockedCount, helper: "只拦截受影响矩阵项" },
-          { label: "标题未确认", value: titlePendingCount, helper: "不可创建 Final Evidence Pack" },
-          { label: "平台配置缺失", value: platformPendingCount, helper: "仅可草稿或人工接管" },
+          { label: "标题未确认", value: titlePendingCount, helper: "确认后才能检查单篇证据" },
+          { label: "暂不可自动发布", value: platformPendingCount, helper: "可转为人工处理" },
           { label: "预计进入异常", value: openExceptionCount, helper: "保留原因和治理入口" }
         ]}
       />

@@ -22,7 +22,7 @@ const scheduleStatusLabels: Record<ScheduleDraftItem["status"], string> = {
   unscheduled: "未排程",
   draft: "排程草稿",
   active: "正式排程",
-  pending_config: "发布待配置"
+  pending_config: "需人工发布"
 };
 
 const scheduleStatusColors: Record<ScheduleDraftItem["status"], string> = {
@@ -126,7 +126,7 @@ export function ScheduleCalendarLite({ items, month = "2026-08" }: { items: Sche
                     <div className="v5-calendar-status-summary">
                       {activeCount ? <span><i className="is-active" /><b>{activeCount}</b><em>正式</em></span> : null}
                       {draftCount ? <span><i className="is-draft" /><b>{draftCount}</b><em>草稿</em></span> : null}
-                      {pendingCount ? <span><i className="is-pending" /><b>{pendingCount}</b><em>待配置</em></span> : null}
+                      {pendingCount ? <span><i className="is-pending" /><b>{pendingCount}</b><em>人工发布</em></span> : null}
                     </div>
                   ) : (
                     <span className="v5-calendar-empty-label">暂无排程</span>
@@ -139,7 +139,7 @@ export function ScheduleCalendarLite({ items, month = "2026-08" }: { items: Sche
         <div className="v5-calendar-legend">
           <Tag color="green">正式排程</Tag>
           <Tag color="blue">排程草稿</Tag>
-          <Tag color="orange">发布待配置</Tag>
+          <Tag color="orange">需人工发布</Tag>
           <Tag>移动端点击日期查看详情</Tag>
         </div>
       </Card>
@@ -169,7 +169,7 @@ export function ScheduleCalendarLite({ items, month = "2026-08" }: { items: Sche
         ]}
       />
       <div className="v5-inline-note">
-        排程草稿可以提前占日期；Final Evidence Gate、硬规则和软质量通过后，才能激活为正式 Publish Schedule。
+        排程草稿可以提前占用日期；证据、规则和内容质量检查通过后，才能转为正式排程。
       </div>
     </div>
   );

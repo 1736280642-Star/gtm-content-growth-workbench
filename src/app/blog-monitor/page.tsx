@@ -541,7 +541,7 @@ export default function BlogMonitorPage() {
       {contextHolder}
       <PageHeader
         title="官网博客监控"
-        subtitle="XCrawl 负责内容抓取和 SEO 诊断；AI Bot 指标当前为 Demo CSV，占位未来真实日志接入。"
+        subtitle="集中查看内容收录、SEO 问题、AI 访问趋势和优先优化建议。"
         actions={
           <Space wrap>
             <Popconfirm
@@ -819,7 +819,7 @@ export default function BlogMonitorPage() {
             onChange={setLogSourceType}
             options={[
               { value: "csv_import", label: "CSV 导入" },
-              { value: "demo_csv", label: "Demo CSV" },
+              { value: "demo_csv", label: "样例数据" },
               { value: "nginx_log", label: "Nginx 日志" },
               { value: "cdn_log", label: "CDN 日志" }
             ]}

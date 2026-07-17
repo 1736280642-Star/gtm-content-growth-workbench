@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Card, Table, Tag } from "antd";
+import { Button, Card, Table, Tag } from "antd";
 import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
@@ -14,18 +14,15 @@ import {
   exceptionItems,
   monthlyGoal,
   nextMonthCandidates,
-  strategyTermHits,
-  v5DemoLabel
+  strategyTermHits
 } from "@/lib/v5-ui-mock-data";
 import { useMemo } from "react";
-
-type DashboardActionSource = "v5_mock" | "current_runtime";
 
 interface DashboardActionItem {
   key: string;
   title: string;
   count: number;
-  source: DashboardActionSource;
+  primary?: boolean;
   status: string;
   statusColor: string;
   description: string;
@@ -88,7 +85,7 @@ export default function DashboardPage() {
       key: "monthly-matrix",
       title: "月度策略与矩阵",
       count: strategyAttentionCount,
-      source: "v5_mock",
+      primary: true,
       status: "需人工判断",
       statusColor: "gold",
       description: "确认月度目标、产品配额、蒸馏词命中和 Evidence Preview。",
@@ -99,10 +96,10 @@ export default function DashboardPage() {
       key: "batch-generation",
       title: "批量生成与人工排程",
       count: batchAttentionCount,
-      source: "v5_mock",
+      primary: true,
       status: "待生产处理",
       statusColor: "blue",
-      description: "处理标题确认、Final Evidence Gate、生成质检、异常和文章级排程。",
+      description: "处理标题确认、证据检查、内容质检、异常和文章级排程。",
       href: "/batch-generation",
       entryLabel: "进入生成中心"
     },
@@ -110,7 +107,7 @@ export default function DashboardPage() {
       key: "daily-execution",
       title: "当日执行",
       count: todayExecutionCount,
-      source: "v5_mock",
+      primary: true,
       status: "今日任务",
       statusColor: "cyan",
       description: "查看今日发布状态、失败原因以及重试或人工接管入口。",
@@ -121,10 +118,9 @@ export default function DashboardPage() {
       key: "data-return",
       title: "数据回传",
       count: pendingDataReturnCount,
-      source: "current_runtime",
-      status: "V4 保持不变",
-      statusColor: "green",
-      description: "继续使用现有渠道数据导入、URL 匹配和手动指标补录能力。",
+      status: "待跟进",
+      statusColor: "gold",
+      description: "导入渠道数据、匹配发布 URL，并补录关键表现指标。",
       href: "/publish",
       entryLabel: "进入数据回传"
     },
@@ -132,10 +128,9 @@ export default function DashboardPage() {
       key: "blog-monitor",
       title: "博客监控",
       count: blogActionCount,
-      source: "current_runtime",
-      status: "V4 保持不变",
-      statusColor: "green",
-      description: "继续使用现有博客诊断、问题分布和候选池处理流程。",
+      status: "待跟进",
+      statusColor: "gold",
+      description: "查看博客诊断、问题分布，并处理内容优化候选。",
       href: "/blog-monitor",
       entryLabel: "查看博客监控"
     },
@@ -143,10 +138,9 @@ export default function DashboardPage() {
       key: "geo-test",
       title: "GEO 测试",
       count: geoActionCount,
-      source: "current_runtime",
-      status: "V4 保持不变",
-      statusColor: "green",
-      description: "继续使用现有平台测试、引用诊断和 GEO 缺口处理能力。",
+      status: "待跟进",
+      statusColor: "gold",
+      description: "查看平台测试、引用诊断，并处理 GEO 内容缺口。",
       href: "/geo-test",
       entryLabel: "查看 GEO 测试"
     },
@@ -154,7 +148,7 @@ export default function DashboardPage() {
       key: "monthly-review",
       title: "月度复盘",
       count: pendingReviewCount,
-      source: "v5_mock",
+      primary: true,
       status: "候选待确认",
       statusColor: "purple",
       description: "回看 baseline / exploration、GEO 缺口并审核下月策略候选。",
@@ -167,7 +161,7 @@ export default function DashboardPage() {
     <>
       <PageHeader
         title="首页数据看板"
-        subtitle="月度内容生产主流程，以及数据回传、博客和 GEO 等原有能力的统一入口。"
+        subtitle="集中查看本月内容生产进度、待处理事项和增长反馈。"
         actions={
           <>
             <Link href="/monthly-matrix">
@@ -183,33 +177,24 @@ export default function DashboardPage() {
 
       <div className="dashboard-section-heading">
         <div>
-          <h2>V5 月度生产概览</h2>
-          <p>只展示月度矩阵、生成准入和异常状态；当前数据尚未接入真实 V5 后端。</p>
+          <h2>本月内容进展</h2>
+          <p>查看月度计划、内容生成、质量检查和异常处理进度。</p>
         </div>
-        <Tag>demo / mock</Tag>
       </div>
       <V5StatusRail
         items={[
-          { label: "本月内容矩阵", value: `${monthlyQuota} 篇`, helper: "月度计划总配额", status: "mock" },
-          { label: "样例已生成", value: generatedSampleCount, helper: `当前展示 ${batchQueueItems.length} 条队列样例`, status: "mock" },
-          { label: "样例质检通过", value: passedSampleCount, helper: "硬规则与软质量均通过", status: "mock" },
-          { label: "异常待处理", value: openExceptionCount, helper: "仅阻断受影响矩阵项", status: "mock" }
+          { label: "本月内容矩阵", value: `${monthlyQuota} 篇`, helper: "月度计划总量" },
+          { label: "已生成", value: generatedSampleCount, helper: `共 ${batchQueueItems.length} 项内容任务` },
+          { label: "质检通过", value: passedSampleCount, helper: "规则与内容质量均通过" },
+          { label: "异常待处理", value: openExceptionCount, helper: "仅影响对应内容" }
         ]}
-      />
-      <Alert
-        showIcon
-        type="info"
-        message="V5 生产数据与现有运行态分开呈现"
-        description={`${v5DemoLabel}；待回填 URL、数据回传、博客监控和 GEO 测试继续读取当前工作台运行态。`}
-        style={{ marginBottom: 16 }}
       />
 
       <div className="dashboard-section-heading">
         <div>
-          <h2>保留能力运行态</h2>
-          <p>这些功能未被 V5 重构，继续沿用 V4 页面、接口和数据逻辑。</p>
+          <h2>待办与增长反馈</h2>
+          <p>处理发布后的数据补全、博客优化和 GEO 内容缺口。</p>
         </div>
-        <Tag color="green">当前运行态</Tag>
       </div>
       <div className="metric-grid metric-grid-four">
         <MetricCard title="待回填 URL" value={summary.metrics.pendingUrl} suffix="条" />
@@ -218,7 +203,7 @@ export default function DashboardPage() {
         <MetricCard title="GEO 待处置" value={geoActionCount} suffix="条" />
       </div>
 
-      <Card title="主流程与保留能力">
+      <Card title="重点事项">
         <Table
           rowKey="key"
           size="small"
@@ -226,22 +211,17 @@ export default function DashboardPage() {
           dataSource={dashboardActionItems}
           columns={[
             { title: "事项", dataIndex: "title" },
-            {
-              title: "数据来源",
-              dataIndex: "source",
-              render: (value: DashboardActionSource) => <Tag>{value === "v5_mock" ? "V5 mock" : "当前运行态"}</Tag>
-            },
             { title: "数量", dataIndex: "count", render: (value) => <Tag>{value} 条</Tag> },
             {
               title: "状态",
               render: (_, record) => <Tag color={record.statusColor}>{record.status}</Tag>
             },
-            { title: "当前职责", dataIndex: "description" },
+            { title: "处理内容", dataIndex: "description" },
             {
               title: "入口",
               render: (_, record) => (
                 <Link href={record.href}>
-                  <Button size="small" type={record.source === "v5_mock" ? "primary" : "default"}>
+                  <Button size="small" type={record.primary ? "primary" : "default"}>
                     {record.entryLabel}
                   </Button>
                 </Link>

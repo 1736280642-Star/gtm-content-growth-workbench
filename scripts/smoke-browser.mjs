@@ -1732,12 +1732,12 @@ async function main() {
       await runStep("v5_dashboard_scoped_replacement_desktop", () => assertDesktopLayout(page, {
         name: "v5_dashboard_scoped_replacement_desktop",
         pathName: "/",
-        expectedText: "V5 月度生产概览"
+        expectedText: "本月内容进展"
       }));
       await runStep("v5_dashboard_scoped_replacement_mobile", () => assertResponsiveLayout(page, {
         name: "v5_dashboard_scoped_replacement_mobile",
         pathName: "/",
-        expectedText: "保留能力运行态"
+        expectedText: "待办与增长反馈"
       }));
       await runStep("v5_monthly_matrix_desktop", () => assertDesktopLayout(page, {
         name: "v5_monthly_matrix_desktop",
@@ -1750,7 +1750,7 @@ async function main() {
         expectedText: "月度内容矩阵",
         beforeAudit: async (currentPage) => {
           await clickButtonByText(currentPage, "月度计划配置");
-          await waitFor(() => currentPage.containsText("产品由已治理的产品表达规则包带出"), 15000);
+          await waitFor(() => currentPage.containsText("选择已审核的产品表达规则"), 15000);
         }
       }));
       await runStep("v5_batch_generation_desktop", () => assertDesktopLayout(page, {
@@ -1760,7 +1760,7 @@ async function main() {
         beforeAudit: async (currentPage) => {
           const expandedBeforeSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
           if (expandedBeforeSearch !== 0) throw new Error(`expected collapsed groups, found ${expandedBeforeSearch} expanded`);
-          await waitFor(() => currentPage.containsText("V5 接口已接通，但当前月份还没有真实矩阵与生成队列"), 30000);
+          await waitFor(() => currentPage.containsText("本月还没有内容任务，请先完成月度计划和策略确认"), 30000);
           await waitFor(() => currentPage.containsText("没有符合当前筛选条件的内容任务"), 30000);
         }
       }));

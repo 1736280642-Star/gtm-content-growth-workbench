@@ -14,11 +14,11 @@ import type {
 import { useEffect, useMemo, useState } from "react";
 
 const finalGateLabels: Record<FinalEvidenceGateStatus, string> = {
-  not_created: "未创建",
-  ready: "Final Gate 通过",
-  needs_review: "Final Gate 待确认",
-  blocked: "Final Gate 阻断",
-  pending_config: "Final Gate 待配置"
+  not_created: "未检查",
+  ready: "证据检查通过",
+  needs_review: "证据待确认",
+  blocked: "证据不足",
+  pending_config: "暂不可生成"
 };
 
 const finalGateColors: Record<FinalEvidenceGateStatus, string> = {
@@ -34,7 +34,7 @@ const generationLabels: Record<GenerationStatus, string> = {
   pending: "待生成",
   generating: "生成中",
   generated: "已生成",
-  provider_failed: "Provider 失败",
+  provider_failed: "生成失败",
   input_expired: "输入已过期"
 };
 
@@ -42,7 +42,7 @@ const scheduleLabels: Record<ScheduleDraftStatus, string> = {
   unscheduled: "未排程",
   draft: "排程草稿",
   active: "正式排程",
-  pending_config: "发布待配置"
+  pending_config: "需人工发布"
 };
 
 const displayStatusLabels: Record<MatrixDisplayStatus, string> = {
@@ -84,7 +84,7 @@ function getEvidenceStage(record: BatchQueueItem): { value: string; tone: StageT
   if (record.finalEvidenceGate === "blocked" || record.evidencePreview === "blocked") return { value: "已阻断", tone: "danger" };
   if (record.evidencePreview === "needs_material") return { value: "需补证据", tone: "warning" };
   if (record.evidencePreview === "ready_with_auto_downgrade") return { value: "自动降级", tone: "active" };
-  if (record.finalEvidenceGate === "pending_config") return { value: "待配置", tone: "warning" };
+  if (record.finalEvidenceGate === "pending_config") return { value: "暂不可生成", tone: "warning" };
   return { value: "待检查", tone: "waiting" };
 }
 
@@ -339,16 +339,16 @@ export function BatchGenerationMatrixTable({
                       <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
                         <Descriptions.Item label="主蒸馏词">{record.primaryDistilledTerm}</Descriptions.Item>
                         <Descriptions.Item label="平台表达">{record.platformExpressionType}</Descriptions.Item>
-                        <Descriptions.Item label="规则包版本">{record.rulePackageVersion}</Descriptions.Item>
-                        <Descriptions.Item label="Evidence Preview"><EvidenceGateTag status={record.evidencePreview} /></Descriptions.Item>
-                        <Descriptions.Item label="Final Evidence Gate"><Tag color={finalGateColors[record.finalEvidenceGate]}>{finalGateLabels[record.finalEvidenceGate]}</Tag></Descriptions.Item>
-                        <Descriptions.Item label="可用 Claim">{record.claimCount} 个</Descriptions.Item>
-                        <Descriptions.Item label="硬规则">
+                        <Descriptions.Item label="产品规则">{record.rulePackageVersion}</Descriptions.Item>
+                        <Descriptions.Item label="证据准备度"><EvidenceGateTag status={record.evidencePreview} /></Descriptions.Item>
+                        <Descriptions.Item label="Evidence Gate"><Tag color={finalGateColors[record.finalEvidenceGate]}>{finalGateLabels[record.finalEvidenceGate]}</Tag></Descriptions.Item>
+                        <Descriptions.Item label="可用依据">{record.claimCount} 个</Descriptions.Item>
+                        <Descriptions.Item label="规则检查">
                           <Tag color={record.hardRuleStatus === "passed" ? "green" : record.hardRuleStatus === "blocked" ? "red" : "default"}>
                             {record.hardRuleStatus === "passed" ? "通过" : record.hardRuleStatus === "blocked" ? "阻断" : "待检查"}
                           </Tag>
                         </Descriptions.Item>
-                        <Descriptions.Item label="软质量">
+                        <Descriptions.Item label="内容质量">
                           {typeof record.softQualityScore === "number" ? <Progress percent={record.softQualityScore} size="small" format={(percent) => `${percent} 分`} /> : "待评测"}
                         </Descriptions.Item>
                         <Descriptions.Item label="平台账号">{record.platformAccount || "未选择"}</Descriptions.Item>

@@ -30,7 +30,7 @@ export const workspaceRouteLabels: Record<string, string> = {
   "/blog-monitor": "官网博客监控",
   "/blog-candidates": "博客候选池",
   "/geo-test": "GEO 测试",
-  "/real-integration": "真实接入",
+  "/real-integration": "连接管理",
   "/ai-config": "AI 配置",
   "/settings": "工作台设置"
 };
