@@ -7,7 +7,9 @@ import { loadProjectEnv } from "./load-project-env.mjs";
 loadProjectEnv();
 
 const migrationDirectory = join(process.cwd(), "database", "migrations");
+const dropV4Migration = "20260714_002_drop_v4_weekly_tables.sql";
 const planOnly = process.argv.includes("--plan");
+const includeDropV4 = process.argv.includes("--include-drop-v4");
 const confirmDropV4 = process.argv.includes("--confirm-drop-v4");
 const requiredEnv = ["MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"];
 const missingEnv = requiredEnv.filter((name) => !process.env[name]?.trim());
@@ -30,7 +32,10 @@ function splitSqlStatements(sql) {
 }
 
 async function loadMigrations() {
-  const fileNames = (await readdir(migrationDirectory)).filter((name) => name.endsWith(".sql")).sort();
+  const fileNames = (await readdir(migrationDirectory))
+    .filter((name) => name.endsWith(".sql"))
+    .filter((name) => includeDropV4 || name !== dropV4Migration)
+    .sort();
 
   return Promise.all(
     fileNames.map(async (name) => {
@@ -52,6 +57,7 @@ async function main() {
     emit({
       ok: true,
       status: "planned",
+      excludedMigrations: includeDropV4 ? [] : [dropV4Migration],
       migrations: migrations.map((migration) => ({
         name: migration.name,
         checksum: migration.checksum,
