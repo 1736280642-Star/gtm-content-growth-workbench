@@ -91,6 +91,15 @@ test("explicitly included cutover still requires destructive confirmation", asyn
   assert.deepEqual(result.destructiveMigrations, ["20260714_002_drop_v4_weekly_tables.sql"]);
 });
 
+test("schema verification rejects an applied V4 drop instead of requiring it", async () => {
+  const verification = await readFile("scripts/check-v5-schema-cutover.mjs", "utf8");
+
+  assert.match(verification, /foundationMigrationVerified/);
+  assert.match(verification, /dropV4MigrationApplied/);
+  assert.match(verification, /!dropV4MigrationApplied/);
+  assert.doesNotMatch(verification, /remainingV4Tables\.length\s*===\s*0/);
+});
+
 test("monthly TypeScript contract contains only native V5 entities", async () => {
   const contract = await readFile("src/lib/v5/monthly-contracts.ts", "utf8");
 
