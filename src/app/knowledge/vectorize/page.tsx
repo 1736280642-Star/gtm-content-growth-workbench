@@ -129,19 +129,19 @@ export default function KnowledgeVectorizePage() {
       <div className="metric-grid">
         <MetricCard title="待处理知识库" value={pendingKnowledgeBases.length} suffix="个" />
         <MetricCard title="已选择" value={selectedIds.length} suffix="个" />
-        <MetricCard title="全局 Embedding" value={globalConfig?.embeddingModelProvider || "pending_config"} />
-        <MetricCard title="全局检索策略" value={globalConfig?.retrievalStrategy || "pending_config"} />
+        <MetricCard title="向量模型" value={globalConfig?.embeddingModelProvider || "未选择"} />
+        <MetricCard title="检索策略" value={globalConfig?.retrievalStrategy || "未选择"} />
       </div>
 
       <Card title="解析策略">
         <Alert
           showIcon
           type={effectiveEmbeddingProvider ? "info" : "warning"}
-          message={effectiveEmbeddingProvider ? "将写入真实向量" : "缺少真实 Embedding 配置"}
+          message={effectiveEmbeddingProvider ? "已选择向量模型" : "请选择向量模型"}
           description={
             effectiveEmbeddingProvider
-              ? `当前使用 ${effectiveEmbeddingProvider}，检索策略为 ${effectiveRetrievalStrategy || "pending_config"}。`
-              : "没有选择模型且全局 RAG 未配置时，系统会返回 pending_config，不会写入伪向量。"
+              ? `当前使用 ${effectiveEmbeddingProvider}，检索策略为 ${effectiveRetrievalStrategy || "未选择"}。`
+              : "选择模型和检索策略后，才能开始处理知识库内容。"
           }
           style={{ marginBottom: 16 }}
         />

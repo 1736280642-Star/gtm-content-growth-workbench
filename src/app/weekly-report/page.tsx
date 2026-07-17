@@ -411,8 +411,8 @@ function createReportActionItems(
 
 function createWeeklySuggestionActions(suggestions: WeeklySuggestionItem[] | undefined, fallbackSuggestionTexts: string[] | undefined, hasActiveReport: boolean): WeeklySuggestionAction[] {
   const fallbackSuggestions = [
-    "先点击生成周报，读取当前运行态中的发布记录、博客诊断和 GEO 测试结果。",
-    "真实日志和真实模型接入前，AI 访问量只作为流程演示，不作为正式策略判断。",
+    "先点击生成周报，汇总本周发布记录、博客诊断和 GEO 测试结果。",
+    "AI 访问数据不足时，先补齐数据再做正式策略判断。",
     "把 SEO 问题较多或 GEO 未命中的主题优先加入博客候选池。"
   ];
   const sourceSuggestions: WeeklySuggestionItem[] =
@@ -525,7 +525,7 @@ function createOpsModuleRows(input: {
       module: "周报快照",
       status: "attention",
       count: 1,
-      issue: "当前仍是运行态数据，周报建议尚未固化。",
+      issue: "本周复盘尚未生成，建议仍待汇总。",
       nextStep: "点击生成周报后再处理建议采纳和失败原因。",
       entry: { type: "link", href: "/weekly-report", label: "留在本页" }
     });
@@ -759,7 +759,7 @@ export default function WeeklyReportPage() {
     ...(hasGeoActivity
       ? [`GEO 配置或候选问题：${reportActionItems.filter((item) => item.key === "geo_config" || item.key === "geo_candidates").reduce((sum, item) => sum + item.count, 0)}`]
       : []),
-    `Demo AI 访问量：${botPv}`
+    `AI 访问量：${botPv}`
   ];
 
   async function handleGenerateReport() {
@@ -1152,7 +1152,7 @@ export default function WeeklyReportPage() {
               }
             />
           ) : (
-            <Alert showIcon type="info" message="当前展示运行态快照" description="点击生成周报后，会固化本周发布、博客诊断、GEO 测试和下周建议。" />
+            <Alert showIcon type="info" message="本周复盘尚未生成" description="点击生成周报，汇总本周发布、博客诊断、GEO 测试和下周建议。" />
           )}
 
           <div className="report-two-column">

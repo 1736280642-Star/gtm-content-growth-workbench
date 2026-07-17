@@ -17,7 +17,7 @@ const finalReviewModeLabels = {
 } as const;
 
 const logModeLabels = {
-  demo_csv: "Demo CSV",
+  demo_csv: "样例数据",
   csv_import: "CSV 导入",
   nginx_log: "Nginx 日志",
   cdn_log: "CDN 日志"
@@ -188,14 +188,14 @@ function createSettingsRuleChecks(input: {
           item: "日志接入",
           status: logModeLabels[input.logMode],
           detail: "真实日志模式需要先确认文件路径和导出格式。",
-          action: "先到真实接入页检查 Nginx/CDN 路径配置。",
+          action: "先到连接管理页检查访问数据来源。",
           nextStep: "configure_real_log"
         }
       : {
           key: "log_mode",
           item: "日志接入",
           status: logModeLabels[input.logMode],
-          detail: input.logMode === "demo_csv" ? "适合演示和本地 smoke。" : "适合先用人工文件导入验证指标链路。",
+          detail: input.logMode === "demo_csv" ? "用于熟悉数据分析流程。" : "通过人工文件导入补充访问数据。",
           action: "可以继续在博客监控页导入日志。",
           nextStep: "ready"
         },
@@ -221,7 +221,7 @@ function createSettingsRuleChecks(input: {
 
 function getSettingsRuleEntry(nextStep: SettingsRuleNextStep) {
   if (nextStep === "configure_real_log") {
-    return { type: "link" as const, href: "/real-integration", label: "看真实接入" };
+    return { type: "link" as const, href: "/real-integration", label: "查看连接" };
   }
 
   if (nextStep === "configure_geo") {
@@ -462,7 +462,7 @@ export default function SettingsPage() {
               showIcon
               type="info"
               message="角色用于控制工作台可见入口"
-              description="当前版本先做本地可见范围和治理 API 边界；真实上线后再接登录、用户组和审批流。"
+              description="不同角色看到不同页面和操作；切换角色后，可见范围会立即更新。"
               style={{ marginBottom: 16 }}
             />
             <Table
@@ -496,7 +496,7 @@ export default function SettingsPage() {
             <Form.Item label="日志模式" name="logMode">
               <Radio.Group
                 options={[
-                  { label: "Demo CSV", value: "demo_csv" },
+                  { label: "样例数据", value: "demo_csv" },
                   { label: "CSV 导入", value: "csv_import" },
                   { label: "Nginx 日志", value: "nginx_log" },
                   { label: "CDN 日志", value: "cdn_log" }

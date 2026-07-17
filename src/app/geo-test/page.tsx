@@ -1211,7 +1211,7 @@ export default function GeoTestPage() {
             showIcon
             type="info"
             message="问题组决定测试问题方向，蒸馏词决定测哪个认知节点。"
-            description="V3 首版先在抽屉里查看和临时编辑模板，后续再接入持久化版本管理。"
+            description="在这里查看问题方向并调整本次测试内容。"
           />
           {geoPromptGroups.map((group) => {
             const config = promptGroupDescriptions[group];

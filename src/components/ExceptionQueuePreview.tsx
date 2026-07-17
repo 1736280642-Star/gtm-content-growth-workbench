@@ -14,10 +14,10 @@ const exceptionLabels: Record<ExceptionItem["code"], string> = {
   evidence_missing: "证据缺失",
   title_unprovable: "标题不可证明",
   role_boundary_risk: "人机责任边界风险",
-  provider_pending_config: "Provider 待配置",
+  provider_pending_config: "暂不可生成",
   hard_rule_blocked: "硬规则阻断",
   soft_quality_failed: "软质量不合格",
-  publish_pending_config: "发布待配置"
+  publish_pending_config: "需人工发布"
 };
 
 function buildEvidenceHref(item: ExceptionItem) {
@@ -45,9 +45,9 @@ export function ExceptionQueuePreview({ items }: { items: ExceptionItem[] }) {
         expandable={{
           expandedRowRender: (record) => (
             <div className="v5-exception-context">
-              <p><strong>关联 Claim：</strong>{record.claimContext}</p>
-              <p><strong>关联 Evidence Item：</strong>{record.evidenceItemContext}</p>
-              <p><strong>应返回治理层：</strong>{record.governanceLayer}</p>
+              <p><strong>判断依据：</strong>{record.claimContext}</p>
+              <p><strong>证据说明：</strong>{record.evidenceItemContext}</p>
+              <p><strong>处理方向：</strong>{record.governanceLayer}</p>
             </div>
           )
         }}
@@ -83,9 +83,9 @@ export function ExceptionQueuePreview({ items }: { items: ExceptionItem[] }) {
                 return <Link href={buildEvidenceHref(record)}><Button size="small">补证据</Button></Link>;
               }
               if (record.code === "provider_pending_config") {
-                return <Link href="/ai-config"><Button size="small">看配置</Button></Link>;
+                return <Link href="/ai-config"><Button size="small">完善生成条件</Button></Link>;
               }
-              return <Button size="small" disabled>{record.status === "auto_resolved" ? "已复检" : "待接入"}</Button>;
+              return <Button size="small" disabled>{record.status === "auto_resolved" ? "已复检" : "待处理"}</Button>;
             }
           }
         ]}

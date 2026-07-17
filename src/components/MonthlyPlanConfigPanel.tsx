@@ -112,7 +112,7 @@ export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, on
     setSaving(true);
     try {
       await onSave(cloneConfig(draft));
-      messageApi.success("月度计划已保存到 V5 数据源。");
+      messageApi.success("月度计划已保存。");
       onClose();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "月度计划保存失败，请稍后重试。");
@@ -149,8 +149,8 @@ export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, on
         <Alert
           showIcon
           type="info"
-          message="产品由已治理的产品表达规则包带出"
-          description="只有 active 且 monthlyProductionReady 的规则包可进入生产池。渠道沿用现有工作台命名，具体渠道篇数由策略包建议分配。"
+          message="选择已审核的产品表达规则"
+          description="只有已生效且资料准备充分的产品才能加入本月计划；各渠道篇数将在策略建议中分配。"
           style={{ marginBottom: 16 }}
         />
 
@@ -202,7 +202,7 @@ export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, on
         <div className="monthly-plan-groups-header">
           <div>
             <strong>产品分组</strong>
-            <div className="monthly-plan-section-caption">规则包 → 自动带出产品 → 多选渠道 → 填写该组月度总文章数</div>
+            <div className="monthly-plan-section-caption">选择产品 → 选择渠道 → 填写该产品的月度文章数</div>
           </div>
           <Button icon={<PlusOutlined />} disabled={!unusedPackages.length} onClick={handleAddGroup}>
             新增产品分组
@@ -223,11 +223,11 @@ export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, on
                     options={rulePackages.map((item) => ({
                       value: item.id,
                       disabled: !isSelectablePackage(item) || (selectedPackageIds.has(item.id) && item.id !== group.rulePackageVersionId),
-                      label: `${item.productName} · ${item.status} ${item.version}${item.disabledReason ? ` · ${item.disabledReason}` : ""}`
+                      label: `${item.productName}${item.disabledReason ? ` · ${item.disabledReason}` : ""}`
                     }))}
                   />
                 </Form.Item>
-                <Form.Item label="系统带出产品">
+                <Form.Item label="产品">
                   <Input value={group.productName} disabled />
                 </Form.Item>
                 <Form.Item label="发布渠道" required>

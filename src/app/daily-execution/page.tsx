@@ -6,7 +6,7 @@ import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { PublishStatusTag } from "@/components/PublishStatusTag";
 import { V5StatusRail } from "@/components/V5StatusRail";
-import { dailyExecutionItems, v5DemoLabel } from "@/lib/v5-ui-mock-data";
+import { dailyExecutionItems } from "@/lib/v5-ui-mock-data";
 import type { DailyExecutionItem } from "@/lib/v5-ui-mock-data";
 
 type DateKey = DailyExecutionItem["dateKey"];
@@ -48,15 +48,15 @@ export default function DailyExecutionPage() {
         showIcon
         type="info"
         message="发布执行视图"
-        description={`${v5DemoLabel}。URL 不在本页呈现，也不作为发布状态；发布后统一进入独立的批量上传或数据回传入口。`}
+        description="本页只处理发布任务和失败接管；发布后的 URL 与效果数据统一在数据回传中补全。"
         style={{ marginBottom: 16 }}
       />
 
       <V5StatusRail
         items={[
-          { label: "本月已发布", value: 11, helper: "与 URL 是否上传无关", status: "mock" },
+          { label: "本月已发布", value: 11, helper: "按实际发布结果统计" },
           { label: "本月待发布", value: 19, helper: "包含已排程与未排程" },
-          { label: "已排程待发布", value: 12, helper: "已激活 Publish Schedule" },
+          { label: "已排程待发布", value: 12, helper: "已确认发布时间" },
           { label: "未排程", value: 7, helper: "返回批量生成中心安排" },
           { label: "近三日发布异常", value: recentFailureCount, helper: "失败或人工接管" }
         ]}

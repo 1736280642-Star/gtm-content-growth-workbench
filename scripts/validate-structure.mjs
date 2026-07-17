@@ -187,7 +187,7 @@ addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx
   "生成策略包",
   "确认策略包",
   "GEO 测试分配",
-  "策略可行不等于正文可生成",
+  "策略方向确认后仍需检查单篇证据",
   "MonthlyStrategyTable",
   "strategyTermHits",
   "进入批量生成中心",
@@ -201,7 +201,7 @@ addAbsentCheck("v5 strategy package has no article title table", "src/components
 
 addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanConfigPanel.tsx", [
   "月度计划配置",
-  "产品由已治理的产品表达规则包带出",
+  "选择已审核的产品表达规则",
   "monthlyProductionReady",
   "isSelectablePackage",
   "mode=\"multiple\"",
@@ -214,7 +214,7 @@ addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanCo
   "不能进入生产池",
   "保存配置",
   "monthly-plan-save-button",
-  "已保存到 V5 数据源"
+  "月度计划已保存"
 ]);
 
 addContentCheck("v5 monthly workspace api contract", "src/lib/v5/monthly-workspace-contracts.ts", [
@@ -326,14 +326,14 @@ addContentCheck("v5 batch page shell", "src/app/batch-generation/page.tsx", [
   "批量生成中心",
   "批量确认标题与矩阵",
   "批量生成当月可生成内容",
-  "Final Evidence Gate",
+  "证据检查",
   "内容任务",
   "Tabs",
   "BatchGenerationMatrixTable",
   "ScheduleCalendarLite",
   "ExceptionQueuePreview",
-  "只生成通过正式准入的矩阵项",
-  "异常项保留原状态和原因"
+  "只生成已通过检查的内容",
+  "异常内容会保留原因并单独进入处理队列"
 ]);
 
 addContentCheck("v5 batch grouped task list", "src/components/BatchGenerationMatrixTable.tsx", [
@@ -392,7 +392,7 @@ addContentCheck("v5 daily execution page shell", "src/app/daily-execution/page.t
   "已排程待发布",
   "未排程",
   "发布执行视图",
-  "URL 不在本页呈现",
+  "发布后的 URL 与效果数据统一在数据回传中补全",
   "PublishStatusTag"
 ]);
 
@@ -416,7 +416,7 @@ addContentCheck("v5 monthly review page shell", "src/app/monthly-review/page.tsx
   "GEO 缺口",
   "主蒸馏词月度结果",
   "下月候选调整",
-  "Agent 草稿 · 人工确认"
+  "系统建议 · 人工确认"
 ]);
 
 addContentCheck("v5 evidence gate labels", "src/components/EvidenceGateTag.tsx", [
@@ -424,12 +424,11 @@ addContentCheck("v5 evidence gate labels", "src/components/EvidenceGateTag.tsx",
   "自动降级后可生成",
   "需补证据",
   "已阻断",
-  "待配置",
+  "暂不可生成",
   "需人工确认"
 ]);
 
 addContentCheck("v5 mock data boundary", "src/lib/v5-ui-mock-data.ts", [
-  "demo / mock，待接入真实 V5 后端",
   "MonthlyPlanGroupQuota",
   "StrategyTermHit",
   "BatchQueueItem",
@@ -459,18 +458,23 @@ addAbsentCheck("v5 monthly review no real backend calls", "src/app/monthly-revie
 
 addContentCheck("dashboard scoped v5 replacement", "src/app/page.tsx", [
   "首页数据看板",
-  "V5 月度生产概览",
+  "本月内容进展",
   "本月内容矩阵",
-  "样例已生成",
+  "已生成",
   "异常待处理",
-  "V5 生产数据与现有运行态分开呈现",
-  "保留能力运行态",
-  "V4 保持不变",
   "待回填 URL",
   "待数据回传",
   "博客监控",
   "GEO 测试",
-  "主流程与保留能力"
+  "重点事项"
+]);
+addAbsentCheck("dashboard hides engineering state copy", "src/app/page.tsx", [
+  "V5 月度生产概览",
+  "V5 生产数据与现有运行态分开呈现",
+  "保留能力运行态",
+  "V4 保持不变",
+  "demo / mock",
+  "数据来源"
 ]);
 addAbsentCheck("dashboard focused business queue", "src/app/page.tsx", [
   "本周内容生产和发布执行队列的总览",
@@ -1399,14 +1403,21 @@ addContentCheck("mysql bridge large state buffer", "src/lib/repositories/mysql-b
 
 addContentCheck("business pages use governance entry", "src/app/real-integration/page.tsx", [
   "GovernanceEntry",
-  "真实接入配置属于工作台运营和开发管理员职责"
+  "连接信息需要工作台运营或管理员处理"
 ]);
 addContentCheck("real integration business wording", "src/app/real-integration/page.tsx", [
-  "模型接入",
-  "模型接入试跑",
-  "真实测试问题",
+  "模型连接",
+  "GEO 测试",
   "AI 访问量",
-  "AI 访问数据可信度"
+  "AI 访问数据"
+]);
+addAbsentCheck("connection management hides engineering state copy", "src/app/real-integration/page.tsx", [
+  "真实接入配置属于",
+  "真实接入前的可试运行状态",
+  "运行态证据",
+  "存储模式：",
+  "状态文件：",
+  "当前筛选没有真实接入项"
 ]);
 addAbsentCheck("real integration no legacy ai bot provider wording", "src/app/real-integration/page.tsx", [
   "AI Provider",

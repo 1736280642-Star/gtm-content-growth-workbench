@@ -32,8 +32,6 @@ export type {
   StrategyTermHit
 } from "@/lib/v5/monthly-workspace-contracts";
 
-export const v5DemoLabel = "demo / mock，待接入真实 V5 后端";
-
 export const existingChannels = ["官网博客", "微信公众号", "知乎", "CSDN", "掘金", "今日头条"];
 
 export const rulePackageOptions: RulePackageOption[] = [
@@ -127,7 +125,7 @@ export const strategyTermHits: StrategyTermHit[] = [
     priorityReason: "AI 回答已提及产品，但工具调用责任边界和人工确认点覆盖不足。",
     previousGeoSummary: "可见率 38% · 官方引用率 12%",
     productName: "唯客 AI 护栏",
-    rulePackageVersion: "active v1.2",
+    rulePackageVersion: "已审核",
     allocatedQuota: 12,
     channelAllocation: ["微信公众号 5", "知乎 4", "官网博客 3"],
     contentTypeSuggestions: ["问题拆解", "标准答案", "机制说明"],
@@ -151,7 +149,7 @@ export const strategyTermHits: StrategyTermHit[] = [
     priorityReason: "已有稳定查询集，适合维持变量并与上月结果做同比复测。",
     previousGeoSummary: "可见率 62% · 官方引用率 41%",
     productName: "Pharaoh Command",
-    rulePackageVersion: "active v1.1",
+    rulePackageVersion: "已审核",
     allocatedQuota: 6,
     channelAllocation: ["官网博客 2", "CSDN 2", "掘金 2"],
     contentTypeSuggestions: ["工程实践", "决策指南"],
@@ -175,7 +173,7 @@ export const strategyTermHits: StrategyTermHit[] = [
     priorityReason: "上月 Badcase 集中在自动决策和人工接管边界，业务相关度高。",
     previousGeoSummary: "问题覆盖率 29% · 竞品占位 3/8",
     productName: "Pharaoh Command",
-    rulePackageVersion: "active v1.1",
+    rulePackageVersion: "已审核",
     allocatedQuota: 4,
     channelAllocation: ["微信公众号 2", "CSDN 1", "掘金 1"],
     contentTypeSuggestions: ["问题拆解", "机制说明"],
@@ -199,12 +197,12 @@ export const strategyTermHits: StrategyTermHit[] = [
     priorityReason: "属于新内容角度，可验证知识库证据组织方式对官网引用的影响。",
     previousGeoSummary: "新探索词 · 无稳定基线",
     productName: "NoteFlow",
-    rulePackageVersion: "active v1.0",
+    rulePackageVersion: "已审核",
     allocatedQuota: 8,
     channelAllocation: ["官网博客 3", "微信公众号 3", "知乎 2"],
     contentTypeSuggestions: ["标准答案", "问题拆解", "决策指南"],
     geoTestMode: "exploration",
-    testHypothesis: "补齐限制与责任边界 Claim 后，官网引用率能够形成初始基线。",
+    testHypothesis: "补齐限制与责任边界依据后，官网引用率能够形成初始基线。",
     querySet: "动态问题集 · 10 条",
     successSignal: "形成首月引用基线并识别高贡献问题表达",
     evidenceStatus: "needs_material",
@@ -212,7 +210,7 @@ export const strategyTermHits: StrategyTermHit[] = [
     estimatedAutoDowngradeItemCount: 0,
     estimatedMissingEvidenceItemCount: 2,
     requiredClaims: ["产品定义", "引用机制", "限制边界", "官方来源"],
-    evidenceGaps: ["缺限制与责任边界 Claim", "缺可公开测试过程"],
+    evidenceGaps: ["缺限制与责任边界依据", "缺可公开测试过程"],
     status: "needs_material"
   }
 ];
@@ -365,10 +363,10 @@ export const exceptionItems: ExceptionItem[] = [
     distilledTermId: "dt-kb-citation-boundary",
     distilledTerm: "企业知识库引用边界",
     title: "企业知识库如何建立可引用的责任边界",
-    stage: "Evidence Preview",
-    reason: "缺少限制与责任边界 Claim，现有资料只能支持产品定义，不能支持当前标题承诺。",
+    stage: "证据准备度检查",
+    reason: "缺少限制与责任边界依据，现有资料只能支持产品定义，不能支持当前标题承诺。",
     claimContext: "缺失：限制与责任边界、人工确认点",
-    evidenceItemContext: "已命中 3 个可用 Evidence Item，缺至少 1 个官方来源角色。",
+    evidenceItemContext: "已找到 3 条可用依据，仍缺至少 1 条官方来源。",
     blocking: true,
     nextAction: "补充当前产品的限制与责任边界证据，只重跑本矩阵项。",
     governanceLayer: "知识库资料缺口",
@@ -388,14 +386,14 @@ export const exceptionItems: ExceptionItem[] = [
     distilledTerm: "Agent 人机协同边界",
     title: "AI 自动拍板如何实现零风险",
     stage: "标题三项前置检查",
-    reason: "标题命中“自动拍板”和“零风险”绝对承诺，规则引擎将按 TD-ROLE-001、TD-ABS-001 自动降级并复检。",
-    claimContext: "已有人工审批与异常接管 Claim",
+    reason: "标题包含“自动拍板”和“零风险”等绝对承诺，将自动改写为更准确的表达并重新检查。",
+    claimContext: "已有人工审批与异常接管依据",
     evidenceItemContext: "无需补资料，等待白名单规则自动改写和复检。",
     blocking: false,
     nextAction: "自动改为辅助决策与人工确认口径，复检通过后进入批量确认。",
     governanceLayer: "标题自动安全降级",
     missingClaimType: "无",
-    requiredEvidenceLevel: "现有 Claim 可支持降级后表达",
+    requiredEvidenceLevel: "现有依据可支持调整后的表达",
     currentTitlePromise: "自动拍板、零风险",
     status: "auto_resolved",
     severity: "low"
@@ -409,12 +407,12 @@ export const exceptionItems: ExceptionItem[] = [
     distilledTermId: "dt-tool-call-guardrail",
     distilledTerm: "Agent Tool Call 护栏",
     title: "AI 护栏在客服回复中的人工接管机制",
-    stage: "Final Evidence Pack",
-    reason: "正文 Provider 未配置，无法创建真实 Generation Input，也不能把本地占位视为生成成功。",
+    stage: "生成前检查",
+    reason: "当前正文生成功能不可用，本篇内容暂时无法生成。",
     claimContext: "证据角色已满足，非知识库问题。",
-    evidenceItemContext: "Final Evidence Pack 等待 Provider 配置后创建。",
+    evidenceItemContext: "本篇所需证据已准备完成，等待正文生成功能恢复。",
     blocking: true,
-    nextAction: "到 AI 配置完成 Provider 诊断，再只重试本矩阵项。",
+    nextAction: "完善正文生成条件后，仅重试本篇内容。",
     governanceLayer: "AI 配置",
     missingClaimType: "无",
     requiredEvidenceLevel: "已满足",

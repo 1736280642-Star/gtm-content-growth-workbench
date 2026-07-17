@@ -7,7 +7,7 @@ const evidenceGateLabels: Record<EvidenceReadinessStatus, string> = {
   needs_material: "需补证据",
   needs_review: "需人工确认",
   blocked: "已阻断",
-  pending_config: "待配置"
+  pending_config: "暂不可生成"
 };
 
 const evidenceGateColors: Record<EvidenceReadinessStatus, string> = {
