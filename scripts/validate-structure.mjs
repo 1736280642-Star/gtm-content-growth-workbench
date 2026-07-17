@@ -461,7 +461,15 @@ addContentCheck("v5 mock data boundary", "src/lib/v5-ui-mock-data.ts", [
 addAbsentCheck("v5 connected pages no direct mock imports", "src/app/monthly-matrix/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 batch page no direct mock imports", "src/app/batch-generation/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 monthly config no real backend calls", "src/components/MonthlyPlanConfigPanel.tsx", ["fetch(", "/api/"]);
-addAbsentCheck("v5 batch no real backend calls", "src/app/batch-generation/page.tsx", ["fetch(", "/api/"]);
+addContentCheck("v5 batch single formal generation call", "src/app/batch-generation/page.tsx", [
+  "fetch(",
+  "/api/v5/content-tasks/",
+  "prepare-and-generate",
+  "x-idempotency-key",
+  "generatingTaskId",
+  "问题已处理，重新尝试"
+]);
+addAbsentCheck("v5 batch keeps bulk generation disabled", "src/app/batch-generation/page.tsx", ["/api/content-tasks/batch-generate"]);
 addAbsentCheck("v5 daily execution no real backend calls", "src/app/daily-execution/page.tsx", ["fetch(", "/api/"]);
 addAbsentCheck("v5 monthly review no real backend calls", "src/app/monthly-review/page.tsx", ["fetch(", "/api/"]);
 

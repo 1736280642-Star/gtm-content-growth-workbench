@@ -50,11 +50,11 @@ const targets = [
   { name: "monthly_matrix_page", path: "/monthly-matrix", expect: "月度内容矩阵" },
   { name: "monthly_matrix_strategy_compat_page", path: "/monthly-matrix/strategy", expect: "月度内容矩阵" },
   { name: "monthly_matrix_batch_generation_page", path: "/monthly-matrix/batch-generation", expect: "批量生成中心" },
-  { name: "monthly_strategy_compat_page", path: "/monthly-strategy", expect: "月度内容矩阵" },
+  { name: "monthly_strategy_compat_page", path: "/monthly-strategy", expectRedirect: "/monthly-matrix" },
   { name: "batch_generation_compat_page", path: "/batch-generation", expect: "批量生成中心" },
-  { name: "exceptions_compat_page", path: "/exceptions", expect: "批量生成中心" },
-  { name: "publish_schedule_compat_page", path: "/publish-schedule", expect: "批量生成中心" },
-  { name: "publish_schedule_daily_execution_page", path: "/publish-schedule/daily-execution", expect: "当日执行" },
+  { name: "exceptions_compat_page", path: "/exceptions", expectRedirect: "/batch-generation#exceptions" },
+  { name: "publish_schedule_compat_page", path: "/publish-schedule", expectRedirect: "/batch-generation#schedule" },
+  { name: "publish_schedule_daily_execution_page", path: "/publish-schedule/daily-execution", expectRedirect: "/daily-execution" },
   { name: "daily_execution_page", path: "/daily-execution", expect: "当日执行" },
   { name: "monthly_review_page", path: "/monthly-review", expect: "月度复盘" },
   { name: "weekly_plan_page", path: "/weekly-plan", expect: "周计划" },
@@ -82,20 +82,30 @@ const targets = [
 
 async function checkTarget(target) {
   const response = await fetch(`${baseUrl}${target.path}`, {
+    redirect: target.expectRedirect ? "manual" : "follow",
     headers: {
       accept: target.path.startsWith("/api/") ? "application/json" : "text/html"
     }
   });
   const text = await response.text();
   const isApi = target.path.startsWith("/api/");
+  const redirectLocation = response.headers.get("location");
+  const redirectOk = target.expectRedirect
+    ? [301, 302, 303, 307, 308].includes(response.status)
+      && (redirectLocation === target.expectRedirect || text.includes(target.expectRedirect))
+    : undefined;
   const hasExpectedApiBody = text.includes(target.expect);
   const hasHtmlShell = text.includes("<html") || text.includes("__next");
-  const ok = response.ok && (isApi ? hasExpectedApiBody : hasHtmlShell);
+  const ok = target.expectRedirect ? redirectOk : response.ok && (isApi ? hasExpectedApiBody : hasHtmlShell);
 
   return {
     name: target.name,
     ok,
-    detail: response.ok
+    detail: target.expectRedirect
+      ? redirectOk
+        ? `http ${response.status}, redirect ${target.expectRedirect}`
+        : `http ${response.status}, expected redirect ${target.expectRedirect}, actual ${redirectLocation || "none"}`
+      : response.ok
       ? ok
         ? isApi
           ? `http ${response.status}`

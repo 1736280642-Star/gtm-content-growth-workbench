@@ -1,7 +1,7 @@
 "use client";
 
-import { SearchOutlined } from "@ant-design/icons";
-import { Button, Collapse, Descriptions, Empty, Input, Progress, Select, Space, Table, Tag, Tooltip } from "antd";
+import { EyeOutlined, FileTextOutlined, SearchOutlined } from "@ant-design/icons";
+import { Button, Collapse, Descriptions, Empty, Input, Progress, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
 import Link from "next/link";
 import { EvidenceGateTag } from "@/components/EvidenceGateTag";
 import type {
@@ -128,7 +128,15 @@ function GroupHeader({ label, items }: { label: string; items: BatchQueueItem[] 
   );
 }
 
-export function BatchGenerationMatrixTable({ items }: { items: BatchQueueItem[] }) {
+export function BatchGenerationMatrixTable({
+  items,
+  generatingTaskId,
+  onGenerate
+}: {
+  items: BatchQueueItem[];
+  generatingTaskId?: string;
+  onGenerate?: (item: BatchQueueItem) => void;
+}) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState<"all" | MatrixDisplayStatus>("all");
   const [channel, setChannel] = useState("all");
@@ -226,13 +234,39 @@ export function BatchGenerationMatrixTable({ items }: { items: BatchQueueItem[] 
     {
       title: "操作",
       key: "action",
-      width: 104,
-      render: (_: unknown, record: BatchQueueItem) =>
-        record.evidencePreview === "needs_material" ? (
+      width: 132,
+      render: (_: unknown, record: BatchQueueItem) => {
+        if (record.draftId) {
+          return <Link href={`/v5/drafts/${record.draftId}`}><Button size="small" icon={<EyeOutlined />}>查看正文</Button></Link>;
+        }
+        if (record.evidencePreview === "needs_material") {
+          return (
           <Link href={`/knowledge/import?matrixItemId=${record.matrixItemId}`}><Button size="small">补证据</Button></Link>
-        ) : (
-          <Button size="small" disabled>{record.generationStatus === "provider_failed" ? "重新生成" : "查看正文"}</Button>
-        )
+          );
+        }
+        const blocked = record.finalEvidenceGate === "blocked" || record.evidencePreview === "blocked" || record.evidencePreview === "needs_review";
+        const canGenerate = Boolean(record.formal && record.titleConfirmed && !blocked && onGenerate);
+        const disabledReason = !record.formal ? "仅正式 MySQL 矩阵项可生成正文"
+          : !record.titleConfirmed ? "标题尚未冻结"
+          : blocked ? "证据或规则尚未通过"
+          : "正式生成暂不可用";
+        return (
+          <Tooltip title={canGenerate ? "完成检索、冻结 Final EvidencePack 并生成正式正文" : disabledReason}>
+            <span>
+              <Button
+                size="small"
+                type="primary"
+                icon={<FileTextOutlined />}
+                loading={generatingTaskId === record.matrixItemId}
+                disabled={!canGenerate || Boolean(generatingTaskId && generatingTaskId !== record.matrixItemId)}
+                onClick={() => onGenerate?.(record)}
+              >
+                生成正文
+              </Button>
+            </span>
+          </Tooltip>
+        );
+      }
     }
   ];
 
@@ -298,7 +332,6 @@ export function BatchGenerationMatrixTable({ items }: { items: BatchQueueItem[] 
                 tableLayout="fixed"
                 pagination={group.items.length > 10 ? { defaultPageSize: 10, pageSizeOptions: ["10", "20", "50"], showSizeChanger: true } : false}
                 dataSource={group.items}
-                rowSelection={{ getCheckboxProps: (record) => ({ disabled: record.displayStatus === "exception" }) }}
                 expandable={{
                   expandRowByClick: true,
                   expandedRowRender: (record) => (
@@ -319,6 +352,12 @@ export function BatchGenerationMatrixTable({ items }: { items: BatchQueueItem[] 
                           {typeof record.softQualityScore === "number" ? <Progress percent={record.softQualityScore} size="small" format={(percent) => `${percent} 分`} /> : "待评测"}
                         </Descriptions.Item>
                         <Descriptions.Item label="平台账号">{record.platformAccount || "未选择"}</Descriptions.Item>
+                        {record.failureReason ? (
+                          <Descriptions.Item label="失败原因" span={3}>
+                            <Typography.Text type="danger">{record.failureReason}</Typography.Text>
+                            {record.nextAction ? <Typography.Text type="secondary"> 下一步：{record.nextAction}</Typography.Text> : null}
+                          </Descriptions.Item>
+                        ) : null}
                       </Descriptions>
                     </div>
                   )

@@ -96,6 +96,11 @@ export interface BatchQueueItem {
   platformAccount?: string;
   prepublishConfirmed: boolean;
   displayStatus: MatrixDisplayStatus;
+  formal?: boolean;
+  evidencePackId?: string;
+  draftId?: string;
+  failureReason?: string;
+  nextAction?: string;
 }
 
 export interface ExceptionItem {
@@ -215,6 +220,7 @@ export interface MonthlyWorkspaceBase {
 export interface MonthlyWorkspaceReadModel extends MonthlyWorkspaceBase {
   source: MonthlyWorkspaceBase["source"] & {
     governanceData: V5GovernanceSource;
+    productionQueue: "v5_mysql" | "pending_config" | "failed";
   };
   formal: {
     monthlyPlan: V5MonthlyPlan | null;

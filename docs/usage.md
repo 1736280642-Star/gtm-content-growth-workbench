@@ -12,7 +12,7 @@
 
 在 V5 月度页面分支中，月度内容矩阵是后续唯一月度计划真源，完成能力对齐和验收后将替代旧周度规划页面及对应规划流程。V5 生产界面收敛为：`月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> GEO 月度复盘`。月度策略包已经嵌入月度内容矩阵；异常拦截和文章级人工排程已经并入批量生成中心；当日执行只保留昨日、今日、明日的发布状态。
 
-月度计划配置从产品表达规则包开始：只有 `active` 且 `monthlyProductionReady` 的规则包可选择，选择后自动带出产品，用户多选现有渠道并填写该产品分组的月度总篇数。策略包按蒸馏词、产品配额、baseline/exploration 测试目标和 Evidence Preview 摘要展示，不生成文章标题。当前配置、策略、生成、异常、排程和复盘均为页面内 `mock`，尚未接入真实持久化、Final Evidence Pack、生成接口或正式发布。
+月度计划配置从产品表达规则包开始：只有 `active` 且 `monthlyProductionReady` 的规则包可选择，选择后自动带出产品，用户多选现有渠道并填写该产品分组的月度总篇数。策略包按蒸馏词、产品配额、baseline/exploration 测试目标和 Evidence Preview 摘要展示，不生成文章标题。当前大部分月度配置、异常、排程和复盘仍是持久化适配或演示界面；批量生成中心已新增一个正式 MySQL 单篇链路，可对批准后的 Pharaoh Command 矩阵项执行真实 Retrieval、Final EvidencePack、正式正文生成和 DraftVersion 读取。
 
 它还不是生产级最终版本。真实 MySQL、AI Provider、XCrawl、Nginx/CDN 日志和渠道导出模板仍需要补齐外部配置后逐项验收。
 
@@ -40,7 +40,7 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 
 ### 3.1 V5 月度生产 UI
 
-当前页面均为 `demo / mock`，用于验证 V5 信息架构，不执行真实月度生成或发布。
+当前页面是“月度架构界面 + 单篇正式生产链路”的混合阶段。只有带“正式”标识、来自 MySQL 的矩阵项允许生成正文；其他 `demo / mock / pending_config` 数据不代表真实生产结果。
 
 1. 打开首页数据看板，区分 V5 月度生产 mock 与现有数据回传、博客、GEO 运行态。
 2. 进入“月度内容矩阵”，配置月度目标、产品规则包、渠道和配额，并查看嵌入式月度策略包。
@@ -48,7 +48,36 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 4. 进入“当日执行”，按昨日、今日、明日查看发布状态和失败接管。
 5. 进入“月度复盘”，查看蒸馏词、baseline / exploration、GEO 缺口和下月候选。
 
-### 3.2 V4 保留能力与迁移期真实执行
+### 3.2 V5 Pharaoh Command 单篇正式正文
+
+该链路只验收 1 个正式矩阵项，不开放整月批量生成、自动排程或发布。运行前必须已经存在人工批准的规则包、approved Manifest 和 active `production_public` IndexSnapshot。
+
+推荐在独立 worktree、数据库、OpenSearch 索引前缀和端口中执行：
+
+```powershell
+node scripts/init-v5-monthly-schema.mjs --plan
+node scripts/init-v5-monthly-schema.mjs
+npm.cmd run script:v5-single-article:bootstrap
+npm.cmd run dev -- --hostname 127.0.0.1 --port 3077
+npm.cmd run test:v5-single-article -- --base-url=http://127.0.0.1:3077
+```
+
+操作流程：
+
+1. 打开 `http://127.0.0.1:3077/batch-generation`。
+2. 确认页面只显示 1 个带正式状态的 Pharaoh Command 矩阵项。
+3. 点击“生成正文”；系统使用一个幂等键依次执行 Retrieval、冻结 Final EvidencePack、调用正式正文 Provider，并将 `testOnly=false` 的 GenerationRun 和 DraftVersion 写入 MySQL。
+4. 若 EvidencePack 不是 `generatable`，系统立即阻断且不调用正文 Provider，并展示失败原因和下一步。
+5. 成功后点击“查看正文”，查看 Markdown、硬规则结果、EvidencePack ID、规则版本和事实追溯；只有硬规则通过时才允许复制。
+
+运行边界：
+
+- 不使用 `20260714_002_drop_v4_weekly_tables.sql`，也不得添加 `--include-drop-v4` 或 `--confirm-drop-v4`。
+- 不从聊天、日志或文档读取和输出任何密钥值；只允许检查配置项是否存在。
+- 缺少 MySQL、OpenSearch、Embedding 或正式正文 Provider 时，结果必须保持 `pending_config`。
+- `EvidencePreview` 会改变矩阵项版本，因此该单篇编排直接使用 `Retrieval -> Final EvidencePack`，避免冻结时出现任务版本漂移；父进程 RAG 核心代码保持不变。
+
+### 3.3 V4 保留能力与迁移期真实执行
 
 知识库、AI 配置、GEO 测试、博客监控、真实接入、工作台设置和数据回传继续保持 V4 页面与功能。旧周计划、今日发布和周度复盘路由仅用于迁移回归，在真实 V5 后端接通前仍承载现有执行能力。
 
@@ -326,7 +355,7 @@ npm.cmd run smoke:workflow:isolated
 
 ## 8. 真实接入还需要什么
 
-1. 完整 MySQL CRUD repository，而不是只使用本地 JSON 或 state snapshot bridge。
+1. 除已接入的单篇正式队列、GenerationRun 和 DraftVersion 外，其余完整月度 MySQL CRUD repository。
 2. 真实 AI Provider 配置，包括 OpenAI、DeepSeek、豆包的 key 和 model。
 3. 真实知识库 URL 抓取链路：XCrawl 或稳定代理抓取服务。
 4. Nginx/CDN 日志固定路径与读取权限。

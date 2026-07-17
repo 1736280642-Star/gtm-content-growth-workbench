@@ -20,6 +20,7 @@ export const workspaceRouteLabels: Record<string, string> = {
   "/publish-schedule/daily-execution": "当日执行",
   "/daily-execution": "当日执行",
   "/monthly-review": "月度复盘",
+  "/v5/drafts": "正式 Markdown 正文",
   "/weekly-plan": "周计划",
   "/today": "今日发布",
   "/publish": "数据回传",
@@ -39,6 +40,11 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   content_growth: ["/", "/weekly-plan", "/weekly-report", "/distilled-terms", "/blog-monitor", "/blog-candidates", "/geo-test", "/settings"],
   workbench_operator: [
     "/",
+    "/monthly-matrix",
+    "/batch-generation",
+    "/daily-execution",
+    "/monthly-review",
+    "/v5/drafts",
     "/weekly-plan",
     "/today",
     "/publish",
@@ -55,6 +61,11 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   knowledge_manager: ["/", "/knowledge", "/distilled-terms", "/geo-test", "/weekly-report", "/settings"],
   developer_admin: [
     "/",
+    "/monthly-matrix",
+    "/batch-generation",
+    "/daily-execution",
+    "/monthly-review",
+    "/v5/drafts",
     "/weekly-plan",
     "/today",
     "/publish",
@@ -83,7 +94,8 @@ export function getVisibleRoutesForRole(role: WorkspaceRole) {
 }
 
 export function canViewRoute(role: WorkspaceRole, route: string) {
-  return getVisibleRoutesForRole(role).includes(route);
+  const visibleRoutes = getVisibleRoutesForRole(role);
+  return visibleRoutes.some((allowedRoute) => route === allowedRoute || route.startsWith(`${allowedRoute}/`));
 }
 
 export function getDefaultRouteForRole(role: WorkspaceRole) {

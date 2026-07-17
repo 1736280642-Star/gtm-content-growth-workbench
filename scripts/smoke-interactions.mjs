@@ -121,9 +121,14 @@ const contracts = [
       "预计进入异常",
       "BatchGenerationMatrixTable",
       "ScheduleCalendarLite",
-      "ExceptionQueuePreview"
+      "ExceptionQueuePreview",
+      "/api/v5/content-tasks/",
+      "prepare-and-generate",
+      "x-idempotency-key",
+      "generatingTaskId",
+      "问题已处理，重新尝试"
     ],
-    excludes: ["fetch(", "/api/", "v5-ui-mock-data", "v5DemoLabel"]
+    excludes: ["/api/content-tasks/batch-generate", "v5-ui-mock-data", "v5DemoLabel"]
   },
   {
     name: "v5_monthly_repository_contract",
