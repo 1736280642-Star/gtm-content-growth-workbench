@@ -1,0 +1,123 @@
+import type { WorkspaceRole } from "./types";
+
+export const workspaceRoleLabels: Record<WorkspaceRole, string> = {
+  content_publisher: "内容发布人员",
+  content_growth: "内容增长 / GEO 人员",
+  workbench_operator: "工作台运营 / 质量评估",
+  knowledge_manager: "知识库 / 产品表达维护",
+  developer_admin: "开发管理员"
+};
+
+export const workspaceRouteLabels: Record<string, string> = {
+  "/": "首页",
+  "/monthly-strategy": "月度策略包（已并入月度内容矩阵）",
+  "/monthly-matrix": "月度内容矩阵",
+  "/monthly-matrix/strategy": "月度策略包（已并入月度内容矩阵）",
+  "/monthly-matrix/batch-generation": "批量生成中心",
+  "/batch-generation": "批量生成中心",
+  "/exceptions": "异常拦截（已并入批量生成中心）",
+  "/publish-schedule": "人工排程（已并入批量生成中心）",
+  "/publish-schedule/daily-execution": "当日执行",
+  "/daily-execution": "当日执行",
+  "/monthly-review": "月度复盘",
+  "/v5/drafts": "正式 Markdown 正文",
+  "/weekly-plan": "周计划",
+  "/today": "今日发布",
+  "/publish": "数据回传",
+  "/weekly-report": "周度复盘",
+  "/knowledge": "知识库",
+  "/distilled-terms": "蒸馏词池",
+  "/blog-monitor": "官网博客监控",
+  "/blog-candidates": "博客候选池",
+  "/geo-test": "GEO 测试",
+  "/real-integration": "真实接入",
+  "/ai-config": "AI 配置",
+  "/settings": "工作台设置"
+};
+
+const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
+  content_publisher: ["/", "/today", "/publish", "/weekly-plan", "/weekly-report", "/settings"],
+  content_growth: ["/", "/weekly-plan", "/weekly-report", "/distilled-terms", "/blog-monitor", "/blog-candidates", "/geo-test", "/settings"],
+  workbench_operator: [
+    "/",
+    "/monthly-matrix",
+    "/batch-generation",
+    "/daily-execution",
+    "/monthly-review",
+    "/v5/drafts",
+    "/weekly-plan",
+    "/today",
+    "/publish",
+    "/weekly-report",
+    "/knowledge",
+    "/distilled-terms",
+    "/blog-monitor",
+    "/blog-candidates",
+    "/geo-test",
+    "/real-integration",
+    "/ai-config",
+    "/settings"
+  ],
+  knowledge_manager: ["/", "/knowledge", "/distilled-terms", "/geo-test", "/weekly-report", "/settings"],
+  developer_admin: [
+    "/",
+    "/monthly-matrix",
+    "/batch-generation",
+    "/daily-execution",
+    "/monthly-review",
+    "/v5/drafts",
+    "/weekly-plan",
+    "/today",
+    "/publish",
+    "/weekly-report",
+    "/knowledge",
+    "/distilled-terms",
+    "/blog-monitor",
+    "/blog-candidates",
+    "/geo-test",
+    "/real-integration",
+    "/ai-config",
+    "/settings"
+  ]
+};
+
+const roleDefaultRoutes: Record<WorkspaceRole, string> = {
+  content_publisher: "/today",
+  content_growth: "/weekly-report",
+  workbench_operator: "/weekly-report",
+  knowledge_manager: "/knowledge",
+  developer_admin: "/ai-config"
+};
+
+export function getVisibleRoutesForRole(role: WorkspaceRole) {
+  return roleVisibleRoutes[role] || roleVisibleRoutes.content_publisher;
+}
+
+export function canViewRoute(role: WorkspaceRole, route: string) {
+  const visibleRoutes = getVisibleRoutesForRole(role);
+  return visibleRoutes.some((allowedRoute) => route === allowedRoute || route.startsWith(`${allowedRoute}/`));
+}
+
+export function getDefaultRouteForRole(role: WorkspaceRole) {
+  return roleDefaultRoutes[role] || "/";
+}
+
+export function getRouteLabel(route: string) {
+  return workspaceRouteLabels[route] || route;
+}
+
+export function canViewAiGovernance(role: WorkspaceRole) {
+  return role === "workbench_operator" || role === "developer_admin";
+}
+
+export function canManagePromptVersions(role: WorkspaceRole) {
+  return role === "workbench_operator" || role === "developer_admin";
+}
+
+export function canManageProductExpressionRules(role: WorkspaceRole) {
+  return role === "knowledge_manager" || role === "workbench_operator" || role === "developer_admin";
+}
+
+export function canManageWeeklyReportSuggestions(role: WorkspaceRole) {
+  return role === "content_growth" || role === "workbench_operator" || role === "developer_admin";
+}

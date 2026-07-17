@@ -107,7 +107,7 @@ export function parseBotLogInput(input: Record<string, unknown>) {
   return {
     ok: true,
     status: "success",
-    message: `已解析 ${rows.length} 行日志，生成 ${summaries.length} 条 AI Bot 汇总。`,
+    message: `已解析 ${rows.length} 行日志，生成 ${summaries.length} 条 AI 访问量汇总。`,
     summaries,
     rows,
     sourceType,

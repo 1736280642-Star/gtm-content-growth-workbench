@@ -1,12 +1,12 @@
 "use client";
 
-import { Alert, Button, Card, Checkbox, Drawer, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from "antd";
+import { Alert, Button, Card, Checkbox, Drawer, Input, Modal, Popconfirm, Segmented, Select, Space, Table, Tag, message } from "antd";
 import Link from "next/link";
 import { ActionEmpty } from "@/components/ActionEmpty";
+import { GovernanceEntry } from "@/components/GovernanceEntry";
 import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
-import { DataConfidenceTag } from "@/components/DataConfidenceTag";
 import { confidenceLabels } from "@/lib/labels";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
@@ -22,6 +22,7 @@ type GeoAccuracyStatus = NonNullable<GeoTestResult["accuracyStatus"]>;
 type GeoReviewStatus = NonNullable<GeoTestResult["reviewStatus"]>;
 type GeoLogSupportStatus = "ready" | "uploaded" | "missing";
 type GeoCitationLevel = NonNullable<GeoTestResult["citationLevel"]>;
+type GeoTestCategory = NonNullable<GeoTestResult["testCategory"]>;
 type GeoFrequencySuggestion = {
   label: string;
   days: number;
@@ -153,6 +154,16 @@ const booleanFilterLabels: Record<BooleanFilter, string> = {
 
 const geoPlatforms: GeoTestResult["platform"][] = ["DeepSeek", "豆包", "通义千问"];
 const geoPromptGroups: GeoTestResult["promptGroup"][] = ["品牌认知", "产品场景", "对比", "FAQ"];
+const baselinePromptGroups: GeoTestResult["promptGroup"][] = ["品牌认知", "产品场景"];
+const dynamicPromptGroups: GeoTestResult["promptGroup"][] = ["对比", "FAQ"];
+const geoTestCategoryLabels: Record<GeoTestCategory, string> = {
+  baseline_fixed: "基线固定问题组",
+  dynamic_exploration: "动态蒸馏词探索"
+};
+const geoTestCategoryDescriptions: Record<GeoTestCategory, string> = {
+  baseline_fixed: "占测试预算 20%，只跑固定问题组，用来做跨周可比基线。",
+  dynamic_exploration: "占测试预算 80%，围绕蒸馏词和内容缺口做探索。"
+};
 const accuracyStatusLabels: Record<GeoAccuracyStatus, string> = {
   accurate: "可信",
   needs_review: "待复核",
@@ -287,11 +298,11 @@ function getGeoSuggestionReason(result: GeoTestResult, candidateArticle?: BlogAr
   const executionStatus = getExecutionStatus(result);
 
   if (executionStatus === "pending_config") {
-    return "模型配置未就绪，先在 AI 配置页补齐 Provider 后再判断结果。";
+    return "模型配置未就绪，先在 AI 配置页补齐模型接入设置后再判断结果。";
   }
 
   if (executionStatus === "failed") {
-    return result.errorMessage || "GEO 测试执行失败，先查看快照和错误信息。";
+    return result.errorMessage || "GEO 测试执行失败，先进入详情页查看错误信息。";
   }
 
   if (candidateArticle?.candidateReason) {
@@ -317,11 +328,11 @@ function getGeoActionText(result: GeoTestResult, candidateArticle?: BlogArticle)
   const nextStep = getGeoNextStep(result, candidateArticle);
 
   if (nextStep === "configure_models") {
-    return "先补齐模型配置，再重新运行当前平台和 Prompt 组的 GEO 测试。";
+    return "先补齐模型配置，再重新运行当前平台和问题组的 GEO 测试。";
   }
 
   if (nextStep === "inspect_failure") {
-    return "先查看回答快照和错误信息，确认失败原因后再重跑或人工修正。";
+    return "先进入详情页查看错误信息，确认失败原因后再重跑或人工修正。";
   }
 
   if (nextStep === "add_candidate") {
@@ -345,6 +356,32 @@ function getGeoActionText(result: GeoTestResult, candidateArticle?: BlogArticle)
   }
 
   return "当前没有新的处置动作，继续观察品牌、产品和官网链路是否保持稳定。";
+}
+
+function getBrandVisibilityLabel(result: GeoTestResult) {
+  return result.mentionedJoto ? "AI 提到了 JOTO" : "AI 没提到 JOTO";
+}
+
+function getProductVisibilityLabel(result: GeoTestResult) {
+  if (result.promptGroup !== "产品场景" && !result.mentionedWeike) {
+    return "产品未触发";
+  }
+
+  return result.mentionedWeike ? "产品被正确提到" : "产品未被提到";
+}
+
+function getOfficialSourceLabel(result: GeoTestResult) {
+  const level = getCitationLevel(result);
+
+  if (level === "official_site_direct") return "引用官网";
+  if (level === "official_content" || level === "official_channel") return "引用官方内容";
+  if (level === "non_official") return "引用非官方来源";
+  return "未引用官网";
+}
+
+function hasGeoContentGap(result: GeoTestResult) {
+  const nextStep = getGeoNextStep(result);
+  return nextStep === "add_candidate" || nextStep === "fix_citation";
 }
 
 function getFrequencySuggestion(weeklyPublishCount: number): GeoFrequencySuggestion {
@@ -399,12 +436,14 @@ export default function GeoTestPage() {
   const [running, setRunning] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
   const [addingCandidateId, setAddingCandidateId] = useState<string>();
+  const [creatingTaskId, setCreatingTaskId] = useState<string>();
+  const [creatingKnowledgeBaseId, setCreatingKnowledgeBaseId] = useState<string>();
+  const [testCategory, setTestCategory] = useState<GeoTestCategory>("baseline_fixed");
   const [platforms, setPlatforms] = useState<GeoTestResult["platform"][]>(["DeepSeek", "豆包", "通义千问"]);
   const [promptGroups, setPromptGroups] = useState<GeoTestResult["promptGroup"][]>(["品牌认知", "产品场景"]);
-  const [selectedDistilledTermIds, setSelectedDistilledTermIds] = useState<string[]>(distilledTermOptions.map((item) => item.id));
+  const [selectedDistilledTermIds, setSelectedDistilledTermIds] = useState<string[]>([]);
   const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [automationEnabled, setAutomationEnabled] = useState(false);
-  const [snapshotResult, setSnapshotResult] = useState<GeoTestResult>();
   const [overrideResult, setOverrideResult] = useState<GeoTestResult>();
   const [platformFilter, setPlatformFilter] = useState<GeoTestResult["platform"][]>([]);
   const [promptGroupFilter, setPromptGroupFilter] = useState<GeoTestResult["promptGroup"][]>([]);
@@ -427,12 +466,14 @@ export default function GeoTestPage() {
         : "pending";
   const botPv = botVisits.reduce((sum, item) => sum + item.pv, 0);
   const logSupportStatus = getLogSupportStatus(botVisits.length, botConfidence);
-  const matrixSize = platforms.length * promptGroups.length * Math.max(selectedDistilledTermIds.length, 1);
+  const activeDistilledTermIds = testCategory === "baseline_fixed" ? [] : selectedDistilledTermIds;
+  const matrixSize = platforms.length * promptGroups.length * Math.max(activeDistilledTermIds.length, 1);
   const geoHitRate = geoResults.length ? Math.round((geoResults.filter((item) => item.mentionedJoto).length / geoResults.length) * 100) : 0;
   const officialDirectRate = geoResults.length ? Math.round((geoResults.filter((item) => getCitationLevel(item) === "official_site_direct").length / geoResults.length) * 100) : 0;
-  const officialContentCount = geoResults.filter((item) => getCitationLevel(item) === "official_content").length;
   const reviewNeededTotal = geoResults.filter((item) => getReviewStatus(item) === "manual_review_needed").length;
   const competitorAppearedTotal = geoResults.filter((item) => item.competitorAppeared).length;
+  const productMentionRate = geoResults.length ? Math.round((geoResults.filter((item) => item.mentionedWeike).length / geoResults.length) * 100) : 0;
+  const contentGapCount = geoResults.filter(hasGeoContentGap).length;
   const weeklyPublishCount = tasks.filter((item) => item.weeklyPlanId === weeklyPlan.id).length || weeklyPlan.targetTotalCount;
   const frequencySuggestion = getFrequencySuggestion(weeklyPublishCount);
   const latestTestedAt = [...geoResults]
@@ -459,13 +500,36 @@ export default function GeoTestPage() {
   const mediumPriorityIssues = geoResults.filter((item) => getGeoIssueLevel(item) === "medium").slice(0, 3);
   const flowSteps = useMemo(
     () => [
-      { title: "1. 选测试矩阵", detail: `${platforms.length} 个平台 × ${promptGroups.length} 个 Prompt 组 × ${selectedDistilledTermIds.length} 个蒸馏词，下一次会覆盖 ${matrixSize} 个观察点。` },
-      { title: "2. 读取回答侧信号", detail: "系统判断 JOTO、唯客、官网引用、竞品出现和引用 URL。" },
-      { title: "3. 人工复核关键项", detail: "待复核结果保留回答快照，可人工修正判断字段。" },
-      { title: "4. 沉淀补强动作", detail: "未命中或官网链路不足的主题进入博客候选池，再承接到周计划和周报。" }
+      {
+        title: "1. 选测试类型",
+        detail: `${geoTestCategoryLabels[testCategory]}：${geoTestCategoryDescriptions[testCategory]}`
+      },
+      {
+        title: "2. 选测试矩阵",
+        detail:
+          testCategory === "baseline_fixed"
+            ? `${platforms.length} 个平台 × ${promptGroups.length} 个固定问题组，下一次会覆盖 ${matrixSize} 个观察点。`
+            : `${platforms.length} 个平台 × ${promptGroups.length} 个问题组 × ${activeDistilledTermIds.length} 个蒸馏词，下一次会覆盖 ${matrixSize} 个观察点。`
+      },
+      { title: "3. 读取回答侧信号", detail: "系统判断 JOTO、唯客、官网引用、竞品出现和引用 URL。" },
+      { title: "4. 人工复核关键项", detail: "待复核结果进入详情页保留追溯记录，可人工修正判断字段。" },
+      { title: "5. 沉淀补强动作", detail: "未命中或官网链路不足的主题进入博客候选池，再承接到周计划和周报。" }
     ],
-    [matrixSize, platforms.length, promptGroups.length, selectedDistilledTermIds.length]
+    [activeDistilledTermIds.length, matrixSize, platforms.length, promptGroups.length, testCategory]
   );
+
+  function handleChangeTestCategory(nextCategory: GeoTestCategory) {
+    setTestCategory(nextCategory);
+
+    if (nextCategory === "baseline_fixed") {
+      setPromptGroups(baselinePromptGroups);
+      setSelectedDistilledTermIds([]);
+      return;
+    }
+
+    setPromptGroups(dynamicPromptGroups);
+    setSelectedDistilledTermIds(distilledTermOptions.map((item) => item.id));
+  }
   const hasActiveFilter = Boolean(
     platformFilter.length ||
       promptGroupFilter.length ||
@@ -524,7 +588,8 @@ export default function GeoTestPage() {
         body: JSON.stringify({
           platforms,
           promptGroups,
-          distilledTermIds: selectedDistilledTermIds
+          distilledTermIds: activeDistilledTermIds,
+          testCategory
         })
       });
       await refresh();
@@ -582,6 +647,40 @@ export default function GeoTestPage() {
     }
   }
 
+  async function handleCreateTaskFromGeoGap(resultId: string) {
+    setCreatingTaskId(resultId);
+
+    try {
+      const result = await callJsonApi(`/api/geo-test-results/${resultId}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "create_task" })
+      });
+      await refresh();
+      messageApi.success(formatApiMessage(result, "GEO 问题缺口已加入周计划草稿"));
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "加入周计划草稿失败");
+    } finally {
+      setCreatingTaskId(undefined);
+    }
+  }
+
+  async function handleCreateKnowledgeBaseFromGeoGap(resultId: string) {
+    setCreatingKnowledgeBaseId(resultId);
+
+    try {
+      const result = await callJsonApi(`/api/geo-test-results/${resultId}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "create_knowledge_base" })
+      });
+      await refresh();
+      messageApi.success(formatApiMessage(result, "GEO 问题缺口已转为知识库补充资料"));
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "转为知识库补充资料失败");
+    } finally {
+      setCreatingKnowledgeBaseId(undefined);
+    }
+  }
+
   function renderGeoEntry(result: GeoTestResult) {
     const candidateArticle = candidateByGeoResultId.get(result.id);
     const nextStep = getGeoNextStep(result, candidateArticle);
@@ -591,37 +690,75 @@ export default function GeoTestPage() {
 
     if (nextStep === "configure_models") {
       return (
-        <Link href="/ai-config">
-          <Button size="small">看 AI 配置</Button>
-        </Link>
+        <GovernanceEntry
+          label="看 AI 配置"
+          reason="GEO 模型配置属于工作台运营权限；内容增长人员只需要知道当前测试待配置。"
+        />
       );
     }
 
     if (nextStep === "inspect_failure") {
       return (
-        <Button size="small" onClick={() => setSnapshotResult(result)}>
-          看失败快照
-        </Button>
+        <Link href={`/geo-test/${result.id}`}>
+          <Button size="small">看失败详情</Button>
+        </Link>
       );
     }
 
     if (nextStep === "add_candidate") {
       return (
-        <Popconfirm
-          title="确认加入博客候选池？"
-          description="会把这个 GEO 未命中或官网链路不足的主题沉淀到博客候选池。"
-          okText="加入"
-          cancelText="取消"
-          onConfirm={() => handleAddCandidate(result.id)}
-        >
-          <Button size="small" type="primary" loading={addingCandidateId === result.id} disabled={cannotAddCandidate}>
-            入候选池
+        <Space>
+          <Popconfirm
+            title="确认加入周计划草稿？"
+            description="会把这个 GEO 问题缺口转为本周计划中的补强任务。"
+            okText="加入"
+            cancelText="取消"
+            onConfirm={() => handleCreateTaskFromGeoGap(result.id)}
+          >
+            <Button size="small" type="primary" loading={creatingTaskId === result.id}>
+              转周计划
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title="确认加入博客候选池？"
+            description="会把这个 GEO 未命中或官网链路不足的主题沉淀到博客候选池。"
+            okText="加入"
+            cancelText="取消"
+            onConfirm={() => handleAddCandidate(result.id)}
+          >
+            <Button size="small" loading={addingCandidateId === result.id} disabled={cannotAddCandidate}>
+              入候选池
+            </Button>
+          </Popconfirm>
+          <Button size="small" loading={creatingKnowledgeBaseId === result.id} onClick={() => handleCreateKnowledgeBaseFromGeoGap(result.id)}>
+            补知识库
           </Button>
-        </Popconfirm>
+        </Space>
       );
     }
 
-    if (nextStep === "fix_citation" || nextStep === "candidate_pool") {
+    if (nextStep === "fix_citation") {
+      return (
+        <Space>
+          <Button size="small" type="primary" loading={creatingKnowledgeBaseId === result.id} onClick={() => handleCreateKnowledgeBaseFromGeoGap(result.id)}>
+            补知识库
+          </Button>
+          <Popconfirm
+            title="确认加入周计划草稿？"
+            description="会把官网引用不足的问题转为内容补强任务。"
+            okText="加入"
+            cancelText="取消"
+            onConfirm={() => handleCreateTaskFromGeoGap(result.id)}
+          >
+            <Button size="small" loading={creatingTaskId === result.id}>
+              转周计划
+            </Button>
+          </Popconfirm>
+        </Space>
+      );
+    }
+
+    if (nextStep === "candidate_pool") {
       return (
         <Link href="/blog-candidates">
           <Button size="small">去候选池</Button>
@@ -647,9 +784,9 @@ export default function GeoTestPage() {
   function renderGeoMaintenance(record: GeoTestResult) {
     return (
       <Space>
-        <Button size="small" onClick={() => setSnapshotResult(record)}>
-          查看快照
-        </Button>
+        <Link href={`/geo-test/${record.id}`}>
+          <Button size="small">看详情</Button>
+        </Link>
         <Button size="small" onClick={() => openOverride(record)}>
           人工修正
         </Button>
@@ -662,11 +799,11 @@ export default function GeoTestPage() {
       {contextHolder}
       <PageHeader
         title="GEO 测试"
-        subtitle="通过 DeepSeek、豆包、通义千问批量测试回答侧信号，判断品牌提及、官网引用、竞品占位和后续补强动作。"
+        subtitle="把 AI 回答里的品牌提及、产品提及、官网引用和竞品占位翻译成内容补强动作。"
         actions={
           <Popconfirm
             title="确认批量运行 GEO 测试？"
-            description={`会根据当前平台和 Prompt 组创建 ${matrixSize} 条新的测试记录。`}
+            description={`会根据当前平台、问题组和蒸馏词创建 ${matrixSize} 条新的测试记录。`}
             okText="运行"
             cancelText="取消"
             onConfirm={handleRunGeoTests}
@@ -678,10 +815,11 @@ export default function GeoTestPage() {
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
-      <div className="metric-grid">
-        <MetricCard title="GEO 命中率" value={geoHitRate} suffix="%" />
-        <MetricCard title="官网直引率" value={officialDirectRate} suffix="%" />
-        <MetricCard title="官方内容引用" value={officialContentCount} suffix="条" />
+      <div className="metric-grid metric-grid-five">
+        <MetricCard title="AI 提到我们" value={geoHitRate} suffix="%" />
+        <MetricCard title="产品被正确提到" value={productMentionRate} suffix="%" />
+        <MetricCard title="官网被直接引用" value={officialDirectRate} suffix="%" />
+        <MetricCard title="问题缺口" value={contentGapCount} suffix="条" />
         <MetricCard title="竞品占位" value={competitorAppearedTotal} suffix="条" />
       </div>
       <div className="two-column" style={{ marginBottom: 16 }}>
@@ -690,26 +828,48 @@ export default function GeoTestPage() {
             showIcon
             type={matrixSize ? "info" : "warning"}
             style={{ marginBottom: 16 }}
-            message={`当前测试矩阵：${platforms.length} 个平台 × ${promptGroups.length} 个 Prompt 组 × ${selectedDistilledTermIds.length} 个蒸馏词 = ${matrixSize} 个观察点`}
-            description="蒸馏词默认全选，避免只测 Prompt 组而漏掉长期认知节点。"
+            message={
+              testCategory === "baseline_fixed"
+                ? `当前测试矩阵：${platforms.length} 个平台 × ${promptGroups.length} 个固定问题组 = ${matrixSize} 个观察点`
+                : `当前测试矩阵：${platforms.length} 个平台 × ${promptGroups.length} 个问题组 × ${activeDistilledTermIds.length} 个蒸馏词 = ${matrixSize} 个观察点`
+            }
+            description={geoTestCategoryDescriptions[testCategory]}
           />
           <Space direction="vertical" style={{ width: "100%" }}>
+            <div>
+              <p className="panel-title">测试类型</p>
+              <Segmented
+                value={testCategory}
+                onChange={(value) => handleChangeTestCategory(value as GeoTestCategory)}
+                options={[
+                  { label: "基线固定问题组 20%", value: "baseline_fixed" },
+                  { label: "动态蒸馏词探索 80%", value: "dynamic_exploration" }
+                ]}
+              />
+            </div>
+            <Alert
+              showIcon
+              type="info"
+              message="GEO 测试拆成 2:8 两类"
+              description="基线固定问题组负责稳定对比；动态蒸馏词探索负责发现新缺口。真实运行时优先少量多次提交，避免一次性大矩阵超时。"
+            />
             <div>
               <p className="panel-title">平台</p>
               <Checkbox.Group options={geoPlatforms} value={platforms} onChange={(value) => setPlatforms(value as GeoTestResult["platform"][])} />
             </div>
             <div>
-              <p className="panel-title">Prompt 组</p>
+              <p className="panel-title">问题组</p>
               <Space wrap>
                 <Checkbox.Group options={geoPromptGroups} value={promptGroups} onChange={(value) => setPromptGroups(value as GeoTestResult["promptGroup"][])} />
-                <Button onClick={() => setPromptDrawerOpen(true)}>打开 Prompt 组</Button>
+                <Button onClick={() => setPromptDrawerOpen(true)}>查看问题组</Button>
               </Space>
             </div>
             <div>
-              <p className="panel-title">蒸馏词默认全选</p>
+              <p className="panel-title">{testCategory === "baseline_fixed" ? "蒸馏词探索关闭" : "蒸馏词默认全选"}</p>
               <Checkbox.Group
                 options={distilledTermOptions.map((item) => ({ label: item.label, value: item.id }))}
-                value={selectedDistilledTermIds}
+                value={activeDistilledTermIds}
+                disabled={testCategory === "baseline_fixed"}
                 onChange={(value) => setSelectedDistilledTermIds(value.map(String))}
               />
             </div>
@@ -778,7 +938,7 @@ export default function GeoTestPage() {
               return <Tag color={geoIssueLevelColors[issueLevel]}>{geoIssueLevelLabels[issueLevel]}</Tag>;
             } },
             { title: "平台", dataIndex: "platform" },
-            { title: "Prompt 组", dataIndex: "promptGroup" },
+            { title: "问题组", dataIndex: "promptGroup" },
             { title: "问题类型", render: (_, record) => record.issueType || "待判断" },
             { title: "建议动作", render: (_, record) => record.suggestedAction || getGeoActionText(record, candidateByGeoResultId.get(record.id)) },
             {
@@ -814,7 +974,7 @@ export default function GeoTestPage() {
           </p>
         </Card>
       </div>
-      <Card title="测试结果">
+      <Card title="GEO / AI 可见度结果">
         <Alert
           showIcon
           type={visibleConfigOrFailureCount || visibleCandidateNeededCount ? "info" : "success"}
@@ -835,7 +995,7 @@ export default function GeoTestPage() {
           <Select
             mode="multiple"
             allowClear
-            placeholder="按 Prompt 组筛选"
+            placeholder="按问题组筛选"
             value={promptGroupFilter}
             onChange={(value) => setPromptGroupFilter(value)}
             options={Object.entries(promptGroupLabels).map(([value, label]) => ({ value, label }))}
@@ -889,7 +1049,7 @@ export default function GeoTestPage() {
             emptyText: (
               <ActionEmpty
                 title={hasActiveFilter ? "当前筛选没有 GEO 测试结果" : "还没有 GEO 测试结果"}
-                description={hasActiveFilter ? "清空筛选或调整平台、状态、提及和引用条件后再查看。" : "选择平台和 Prompt 组后运行测试；缺少模型配置时会保留 pending_config，不生成假结果。"}
+                description={hasActiveFilter ? "清空筛选或调整平台、状态、提及和引用条件后再查看。" : "选择平台和问题组后运行测试；缺少模型配置时会保留待配置状态，不生成假结果。"}
                 action={
                   hasActiveFilter ? (
                     <Button type="primary" onClick={clearFilters}>
@@ -898,7 +1058,7 @@ export default function GeoTestPage() {
                   ) : (
                     <Popconfirm
                       title="确认批量运行 GEO 测试？"
-                      description={`会根据当前平台和 Prompt 组创建 ${matrixSize} 条新的测试记录。`}
+                      description={`会根据当前平台、问题组和蒸馏词创建 ${matrixSize} 条新的测试记录。`}
                       okText="运行"
                       cancelText="取消"
                       onConfirm={handleRunGeoTests}
@@ -914,7 +1074,7 @@ export default function GeoTestPage() {
           }}
           columns={[
             { title: "平台", dataIndex: "platform" },
-            { title: "Prompt 组", dataIndex: "promptGroup" },
+            { title: "问题组", dataIndex: "promptGroup" },
             {
               title: "蒸馏词",
               render: (_, record) => {
@@ -934,47 +1094,29 @@ export default function GeoTestPage() {
               }
             },
             { title: "执行状态", render: (_, record) => <Tag color={executionStatusColors[getExecutionStatus(record)]}>{executionStatusLabels[getExecutionStatus(record)]}</Tag> },
-            { title: "Prompt", dataIndex: "prompt" },
             {
-              title: "问题级别",
+              title: "AI 是否提到我们",
+              render: (_, record) => <Tag color={record.mentionedJoto ? "green" : "red"}>{getBrandVisibilityLabel(record)}</Tag>
+            },
+            {
+              title: "产品是否正确提到",
+              render: (_, record) => <Tag color={record.mentionedWeike ? "green" : record.promptGroup === "产品场景" ? "red" : "default"}>{getProductVisibilityLabel(record)}</Tag>
+            },
+            {
+              title: "官网是否被引用",
+              render: (_, record) => {
+                const level = getCitationLevel(record);
+
+                return <Tag color={citationLevelColors[level]}>{getOfficialSourceLabel(record)}</Tag>;
+              }
+            },
+            { title: "竞品是否占位", dataIndex: "competitorAppeared", render: (value) => <Tag color={value ? "gold" : "green"}>{value ? "竞品出现" : "未明显占位"}</Tag> },
+            {
+              title: "问题缺口",
               render: (_, record) => {
                 const issueLevel = getGeoIssueLevel(record);
 
                 return <Tag color={geoIssueLevelColors[issueLevel]}>{geoIssueLevelLabels[issueLevel]}</Tag>;
-              }
-            },
-            { title: "提及 JOTO", dataIndex: "mentionedJoto", render: (value) => <Tag color={value ? "green" : "red"}>{value ? "是" : "否"}</Tag> },
-            { title: "提及唯客", dataIndex: "mentionedWeike", render: (value) => <Tag color={value ? "green" : "red"}>{value ? "是" : "否"}</Tag> },
-            {
-              title: "引用层级",
-              render: (_, record) => {
-                const level = getCitationLevel(record);
-
-                return <Tag color={citationLevelColors[level]}>{citationLevelLabels[level]}</Tag>;
-              }
-            },
-            { title: "问题类型", render: (_, record) => record.issueType || "-" },
-            { title: "建议动作", render: (_, record) => record.suggestedAction || "-" },
-            { title: "竞品出现", dataIndex: "competitorAppeared", render: (value) => <Tag color={value ? "gold" : "green"}>{value ? "是" : "否"}</Tag> },
-            {
-              title: "引用 URL",
-              dataIndex: "citedUrls",
-              render: (value?: string[]) => (value?.length ? <span className="mono">{value.join("、")}</span> : "-")
-            },
-            {
-              title: "准确性",
-              render: (_, record) => {
-                const status = getAccuracyStatus(record);
-
-                return <Tag color={accuracyStatusColors[status]}>{accuracyStatusLabels[status]}</Tag>;
-              }
-            },
-            {
-              title: "复核状态",
-              render: (_, record) => {
-                const status = getReviewStatus(record);
-
-                return <Tag color={reviewStatusColors[status]}>{reviewStatusLabels[status]}</Tag>;
               }
             },
             {
@@ -1005,34 +1147,13 @@ export default function GeoTestPage() {
               title: "可执行入口",
               render: (_, record) => renderGeoEntry(record)
             },
-            { title: "判断来源", dataIndex: "manualOverride", render: (value) => <Tag color={value ? "blue" : "default"}>{value ? "人工修正" : "自动判断"}</Tag> },
-            { title: "数据来源", render: (_, record) => <DataConfidenceTag value={getDataConfidence(record)} /> },
             {
-              title: "维护",
+              title: "详情",
               render: (_, record) => renderGeoMaintenance(record)
             }
           ]}
         />
       </Card>
-      <Modal title="回答快照" open={Boolean(snapshotResult)} footer={null} onCancel={() => setSnapshotResult(undefined)}>
-        <Space direction="vertical" style={{ width: "100%" }}>
-          <Tag>{snapshotResult?.platform}</Tag>
-          <Space wrap>
-            <Tag>{snapshotResult?.promptGroup}</Tag>
-            <Tag color={accuracyStatusColors[getAccuracyStatus(snapshotResult || ({} as GeoTestResult))]}>
-              {accuracyStatusLabels[getAccuracyStatus(snapshotResult || ({} as GeoTestResult))]}
-            </Tag>
-            <Tag color={reviewStatusColors[getReviewStatus(snapshotResult || ({} as GeoTestResult))]}>
-              {reviewStatusLabels[getReviewStatus(snapshotResult || ({} as GeoTestResult))]}
-            </Tag>
-          </Space>
-          {snapshotResult?.citedUrls?.length ? <span className="mono">{snapshotResult.citedUrls.join("、")}</span> : null}
-          <p className="mono" style={{ whiteSpace: "pre-wrap" }}>
-            {snapshotResult?.answerSnapshot || "暂无回答快照"}
-          </p>
-          {snapshotResult?.errorMessage ? <Tag color="red">{snapshotResult.errorMessage}</Tag> : null}
-        </Space>
-      </Modal>
       <Modal
         title="人工修正 GEO 判断"
         open={Boolean(overrideResult)}
@@ -1046,7 +1167,7 @@ export default function GeoTestPage() {
           <Popconfirm
             key="confirm"
             title="确认保存人工修正？"
-            description="修正会覆盖判断字段，但不会覆盖原始回答快照。"
+            description="修正会覆盖判断字段，但不会覆盖详情页中的原始记录。"
             okText="保存"
             cancelText="返回"
             onConfirm={handleSaveOverride}
@@ -1084,12 +1205,12 @@ export default function GeoTestPage() {
           </Checkbox>
         </Space>
       </Modal>
-      <Drawer title="Prompt 组" open={promptDrawerOpen} width={560} onClose={() => setPromptDrawerOpen(false)}>
+      <Drawer title="问题组" open={promptDrawerOpen} width={560} onClose={() => setPromptDrawerOpen(false)}>
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
           <Alert
             showIcon
             type="info"
-            message="Prompt 组决定怎么问，蒸馏词决定测哪个认知节点。"
+            message="问题组决定测试问题方向，蒸馏词决定测哪个认知节点。"
             description="V3 首版先在抽屉里查看和临时编辑模板，后续再接入持久化版本管理。"
           />
           {geoPromptGroups.map((group) => {
