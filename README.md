@@ -707,14 +707,3 @@ npm.cmd run build
 4. 新 migration 有计划、回滚或备份说明。
 5. mock、pending_config 和真实能力边界清晰。
 
-## 相关文档
-
-- `docs/usage.md`：当前本地使用、配置诊断、验证命令和常见风险。
-- `docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md`：发布排程、平台配置和真实发布验收边界。
-- `docs/V5 -07-09/01-重构后影响范围分析.md`：V5 页面、接口和数据结构影响范围。
-- `docs/V5 -07-09/02-新版用户流程图.md`：V5 月度内容矩阵用户流程。
-- `docs/V5 -07-09/03-推荐页面低保真原型图.md`：V5 页面职责和低保真结构。
-- `docs/V5 07-07/agent-knowledge-base-foundation/README.md`：V5 数据、RAG、生成、评测和 Workflow Agent 正式设计索引。
-- `docs/V5 07-07/02-波次一月度数据底座实施记录.md`：V5 MySQL 月度底座和 cutover 记录。
-
-注意：部分 V5 文档当前受 `.gitignore` 规则限制，GitHub 仓库中可能不可见。公开前应按上一节完成审计与版本控制决策。
