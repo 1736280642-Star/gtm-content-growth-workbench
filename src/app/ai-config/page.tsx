@@ -21,9 +21,9 @@ interface DiagnosticResponse {
 }
 
 const providers = [
-  { key: "qwen", name: "通义千问", usage: "GEO 测试 / 内容生成", model: "QWEN_MODEL" },
-  { key: "deepseek", name: "DeepSeek", usage: "GEO 测试 / 内容生成", model: "DEEPSEEK_MODEL" },
-  { key: "doubao", name: "豆包", usage: "GEO 测试", model: "DOUBAO_MODEL" },
+  { key: "qwen", name: "通义千问", usage: "内容生成", model: "QWEN_MODEL" },
+  { key: "deepseek", name: "DeepSeek", usage: "内容生成", model: "DEEPSEEK_MODEL" },
+  { key: "doubao", name: "豆包", usage: "内容生成", model: "DOUBAO_MODEL" },
   { key: "xcrawl_blog_sync", name: "XCrawl", usage: "官网博客同步", model: "XCRAWL_BLOG_INDEX_URL" },
   { key: "mysql_repository", name: "MySQL", usage: "生产级数据持久化", model: "MYSQL_*" }
 ];
@@ -119,7 +119,7 @@ function getCapabilityLink(capability: RuntimeCapability | undefined, diagnostic
   const nextStep = getCapabilityNextStep(capability, diagnostic);
 
   if (capability.key === "qwen" || capability.key === "deepseek" || capability.key === "doubao") {
-    return nextStep === "ready" ? { href: "/geo-test", label: "去试跑" } : { href: "/real-integration", label: "看缺口" };
+    return nextStep === "ready" ? { href: "/today", label: "去生成" } : { href: "/real-integration", label: "看缺口" };
   }
 
   if (capability.key === "xcrawl_blog_sync") {
@@ -131,7 +131,7 @@ function getCapabilityLink(capability: RuntimeCapability | undefined, diagnostic
   }
 
   if (capability.key === "local_json_repository") {
-    return { href: "/weekly-plan", label: "去试跑" };
+    return { href: "/monthly-plan", label: "去试跑" };
   }
 
   return { href: "/real-integration", label: "看接入" };

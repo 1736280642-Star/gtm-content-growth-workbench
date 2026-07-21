@@ -5,11 +5,10 @@ import {
   blogArticles,
   botVisits,
   drafts,
-  geoResults,
   knowledgeBases,
   publishRecords,
   tasks,
-  weeklyPlan
+  monthlyPlan
 } from "./demo-data";
 import { getDashboardSummary as getSeedDashboardSummary } from "./metrics";
 import type { WorkbenchState } from "./workbench-store";
@@ -25,22 +24,20 @@ const initialState: WorkbenchState = {
     statePath: "data/workbench-state.json",
     initializedAt: ""
   },
-  weeklyPlan,
+  monthlyPlan,
   workspaceSetting: {
     id: "workspace-setting-default",
-    defaultWeeklyDays: 5,
+    defaultPublishDays: 5,
     defaultDailyCount: 3,
     enabledChannels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
     enabledProducts: ["joto_brand", "weike_guardrails"],
     finalReviewMode: "default_final",
-    geoPlatforms: ["DeepSeek", "豆包", "通义千问"],
     logMode: "demo_csv"
   },
   tasks,
   drafts,
   publishRecords,
   blogArticles,
-  geoResults,
   botVisits,
   knowledgeBases,
   pipelineRuns: [],

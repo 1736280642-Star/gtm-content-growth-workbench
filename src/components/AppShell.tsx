@@ -9,7 +9,6 @@ import {
   CloudSyncOutlined,
   DashboardOutlined,
   FileSearchOutlined,
-  RocketOutlined,
   SettingOutlined,
   UploadOutlined
 } from "@ant-design/icons";
@@ -22,13 +21,12 @@ const { Header, Sider, Content } = Layout;
 
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
-  { key: "/weekly-plan", icon: <CalendarOutlined />, label: <Link href="/weekly-plan">周计划</Link> },
+  { key: "/monthly-plan", icon: <CalendarOutlined />, label: <Link href="/monthly-plan">月度计划</Link> },
   { key: "/today", icon: <CheckSquareOutlined />, label: <Link href="/today">今日任务</Link> },
   { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">发布队列</Link> },
   { key: "/blog-monitor", icon: <FileSearchOutlined />, label: <Link href="/blog-monitor">官网博客监控</Link> },
   { key: "/blog-candidates", icon: <FileSearchOutlined />, label: <Link href="/blog-candidates">博客候选池</Link> },
-  { key: "/geo-test", icon: <RocketOutlined />, label: <Link href="/geo-test">GEO 测试</Link> },
-  { key: "/weekly-report", icon: <BarChartOutlined />, label: <Link href="/weekly-report">周度复盘</Link> },
+  { key: "/monthly-review", icon: <BarChartOutlined />, label: <Link href="/monthly-review">月度复盘</Link> },
   { key: "/knowledge", icon: <BookOutlined />, label: <Link href="/knowledge">知识库</Link> },
   { key: "/real-integration", icon: <CloudSyncOutlined />, label: <Link href="/real-integration">真实接入</Link> },
   { key: "/ai-config", icon: <ApiOutlined />, label: <Link href="/ai-config">AI 配置</Link> },
@@ -63,7 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             justifyContent: "space-between"
           }}
         >
-          <Typography.Text strong>渠道生产 + 博客诊断 + GEO 测试</Typography.Text>
+          <Typography.Text strong>渠道生产 + 博客诊断 + 月度复盘</Typography.Text>
           <Typography.Text type="secondary">Demo / Imported / Real 数据分层展示</Typography.Text>
         </Header>
         <Content style={{ padding: 24 }}>{children}</Content>

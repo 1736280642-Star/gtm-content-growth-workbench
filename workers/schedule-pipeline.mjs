@@ -1,4 +1,4 @@
-import { getBaseUrl, parseArgs, parseList, postJson, printJson, shouldTreatAsFatal } from "./worker-utils.mjs";
+import { getBaseUrl, parseArgs, postJson, printJson, shouldTreatAsFatal } from "./worker-utils.mjs";
 
 const args = parseArgs();
 const baseUrl = getBaseUrl(args);
@@ -7,7 +7,7 @@ if (args.help || args.h) {
   printJson({
     worker: "schedule-pipeline",
     usage:
-      "node workers/schedule-pipeline.mjs [--base-url URL] [--repeat] [--interval-seconds 3600] [--max-runs 24] [--skip-blog] [--skip-log] [--skip-channel-metrics] [--skip-geo] [--week YYYY-MM-DD] [--log-file-path PATH] [--channel-metrics-path PATH] [--geo-platforms 通义千问,DeepSeek] [--geo-prompt TEXT]"
+      "node workers/schedule-pipeline.mjs [--base-url URL] [--repeat] [--interval-seconds 3600] [--max-runs 24] [--skip-blog] [--skip-log] [--skip-channel-metrics] [--month YYYY-MM-DD] [--log-file-path PATH] [--channel-metrics-path PATH]"
   });
   process.exit(0);
 }
@@ -26,12 +26,11 @@ function buildPayload() {
   const payload = {
     skipBlog: Boolean(args["skip-blog"]),
     skipLog: Boolean(args["skip-log"]),
-    skipChannelMetrics: Boolean(args["skip-channel-metrics"]),
-    skipGeo: Boolean(args["skip-geo"])
+    skipChannelMetrics: Boolean(args["skip-channel-metrics"])
   };
 
-  if (typeof args.week === "string") {
-    payload.week = args.week;
+  if (typeof args.month === "string") {
+    payload.month = args.month;
   }
 
   if (typeof args["log-file-path"] === "string" || typeof args["log-source-type"] === "string") {
@@ -44,16 +43,6 @@ function buildPayload() {
   if (typeof args["channel-metrics-path"] === "string") {
     payload.channelMetrics = {
       filePath: args["channel-metrics-path"]
-    };
-  }
-
-  const platforms = parseList(args["geo-platforms"]);
-
-  if (platforms.length || typeof args["geo-prompt"] === "string") {
-    payload.geo = {
-      platforms: platforms.length ? platforms : undefined,
-      prompt: typeof args["geo-prompt"] === "string" ? args["geo-prompt"] : undefined,
-      promptGroup: typeof args["geo-prompt-group"] === "string" ? args["geo-prompt-group"] : undefined
     };
   }
 

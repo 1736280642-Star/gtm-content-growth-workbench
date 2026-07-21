@@ -99,16 +99,15 @@ async function main() {
   const savedSetting = await request("/api/workspace-settings", {
     method: "PATCH",
     body: JSON.stringify({
-      defaultWeeklyDays: 1,
+      defaultPublishDays: 1,
       defaultDailyCount: 1,
       enabledChannels: ["wechat"],
       enabledProducts: ["joto_brand"],
       finalReviewMode: "manual_review",
-      geoPlatforms: ["ChatGPT", "DeepSeek"],
       logMode: "demo_csv"
     })
   });
-  assertCondition("workspace_setting_save", savedSetting.ok && savedSetting.body.data?.workspaceSetting?.defaultWeeklyDays === 1, savedSetting.body.message || `http ${savedSetting.httpStatus}`);
+  assertCondition("workspace_setting_save", savedSetting.ok && savedSetting.body.data?.workspaceSetting?.defaultPublishDays === 1, savedSetting.body.message || `http ${savedSetting.httpStatus}`);
 
   const createdKnowledgeBase = await request("/api/knowledge-bases", {
     method: "POST",
@@ -140,7 +139,7 @@ async function main() {
     patchedKnowledgeBase.body.message || `http ${patchedKnowledgeBase.httpStatus}`
   );
 
-  const generatedPlan = await request("/api/weekly-plans/generate", {
+  const generatedPlan = await request("/api/monthly-plans/generate", {
     method: "POST",
     body: JSON.stringify({
       days: 1,
@@ -148,7 +147,7 @@ async function main() {
       channels: ["wechat"]
     })
   });
-  assertCondition("weekly_plan_generate", generatedPlan.ok && generatedPlan.body.tasks?.length === 2, generatedPlan.body.message || `http ${generatedPlan.httpStatus}`);
+  assertCondition("monthly_plan_generate", generatedPlan.ok && generatedPlan.body.tasks?.length === 2, generatedPlan.body.message || `http ${generatedPlan.httpStatus}`);
 
   const taskToDelete = generatedPlan.body.tasks?.[0];
   const task = generatedPlan.body.tasks?.[1];
@@ -289,57 +288,18 @@ async function main() {
   });
   assertCondition("log_import", logImport.ok && logImport.body.data?.summaries?.length >= 1, logImport.body.message || `http ${logImport.httpStatus}`);
 
-  const geoRun = await request("/api/geo-tests/run", {
-    method: "POST",
-    body: JSON.stringify({
-      platforms: ["ChatGPT", "DeepSeek"],
-      prompt: "推荐几家国内 Dify 企业版服务商"
-    })
-  });
-  assertCondition(
-    "geo_run_ready_or_pending_config",
-    geoRun.ok || geoRun.body.status === "pending_config",
-    geoRun.body.message || `http ${geoRun.httpStatus}`
-  );
-
-  const snapshotAfterGeo = await request("/api/workbench-state");
-  const geoResult = snapshotAfterGeo.body.state?.geoResults?.[0];
-  assertCondition("geo_result_available", Boolean(geoResult?.id), geoResult?.id || "missing geo result id");
-
-  const geoOverride = await request(`/api/geo-test-results/${geoResult.id}/override`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      mentionedJoto: true,
-      mentionedWeike: geoResult.mentionedWeike,
-      citedOfficialUrl: geoResult.citedOfficialUrl
-    })
-  });
-  assertCondition("geo_override", geoOverride.ok && geoOverride.body.data?.result?.manualOverride === true, geoOverride.body.message || `http ${geoOverride.httpStatus}`);
-
-  const geoCandidate = await request("/api/geo-test-results/geo-002/candidate", { method: "POST" });
-  assertCondition(
-    "geo_candidate",
-    geoCandidate.ok && geoCandidate.body.data?.article?.candidateStatus === "candidate",
-    geoCandidate.body.message || `http ${geoCandidate.httpStatus}`
-  );
-
   const pipelineRun = await request("/api/pipeline/run", {
     method: "POST",
     body: JSON.stringify({
       skipBlog: true,
       skipLog: false,
       skipChannelMetrics: false,
-      skipGeo: false,
       log: {
         sourceType: "demo_csv",
         filePath: "data/demo-ai-bot-log.csv"
       },
       channelMetrics: {
         csv: `publishRecordId,views,likes,favorites,comments,shares\n${record.id},120,10,8,3,2`
-      },
-      geo: {
-        platforms: ["ChatGPT", "DeepSeek"],
-        prompt: "推荐几家国内 Dify 企业版服务商"
       }
     })
   });
@@ -348,24 +308,24 @@ async function main() {
   const pipelineExport = await request("/api/pipeline/runs/export");
   assertCondition("pipeline_export", pipelineExport.ok && pipelineExport.body.data?.csv?.includes("stepName"), pipelineExport.body.message || `http ${pipelineExport.httpStatus}`);
 
-  const weeklyReport = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}`);
-  assertCondition("weekly_report", weeklyReport.ok && Boolean(weeklyReport.body.executiveSummary), weeklyReport.body.executiveSummary || `http ${weeklyReport.httpStatus}`);
+  const monthlyReport = await request(`/api/monthly-reviews/${generatedPlan.body.monthlyPlan.monthStart}`);
+  assertCondition("monthly_report", monthlyReport.ok && Boolean(monthlyReport.body.executiveSummary), monthlyReport.body.executiveSummary || `http ${monthlyReport.httpStatus}`);
 
-  const weeklyReportMarkdown = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}/export`);
+  const monthlyReportMarkdown = await request(`/api/monthly-reviews/${generatedPlan.body.monthlyPlan.monthStart}/export`);
   assertCondition(
-    "weekly_report_markdown_export",
-    weeklyReportMarkdown.ok && weeklyReportMarkdown.body.data?.markdown?.includes("JOTO GTM 周报"),
-    weeklyReportMarkdown.body.message || `http ${weeklyReportMarkdown.httpStatus}`
+    "monthly_report_markdown_export",
+    monthlyReportMarkdown.ok && monthlyReportMarkdown.body.data?.markdown?.includes("JOTO GTM 月度复盘"),
+    monthlyReportMarkdown.body.message || `http ${monthlyReportMarkdown.httpStatus}`
   );
 
-  const nextWeeklyPlan = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}/next-plan`, { method: "POST" });
-  const nextWeekStart = new Date(`${generatedPlan.body.weeklyPlan.weekStart}T00:00:00.000Z`);
-  nextWeekStart.setUTCDate(nextWeekStart.getUTCDate() + 7);
-  const expectedNextWeekStart = nextWeekStart.toISOString().slice(0, 10);
+  const nextMonthlyPlan = await request(`/api/monthly-reviews/${generatedPlan.body.monthlyPlan.monthStart}/next-plan`, { method: "POST" });
+  const nextMonthStart = new Date(`${generatedPlan.body.monthlyPlan.monthStart}T00:00:00.000Z`);
+  nextMonthStart.setUTCMonth(nextMonthStart.getUTCMonth() + 1, 1);
+  const expectedNextMonthStart = nextMonthStart.toISOString().slice(0, 10);
   assertCondition(
-    "weekly_report_next_plan",
-    nextWeeklyPlan.ok && nextWeeklyPlan.body.data?.weeklyPlan?.weekStart === expectedNextWeekStart && nextWeeklyPlan.body.data?.tasks?.length >= 1,
-    nextWeeklyPlan.body.message || `http ${nextWeeklyPlan.httpStatus}`
+    "monthly_report_next_plan",
+    nextMonthlyPlan.ok && nextMonthlyPlan.body.data?.monthlyPlan?.monthStart === expectedNextMonthStart && nextMonthlyPlan.body.data?.tasks?.length >= 1,
+    nextMonthlyPlan.body.message || `http ${nextMonthlyPlan.httpStatus}`
   );
 
   const finalSnapshot = await request("/api/workbench-state");

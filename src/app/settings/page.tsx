@@ -21,7 +21,7 @@ const logModeLabels = {
   cdn_log: "CDN 日志"
 } as const;
 
-type SettingsRuleNextStep = "select_channels" | "select_products" | "reduce_volume" | "confirm_review" | "configure_real_log" | "configure_geo" | "ready";
+type SettingsRuleNextStep = "select_channels" | "select_products" | "reduce_volume" | "confirm_review" | "configure_real_log" | "ready";
 
 interface SettingsRuleCheck {
   key: string;
@@ -38,7 +38,6 @@ const settingsRuleNextStepLabels: Record<SettingsRuleNextStep, string> = {
   reduce_volume: "降低产能",
   confirm_review: "确认终稿",
   configure_real_log: "配置日志",
-  configure_geo: "配置 GEO",
   ready: "规则可用"
 };
 
@@ -48,20 +47,18 @@ const settingsRuleNextStepColors: Record<SettingsRuleNextStep, string> = {
   reduce_volume: "gold",
   confirm_review: "gold",
   configure_real_log: "blue",
-  configure_geo: "gold",
   ready: "green"
 };
 
 function createSettingsRuleChecks(input: {
-  weeklyDays: number;
+  publishDays: number;
   dailyCount: number;
   channels: Array<keyof typeof channelLabels>;
   products: Array<keyof typeof productLabels>;
   finalReviewMode: keyof typeof finalReviewModeLabels;
-  geoPlatforms: string[];
   logMode: keyof typeof logModeLabels;
 }): SettingsRuleCheck[] {
-  const weeklyCapacity = input.weeklyDays * input.dailyCount;
+  const monthlyCapacity = input.publishDays * input.dailyCount;
 
   return [
     input.channels.length
@@ -70,14 +67,14 @@ function createSettingsRuleChecks(input: {
           item: "渠道范围",
           status: `已选择 ${input.channels.length} 个渠道`,
           detail: input.channels.map((item) => channelLabels[item]).join("、"),
-          action: "可以进入周计划生成。",
+          action: "可以进入月度计划生成。",
           nextStep: "ready"
         }
       : {
           key: "channels",
           item: "渠道范围",
           status: "未选择渠道",
-          detail: "周计划无法稳定分配发布渠道。",
+          detail: "月度计划无法稳定分配发布渠道。",
           action: "先选择至少一个首批渠道。",
           nextStep: "select_channels"
         },
@@ -98,19 +95,19 @@ function createSettingsRuleChecks(input: {
           action: "先选择至少一个产品方向。",
           nextStep: "select_products"
         },
-    weeklyCapacity > 20
+    monthlyCapacity > 20
       ? {
           key: "capacity",
           item: "周产能",
-          status: `每周 ${weeklyCapacity} 篇`,
+          status: `每月 ${monthlyCapacity} 篇`,
           detail: "超过 20 篇会放大生成、审核和发布回填压力。",
-          action: "建议先降低每周天数或每日篇数，完成一周试跑后再扩容。",
+          action: "建议先降低每月天数或每日篇数，完成一个月试跑后再扩容。",
           nextStep: "reduce_volume"
         }
       : {
           key: "capacity",
           item: "周产能",
-          status: `每周 ${weeklyCapacity} 篇`,
+          status: `每月 ${monthlyCapacity} 篇`,
           detail: "当前产能适合本地试跑和人工复核。",
           action: "可以继续使用当前节奏。",
           nextStep: "ready"
@@ -148,23 +145,6 @@ function createSettingsRuleChecks(input: {
           detail: input.logMode === "demo_csv" ? "适合演示和本地 smoke。" : "适合先用人工文件导入验证指标链路。",
           action: "可以继续在博客监控页导入日志。",
           nextStep: "ready"
-        },
-    input.geoPlatforms.length
-      ? {
-          key: "geo_platforms",
-          item: "GEO 平台",
-          status: `已选择 ${input.geoPlatforms.length} 个平台`,
-          detail: input.geoPlatforms.join("、"),
-          action: "可以进入 GEO 测试页运行。",
-          nextStep: "ready"
-        }
-      : {
-          key: "geo_platforms",
-          item: "GEO 平台",
-          status: "未选择 GEO 平台",
-          detail: "GEO 测试无法判断应该调用哪些平台。",
-          action: "先选择至少一个 GEO 平台。",
-          nextStep: "configure_geo"
         }
   ];
 }
@@ -174,12 +154,8 @@ function getSettingsRuleEntry(nextStep: SettingsRuleNextStep) {
     return { type: "link" as const, href: "/real-integration", label: "看真实接入" };
   }
 
-  if (nextStep === "configure_geo") {
-    return { type: "link" as const, href: "/geo-test", label: "去 GEO 测试" };
-  }
-
   if (nextStep === "ready") {
-    return { type: "link" as const, href: "/weekly-plan", label: "去周计划" };
+    return { type: "link" as const, href: "/monthly-plan", label: "去月度计划" };
   }
 
   return { type: "save" as const, label: "保存设置" };
@@ -195,20 +171,18 @@ export default function SettingsPage() {
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const [saving, setSaving] = useState(false);
-  const previewWeeklyDays = Form.useWatch("defaultWeeklyDays", form) ?? workspaceSetting.defaultWeeklyDays;
+  const previewMonthlyDays = Form.useWatch("defaultPublishDays", form) ?? workspaceSetting.defaultPublishDays;
   const previewDailyCount = Form.useWatch("defaultDailyCount", form) ?? workspaceSetting.defaultDailyCount;
   const previewChannels = (Form.useWatch("enabledChannels", form) ?? workspaceSetting.enabledChannels) as Array<keyof typeof channelLabels>;
   const previewProducts = (Form.useWatch("enabledProducts", form) ?? workspaceSetting.enabledProducts) as Array<keyof typeof productLabels>;
   const previewFinalReviewMode = (Form.useWatch("finalReviewMode", form) ?? workspaceSetting.finalReviewMode) as keyof typeof finalReviewModeLabels;
-  const previewGeoPlatforms = (Form.useWatch("geoPlatforms", form) ?? workspaceSetting.geoPlatforms) as string[];
   const previewLogMode = (Form.useWatch("logMode", form) ?? workspaceSetting.logMode) as keyof typeof logModeLabels;
   const settingsRuleChecks = createSettingsRuleChecks({
-    weeklyDays: Number(previewWeeklyDays) || 0,
+    publishDays: Number(previewMonthlyDays) || 0,
     dailyCount: Number(previewDailyCount) || 0,
     channels: previewChannels,
     products: previewProducts,
     finalReviewMode: previewFinalReviewMode,
-    geoPlatforms: previewGeoPlatforms,
     logMode: previewLogMode
   });
   const blockingRuleChecks = settingsRuleChecks.filter((item) => item.nextStep !== "ready");
@@ -283,7 +257,7 @@ export default function SettingsPage() {
         description={
           <Space direction="vertical" size={8}>
             <Space wrap>
-              <Tag color="blue">每周 {previewWeeklyDays} 天</Tag>
+              <Tag color="blue">每月 {previewMonthlyDays} 天</Tag>
               <Tag color="blue">每天 {previewDailyCount} 篇</Tag>
               <Tag color={previewFinalReviewMode === "manual_review" ? "gold" : "green"}>{finalReviewModeLabels[previewFinalReviewMode]}</Tag>
               <Tag color={previewLogMode === "demo_csv" ? "default" : "processing"}>{logModeLabels[previewLogMode]}</Tag>
@@ -300,12 +274,6 @@ export default function SettingsPage() {
                 {previewProducts.length ? previewProducts.map((item) => <Tag color="purple" key={item}>{productLabels[item]}</Tag>) : <Tag>未选择产品</Tag>}
               </Space>
             </div>
-            <div>
-              GEO 平台：
-              <Space wrap>
-                {previewGeoPlatforms.length ? previewGeoPlatforms.map((item) => <Tag color="cyan" key={item}>{item}</Tag>) : <Tag>未选择平台</Tag>}
-              </Space>
-            </div>
           </Space>
         }
       />
@@ -314,7 +282,7 @@ export default function SettingsPage() {
         showIcon
         style={{ marginBottom: 16 }}
         message={blockingRuleChecks.length ? `规则检查发现 ${blockingRuleChecks.length} 个待处理项` : "当前规则可进入主流程"}
-        description={firstBlockingRule ? `${firstBlockingRule.item}：${firstBlockingRule.action}` : "渠道、产品、产能、终稿、日志和 GEO 平台都已具备可执行入口。"}
+        description={firstBlockingRule ? `${firstBlockingRule.item}：${firstBlockingRule.action}` : "渠道、产品、产能、终稿和日志都已具备可执行入口。"}
       />
       <Card title="规则检查" style={{ marginBottom: 16 }}>
         <Table
@@ -347,8 +315,8 @@ export default function SettingsPage() {
       <Form form={form} layout="vertical">
         <div className="two-column">
           <Card title="发布节奏与范围">
-            <Form.Item label="默认每周发布天数" name="defaultWeeklyDays">
-              <InputNumber min={1} max={7} style={{ width: "100%" }} />
+            <Form.Item label="默认每月发布天数" name="defaultPublishDays">
+              <InputNumber min={1} max={31} style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item label="默认每日篇数" name="defaultDailyCount">
               <InputNumber min={1} max={10} style={{ width: "100%" }} />
@@ -368,9 +336,6 @@ export default function SettingsPage() {
                   { label: "人工确认", value: "manual_review" }
                 ]}
               />
-            </Form.Item>
-            <Form.Item label="GEO 平台" name="geoPlatforms">
-              <Checkbox.Group options={["DeepSeek", "豆包", "通义千问"]} />
             </Form.Item>
             <Form.Item label="日志模式" name="logMode">
               <Radio.Group

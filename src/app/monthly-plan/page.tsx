@@ -204,19 +204,19 @@ function getPlanActionText(task: ContentTask, draft?: ArticleDraft, record?: Pub
   }
 
   if (nextStep === "record_metrics") {
-    return "发布链接已闭环，继续录入渠道指标，为周报复盘准备真实反馈。";
+    return "发布链接已闭环，继续录入渠道指标，为月度复盘准备真实反馈。";
   }
 
   if (nextStep === "failed") {
-    return "发布承接出现失败记录，先去发布队列排查，再回到周计划继续闭环。";
+    return "发布承接出现失败记录，先去发布队列排查，再回到月度计划继续闭环。";
   }
 
-  return "发布与指标都已完成，可以进入周报复盘判断是否反哺下周计划。";
+  return "发布与指标都已完成，可以进入月度复盘判断是否反哺下月计划。";
 }
 
-export default function WeeklyPlanPage() {
+export default function MonthlyPlanPage() {
   const {
-    state: { tasks, weeklyPlan, workspaceSetting, drafts, publishRecords },
+    state: { tasks, monthlyPlan, workspaceSetting, drafts, publishRecords },
     loading,
     error,
     refresh
@@ -281,7 +281,7 @@ export default function WeeklyPlanPage() {
 
   useEffect(() => {
     form.setFieldsValue({
-      days: workspaceSetting.defaultWeeklyDays,
+      days: workspaceSetting.defaultPublishDays,
       dailyCount: workspaceSetting.defaultDailyCount,
       channels: workspaceSetting.enabledChannels,
       products: workspaceSetting.enabledProducts
@@ -293,14 +293,14 @@ export default function WeeklyPlanPage() {
     setGenerating(true);
 
     try {
-      const result = await callJsonApi("/api/weekly-plans/generate", {
+      const result = await callJsonApi("/api/monthly-plans/generate", {
         method: "POST",
         body: JSON.stringify(values)
       });
       await refresh();
-      messageApi.success(formatApiMessage(result, "周计划已生成"));
+      messageApi.success(formatApiMessage(result, "月度计划已生成"));
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "生成周计划失败");
+      messageApi.error(error instanceof Error ? error.message : "生成月度计划失败");
     } finally {
       setGenerating(false);
     }
@@ -471,7 +471,7 @@ export default function WeeklyPlanPage() {
     }
 
     return (
-      <Link href="/weekly-report">
+      <Link href="/monthly-review">
         <Button size="small" type="primary">
           去复盘
         </Button>
@@ -526,8 +526,8 @@ export default function WeeklyPlanPage() {
     <>
       {contextHolder}
       <PageHeader
-        title="周计划"
-        subtitle="一次生成一周渠道任务，支持调整每日发布量、渠道和标题。"
+        title="月度计划"
+        subtitle="一次生成一个月渠道任务，支持调整每日发布量、渠道和标题。"
         actions={
           <>
             <Popconfirm
@@ -542,34 +542,34 @@ export default function WeeklyPlanPage() {
               </Button>
             </Popconfirm>
             <Popconfirm
-              title="确认生成新的周计划？"
-              description="这会覆盖当前周计划任务、草稿和发布队列。"
+              title="确认生成新的月度计划？"
+              description="这会覆盖当前月度计划任务、草稿和发布队列。"
               okText="生成"
               cancelText="取消"
-              okButtonProps={{ "data-testid": "weekly-plan-generate-confirm" }}
+              okButtonProps={{ "data-testid": "monthly-plan-generate-confirm" }}
               onConfirm={handleGeneratePlan}
             >
-              <Button type="primary" loading={generating} data-testid="weekly-plan-generate-button">
-                生成周计划
+              <Button type="primary" loading={generating} data-testid="monthly-plan-generate-button">
+                生成月度计划
               </Button>
             </Popconfirm>
           </>
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
-      <Card title={`${weeklyPlan.weekStart} ~ ${weeklyPlan.weekEnd}`} style={{ marginBottom: 16 }}>
+      <Card title={`${monthlyPlan.monthStart} ~ ${monthlyPlan.monthEnd}`} style={{ marginBottom: 16 }}>
         <Form
           form={form}
           layout="inline"
           initialValues={{
-            days: workspaceSetting.defaultWeeklyDays,
+            days: workspaceSetting.defaultPublishDays,
             dailyCount: workspaceSetting.defaultDailyCount,
             channels: workspaceSetting.enabledChannels,
             products: workspaceSetting.enabledProducts
           }}
         >
-          <Form.Item label="每周发布天数" name="days">
-            <InputNumber min={1} max={7} />
+          <Form.Item label="每月发布天数" name="days">
+            <InputNumber min={1} max={31} />
           </Form.Item>
           <Form.Item label="默认每日篇数" name="dailyCount">
             <InputNumber min={1} max={10} />
@@ -593,7 +593,7 @@ export default function WeeklyPlanPage() {
       <Alert
         showIcon
         type={visibleConfirmCount || visibleGenerateCount || visibleReviewCount ? "warning" : visiblePublishCount ? "info" : "success"}
-        message={`周计划共 ${filteredTasks.length} 条，待确认 ${visibleConfirmCount} 条，待生成/生成排查 ${visibleGenerateCount} 条，待终稿处理 ${visibleReviewCount} 条`}
+        message={`月度计划共 ${filteredTasks.length} 条，待确认 ${visibleConfirmCount} 条，待生成/生成排查 ${visibleGenerateCount} 条，待终稿处理 ${visibleReviewCount} 条`}
         description={
           filteredTasks.length
             ? `发布侧待处理 ${visiblePublishCount} 条，已可进入复盘 ${visibleRetrospectCount} 条。${
@@ -605,7 +605,7 @@ export default function WeeklyPlanPage() {
                     )
                   : ""
               }`
-            : "当前筛选没有周计划任务，清空筛选或重新生成本周排期。"
+            : "当前筛选没有月度计划任务，清空筛选或重新生成本月排期。"
         }
         style={{ marginBottom: 16 }}
       />
@@ -657,8 +657,8 @@ export default function WeeklyPlanPage() {
         locale={{
           emptyText: (
             <ActionEmpty
-              title={hasActiveFilter ? "当前筛选没有周计划任务" : "还没有周计划任务"}
-              description={hasActiveFilter ? "清空筛选或调整状态、渠道、产品条件后再查看。" : "先确认默认发布天数、渠道和产品，再生成本周任务。"}
+              title={hasActiveFilter ? "当前筛选没有月度计划任务" : "还没有月度计划任务"}
+              description={hasActiveFilter ? "清空筛选或调整状态、渠道、产品条件后再查看。" : "先确认默认发布天数、渠道和产品，再生成本月任务。"}
               action={
                 hasActiveFilter ? (
                   <Button type="primary" onClick={clearTaskFilters}>
@@ -666,14 +666,14 @@ export default function WeeklyPlanPage() {
                   </Button>
                 ) : (
                   <Popconfirm
-                    title="确认生成新的周计划？"
-                    description="这会覆盖当前周计划任务、草稿和发布队列。"
+                    title="确认生成新的月度计划？"
+                    description="这会覆盖当前月度计划任务、草稿和发布队列。"
                     okText="生成"
                     cancelText="取消"
                     onConfirm={handleGeneratePlan}
                   >
                     <Button type="primary" loading={generating}>
-                      生成周计划
+                      生成月度计划
                     </Button>
                   </Popconfirm>
                 )

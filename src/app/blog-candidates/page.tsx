@@ -25,7 +25,7 @@ type CandidateRow = BlogArticle & {
 };
 
 const candidateSourceLabels: Record<CandidateSource, string> = {
-  geo: "GEO 测试",
+  geo: "GEO 诊断",
   seo: "SEO 诊断",
   manual: "人工加入"
 };
@@ -91,7 +91,7 @@ function getCandidateActionText(candidate: CandidateRow) {
   }
 
   if (nextStep === "create_task") {
-    return "优先生成渠道补强任务，让 GEO/SEO 缺口进入当前周计划。";
+    return "优先生成渠道补强任务，让 GEO/SEO 缺口进入当前月度计划。";
   }
 
   if (nextStep === "mark_planned") {
@@ -102,7 +102,7 @@ function getCandidateActionText(candidate: CandidateRow) {
     return "先回博客监控页补同步来源或诊断记录，再进入候选处理。";
   }
 
-  return "已进入规划，可去周计划页查看后续排期和任务承接。";
+  return "已进入规划，可去月度计划页查看后续排期和任务承接。";
 }
 
 export default function BlogCandidatesPage() {
@@ -130,7 +130,7 @@ export default function BlogCandidatesPage() {
       reason:
         item.candidateReason ||
         (item.geoResult === "miss"
-          ? "GEO 测试未命中，建议补强官网内容。"
+          ? "GEO 诊断未命中，建议补强官网内容。"
           : item.seoIssueCount > 0
             ? `存在 ${item.seoIssueCount} 个 SEO 问题。`
             : "建议继续观察。"),
@@ -263,7 +263,7 @@ export default function BlogCandidatesPage() {
       return (
         <Popconfirm
           title="确认生成渠道补强任务？"
-          description="会在当前周计划下新增一条计划任务，并把该候选主题标记为已规划。"
+          description="会在当前月度计划下新增一条计划任务，并把该候选主题标记为已规划。"
           okText="生成任务"
           cancelText="取消"
           onConfirm={() => handleCreateContentTask(record.id)}
@@ -302,8 +302,8 @@ export default function BlogCandidatesPage() {
     }
 
     return (
-      <Link href="/weekly-plan">
-        <Button size="small">看周计划</Button>
+      <Link href="/monthly-plan">
+        <Button size="small">看月度计划</Button>
       </Link>
     );
   }

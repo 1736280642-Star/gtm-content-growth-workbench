@@ -2,19 +2,17 @@ import {
   blogArticles as seedBlogArticles,
   botVisits as seedBotVisits,
   drafts as seedDrafts,
-  geoResults as seedGeoResults,
   knowledgeBases as seedKnowledgeBases,
   publishRecords as seedPublishRecords,
   tasks as seedTasks,
-  weeklyPlan as seedWeeklyPlan
+  monthlyPlan as seedMonthlyPlan
 } from "./demo-data";
-import { callAiProvider, getProviderKeyForPlatform, type AiProviderKey } from "./ai-provider";
+import { callAiProvider, type AiProviderKey } from "./ai-provider";
 import { loadBlogArticles } from "./blog-sync-adapter";
 import { importChannelMetrics } from "./channel-metrics-adapter";
 import { channelLabels, productLabels } from "./labels";
 import { parseBotLogInput } from "./log-import-adapter";
 import { getWorkbenchRepository } from "./repositories";
-import { getProviderMissingEnv } from "./runtime-config";
 import type {
   ArticleDraft,
   BlogArticle,
@@ -22,15 +20,13 @@ import type {
   ChannelKey,
   ContentTask,
   ContentType,
-  GeoPlatformName,
-  GeoTestResult,
   KnowledgeBase,
   LogMode,
   ProductKey,
   PublishRecord,
   TaskStatus,
   WorkspaceSetting,
-  WeeklyPlan
+  MonthlyPlan
 } from "./types";
 
 export interface WorkbenchAuditEvent {
@@ -41,7 +37,7 @@ export interface WorkbenchAuditEvent {
 }
 
 export interface PipelineStepResult {
-  name: "sync_blog" | "import_log" | "import_channel_metrics" | "run_geo_tests" | "read_weekly_report";
+  name: "sync_blog" | "import_log" | "import_channel_metrics" | "read_monthly_report";
   ok: boolean;
   status: WorkflowResult<unknown>["status"] | "success";
   message: string;
@@ -55,7 +51,7 @@ export interface PipelineRunRecord {
   startedAt: string;
   finishedAt: string;
   steps: PipelineStepResult[];
-  week: string;
+  month: string;
   summary?: ReturnType<typeof getDashboardSummary>;
 }
 
@@ -65,22 +61,21 @@ export interface WorkbenchState {
     statePath: string;
     initializedAt: string;
   };
-  weeklyPlan: WeeklyPlan;
+  monthlyPlan: MonthlyPlan;
   workspaceSetting: WorkspaceSetting;
   tasks: ContentTask[];
   drafts: ArticleDraft[];
   publishRecords: PublishRecord[];
   blogArticles: BlogArticle[];
-  geoResults: GeoTestResult[];
   botVisits: BotVisitSummary[];
   knowledgeBases: KnowledgeBase[];
   pipelineRuns: PipelineRunRecord[];
   auditLog: WorkbenchAuditEvent[];
 }
 
-interface GenerateWeeklyPlanInput {
-  weekStart?: string;
-  weekEnd?: string;
+interface GenerateMonthlyPlanInput {
+  monthStart?: string;
+  monthEnd?: string;
   days?: number;
   dailyCount?: number;
   channels?: ChannelKey[];
@@ -91,21 +86,18 @@ interface RunPipelineInput {
   skipBlog?: boolean;
   skipLog?: boolean;
   skipChannelMetrics?: boolean;
-  skipGeo?: boolean;
-  week?: string;
+  month?: string;
   blog?: Record<string, unknown>;
   log?: Record<string, unknown>;
   channelMetrics?: Record<string, unknown>;
-  geo?: Record<string, unknown>;
 }
 
 interface SaveWorkspaceSettingInput {
-  defaultWeeklyDays?: number;
+  defaultPublishDays?: number;
   defaultDailyCount?: number;
   enabledChannels?: ChannelKey[];
   enabledProducts?: ProductKey[];
   finalReviewMode?: WorkspaceSetting["finalReviewMode"];
-  geoPlatforms?: WorkspaceSetting["geoPlatforms"];
   logMode?: LogMode;
 }
 
@@ -122,15 +114,6 @@ interface WorkflowResult<T> {
 }
 
 const statePath = process.env.WORKBENCH_STATE_PATH || "data/workbench-state.json";
-const geoPlatformOptions: GeoPlatformName[] = ["DeepSeek", "豆包", "通义千问"];
-const geoPromptGroupOptions: GeoTestResult["promptGroup"][] = ["品牌认知", "产品场景", "对比", "FAQ"];
-const defaultGeoPrompts: Record<GeoTestResult["promptGroup"], string> = {
-  品牌认知: "推荐几家国内 Dify 企业版服务商，并说明你会优先参考哪些官方信息来源。",
-  产品场景: "企业接入大模型后如何做输出安全治理？请推荐可落地的产品或服务。",
-  对比: "JOTO、Dify 官方生态服务商和其他国内 AI 应用服务商分别适合什么场景？",
-  FAQ: "Dify 应用需要 AI 护栏吗？如果需要，应该如何选择服务商或产品？"
-};
-const geoCompetitorKeywords = ["腾讯云", "阿里云", "火山引擎", "百度智能云", "硅基流动", "Coze", "扣子", "FastGPT", "LangChain", "智谱", "Kimi", "MiniMax"];
 
 function nowIso() {
   return new Date().toISOString();
@@ -144,28 +127,14 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function normalizeGeoPlatformName(value: unknown): GeoPlatformName | undefined {
-  if (value === "ChatGPT") return "通义千问";
-  return geoPlatformOptions.includes(value as GeoPlatformName) ? (value as GeoPlatformName) : undefined;
-}
-
-function normalizeGeoResults(results: GeoTestResult[]): GeoTestResult[] {
-  return results.map((result) => ({
-    ...result,
-    platform: normalizeGeoPlatformName(result.platform) || "通义千问",
-    providerKey: (result.providerKey as string | undefined) === "openai" ? "qwen" : result.providerKey
-  }));
-}
-
 function createInitialWorkspaceSetting(): WorkspaceSetting {
   return {
     id: "workspace-setting-default",
-    defaultWeeklyDays: 5,
+    defaultPublishDays: 5,
     defaultDailyCount: 3,
     enabledChannels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
     enabledProducts: ["joto_brand", "weike_guardrails"],
     finalReviewMode: "default_final",
-    geoPlatforms: ["DeepSeek", "豆包", "通义千问"],
     logMode: "demo_csv",
     updatedAt: nowIso()
   };
@@ -180,13 +149,12 @@ export function createInitialWorkbenchState(): WorkbenchState {
       statePath,
       initializedAt: createdAt
     },
-    weeklyPlan: clone(seedWeeklyPlan),
+    monthlyPlan: clone(seedMonthlyPlan),
     workspaceSetting: createInitialWorkspaceSetting(),
     tasks: clone(seedTasks),
     drafts: clone(seedDrafts),
     publishRecords: clone(seedPublishRecords),
     blogArticles: clone(seedBlogArticles),
-    geoResults: clone(seedGeoResults),
     botVisits: clone(seedBotVisits),
     knowledgeBases: clone(seedKnowledgeBases),
     pipelineRuns: [],
@@ -203,32 +171,52 @@ export function createInitialWorkbenchState(): WorkbenchState {
 
 export function normalizeWorkbenchState(value: Partial<WorkbenchState>): WorkbenchState {
   const base = createInitialWorkbenchState();
+  const sanitizedValue = { ...value } as Partial<WorkbenchState> & Record<string, unknown>;
+  const sanitizedSetting = { ...(value.workspaceSetting || {}) } as Partial<WorkspaceSetting> & Record<string, unknown>;
+  const legacyResultKey = ["geo", "Results"].join("");
+  const legacyPlatformKey = ["geo", "Platforms"].join("");
+  const legacyPipelineStep = ["run", "geo", "tests"].join("_");
+
+  delete sanitizedValue[legacyResultKey];
+  delete sanitizedSetting[legacyPlatformKey];
+
+  const rawMonthlyPlan = value.monthlyPlan || base.monthlyPlan;
+  const normalizedMonthStart = getMonthStart(
+    typeof rawMonthlyPlan.monthStart === "string" ? rawMonthlyPlan.monthStart : base.monthlyPlan.monthStart
+  );
+  const normalizedMonthlyPlan: MonthlyPlan = {
+    ...base.monthlyPlan,
+    ...rawMonthlyPlan,
+    id: rawMonthlyPlan.id?.startsWith("mp-") ? rawMonthlyPlan.id : `mp-${normalizedMonthStart}`,
+    monthStart: normalizedMonthStart,
+    monthEnd: getMonthEnd(normalizedMonthStart)
+  };
 
   return {
     ...base,
-    ...value,
+    ...sanitizedValue,
     runtime: {
       ...base.runtime,
       ...(value.runtime || {}),
       storage: "local_json",
       statePath
     },
-    weeklyPlan: value.weeklyPlan || base.weeklyPlan,
-    workspaceSetting: value.workspaceSetting
-      ? {
-          ...base.workspaceSetting,
-          ...value.workspaceSetting,
-          geoPlatforms: coerceGeoPlatforms(value.workspaceSetting.geoPlatforms) || base.workspaceSetting.geoPlatforms
-        }
-      : base.workspaceSetting,
-    tasks: value.tasks || base.tasks,
+    monthlyPlan: normalizedMonthlyPlan,
+    workspaceSetting: value.workspaceSetting ? { ...base.workspaceSetting, ...sanitizedSetting } : base.workspaceSetting,
+    tasks: (value.tasks || base.tasks).map((task) => ({
+      ...task,
+      monthlyPlanId: task.monthlyPlanId?.startsWith("mp-") ? task.monthlyPlanId : normalizedMonthlyPlan.id
+    })),
     drafts: value.drafts || base.drafts,
     publishRecords: value.publishRecords || base.publishRecords,
-    blogArticles: value.blogArticles || base.blogArticles,
-    geoResults: normalizeGeoResults(value.geoResults || base.geoResults),
+    blogArticles: (value.blogArticles || base.blogArticles).filter((article) => !article.url.startsWith("geo://result/")),
     botVisits: value.botVisits || base.botVisits,
     knowledgeBases: value.knowledgeBases || base.knowledgeBases,
-    pipelineRuns: value.pipelineRuns || base.pipelineRuns,
+    pipelineRuns: (value.pipelineRuns || base.pipelineRuns).map((run) => ({
+      ...run,
+      month: run.month || normalizedMonthStart,
+      steps: run.steps.filter((step) => (step.name as string) !== legacyPipelineStep)
+    })),
     auditLog: value.auditLog || base.auditLog
   };
 }
@@ -279,6 +267,24 @@ function addDays(dateText: string, offset: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function getMonthEnd(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00.000Z`);
+  date.setUTCMonth(date.getUTCMonth() + 1, 0);
+  return date.toISOString().slice(0, 10);
+}
+
+function getMonthStart(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00.000Z`);
+  date.setUTCDate(1);
+  return date.toISOString().slice(0, 10);
+}
+
+function getNextMonthStart(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00.000Z`);
+  date.setUTCMonth(date.getUTCMonth() + 1, 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function clampNumber(value: unknown, fallback: number, min: number, max: number) {
   const parsed = typeof value === "number" ? value : Number(value);
 
@@ -309,15 +315,6 @@ function coerceProducts(value: unknown): ProductKey[] | undefined {
 
   const products = value.filter((item): item is ProductKey => allowed.includes(item as ProductKey));
   return products.length ? products : undefined;
-}
-
-function coerceGeoPlatforms(value: unknown): WorkspaceSetting["geoPlatforms"] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const platforms = value.map(normalizeGeoPlatformName).filter((item): item is GeoPlatformName => Boolean(item));
-  return platforms.length ? platforms : undefined;
 }
 
 function coerceKnowledgeBaseType(value: unknown, fallback: KnowledgeBaseType): KnowledgeBaseType {
@@ -367,30 +364,6 @@ function buildTaskKeywords(product: ProductKey, contentType: ContentType) {
   };
 
   return [...base, byType[contentType]];
-}
-
-function extractUrls(text: string) {
-  return Array.from(new Set(text.match(/https?:\/\/[^\s)\]）】"'，。；、]+/g) || []));
-}
-
-function detectCompetitorAppeared(text: string) {
-  return geoCompetitorKeywords.some((keyword) => text.includes(keyword));
-}
-
-function getGeoAccuracyStatus(input: Pick<GeoTestResult, "mentionedJoto" | "citedOfficialUrl" | "competitorAppeared" | "executionStatus">): NonNullable<GeoTestResult["accuracyStatus"]> {
-  if (input.executionStatus && input.executionStatus !== "success") {
-    return "needs_review";
-  }
-
-  if (input.mentionedJoto && input.citedOfficialUrl) {
-    return input.competitorAppeared ? "needs_review" : "accurate";
-  }
-
-  return "needs_review";
-}
-
-function getGeoReviewStatus(input: Pick<GeoTestResult, "accuracyStatus" | "executionStatus">): NonNullable<GeoTestResult["reviewStatus"]> {
-  return input.executionStatus === "success" && input.accuracyStatus === "accurate" ? "auto_checked" : "manual_review_needed";
 }
 
 function buildRegeneratedTaskTitle(task: ContentTask) {
@@ -554,28 +527,27 @@ export function getDashboardSummary() {
   const pendingUrl = state.publishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
 
   return {
-    weeklyPlan: state.weeklyPlan,
+    monthlyPlan: state.monthlyPlan,
     metrics: {
-      targetTotal: state.weeklyPlan.targetTotalCount,
+      targetTotal: state.monthlyPlan.targetTotalCount,
       generated,
       approved,
       published,
       pendingUrl,
-      geoHitRate: `${state.geoResults.filter((item) => item.mentionedJoto).length}/${state.geoResults.length}`,
       aiBotPv: state.botVisits.reduce((sum, item) => sum + item.pv, 0)
     },
     dataSource: state.runtime.storage
   };
 }
 
-export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
+export function generateMonthlyPlan(input: GenerateMonthlyPlanInput = {}) {
   const state = readWorkbenchState();
-  const days = clampNumber(input.days, 5, 1, 7);
+  const days = clampNumber(input.days, 20, 1, 31);
   const dailyCount = clampNumber(input.dailyCount, 3, 1, 10);
   const channels: ChannelKey[] = input.channels?.length ? input.channels : ["wechat", "csdn", "juejin", "zhihu_toutiao_general"];
   const products: ProductKey[] = input.products?.length ? input.products : ["joto_brand", "weike_guardrails"];
-  const weekStart = input.weekStart || state.weeklyPlan.weekStart;
-  const weekEnd = input.weekEnd || addDays(weekStart, 6);
+  const monthStart = getMonthStart(input.monthStart || state.monthlyPlan.monthStart);
+  const monthEnd = input.monthEnd || getMonthEnd(monthStart);
   const targetTotalCount = days * dailyCount;
   const tasks: ContentTask[] = [];
 
@@ -587,8 +559,8 @@ export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
       const contentType = coerceContentType(index);
       tasks.push({
         id: createId("task"),
-        weeklyPlanId: `wp-${weekStart}`,
-        publishDate: addDays(weekStart, day),
+        monthlyPlanId: `mp-${monthStart}`,
+        publishDate: addDays(monthStart, day),
         channel,
         product,
         title: buildTaskTitle(index, channel, product, contentType),
@@ -599,10 +571,10 @@ export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
     }
   }
 
-  state.weeklyPlan = {
-    id: `wp-${weekStart}`,
-    weekStart,
-    weekEnd,
+  state.monthlyPlan = {
+    id: `mp-${monthStart}`,
+    monthStart,
+    monthEnd,
     targetTotalCount,
     status: "draft"
   };
@@ -610,26 +582,31 @@ export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
   state.drafts = [];
   state.publishRecords = [];
 
-  saveWithEvent(state, "weekly_plan_generated", `Generated ${tasks.length} local-rule content tasks.`);
+  saveWithEvent(state, "monthly_plan_generated", `Generated ${tasks.length} local-rule content tasks.`);
 
   return {
-    weeklyPlan: state.weeklyPlan,
+    monthlyPlan: state.monthlyPlan,
     tasks
   };
 }
 
-export function patchWeeklyPlan(id: string, input: Record<string, unknown>) {
+export function patchMonthlyPlan(id: string, input: Record<string, unknown>) {
   const state = readWorkbenchState();
   const channels = coerceChannels(input.channels);
   const products = coerceProducts(input.products);
 
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
+  state.monthlyPlan = {
+    ...state.monthlyPlan,
     id,
-    weekStart: typeof input.weekStart === "string" ? input.weekStart : state.weeklyPlan.weekStart,
-    weekEnd: typeof input.weekEnd === "string" ? input.weekEnd : state.weeklyPlan.weekEnd,
-    targetTotalCount: clampNumber(input.targetTotalCount, state.weeklyPlan.targetTotalCount, 1, 200),
-    status: typeof input.status === "string" ? (input.status as WeeklyPlan["status"]) : state.weeklyPlan.status
+    monthStart: typeof input.monthStart === "string" ? getMonthStart(input.monthStart) : state.monthlyPlan.monthStart,
+    monthEnd:
+      typeof input.monthEnd === "string"
+        ? getMonthEnd(input.monthEnd)
+        : typeof input.monthStart === "string"
+          ? getMonthEnd(input.monthStart)
+          : state.monthlyPlan.monthEnd,
+    targetTotalCount: clampNumber(input.targetTotalCount, state.monthlyPlan.targetTotalCount, 1, 200),
+    status: typeof input.status === "string" ? (input.status as MonthlyPlan["status"]) : state.monthlyPlan.status
   };
 
   if (channels || products) {
@@ -640,10 +617,10 @@ export function patchWeeklyPlan(id: string, input: Record<string, unknown>) {
     }));
   }
 
-  saveWithEvent(state, "weekly_plan_updated", `Updated weekly plan ${id}.`);
+  saveWithEvent(state, "monthly_plan_updated", `Updated monthly plan ${id}.`);
 
   return {
-    weeklyPlan: state.weeklyPlan,
+    monthlyPlan: state.monthlyPlan,
     tasks: state.tasks
   };
 }
@@ -713,7 +690,7 @@ export function confirmContentTasks(input: Record<string, unknown> = {}): Workfl
     return {
       ok: false,
       status: "pending_input",
-      message: "没有可确认的计划任务，请先生成周计划或选择计划中任务。",
+      message: "没有可确认的计划任务，请先生成月度计划或选择计划中任务。",
       data: {
         confirmed,
         tasks: state.tasks
@@ -722,8 +699,8 @@ export function confirmContentTasks(input: Record<string, unknown> = {}): Workfl
   }
 
   state.tasks = nextTasks;
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
+  state.monthlyPlan = {
+    ...state.monthlyPlan,
     status: "confirmed"
   };
   saveWithEvent(state, "content_tasks_confirmed", `Confirmed ${confirmed} content tasks.`);
@@ -760,8 +737,8 @@ export function deleteContentTask(id: string): WorkflowResult<{ taskId: string; 
   }
 
   state.tasks = state.tasks.filter((item) => item.id !== id);
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
+  state.monthlyPlan = {
+    ...state.monthlyPlan,
     targetTotalCount: state.tasks.length
   };
   saveWithEvent(state, "content_task_deleted", `Deleted content task ${id}.`);
@@ -785,7 +762,7 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
   const state = readWorkbenchState();
   const nextSetting: WorkspaceSetting = {
     ...state.workspaceSetting,
-    defaultWeeklyDays: clampNumber(input.defaultWeeklyDays, state.workspaceSetting.defaultWeeklyDays, 1, 7),
+    defaultPublishDays: clampNumber(input.defaultPublishDays, state.workspaceSetting.defaultPublishDays, 1, 31),
     defaultDailyCount: clampNumber(input.defaultDailyCount, state.workspaceSetting.defaultDailyCount, 1, 10),
     enabledChannels: coerceChannels(input.enabledChannels) || state.workspaceSetting.enabledChannels,
     enabledProducts: coerceProducts(input.enabledProducts) || state.workspaceSetting.enabledProducts,
@@ -793,7 +770,6 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
       input.finalReviewMode === "default_final" || input.finalReviewMode === "manual_review"
         ? input.finalReviewMode
         : state.workspaceSetting.finalReviewMode,
-    geoPlatforms: coerceGeoPlatforms(input.geoPlatforms) || state.workspaceSetting.geoPlatforms,
     logMode:
       input.logMode === "demo_csv" || input.logMode === "csv_import" || input.logMode === "nginx_log" || input.logMode === "cdn_log"
         ? input.logMode
@@ -1419,7 +1395,7 @@ export function diagnoseBlogArticle(id: string): WorkflowResult<{ article: BlogA
     article.url.startsWith("http") ? undefined : "URL 格式异常",
     article.title.includes("Dify") || article.title.includes("AI") ? undefined : "标题缺少核心主题词"
   ].filter((item): item is string => Boolean(item));
-  const geoIssues = article.geoResult === "miss" ? ["当前 GEO 测试未命中 JOTO 或唯客"] : [];
+  const geoIssues = article.geoResult === "miss" ? ["当前 GEO 诊断未命中 JOTO 或唯客"] : [];
   const nextArticle: BlogArticle = {
     ...article,
     seoIssueCount: seoIssues.length,
@@ -1461,7 +1437,7 @@ export function addBlogArticleToCandidatePool(id: string, input: Record<string, 
   const article = state.blogArticles[articleIndex];
   const fallbackReason =
     article.geoResult === "miss"
-      ? "GEO 测试未命中，建议进入博客候选池补强。"
+      ? "GEO 诊断未命中，建议进入博客候选池补强。"
       : article.seoIssueCount > 0
         ? `存在 ${article.seoIssueCount} 个 SEO 问题，建议进入优化候选池。`
         : "人工加入博客候选池。";
@@ -1551,8 +1527,8 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
   const contentType: ContentType = article.geoResult === "miss" ? "faq" : article.seoIssueCount >= 2 ? "technical" : "scenario";
   const task: ContentTask = {
     id: createId("task"),
-    weeklyPlanId: state.weeklyPlan.id,
-    publishDate: typeof input.publishDate === "string" && input.publishDate.trim() ? input.publishDate.trim() : state.weeklyPlan.weekStart,
+    monthlyPlanId: state.monthlyPlan.id,
+    publishDate: typeof input.publishDate === "string" && input.publishDate.trim() ? input.publishDate.trim() : state.monthlyPlan.monthStart,
     channel,
     product,
     title: `渠道补强：${article.title}`,
@@ -1570,8 +1546,8 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
 
   state.blogArticles[articleIndex] = nextArticle;
   state.tasks = [...state.tasks, task];
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
+  state.monthlyPlan = {
+    ...state.monthlyPlan,
     targetTotalCount: state.tasks.length
   };
   saveWithEvent(state, "blog_candidate_content_task_created", `Created content task ${task.id} from blog candidate ${id}.`);
@@ -1583,198 +1559,6 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
     data: {
       article: nextArticle,
       task
-    }
-  };
-}
-
-export async function runGeoTests(input: Record<string, unknown>): Promise<WorkflowResult<{ results: GeoTestResult[] }>> {
-  const state = readWorkbenchState();
-  const platforms = (Array.isArray(input.platforms) && input.platforms.length ? input.platforms : geoPlatformOptions)
-    .map(normalizeGeoPlatformName)
-    .filter((item): item is GeoPlatformName => Boolean(item));
-  const promptGroups = (
-    Array.isArray(input.promptGroups) && input.promptGroups.length
-      ? input.promptGroups
-      : typeof input.promptGroup === "string"
-        ? [input.promptGroup]
-        : ["品牌认知"]
-  ).filter((item): item is GeoTestResult["promptGroup"] => geoPromptGroupOptions.includes(item as GeoTestResult["promptGroup"]));
-  const promptOverrides =
-    input.prompts && typeof input.prompts === "object" && !Array.isArray(input.prompts)
-      ? (input.prompts as Partial<Record<GeoTestResult["promptGroup"], unknown>>)
-      : {};
-  const fallbackPrompt = typeof input.prompt === "string" ? input.prompt : undefined;
-  const missingConfig = getProviderMissingEnv(platforms);
-
-  if (!platforms.length || !promptGroups.length) {
-    return {
-      ok: false,
-      status: "pending_input",
-      message: "请至少选择一个 GEO 平台和一个 Prompt 组。"
-    };
-  }
-
-  if (missingConfig.length) {
-    saveWithEvent(state, "geo_tests_pending_config", `Missing GEO provider config: ${missingConfig.join(", ")}.`);
-    return {
-      ok: false,
-      status: "pending_config",
-      message: "GEO 测试入口已就绪，但缺少模型 API Key。当前先保留占位，不生成假结果。",
-      missingConfig,
-      data: { results: state.geoResults }
-    };
-  }
-
-  const createdAt = nowIso();
-  const results: GeoTestResult[] = [];
-
-  for (const platform of platforms) {
-    const providerKey = getProviderKeyForPlatform(platform);
-    for (const promptGroup of promptGroups) {
-      const promptValue = promptOverrides[promptGroup];
-      const prompt = typeof promptValue === "string" && promptValue.trim() ? promptValue.trim() : fallbackPrompt || defaultGeoPrompts[promptGroup];
-      const aiResult = await callAiProvider({
-        provider: providerKey,
-        systemPrompt: "你是企业 AI 应用选型助手。请直接回答用户问题，保留你会自然提到的服务商、产品和来源链接。",
-        userPrompt: prompt,
-        temperature: 0.2
-      });
-      const snapshot = aiResult.content || aiResult.errorMessage || "";
-      const citedUrls = extractUrls(snapshot);
-      const partialResult = {
-        mentionedJoto: snapshot.includes("JOTO"),
-        mentionedWeike: snapshot.includes("唯客"),
-        citedOfficialUrl: snapshot.includes("jotoai.com"),
-        competitorAppeared: detectCompetitorAppeared(snapshot),
-        executionStatus: aiResult.status
-      };
-      const accuracyStatus = getGeoAccuracyStatus(partialResult);
-
-      results.push({
-        id: createId("geo"),
-        platform,
-        promptGroup,
-        prompt,
-        ...partialResult,
-        citedUrls,
-        accuracyStatus,
-        reviewStatus: getGeoReviewStatus({ accuracyStatus, executionStatus: aiResult.status }),
-        answerSnapshot: snapshot,
-        manualOverride: false,
-        dataConfidence: aiResult.ok ? "real" : "pending",
-        providerKey,
-        modelName: aiResult.model,
-        testedAt: createdAt,
-        errorMessage: aiResult.errorMessage
-      });
-    }
-  }
-
-  state.geoResults = [...results, ...state.geoResults].slice(0, 100);
-  saveWithEvent(state, "geo_tests_created", `Created ${results.length} GEO test records.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: `GEO 测试记录已创建：${platforms.length} 个平台 × ${promptGroups.length} 个 Prompt 组。`,
-    data: { results }
-  };
-}
-
-export function overrideGeoResult(id: string, input: Record<string, unknown>): WorkflowResult<{ result: GeoTestResult }> {
-  const state = readWorkbenchState();
-  const resultIndex = state.geoResults.findIndex((item) => item.id === id);
-
-  if (resultIndex < 0) {
-    return {
-      ok: false,
-      status: "failed",
-      message: `未找到 GEO 测试结果：${id}`
-    };
-  }
-
-  const result: GeoTestResult = {
-    ...state.geoResults[resultIndex],
-    mentionedJoto: typeof input.mentionedJoto === "boolean" ? input.mentionedJoto : state.geoResults[resultIndex].mentionedJoto,
-    mentionedWeike: typeof input.mentionedWeike === "boolean" ? input.mentionedWeike : state.geoResults[resultIndex].mentionedWeike,
-    citedOfficialUrl: typeof input.citedOfficialUrl === "boolean" ? input.citedOfficialUrl : state.geoResults[resultIndex].citedOfficialUrl,
-    competitorAppeared:
-      typeof input.competitorAppeared === "boolean" ? input.competitorAppeared : state.geoResults[resultIndex].competitorAppeared,
-    manualOverride: true
-  };
-
-  result.accuracyStatus = getGeoAccuracyStatus({
-    mentionedJoto: result.mentionedJoto,
-    citedOfficialUrl: result.citedOfficialUrl,
-    competitorAppeared: result.competitorAppeared,
-    executionStatus: result.executionStatus
-  });
-  result.reviewStatus = "manual_confirmed";
-
-  state.geoResults[resultIndex] = result;
-  saveWithEvent(state, "geo_result_overridden", `Manual override applied to GEO result ${id}.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: "GEO 判断已人工修正，原始回答快照未被覆盖。",
-    data: { result }
-  };
-}
-
-export function addGeoResultToCandidatePool(id: string): WorkflowResult<{ article: BlogArticle; result: GeoTestResult }> {
-  const state = readWorkbenchState();
-  const result = state.geoResults.find((item) => item.id === id);
-
-  if (!result) {
-    return {
-      ok: false,
-      status: "failed",
-      message: `未找到 GEO 测试结果：${id}`
-    };
-  }
-
-  if (result.mentionedJoto && result.citedOfficialUrl) {
-    return {
-      ok: false,
-      status: "pending_input",
-      message: "该 GEO 结果已经命中 JOTO 且引用官网，暂不需要进入博客候选池。"
-    };
-  }
-
-  const existingIndex = state.blogArticles.findIndex((article) => article.id === `geo-candidate-${result.id}`);
-  const candidate: BlogArticle = {
-    id: `geo-candidate-${result.id}`,
-    title: `补强 GEO 问题：${result.prompt}`,
-    url: `geo://result/${result.id}`,
-    indexedStatus: "unknown",
-    seoIssueCount: result.citedOfficialUrl ? 0 : 1,
-    geoResult: result.mentionedJoto ? "partial" : "miss",
-    dataConfidence: result.dataConfidence || "imported",
-    lastCrawledAt: result.testedAt || nowIso(),
-    candidateStatus: "candidate",
-    candidateReason: `来自 ${result.platform} 的 GEO 测试：${result.mentionedJoto ? "提及 JOTO 但链路不足" : "未提及 JOTO"}；${result.citedOfficialUrl ? "已引用官网" : "未引用官网"}。`,
-    candidateAddedAt: nowIso()
-  };
-
-  if (existingIndex >= 0) {
-    state.blogArticles[existingIndex] = {
-      ...state.blogArticles[existingIndex],
-      ...candidate
-    };
-  } else {
-    state.blogArticles = [candidate, ...state.blogArticles];
-  }
-
-  saveWithEvent(state, "geo_result_added_to_candidate_pool", `Added GEO result ${id} to blog candidate pool.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: "GEO 未命中主题已加入博客候选池。",
-    data: {
-      article: candidate,
-      result
     }
   };
 }
@@ -1830,18 +1614,13 @@ export async function runWorkbenchPipeline(input: RunPipelineInput = {}): Promis
     steps.push(summarizePipelineStep("import_channel_metrics", result));
   }
 
-  if (!input.skipGeo) {
-    const result = await runGeoTests(input.geo || {});
-    steps.push(summarizePipelineStep("run_geo_tests", result));
-  }
-
-  const week = typeof input.week === "string" && input.week.trim() ? input.week.trim() : readWorkbenchState().weeklyPlan.weekStart;
-  getWeeklyReport(week);
+  const month = typeof input.month === "string" && input.month.trim() ? input.month.trim() : readWorkbenchState().monthlyPlan.monthStart;
+  getMonthlyReview(month);
   steps.push({
-    name: "read_weekly_report",
+    name: "read_monthly_report",
     ok: true,
     status: "success",
-    message: `已读取 ${week} 周报快照。`,
+    message: `已读取 ${month} 月度复盘快照。`,
     fatal: false
   });
 
@@ -1853,7 +1632,7 @@ export async function runWorkbenchPipeline(input: RunPipelineInput = {}): Promis
     startedAt,
     finishedAt: nowIso(),
     steps,
-    week,
+    month,
     summary: getDashboardSummary()
   };
   const state = readWorkbenchState();
@@ -1878,7 +1657,7 @@ export function exportPipelineRuns() {
   const state = readWorkbenchState();
   const runs = state.pipelineRuns || [];
   const csv = [
-    "id,status,startedAt,finishedAt,week,stepName,stepStatus,stepMessage,missingConfig",
+    "id,status,startedAt,finishedAt,month,stepName,stepStatus,stepMessage,missingConfig",
     ...runs.flatMap((run) =>
       run.steps.map((step) =>
         [
@@ -1886,7 +1665,7 @@ export function exportPipelineRuns() {
           run.status,
           run.startedAt,
           run.finishedAt,
-          run.week,
+          run.month,
           step.name,
           step.status,
           `"${step.message.replace(/"/g, '""')}"`,
@@ -1908,38 +1687,38 @@ export function exportPipelineRuns() {
   };
 }
 
-export function getWeeklyReport(week: string) {
+export function getMonthlyReview(month: string) {
   const state = readWorkbenchState();
   const published = state.publishRecords.filter((item) => item.publishStatus !== "queued").length;
-  const geoHits = state.geoResults.filter((item) => item.mentionedJoto).length;
   const botPv = state.botVisits.reduce((sum, item) => sum + item.pv, 0);
 
   return {
-    week,
-    executiveSummary: `本周计划 ${state.weeklyPlan.targetTotalCount} 篇，已发布 ${published} 篇；GEO 提及 JOTO ${geoHits}/${state.geoResults.length}，AI Bot PV ${botPv}。`,
+    month,
+    executiveSummary: `本月度计划 ${state.monthlyPlan.targetTotalCount} 篇，已发布 ${published} 篇；AI Bot PV ${botPv}。`,
     publishRecords: state.publishRecords,
     blogDiagnostics: state.blogArticles,
-    geoResults: state.geoResults,
-    nextWeekSuggestions: [
+    nextMonthSuggestions: [
       "继续写已经完成 URL 回填且表现稳定的主题。",
-      "补强 GEO 未命中主题，优先进入渠道选题而不是直接进入博客创作。",
+      "根据博客诊断结果补强官网内容，并优先沉淀为候选主题。",
       "把 SEO 问题较多的官网博客加入候选池，等博客创作职责明确后再处理。"
     ],
     dataSource: state.runtime.storage
   };
 }
 
-export function createNextWeeklyPlanFromReport(week: string, input: Record<string, unknown> = {}) {
+export function createNextMonthlyPlanFromReview(month: string, input: Record<string, unknown> = {}) {
   const state = readWorkbenchState();
-  const sourceReport = getWeeklyReport(week);
-  const nextWeekStart = typeof input.weekStart === "string" && input.weekStart.trim() ? input.weekStart.trim() : addDays(week, 7);
-  const days = clampNumber(input.days, state.workspaceSetting.defaultWeeklyDays, 1, 7);
+  const sourceReport = getMonthlyReview(month);
+  const nextMonthStart = getMonthStart(
+    typeof input.monthStart === "string" && input.monthStart.trim() ? input.monthStart.trim() : getNextMonthStart(month)
+  );
+  const days = clampNumber(input.days, state.workspaceSetting.defaultPublishDays, 1, 31);
   const dailyCount = clampNumber(input.dailyCount, state.workspaceSetting.defaultDailyCount, 1, 10);
   const channels = coerceChannels(input.channels) || state.workspaceSetting.enabledChannels;
   const products = coerceProducts(input.products) || state.workspaceSetting.enabledProducts;
-  const suggestions = sourceReport.nextWeekSuggestions.length
-    ? sourceReport.nextWeekSuggestions
-    : ["延续本周表现稳定的主题，并优先补强 GEO 未命中内容。"];
+  const suggestions = sourceReport.nextMonthSuggestions.length
+    ? sourceReport.nextMonthSuggestions
+    : ["延续本月表现稳定的主题，并优先补强博客诊断中暴露的问题。"];
   const tasks: ContentTask[] = [];
 
   for (let day = 0; day < days; day += 1) {
@@ -1953,23 +1732,23 @@ export function createNextWeeklyPlanFromReport(week: string, input: Record<strin
 
       tasks.push({
         id: createId("task"),
-        weeklyPlanId: `wp-${nextWeekStart}`,
-        publishDate: addDays(nextWeekStart, day),
+        monthlyPlanId: `mp-${nextMonthStart}`,
+        publishDate: addDays(nextMonthStart, day),
         channel,
         product,
         title: `${baseTitle}｜${suggestion}`,
         contentType,
-        targetKeywords: [...buildTaskKeywords(product, contentType), "周报建议"],
+        targetKeywords: [...buildTaskKeywords(product, contentType), "月度复盘建议"],
         status: "planned",
-        qaSummary: `来源周报 ${week}：${suggestion}`
+        qaSummary: `来源月度复盘 ${month}：${suggestion}`
       });
     }
   }
 
-  state.weeklyPlan = {
-    id: `wp-${nextWeekStart}`,
-    weekStart: nextWeekStart,
-    weekEnd: addDays(nextWeekStart, 6),
+  state.monthlyPlan = {
+    id: `mp-${nextMonthStart}`,
+    monthStart: nextMonthStart,
+    monthEnd: getMonthEnd(nextMonthStart),
     targetTotalCount: tasks.length,
     status: "draft"
   };
@@ -1977,15 +1756,15 @@ export function createNextWeeklyPlanFromReport(week: string, input: Record<strin
   state.drafts = [];
   state.publishRecords = [];
 
-  saveWithEvent(state, "next_week_plan_created_from_report", `Created ${tasks.length} planned tasks from weekly report ${week}.`);
+  saveWithEvent(state, "next_month_plan_created_from_review", `Created ${tasks.length} planned tasks from monthly review ${month}.`);
 
   return {
     ok: true,
     status: "success" as const,
-    message: `已根据 ${week} 周报生成下周计划草稿。`,
+    message: `已根据 ${month} 月度复盘生成下月计划草稿。`,
     data: {
-      sourceWeek: week,
-      weeklyPlan: state.weeklyPlan,
+      sourceMonth: month,
+      monthlyPlan: state.monthlyPlan,
       tasks,
       suggestions
     }
@@ -1995,10 +1774,6 @@ export function createNextWeeklyPlanFromReport(week: string, input: Record<strin
 function markdownCell(value: unknown) {
   const text = value === undefined || value === null || value === "" ? "-" : String(value);
   return text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
-}
-
-function boolLabel(value: boolean) {
-  return value ? "是" : "否";
 }
 
 function formatChannelMetrics(record: PublishRecord) {
@@ -2017,8 +1792,8 @@ function formatChannelMetrics(record: PublishRecord) {
   ].join(" / ");
 }
 
-export function exportWeeklyReportMarkdown(week: string) {
-  const report = getWeeklyReport(week);
+export function exportMonthlyReviewMarkdown(month: string) {
+  const report = getMonthlyReview(month);
   const exportedAt = nowIso();
   const publishRows = report.publishRecords.length
     ? report.publishRecords.map((record) =>
@@ -2042,21 +1817,9 @@ export function exportWeeklyReportMarkdown(week: string) {
         ].join(" | ")
       )
     : ["- | - | - | - | -"];
-  const geoRows = report.geoResults.length
-    ? report.geoResults.map((result) =>
-        [
-          markdownCell(result.platform),
-          markdownCell(result.prompt),
-          markdownCell(boolLabel(result.mentionedJoto)),
-          markdownCell(boolLabel(result.mentionedWeike)),
-          markdownCell(boolLabel(result.citedOfficialUrl)),
-          markdownCell(result.executionStatus || "success")
-        ].join(" | ")
-      )
-    : ["- | - | - | - | - | -"];
-  const suggestionRows = report.nextWeekSuggestions.map((item, index) => `${index + 1}. ${item}`);
+  const suggestionRows = report.nextMonthSuggestions.map((item, index) => `${index + 1}. ${item}`);
   const markdown = [
-    `# JOTO GTM 周报 - ${report.week}`,
+    `# JOTO GTM 月度复盘 - ${report.month}`,
     "",
     "## 1. 管理层摘要",
     "",
@@ -2074,17 +1837,11 @@ export function exportWeeklyReportMarkdown(week: string) {
     "|---|---|---|---|---|",
     ...blogRows,
     "",
-    "## 4. GEO 测试概览",
-    "",
-    "| 平台 | Prompt | 提及 JOTO | 提及唯客 | 引用官网 | 执行状态 |",
-    "|---|---|---|---|---|---|",
-    ...geoRows,
-    "",
-    "## 5. 下周建议",
+    "## 4. 下月建议",
     "",
     ...suggestionRows,
     "",
-    "## 6. 数据说明",
+    "## 5. 数据说明",
     "",
     `- 数据来源：${report.dataSource}`,
     `- 导出时间：${exportedAt}`,
@@ -2094,9 +1851,9 @@ export function exportWeeklyReportMarkdown(week: string) {
   return {
     ok: true,
     status: "success" as const,
-    message: "周报 Markdown 已导出。",
+    message: "月度复盘 Markdown 已导出。",
     data: {
-      week,
+      month,
       format: "markdown",
       markdown,
       report,

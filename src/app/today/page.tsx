@@ -38,7 +38,7 @@ const generationStatusColors = {
 } as const;
 
 const todayNextStepLabels: Record<TodayNextStep, string> = {
-  confirm_task: "回周计划确认",
+  confirm_task: "回月度计划确认",
   generate_draft: "生成稿件",
   fix_generation: "排查生成",
   fix_qa: "处理质检",
@@ -107,7 +107,7 @@ function getTodayActionText(task: ContentTask, draft?: ArticleDraft, publishReco
   const nextStep = getTodayNextStep(task, draft, publishRecord);
 
   if (nextStep === "confirm_task") {
-    return "任务还停在计划状态，先回周计划确认后再进入今日生成。";
+    return "任务还停在计划状态，先回月度计划确认后再进入今日生成。";
   }
 
   if (nextStep === "generate_draft") {
@@ -137,19 +137,19 @@ function getTodayActionText(task: ContentTask, draft?: ArticleDraft, publishReco
   }
 
   if (nextStep === "record_metrics") {
-    return "发布链路已完成，补齐渠道指标用于周报复盘。";
+    return "发布链路已完成，补齐渠道指标用于月度复盘。";
   }
 
   if (nextStep === "fix_publish") {
     return "发布记录失败，先到发布队列排查失败原因。";
   }
 
-  return "发布和指标已闭环，可进入周度复盘。";
+  return "发布和指标已闭环，可进入月度复盘。";
 }
 
 export default function TodayPage() {
   const {
-    state: { tasks, weeklyPlan, drafts, publishRecords },
+    state: { tasks, monthlyPlan, drafts, publishRecords },
     loading,
     error,
     refresh
@@ -160,7 +160,7 @@ export default function TodayPage() {
   const [statusFilter, setStatusFilter] = useState<TaskStatus[]>([]);
   const [channelFilter, setChannelFilter] = useState<ChannelKey[]>([]);
   const [productFilter, setProductFilter] = useState<ProductKey[]>([]);
-  const todayTasks = tasks.filter((task) => task.publishDate === weeklyPlan.weekStart || task.status !== "planned").slice(0, 20);
+  const todayTasks = tasks.filter((task) => task.publishDate === monthlyPlan.monthStart || task.status !== "planned").slice(0, 20);
   const draftByTaskId = new Map(drafts.map((draft) => [draft.taskId, draft]));
   const publishRecordByTaskId = new Map(
     publishRecords
@@ -250,7 +250,7 @@ export default function TodayPage() {
 
     if (nextStep === "confirm_task") {
       return (
-        <Link href="/weekly-plan">
+        <Link href="/monthly-plan">
           <Button size="small">去确认</Button>
         </Link>
       );
@@ -299,7 +299,7 @@ export default function TodayPage() {
     }
 
     return (
-      <Link href="/weekly-report">
+      <Link href="/monthly-review">
         <Button size="small">去复盘</Button>
       </Link>
     );
@@ -334,7 +334,7 @@ export default function TodayPage() {
           description={
             filteredTodayTasks.length
               ? `生成/排查 ${visibleGenerateActionCount} 条，终稿处理 ${visibleReviewActionCount} 条，发布承接 ${visiblePublishActionCount} 条，可复盘 ${visibleRetrospectCount} 条。${highestPriorityTodayTask ? getTodayActionText(highestPriorityTodayTask, draftByTaskId.get(highestPriorityTodayTask.id), publishRecordByTaskId.get(highestPriorityTodayTask.id)) : ""}`
-              : "当前筛选没有任务，清空筛选或回周计划确认今天要执行的任务。"
+              : "当前筛选没有任务，清空筛选或回月度计划确认今天要执行的任务。"
           }
           style={{ marginBottom: 16 }}
         />
@@ -378,15 +378,15 @@ export default function TodayPage() {
             emptyText: (
               <ActionEmpty
                 title={hasActiveFilter ? "当前筛选没有任务" : "今天还没有可处理任务"}
-                description={hasActiveFilter ? "清空筛选或调整状态、渠道、产品条件后再查看。" : "先去周计划生成或确认任务，再回到这里批量生成文章。"}
+                description={hasActiveFilter ? "清空筛选或调整状态、渠道、产品条件后再查看。" : "先去月度计划生成或确认任务，再回到这里批量生成文章。"}
                 action={
                   hasActiveFilter ? (
                     <Button type="primary" onClick={clearFilters}>
                       清空筛选
                     </Button>
                   ) : (
-                    <Link href="/weekly-plan">
-                      <Button type="primary">去周计划</Button>
+                    <Link href="/monthly-plan">
+                      <Button type="primary">去月度计划</Button>
                     </Link>
                   )
                 }

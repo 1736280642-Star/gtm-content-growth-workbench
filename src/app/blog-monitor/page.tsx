@@ -170,11 +170,11 @@ function getBlogActionText(article: BlogArticle): string {
   }
 
   if (nextStep === "planned") {
-    return "主题已进入规划，去周计划或候选池查看承接结果。";
+    return "主题已进入规划，去月度计划或候选池查看承接结果。";
   }
 
   if (nextStep === "dismissed") {
-    return "当前已标记暂不处理，后续只需要在周报或新诊断里复看。";
+    return "当前已标记暂不处理，后续只需要在月度复盘或新诊断里复看。";
   }
 
   return "当前没有明显处置动作，先继续观察后续 GEO 命中和 AI Bot 访问变化。";
@@ -386,15 +386,15 @@ export default function BlogMonitorPage() {
 
     if (nextStep === "planned") {
       return (
-        <Link href="/weekly-plan">
-          <Button size="small">看周计划</Button>
+        <Link href="/monthly-plan">
+          <Button size="small">看月度计划</Button>
         </Link>
       );
     }
 
     return (
-      <Link href="/weekly-report">
-        <Button size="small">{nextStep === "dismissed" ? "去周报复盘" : "继续观察"}</Button>
+      <Link href="/monthly-review">
+        <Button size="small">{nextStep === "dismissed" ? "去月度复盘" : "继续观察"}</Button>
       </Link>
     );
   }

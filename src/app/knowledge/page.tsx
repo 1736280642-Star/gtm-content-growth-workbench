@@ -265,7 +265,7 @@ export default function KnowledgePage() {
 
     if (nextStep === "compare_only") {
       return (
-        <Link href="/weekly-plan">
+        <Link href="/monthly-plan">
           <Button size="small">去对比选题</Button>
         </Link>
       );

@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS workspace_setting (
   id VARCHAR(64) PRIMARY KEY,
-  default_weekly_days INT NOT NULL DEFAULT 5,
+  default_publish_days INT NOT NULL DEFAULT 20,
   default_daily_count INT NOT NULL DEFAULT 3,
   enabled_channels JSON NOT NULL,
   enabled_products JSON NOT NULL,
@@ -24,10 +24,10 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS weekly_plan (
+CREATE TABLE IF NOT EXISTS monthly_plan (
   id VARCHAR(64) PRIMARY KEY,
-  week_start DATE NOT NULL,
-  week_end DATE NOT NULL,
+  month_start DATE NOT NULL,
+  month_end DATE NOT NULL,
   target_total_count INT NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   daily_distribution JSON NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS weekly_plan (
 
 CREATE TABLE IF NOT EXISTS content_task (
   id VARCHAR(64) PRIMARY KEY,
-  weekly_plan_id VARCHAR(64) NOT NULL,
+  monthly_plan_id VARCHAR(64) NOT NULL,
   publish_date DATE NOT NULL,
   channel VARCHAR(64) NOT NULL,
   product VARCHAR(64) NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS content_task (
   qa_summary TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_content_task_weekly_plan_id (weekly_plan_id),
+  INDEX idx_content_task_monthly_plan_id (monthly_plan_id),
   INDEX idx_content_task_status (status),
   INDEX idx_content_task_publish_date (publish_date)
 );
@@ -127,29 +127,6 @@ CREATE TABLE IF NOT EXISTS blog_diagnosis (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_blog_diagnosis_blog_article_id (blog_article_id)
-);
-
-CREATE TABLE IF NOT EXISTS geo_test_result (
-  id VARCHAR(64) PRIMARY KEY,
-  platform VARCHAR(64) NOT NULL,
-  provider_key VARCHAR(64),
-  model_name VARCHAR(128),
-  prompt_group VARCHAR(64) NOT NULL,
-  prompt TEXT NOT NULL,
-  answer_snapshot MEDIUMTEXT NOT NULL,
-  mentioned_joto BOOLEAN NOT NULL DEFAULT FALSE,
-  mentioned_weike BOOLEAN NOT NULL DEFAULT FALSE,
-  cited_official_url BOOLEAN NOT NULL DEFAULT FALSE,
-  cited_urls JSON,
-  parser_result JSON,
-  manual_override BOOLEAN NOT NULL DEFAULT FALSE,
-  data_confidence VARCHAR(32) NOT NULL DEFAULT 'pending',
-  execution_status VARCHAR(32) NOT NULL DEFAULT 'pending_config',
-  error_message TEXT,
-  tested_at DATETIME NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_geo_test_result_platform (platform),
-  INDEX idx_geo_test_result_execution_status (execution_status)
 );
 
 CREATE TABLE IF NOT EXISTS log_import_batch (

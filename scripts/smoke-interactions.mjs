@@ -78,7 +78,7 @@ const contracts = [
   {
     name: "dashboard_pipeline_filters",
     file: "src/app/page.tsx",
-    includes: ["pipelineStatusLabels", "pipelineStatusFilter", "pipelineWeekFilter", "filteredPipelineRuns", "按运行状态筛选", "按周次筛选", "当前筛选没有 Pipeline 记录", "清空筛选"]
+    includes: ["pipelineStatusLabels", "pipelineStatusFilter", "pipelineMonthFilter", "filteredPipelineRuns", "按运行状态筛选", "按月份筛选", "当前筛选没有 Pipeline 记录", "清空筛选"]
   },
   {
     name: "dashboard_action_queue",
@@ -92,22 +92,19 @@ const contracts = [
       "highestPriorityAction",
       "draftByTaskId",
       "publishRecordByTaskId",
-      "candidateByGeoResultId",
       "getPlanNextStep",
       "getBlogNextStep",
-      "getGeoNextStep",
       "getDashboardActionText",
       "currentAction",
       "entryLabel",
       "执行队列",
       "事项",
       "数量",
-      "周计划待确认",
+      "月度计划待确认",
       "稿件待生成/排查",
       "终稿待处理",
       "发布侧待处理",
       "博客待处置",
-      "GEO 待处置",
       "可进入复盘",
       "当前优先处理",
       "当前状态",
@@ -126,19 +123,16 @@ const contracts = [
       "dashboardOverviewStepColors",
       "dashboardOverviewItems",
       "blogNeedsWorkCount",
-      "geoNeedsWorkCount",
-      "官网博客与 GEO 概览",
+      "官网博客概览",
       "博客候选与 SEO/GEO 诊断",
-      "GEO 命中与官网引用",
       "AI Bot 日志可信度",
-      "GEO 命中率",
       "当前状态",
       "下一步",
       "处理动作",
       "可执行入口",
       "去博客侧",
       "去导入",
-      "去周报"
+      "去月度复盘"
     ]
   },
   {
@@ -152,7 +146,7 @@ const contracts = [
       "getPipelineRunActionText",
       "getPipelineRunEntry",
       "Pipeline 运行记录",
-      "进入周报",
+      "进入月度复盘",
       "补齐缺口",
       "排查后重跑",
       "下一步",
@@ -162,43 +156,43 @@ const contracts = [
     ]
   },
   {
-    name: "weekly_plan_generate_confirmed",
-    file: "src/app/weekly-plan/page.tsx",
-    includes: ["handleGeneratePlan", "/api/weekly-plans/generate", "await refresh()", "loading={generating}", "Popconfirm", "确认生成新的周计划？", "messageApi.success", "messageApi.error"]
+    name: "monthly_plan_generate_confirmed",
+    file: "src/app/monthly-plan/page.tsx",
+    includes: ["handleGeneratePlan", "/api/monthly-plans/generate", "await refresh()", "loading={generating}", "Popconfirm", "确认生成新的月度计划？", "messageApi.success", "messageApi.error"]
   },
   {
-    name: "weekly_plan_batch_confirm",
-    file: "src/app/weekly-plan/page.tsx",
+    name: "monthly_plan_batch_confirm",
+    file: "src/app/monthly-plan/page.tsx",
     includes: ["handleConfirmTasks", "/api/content-tasks/confirm", "selectedTaskIds", "rowSelection", "loading={batchConfirming}", "Popconfirm", "确认批量确认任务？", "await refresh()"]
   },
   {
-    name: "weekly_plan_single_confirm",
-    file: "src/app/weekly-plan/page.tsx",
+    name: "monthly_plan_single_confirm",
+    file: "src/app/monthly-plan/page.tsx",
     includes: ["handleConfirmTasks([record.id])", "确认这个任务？", "loading={confirmingTaskId === record.id}", "disabled={record.status !== \"planned\"}"]
   },
   {
-    name: "weekly_plan_edit_modal",
-    file: "src/app/weekly-plan/page.tsx",
+    name: "monthly_plan_edit_modal",
+    file: "src/app/monthly-plan/page.tsx",
     includes: ["openTaskEditor", "handleSaveTask", "`/api/content-tasks/${editingTask.id}`", "method: \"PATCH\"", "Modal", "confirmLoading={savingTask}", "await refresh()"]
   },
   {
-    name: "weekly_plan_regenerate_title_confirmed",
-    file: "src/app/weekly-plan/page.tsx",
+    name: "monthly_plan_regenerate_title_confirmed",
+    file: "src/app/monthly-plan/page.tsx",
     includes: ["handleRegenerateTitle", "regenerate-title", "loading={regeneratingTaskId === record.id}", "Popconfirm", "确认重生成标题？", "await refresh()"]
   },
   {
-    name: "weekly_plan_delete_task_confirmed",
-    file: "src/app/weekly-plan/page.tsx",
+    name: "monthly_plan_delete_task_confirmed",
+    file: "src/app/monthly-plan/page.tsx",
     includes: ["handleDeleteTask", "method: \"DELETE\"", "确认删除这个任务？", "loading={deletingTaskId === record.id}", "danger", "await refresh()"]
   },
   {
-    name: "weekly_plan_filters",
-    file: "src/app/weekly-plan/page.tsx",
-    includes: ["statusFilter", "channelFilter", "productFilter", "filteredTasks", "按状态筛选", "按渠道筛选", "按产品筛选", "当前筛选没有周计划任务", "清空筛选"]
+    name: "monthly_plan_filters",
+    file: "src/app/monthly-plan/page.tsx",
+    includes: ["statusFilter", "channelFilter", "productFilter", "filteredTasks", "按状态筛选", "按渠道筛选", "按产品筛选", "当前筛选没有月度计划任务", "清空筛选"]
   },
   {
-    name: "weekly_plan_execution_context",
-    file: "src/app/weekly-plan/page.tsx",
+    name: "monthly_plan_execution_context",
+    file: "src/app/monthly-plan/page.tsx",
     includes: [
       "draftHandoffLabels",
       "publishHandoffLabels",
@@ -212,7 +206,7 @@ const contracts = [
       "renderPlanEntry",
       "renderPlanMaintenance",
       "highestPriorityPlanTask",
-      "周计划共",
+      "月度计划共",
       "稿件承接",
       "发布承接",
       "下一步",
@@ -278,7 +272,7 @@ const contracts = [
       "下一步",
       "处理动作",
       "可执行入口",
-      "回周计划确认",
+      "回月度计划确认",
       "人工发布",
       "去复盘"
     ]
@@ -335,7 +329,7 @@ const contracts = [
       "可执行入口",
       "加入发布队列",
       "人工发布",
-      "去周报复盘"
+      "去月度复盘"
     ]
   },
   {
@@ -375,7 +369,7 @@ const contracts = [
     includes: [
       "handleImportMetrics",
       "/api/channel-metrics/import",
-      "metricsFilePath",
+      "metricsFiles",
       "metricsCsv",
       "Popconfirm",
       "确认导入渠道数据？",
@@ -409,7 +403,7 @@ const contracts = [
       "待回填 URL",
       "待录入指标",
       "可复盘",
-      "去周报复盘",
+      "去月度复盘",
       "productLabels",
       "contentTypeLabels"
     ]
@@ -462,8 +456,8 @@ const contracts = [
       "继续观察",
       "disabled={candidateLocked}",
       "Link href=\"/blog-candidates\"",
-      "Link href=\"/weekly-plan\"",
-      "Link href=\"/weekly-report\""
+      "Link href=\"/monthly-plan\"",
+      "Link href=\"/monthly-review\""
     ]
   },
   {
@@ -515,95 +509,41 @@ const contracts = [
       "处理动作",
       "可执行入口",
       "维护",
-      "看周计划"
+      "看月度计划"
     ]
   },
   {
-    name: "geo_batch_run_confirmed",
-    file: "src/app/geo-test/page.tsx",
-    includes: ["handleRunGeoTests", "/api/geo-tests/run", "platforms", "promptGroup", "Popconfirm", "确认批量运行 GEO 测试？", "loading={running}", "await refresh()"]
-  },
-  {
-    name: "geo_override_modal_confirmed",
-    file: "src/app/geo-test/page.tsx",
-    includes: ["handleSaveOverride", "`/api/geo-test-results/${overrideResult.id}/override`", "Modal", "确认保存人工修正？", "overrideValues", "await refresh()"]
-  },
-  {
-    name: "geo_candidate_confirmed",
-    file: "src/app/geo-test/page.tsx",
-    includes: ["handleAddCandidate", "`/api/geo-test-results/${resultId}/candidate`", "Popconfirm", "确认加入博客候选池？", "loading={addingCandidateId === result.id}", "入候选池", "await refresh()"]
-  },
-  {
-    name: "geo_result_filters",
-    file: "src/app/geo-test/page.tsx",
-    includes: ["promptGroupLabels", "executionStatusLabels", "platformFilter", "promptGroupFilter", "executionStatusFilter", "jotoMentionFilter", "officialCitationFilter", "dataConfidenceFilter", "filteredGeoResults", "按平台筛选", "按 Prompt 组筛选", "按执行状态筛选", "按 JOTO 提及筛选", "按官网引用筛选", "当前筛选没有 GEO 测试结果", "清空筛选"]
-  },
-  {
-    name: "geo_result_next_step",
-    file: "src/app/geo-test/page.tsx",
-    includes: [
-      "geoIssueLevelLabels",
-      "geoNextStepLabels",
-      "geoCandidateStatusLabels",
-      "candidateByGeoResultId",
-      "getGeoIssueLevel",
-      "getGeoNextStep",
-      "getGeoSuggestionReason",
-      "getGeoActionText",
-      "renderGeoEntry",
-      "renderGeoMaintenance",
-      "GEO 结果共",
-      "待配置/排查",
-      "问题级别",
-      "候选状态",
-      "建议原因",
-      "下一步",
-      "处理动作",
-      "可执行入口",
-      "维护",
-      "建议入候选池",
-      "补官网引用",
-      "Link href=\"/ai-config\"",
-      "Link href=\"/blog-candidates\"",
-      "Link href=\"/weekly-plan\"",
-      "Link href=\"/weekly-report\"",
-      "disabled={cannotAddCandidate}"
-    ]
-  },
-  {
-    name: "weekly_report_generate",
-    file: "src/app/weekly-report/page.tsx",
+    name: "monthly_report_generate",
+    file: "src/app/monthly-review/page.tsx",
     includes: [
       "handleGenerateReport",
-      "`/api/weekly-reports/${weeklyPlan.weekStart}`",
+      "`/api/monthly-reviews/${monthlyPlan.monthStart}`",
       "loading={generating}",
-      "messageApi.success(\"周报已生成\")",
-      "nextWeekSuggestions",
+      "messageApi.success(\"月度复盘已生成\")",
+      "nextMonthSuggestions",
       "reportBlogDiagnostics",
-      "reportGeoResults",
       "官网博客诊断复盘",
-      "GEO 测试明细",
       "renderChannelMetrics"
     ]
   },
   {
-    name: "weekly_report_markdown_export",
-    file: "src/app/weekly-report/page.tsx",
-    includes: ["handleExportMarkdown", "`/api/weekly-reports/${weeklyPlan.weekStart}/export`", "navigator.clipboard.writeText", "loading={exportingMarkdown}", "导出 Markdown", "messageApi.success", "messageApi.error"]
+    name: "monthly_report_markdown_export",
+    file: "src/app/monthly-review/page.tsx",
+    includes: ["handleExportMarkdown", "`/api/monthly-reviews/${monthlyPlan.monthStart}/export`", "navigator.clipboard.writeText", "loading={exportingMarkdown}", "导出 Markdown", "messageApi.success", "messageApi.error"]
   },
   {
-    name: "weekly_report_next_plan_confirmed",
-    file: "src/app/weekly-report/page.tsx",
-    includes: ["handleCreateNextPlan", "`/api/weekly-reports/${weeklyPlan.weekStart}/next-plan`", "Popconfirm", "确认生成下周计划草稿？", "loading={creatingNextPlan}", "await refresh()", "messageApi.success", "messageApi.error"]
+    name: "monthly_report_next_plan_confirmed",
+    file: "src/app/monthly-review/page.tsx",
+    includes: ["handleCreateNextPlan", "`/api/monthly-reviews/${monthlyPlan.monthStart}/next-plan`", "Popconfirm", "确认生成下月计划草稿？", "loading={creatingNextPlan}", "await refresh()", "messageApi.success", "messageApi.error"]
   },
   {
-    name: "weekly_report_detail_filters",
-    file: "src/app/weekly-report/page.tsx",
-    includes: ["publishStatusLabels", "blogGeoResultLabels", "geoExecutionStatusLabels", "publishStatusFilter", "blogGeoResultFilter", "geoExecutionStatusFilter", "filteredReportPublishRecords", "filteredReportBlogDiagnostics", "filteredReportGeoResults", "按发布状态筛选", "按博客 GEO 结果筛选", "按 GEO 执行状态筛选", "当前筛选没有渠道执行记录", "当前筛选没有博客诊断记录", "当前筛选没有 GEO 测试明细", "清空筛选"]
+    name: "monthly_report_detail_filters",
+    file: "src/app/monthly-review/page.tsx",
+    includes: ["publishStatusLabels", "blogGeoResultLabels", "publishStatusFilter", "blogGeoResultFilter", "filteredReportPublishRecords", "filteredReportBlogDiagnostics", "按发布状态筛选", "按博客 GEO 结果筛选", "当前筛选没有渠道执行记录", "当前筛选没有博客诊断记录", "清空筛选"]
   },
   {
-    name: "weekly_report_action_queue",
-    file: "src/app/weekly-report/page.tsx",
+    name: "monthly_report_action_queue",
+    file: "src/app/monthly-review/page.tsx",
     includes: [
       "ReportActionStep",
       "reportActionStepLabels",
@@ -614,8 +554,6 @@ const contracts = [
       "missingUrlCount",
       "missingMetricsCount",
       "blogCandidateCount",
-      "geoConfigCount",
-      "geoCandidateCount",
       "reportActionItems",
       "reportActionTotal",
       "highestPriorityReportAction",
@@ -624,33 +562,31 @@ const contracts = [
       "处理动作",
       "去发布队列",
       "处理候选池",
-      "看 AI 配置",
-      "去 GEO 测试",
-      "看周计划"
+      "看月度计划"
     ]
   },
   {
-    name: "weekly_report_suggestion_closure",
-    file: "src/app/weekly-report/page.tsx",
+    name: "monthly_report_suggestion_closure",
+    file: "src/app/monthly-review/page.tsx",
     includes: [
-      "WeeklySuggestionStep",
-      "WeeklySuggestionAction",
-      "weeklySuggestionStepLabels",
-      "weeklySuggestionStepColors",
-      "createWeeklySuggestionActions",
-      "weeklySuggestionActions",
-      "renderWeeklySuggestionEntry",
-      "下周建议",
-      "先生成周报",
+      "MonthlySuggestionStep",
+      "MonthlySuggestionAction",
+      "monthlySuggestionStepLabels",
+      "monthlySuggestionStepColors",
+      "createMonthlySuggestionActions",
+      "monthlySuggestionActions",
+      "renderMonthlySuggestionEntry",
+      "下月建议",
+      "先生成月度复盘",
       "复核建议",
       "生成计划草稿",
       "建议",
       "下一步",
       "处理动作",
       "可执行入口",
-      "生成周报",
+      "生成月度复盘",
       "生成计划",
-      "看周计划"
+      "看月度计划"
     ]
   },
   {
@@ -719,7 +655,6 @@ const contracts = [
       "周产能",
       "终稿确认",
       "日志接入",
-      "GEO 平台",
       "下一步",
       "处理动作",
       "可执行入口",
@@ -727,8 +662,7 @@ const contracts = [
       "未选择渠道",
       "配置日志",
       "看真实接入",
-      "去 GEO 测试",
-      "去周计划",
+      "去月度计划",
       "保存设置"
     ]
   },
@@ -804,14 +738,14 @@ const contracts = [
       "执行诊断",
       "排查失败",
       "验数据库",
-      "GEO 试跑",
+      "内容生成试跑",
       "同步博客",
       "导入日志",
       "下一步",
       "处理动作",
       "可执行入口",
       "看配置",
-      "去试跑",
+      "去生成",
       "去导入",
       "跑 MySQL 检查",
       "手动试跑",

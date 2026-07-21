@@ -120,11 +120,10 @@ workers/
 
 ```powershell
 npm.cmd run worker:sync-blog -- --base-url http://127.0.0.1:3000
-npm.cmd run worker:run-geo-tests -- --base-url http://127.0.0.1:3000 --platforms ChatGPT,DeepSeek --prompt "推荐几家国内 Dify 企业版服务商"
 npm.cmd run worker:import-log -- --base-url http://127.0.0.1:3000 --file-path data/demo-ai-bot-log.csv --source-type demo_csv
 npm.cmd run worker:import-channel-metrics -- --base-url http://127.0.0.1:3000 --file-path imports/channel-metrics.csv
 npm.cmd run worker:run-pipeline -- --base-url http://127.0.0.1:3000 --log-file-path data/demo-ai-bot-log.csv
-npm.cmd run worker:run-pipeline -- --base-url http://127.0.0.1:3000 --skip-blog --log-file-path data/demo-ai-bot-log.csv --channel-metrics-path imports/channel-metrics-smoke.csv --geo-platforms ChatGPT,DeepSeek
+npm.cmd run worker:run-pipeline -- --base-url http://127.0.0.1:3000 --skip-blog --log-file-path data/demo-ai-bot-log.csv --channel-metrics-path imports/channel-metrics-smoke.csv
 npm.cmd run worker:schedule-pipeline -- --base-url http://127.0.0.1:3000 --interval-seconds 3600 --repeat --max-runs 24
 npm.cmd run smoke:workflow -- --base-url http://127.0.0.1:3000
 ```
@@ -135,17 +134,17 @@ npm.cmd run smoke:workflow -- --base-url http://127.0.0.1:3000
 2. `POST /api/log-imports`：支持 CSV、Nginx-like 原始日志文本、允许目录内的日志文件路径。
 3. `POST /api/channel-metrics/import`：支持渠道数据 CSV，按 `publishRecordId`、`recordId`、`draftId`、`publishedUrl` 或 `title` 匹配发布记录。
 4. `PATCH /api/content-tasks/{id}`：支持页面编辑任务标题、日期、渠道、产品、内容类型和关键词。
-5. `POST /api/content-tasks/{id}/regenerate-title`：支持周计划页重生成单条选题标题。
+5. `POST /api/content-tasks/{id}/regenerate-title`：支持月度计划页重生成单条选题标题。
 6. `PATCH /api/publish-records/{id}/published`：支持发布页标记人工发布完成。
 7. `POST /api/blog-articles/{id}/candidate`：支持博客监控页将主题加入候选池。
-8. `POST /api/pipeline/run`：支持页面一键运行博客同步、日志导入、渠道指标导入、GEO 测试和周报读取，并保存运行记录。
+8. `POST /api/pipeline/run`：支持页面一键运行博客同步、日志导入、渠道指标导入和月度复盘读取，并保存运行记录。
 9. `GET /api/pipeline/runs/export`：支持导出 Pipeline 运行记录 CSV。
 10. `workers/` 目录中的脚本现在可以直接调用上述 API，后续只需要把真实源头接到同一输入协议上。
-11. `worker:run-pipeline` 可以串联同步、导入、GEO 测试和周报读取，适合作为命令行入口。
+11. `worker:run-pipeline` 可以串联同步、导入和月度复盘读取，适合作为命令行入口。
 12. `worker:schedule-pipeline` 可按固定间隔重复调用页面同款 Pipeline API，默认只执行一次，传 `--repeat` 后循环。
-13. `smoke:workflow` 可按同一套输入协议自动验证首页、任务、稿件、发布、博客、GEO 和 Pipeline 的主链路。
+13. `smoke:workflow` 可按同一套输入协议自动验证首页、任务、稿件、发布、博客和 Pipeline 的主链路。
 14. `GET /api/runtime-config/status` 和 AI 配置页可展示真实能力状态、缺失环境变量和 `.env.local` 模板。
-15. `GET/PATCH /api/workspace-settings` 和设置页可保存默认发布规则、产品范围、GEO 平台和日志模式。
+15. `GET/PATCH /api/workspace-settings` 和设置页可保存默认发布规则、产品范围和日志模式。
 16. `GET/POST /api/config-diagnostics` 可执行配置诊断，返回 ready、pending_config 或 failed，不返回密钥值。
 
 文件路径导入默认只允许项目内 `data/`、`imports/`，以及 `IMPORT_ALLOWED_ROOT`、`NGINX_ACCESS_LOG_PATH`、`CDN_LOG_EXPORT_PATH` 显式配置的目录，避免接口读取任意本地文件。
@@ -165,8 +164,8 @@ npm.cmd run smoke:workflow -- --base-url http://127.0.0.1:3000
 9. `GET /api/workbench-state` 可为页面提供运行时状态。
 10. 博客同步、Bot 日志导入和渠道数据导入已从 Demo 逻辑拆成 adapter，并接入 API 和本地持久化状态。
 11. Worker 脚本已从占位改成真实任务入口，能直接调用本地 API。
-12. 已新增本地 pipeline Worker，可顺序执行真实数据导入、GEO 测试和周报读取。
-13. Phase 7-C 主要页面操作已接 API：周计划编辑/重生成、今日生成、终稿保存/重生成/入队、发布标记/URL 回填、GEO 快照/人工修正、博客诊断/入候选池。
+12. 已新增本地 pipeline Worker，可顺序执行真实数据导入和月度复盘读取。
+13. Phase 7-C 主要页面操作已接 API：月度计划编辑/重生成、今日生成、终稿保存/重生成/入队、发布标记/URL 回填、博客诊断/入候选池。
 14. 首页已新增一键运行 GTM Pipeline，可保存最近 20 次运行记录。
 15. 首页已支持导出 Pipeline 运行记录 CSV，本地 Worker 已支持定时调用 Pipeline。
 16. 新增 `smoke:workflow`，可用于后续接真实 MySQL、AI、XCrawl、日志源前后做自动回归。
@@ -197,6 +196,6 @@ npm.cmd run build
 3. ESLint：通过。
 4. Next.js build：通过。
 5. 本地 dev server：首页、`/today`、`/blog-monitor`、`/api/dashboard/summary`、`/api/workbench-state` 可访问。
-6. API 试跑：周计划生成、批量生成、终稿确认、URL 回填均可写入 `data/workbench-state.json`。
+6. API 试跑：月度计划生成、批量生成、终稿确认、URL 回填均可写入 `data/workbench-state.json`。
 7. Pipeline smoke：`worker:run-pipeline` 已验证日志导入和渠道数据导入成功；缺少 GEO 模型配置时返回 `partial` + `pending_config`，不阻断其他步骤。
 8. 页面 Pipeline：`POST /api/pipeline/run` 可写入 `pipelineRuns`，首页可展示运行记录。

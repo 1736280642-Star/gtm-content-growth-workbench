@@ -6,13 +6,12 @@ const baseUrl = (baseUrlArg ? baseUrlArg.split("=").slice(1).join("=") : DEFAULT
 
 const targets = [
   { name: "dashboard_page", path: "/", expect: "JOTO GTM" },
-  { name: "weekly_plan_page", path: "/weekly-plan", expect: "周计划" },
+  { name: "monthly_plan_page", path: "/monthly-plan", expect: "月度计划" },
   { name: "today_page", path: "/today", expect: "今日任务" },
   { name: "publish_page", path: "/publish", expect: "发布队列" },
   { name: "blog_monitor_page", path: "/blog-monitor", expect: "官网博客监控" },
   { name: "blog_candidates_page", path: "/blog-candidates", expect: "博客候选池" },
-  { name: "geo_test_page", path: "/geo-test", expect: "GEO 测试" },
-  { name: "weekly_report_page", path: "/weekly-report", expect: "周度复盘" },
+  { name: "monthly_report_page", path: "/monthly-review", expect: "月度复盘" },
   { name: "knowledge_page", path: "/knowledge", expect: "知识库" },
   { name: "real_integration_page", path: "/real-integration", expect: "真实接入" },
   { name: "ai_config_page", path: "/ai-config", expect: "AI 配置" },
@@ -20,8 +19,8 @@ const targets = [
   { name: "workbench_state_api", path: "/api/workbench-state", expect: "workspaceSetting" },
   { name: "runtime_config_api", path: "/api/runtime-config/status", expect: "capabilities" },
   { name: "config_diagnostics_api", path: "/api/config-diagnostics", expect: "results" },
-  { name: "weekly_report_api", path: "/api/weekly-reports/2026-06-17", expect: "executiveSummary" },
-  { name: "weekly_report_markdown_export_api", path: "/api/weekly-reports/2026-06-17/export", expect: "JOTO GTM 周报" }
+  { name: "monthly_report_api", path: "/api/monthly-reviews/2026-06-17", expect: "executiveSummary" },
+  { name: "monthly_report_markdown_export_api", path: "/api/monthly-reviews/2026-06-17/export", expect: "JOTO GTM 月度复盘" }
 ];
 
 async function checkTarget(target) {

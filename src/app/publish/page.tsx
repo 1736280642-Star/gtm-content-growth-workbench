@@ -77,7 +77,7 @@ function getPublishActionText(record: PublishRecord): string {
   }
 
   if (nextStep === "fill_url") {
-    return "内容已标记发布，但缺少正式 URL；先回填链接，后续才能进入指标和周报复盘。";
+    return "内容已标记发布，但缺少正式 URL；先回填链接，后续才能进入指标和月度复盘。";
   }
 
   if (nextStep === "record_metrics") {
@@ -88,7 +88,7 @@ function getPublishActionText(record: PublishRecord): string {
     return "当前发布记录失败，先重新导出清单核对渠道动作；确认已发布后再标记并回填 URL。";
   }
 
-  return "发布、URL 和渠道指标已闭环，可进入周报复盘查看内容表现。";
+  return "发布、URL 和渠道指标已闭环，可进入月度复盘查看内容表现。";
 }
 
 export default function PublishPage() {
@@ -358,8 +358,8 @@ export default function PublishPage() {
     }
 
     return (
-      <Link href="/weekly-report">
-        <Button size="small">去周报复盘</Button>
+      <Link href="/monthly-review">
+        <Button size="small">去月度复盘</Button>
       </Link>
     );
   }
@@ -382,7 +382,7 @@ export default function PublishPage() {
           showIcon
           type={visibleQueuedCount || visiblePendingUrlCount || visiblePendingMetricsCount ? "info" : "success"}
           message={`发布队列共 ${filteredPublishRecords.length} 条，待发布 ${visibleQueuedCount} 条，待回填 URL ${visiblePendingUrlCount} 条`}
-          description={`待录入指标 ${visiblePendingMetricsCount} 条，可进入周报复盘 ${visibleReviewReadyCount} 条。`}
+          description={`待录入指标 ${visiblePendingMetricsCount} 条，可进入月度复盘 ${visibleReviewReadyCount} 条。`}
           style={{ marginBottom: 16 }}
         />
         <Space direction="vertical" style={{ width: "100%", marginBottom: 16 }}>

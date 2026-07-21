@@ -386,7 +386,7 @@ async function openPage() {
 }
 
 async function preparePublishRecord() {
-  const generatedPlan = await requestJson(`${baseUrl}/api/weekly-plans/generate`, {
+  const generatedPlan = await requestJson(`${baseUrl}/api/monthly-plans/generate`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ days: 1, dailyCount: 1, channels: ["wechat"] })
@@ -394,7 +394,7 @@ async function preparePublishRecord() {
   const task = generatedPlan.body.tasks?.[0];
 
   if (!generatedPlan.ok || !task?.id) {
-    throw new Error(generatedPlan.body.message || "Failed to prepare weekly plan");
+    throw new Error(generatedPlan.body.message || "Failed to prepare monthly plan");
   }
 
   await requestJson(`${baseUrl}/api/content-tasks/confirm`, {
@@ -434,14 +434,14 @@ async function main() {
     browser = await runStep("start_browser", () => startBrowser());
     page = await runStep("open_cdp_page", () => openPage());
 
-    await runStep("navigate_weekly_plan", () => page.navigate("/weekly-plan"));
-    await runStep("click_weekly_plan_generate", () => page.click("[data-testid='weekly-plan-generate-button']"));
-    await runStep("click_weekly_plan_confirm", () => page.click("[data-testid='weekly-plan-generate-confirm']"));
-    const planState = await runStep("wait_weekly_plan_state", () => waitFor(async () => {
+    await runStep("navigate_monthly_plan", () => page.navigate("/monthly-plan"));
+    await runStep("click_monthly_plan_generate", () => page.click("[data-testid='monthly-plan-generate-button']"));
+    await runStep("click_monthly_plan_confirm", () => page.click("[data-testid='monthly-plan-generate-confirm']"));
+    const planState = await runStep("wait_monthly_plan_state", () => waitFor(async () => {
       const snapshot = await requestJson(`${baseUrl}/api/workbench-state`);
       return snapshot.ok && snapshot.body.state?.tasks?.length >= 1 ? snapshot : false;
     }, 15000));
-    record("weekly_plan_popconfirm_generate", planState.ok && planState.body.state?.tasks?.length >= 1, `${planState.body.state?.tasks?.length || 0} tasks after confirmed click`);
+    record("monthly_plan_popconfirm_generate", planState.ok && planState.body.state?.tasks?.length >= 1, `${planState.body.state?.tasks?.length || 0} tasks after confirmed click`);
 
     const knowledgeName = `Browser Smoke ${Date.now()}`;
     await runStep("navigate_knowledge", () => page.navigate("/knowledge"));

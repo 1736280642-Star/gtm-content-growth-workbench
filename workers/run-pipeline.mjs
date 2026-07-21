@@ -1,4 +1,4 @@
-import { getBaseUrl, getJson, parseArgs, parseList, postJson, printJson, shouldTreatAsFatal } from "./worker-utils.mjs";
+import { getBaseUrl, getJson, parseArgs, postJson, printJson, shouldTreatAsFatal } from "./worker-utils.mjs";
 
 const args = parseArgs();
 const baseUrl = getBaseUrl(args);
@@ -7,7 +7,7 @@ if (args.help || args.h) {
   printJson({
     worker: "run-pipeline",
     usage:
-      "node workers/run-pipeline.mjs [--base-url URL] [--skip-blog] [--skip-log] [--skip-channel-metrics] [--skip-geo] [--week YYYY-MM-DD] [--blog-source-url URL] [--blog-source-urls URL1,URL2] [--blog-source-path PATH] [--blog-json TEXT] [--log-file-path PATH] [--log-source-type demo_csv|nginx_log|cdn_log] [--channel-metrics-path PATH] [--channel-metrics-csv TEXT] [--geo-platforms 通义千问,DeepSeek] [--geo-prompt TEXT]"
+      "node workers/run-pipeline.mjs [--base-url URL] [--skip-blog] [--skip-log] [--skip-channel-metrics] [--month YYYY-MM-DD] [--blog-source-url URL] [--blog-source-urls URL1,URL2] [--blog-source-path PATH] [--blog-json TEXT] [--log-file-path PATH] [--log-source-type demo_csv|nginx_log|cdn_log] [--channel-metrics-path PATH] [--channel-metrics-csv TEXT]"
   });
   process.exit(0);
 }
@@ -80,25 +80,6 @@ function buildChannelMetricsPayload() {
   return payload;
 }
 
-function buildGeoPayload() {
-  const payload = {};
-  const platforms = parseList(args["geo-platforms"]);
-
-  if (platforms.length) {
-    payload.platforms = platforms;
-  }
-
-  if (typeof args["geo-prompt"] === "string") {
-    payload.prompt = args["geo-prompt"];
-  }
-
-  if (typeof args["geo-prompt-group"] === "string") {
-    payload.promptGroup = args["geo-prompt-group"];
-  }
-
-  return payload;
-}
-
 function summarizeStep(name, response) {
   return {
     name,
@@ -132,12 +113,8 @@ try {
     steps.push(await runStep("import_channel_metrics", "/api/channel-metrics/import", buildChannelMetricsPayload()));
   }
 
-  if (!isSkipped("geo")) {
-    steps.push(await runStep("run_geo_tests", "/api/geo-tests/run", buildGeoPayload()));
-  }
-
-  const week = typeof args.week === "string" ? args.week : new Date().toISOString().slice(0, 10);
-  const weeklyReport = await getJson(baseUrl, `/api/weekly-reports/${week}`);
+  const month = typeof args.month === "string" ? args.month : new Date().toISOString().slice(0, 10);
+  const monthlyReport = await getJson(baseUrl, `/api/monthly-reviews/${month}`);
   const stateSnapshot = await getJson(baseUrl, "/api/workbench-state");
   const fatalSteps = steps.filter((step) => step.fatal);
   const pendingSteps = steps.filter((step) => step.status === "pending_config" || step.status === "pending_input");
@@ -149,7 +126,7 @@ try {
     finishedAt: new Date().toISOString(),
     status: fatalSteps.length ? "failed" : pendingSteps.length ? "partial" : "success",
     steps,
-    weeklyReport: weeklyReport.body,
+    monthlyReport: monthlyReport.body,
     summary: stateSnapshot.body?.summary
   });
 

@@ -74,14 +74,13 @@ const requiredConfig = [
 
 const requiredPages = [
   "src/app/page.tsx",
-  "src/app/weekly-plan/page.tsx",
+  "src/app/monthly-plan/page.tsx",
   "src/app/today/page.tsx",
   "src/app/drafts/[taskId]/page.tsx",
   "src/app/publish/page.tsx",
   "src/app/blog-monitor/page.tsx",
   "src/app/blog-candidates/page.tsx",
-  "src/app/geo-test/page.tsx",
-  "src/app/weekly-report/page.tsx",
+  "src/app/monthly-review/page.tsx",
   "src/app/knowledge/page.tsx",
   "src/app/real-integration/page.tsx",
   "src/app/ai-config/page.tsx",
@@ -95,8 +94,8 @@ const requiredApiRoutes = [
   "src/app/api/workspace-settings/route.ts",
   "src/app/api/knowledge-bases/route.ts",
   "src/app/api/knowledge-bases/[id]/route.ts",
-  "src/app/api/weekly-plans/generate/route.ts",
-  "src/app/api/weekly-plans/[id]/route.ts",
+  "src/app/api/monthly-plans/generate/route.ts",
+  "src/app/api/monthly-plans/[id]/route.ts",
   "src/app/api/content-tasks/[id]/route.ts",
   "src/app/api/content-tasks/[id]/generate/route.ts",
   "src/app/api/content-tasks/[id]/regenerate-title/route.ts",
@@ -114,16 +113,13 @@ const requiredApiRoutes = [
   "src/app/api/blog-articles/[id]/candidate/route.ts",
   "src/app/api/blog-articles/[id]/candidate/task/route.ts",
   "src/app/api/blog-articles/[id]/diagnose/route.ts",
-  "src/app/api/geo-tests/run/route.ts",
-  "src/app/api/geo-test-results/[id]/override/route.ts",
-  "src/app/api/geo-test-results/[id]/candidate/route.ts",
   "src/app/api/log-imports/route.ts",
   "src/app/api/pipeline/run/route.ts",
   "src/app/api/pipeline/runs/export/route.ts",
   "src/app/api/bot-visit-summary/route.ts",
-  "src/app/api/weekly-reports/[week]/route.ts",
-  "src/app/api/weekly-reports/[week]/export/route.ts",
-  "src/app/api/weekly-reports/[week]/next-plan/route.ts",
+  "src/app/api/monthly-reviews/[month]/route.ts",
+  "src/app/api/monthly-reviews/[month]/export/route.ts",
+  "src/app/api/monthly-reviews/[month]/next-plan/route.ts",
   "src/app/api/workbench-state/route.ts"
 ];
 
@@ -137,8 +133,8 @@ const requiredApiMethods = [
   ["src/app/api/knowledge-bases/route.ts", "GET"],
   ["src/app/api/knowledge-bases/route.ts", "POST"],
   ["src/app/api/knowledge-bases/[id]/route.ts", "PATCH"],
-  ["src/app/api/weekly-plans/generate/route.ts", "POST"],
-  ["src/app/api/weekly-plans/[id]/route.ts", "PATCH"],
+  ["src/app/api/monthly-plans/generate/route.ts", "POST"],
+  ["src/app/api/monthly-plans/[id]/route.ts", "PATCH"],
   ["src/app/api/content-tasks/[id]/route.ts", "PATCH"],
   ["src/app/api/content-tasks/[id]/route.ts", "DELETE"],
   ["src/app/api/content-tasks/[id]/generate/route.ts", "POST"],
@@ -159,23 +155,19 @@ const requiredApiMethods = [
   ["src/app/api/blog-articles/[id]/candidate/route.ts", "DELETE"],
   ["src/app/api/blog-articles/[id]/candidate/task/route.ts", "POST"],
   ["src/app/api/blog-articles/[id]/diagnose/route.ts", "POST"],
-  ["src/app/api/geo-tests/run/route.ts", "POST"],
-  ["src/app/api/geo-test-results/[id]/override/route.ts", "PATCH"],
-  ["src/app/api/geo-test-results/[id]/candidate/route.ts", "POST"],
   ["src/app/api/log-imports/route.ts", "POST"],
   ["src/app/api/pipeline/run/route.ts", "POST"],
   ["src/app/api/pipeline/runs/export/route.ts", "GET"],
   ["src/app/api/bot-visit-summary/route.ts", "GET"],
-  ["src/app/api/weekly-reports/[week]/route.ts", "GET"],
-  ["src/app/api/weekly-reports/[week]/export/route.ts", "GET"],
-  ["src/app/api/weekly-reports/[week]/next-plan/route.ts", "POST"],
+  ["src/app/api/monthly-reviews/[month]/route.ts", "GET"],
+  ["src/app/api/monthly-reviews/[month]/export/route.ts", "GET"],
+  ["src/app/api/monthly-reviews/[month]/next-plan/route.ts", "POST"],
   ["src/app/api/workbench-state/route.ts", "GET"]
 ];
 
 const requiredWorkers = [
   "workers/README.md",
   "workers/sync-blog.mjs",
-  "workers/run-geo-tests.mjs",
   "workers/import-demo-log.mjs",
   "workers/import-channel-metrics.mjs",
   "workers/run-pipeline.mjs",
@@ -186,13 +178,12 @@ const requiredWorkers = [
 const schemaTables = [
   "workspace_setting",
   "knowledge_base",
-  "weekly_plan",
+  "monthly_plan",
   "content_task",
   "article_draft",
   "publish_record",
   "blog_article",
   "blog_diagnosis",
-  "geo_test_result",
   "log_import_batch",
   "bot_visit_summary",
   "workbench_audit_event",
@@ -228,7 +219,6 @@ addContentCheck("package scripts", "package.json", [
   "\"check:mysql\"",
   "\"init:mysql\"",
   "\"worker:sync-blog\"",
-  "\"worker:run-geo-tests\"",
   "\"worker:import-log\"",
   "\"worker:import-channel-metrics\"",
   "\"worker:run-pipeline\"",
@@ -245,20 +235,15 @@ addContentCheck("usage doc", "docs/usage.md", [
 addContentCheck("readme usage index", "README.md", ["docs/usage.md"]);
 addContentCheck("publish record channel metrics", "database/schema.sql", ["channel_metrics JSON"]);
 addContentCheck("worker api execution", "workers/worker-utils.mjs", ["postJson", "getJson", "WORKBENCH_BASE_URL"]);
-addContentCheck("pipeline worker", "workers/run-pipeline.mjs", ["sync_blog", "import_log", "import_channel_metrics", "run_geo_tests"]);
-addContentCheck("GEO platforms worker", "workers/run-geo-tests.mjs", [
-  "DeepSeek",
-  "豆包",
-  "ChatGPT"
-]);
-addContentCheck("page action wiring", "src/app/weekly-plan/page.tsx", ["regenerate-title", "/api/content-tasks/", "/api/content-tasks/confirm"]);
-addContentCheck("weekly plan confirmations", "src/app/weekly-plan/page.tsx", ["Popconfirm", "确认生成新的周计划", "确认重生成标题", "确认批量确认任务", "确认删除这个任务"]);
+addContentCheck("pipeline worker", "workers/run-pipeline.mjs", ["sync_blog", "import_log", "import_channel_metrics"]);
+addContentCheck("page action wiring", "src/app/monthly-plan/page.tsx", ["regenerate-title", "/api/content-tasks/", "/api/content-tasks/confirm"]);
+addContentCheck("monthly plan confirmations", "src/app/monthly-plan/page.tsx", ["Popconfirm", "确认生成新的月度计划", "确认重生成标题", "确认批量确认任务", "确认删除这个任务"]);
 addContentCheck("content task confirm api", "src/app/api/content-tasks/confirm/route.ts", ["confirmContentTasks"]);
 addContentCheck("content task delete api", "src/app/api/content-tasks/[id]/route.ts", ["DELETE", "deleteContentTask"]);
 addContentCheck("content task lifecycle store", "src/lib/workbench-store.ts", ["confirmContentTasks", "deleteContentTask", "content_tasks_confirmed", "content_task_deleted"]);
 addContentCheck("publish action wiring", "src/app/publish/page.tsx", ["/published", "/api/channel-metrics/import"]);
 addContentCheck("publish confirmations", "src/app/publish/page.tsx", ["Popconfirm", "确认标记为已发布"]);
-addContentCheck("publish import confirmation", "src/app/publish/page.tsx", ["Popconfirm", "确认导入渠道数据？", "会根据发布记录 ID 匹配"]);
+addContentCheck("publish import confirmation", "src/app/publish/page.tsx", ["Popconfirm", "确认导入渠道数据？", "会自动识别中文/英文字段"]);
 addContentCheck("publish manual metrics api", "src/app/api/publish-records/[id]/metrics/route.ts", ["updatePublishRecordMetrics", "PATCH"]);
 addContentCheck("publish manual metrics store", "src/lib/workbench-store.ts", ["updatePublishRecordMetrics", "publish_record_metrics_updated", "渠道指标已保存到发布台账"]);
 addContentCheck("publish manual metrics page", "src/app/publish/page.tsx", [
@@ -289,7 +274,7 @@ addContentCheck("publish execution context", "src/app/publish/page.tsx", [
   "待回填 URL",
   "待录入指标",
   "可复盘",
-  "去周报复盘",
+  "去月度复盘",
   "productLabels",
   "contentTypeLabels"
 ]);
@@ -357,7 +342,7 @@ addContentCheck("candidate pool next step", "src/app/blog-candidates/page.tsx", 
   "可执行入口",
   "维护",
   "确认加入候选池？",
-  "看周计划"
+  "看月度计划"
 ]);
 addContentCheck("pipeline api wiring", "src/app/api/pipeline/run/route.ts", ["runWorkbenchPipeline"]);
 addContentCheck("pipeline state persistence", "src/lib/workbench-store.ts", ["pipelineRuns", "runWorkbenchPipeline", "pipeline_run_finished"]);
@@ -365,10 +350,10 @@ addContentCheck("dashboard pipeline action", "src/app/page.tsx", ["/api/pipeline
 addContentCheck("dashboard pipeline filters", "src/app/page.tsx", [
   "pipelineStatusLabels",
   "pipelineStatusFilter",
-  "pipelineWeekFilter",
+  "pipelineMonthFilter",
   "filteredPipelineRuns",
   "按运行状态筛选",
-  "按周次筛选",
+  "按月份筛选",
   "当前筛选没有 Pipeline 记录",
   "清空筛选"
 ]);
@@ -381,22 +366,19 @@ addContentCheck("dashboard action queue", "src/app/page.tsx", [
   "highestPriorityAction",
   "draftByTaskId",
   "publishRecordByTaskId",
-  "candidateByGeoResultId",
   "getPlanNextStep",
   "getBlogNextStep",
-  "getGeoNextStep",
   "getDashboardActionText",
   "currentAction",
   "entryLabel",
   "执行队列",
   "事项",
   "数量",
-  "周计划待确认",
+  "月度计划待确认",
   "稿件待生成/排查",
   "终稿待处理",
   "发布侧待处理",
   "博客待处置",
-  "GEO 待处置",
   "可进入复盘",
   "当前优先处理",
   "当前状态",
@@ -411,19 +393,16 @@ addContentCheck("dashboard overview closure", "src/app/page.tsx", [
   "dashboardOverviewStepColors",
   "dashboardOverviewItems",
   "blogNeedsWorkCount",
-  "geoNeedsWorkCount",
-  "官网博客与 GEO 概览",
+  "官网博客概览",
   "博客候选与 SEO/GEO 诊断",
-  "GEO 命中与官网引用",
   "AI Bot 日志可信度",
-  "GEO 命中率",
   "当前状态",
   "下一步",
   "处理动作",
   "可执行入口",
   "去博客侧",
   "去导入",
-  "去周报"
+  "去月度复盘"
 ]);
 addContentCheck("dashboard pipeline closure", "src/app/page.tsx", [
   "PipelineRunNextStep",
@@ -433,7 +412,7 @@ addContentCheck("dashboard pipeline closure", "src/app/page.tsx", [
   "getPipelineRunActionText",
   "getPipelineRunEntry",
   "Pipeline 运行记录",
-  "进入周报",
+  "进入月度复盘",
   "补齐缺口",
   "排查后重跑",
   "下一步",
@@ -451,9 +430,9 @@ addContentCheck("config diagnostics api dynamic", "src/app/api/config-diagnostic
 addContentCheck("knowledge api dynamic", "src/app/api/knowledge-bases/route.ts", ['dynamic = "force-dynamic"']);
 addContentCheck("workspace settings api dynamic", "src/app/api/workspace-settings/route.ts", ['dynamic = "force-dynamic"']);
 addContentCheck("pipeline export api dynamic", "src/app/api/pipeline/runs/export/route.ts", ['dynamic = "force-dynamic"']);
-addContentCheck("weekly report api dynamic", "src/app/api/weekly-reports/[week]/route.ts", ['dynamic = "force-dynamic"']);
-addContentCheck("weekly report export api dynamic", "src/app/api/weekly-reports/[week]/export/route.ts", ['dynamic = "force-dynamic"']);
-addContentCheck("settings page persistence", "src/app/settings/page.tsx", ["/api/workspace-settings", "enabledChannels", "geoPlatforms"]);
+addContentCheck("monthly report api dynamic", "src/app/api/monthly-reviews/[month]/route.ts", ['dynamic = "force-dynamic"']);
+addContentCheck("monthly report export api dynamic", "src/app/api/monthly-reviews/[month]/export/route.ts", ['dynamic = "force-dynamic"']);
+addContentCheck("settings page persistence", "src/app/settings/page.tsx", ["/api/workspace-settings", "enabledChannels"]);
 addContentCheck("settings page grouping", "src/app/settings/page.tsx", [
   "finalReviewModeLabels",
   "logModeLabels",
@@ -477,7 +456,6 @@ addContentCheck("settings rule readiness", "src/app/settings/page.tsx", [
   "周产能",
   "终稿确认",
   "日志接入",
-  "GEO 平台",
   "下一步",
   "处理动作",
   "可执行入口",
@@ -485,8 +463,7 @@ addContentCheck("settings rule readiness", "src/app/settings/page.tsx", [
   "未选择渠道",
   "配置日志",
   "看真实接入",
-  "去 GEO 测试",
-  "去周计划",
+  "去月度计划",
   "保存设置"
 ]);
 addContentCheck("knowledge base store", "src/lib/workbench-store.ts", ["createKnowledgeBase", "patchKnowledgeBase", "knowledge_base_updated"]);
@@ -571,16 +548,15 @@ addContentCheck("action empty component", "src/components/ActionEmpty.tsx", ["Ac
 addContentCheck("page error state component", "src/components/PageErrorState.tsx", ["PageErrorState", "运行态数据同步失败", "title", "description", "重试"]);
 addContentCheck("workbench snapshot failure state", "src/lib/client-state.ts", ["error", "usingFallback", "运行态数据同步失败"]);
 addContentCheck("dashboard error state", "src/app/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
-addContentCheck("weekly plan error state", "src/app/weekly-plan/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
+addContentCheck("monthly plan error state", "src/app/monthly-plan/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
 addContentCheck("today error state", "src/app/today/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
 addContentCheck("publish error state", "src/app/publish/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
 addContentCheck("blog monitor error state", "src/app/blog-monitor/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
-addContentCheck("geo error state", "src/app/geo-test/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
-addContentCheck("weekly report error state", "src/app/weekly-report/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
+addContentCheck("monthly report error state", "src/app/monthly-review/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
 addContentCheck("knowledge error state", "src/app/knowledge/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
 addContentCheck("real integration error state", "src/app/real-integration/page.tsx", ["PageErrorState", "onRetry={refresh}"]);
-addContentCheck("weekly plan empty state", "src/app/weekly-plan/page.tsx", ["ActionEmpty", "还没有周计划任务"]);
-addContentCheck("weekly plan filters", "src/app/weekly-plan/page.tsx", [
+addContentCheck("monthly plan empty state", "src/app/monthly-plan/page.tsx", ["ActionEmpty", "还没有月度计划任务"]);
+addContentCheck("monthly plan filters", "src/app/monthly-plan/page.tsx", [
   "statusFilter",
   "channelFilter",
   "productFilter",
@@ -588,10 +564,10 @@ addContentCheck("weekly plan filters", "src/app/weekly-plan/page.tsx", [
   "按状态筛选",
   "按渠道筛选",
   "按产品筛选",
-  "当前筛选没有周计划任务",
+  "当前筛选没有月度计划任务",
   "清空筛选"
 ]);
-addContentCheck("weekly plan execution context", "src/app/weekly-plan/page.tsx", [
+addContentCheck("monthly plan execution context", "src/app/monthly-plan/page.tsx", [
   "draftHandoffLabels",
   "publishHandoffLabels",
   "planNextStepLabels",
@@ -604,7 +580,7 @@ addContentCheck("weekly plan execution context", "src/app/weekly-plan/page.tsx",
   "renderPlanEntry",
   "renderPlanMaintenance",
   "highestPriorityPlanTask",
-  "周计划共",
+  "月度计划共",
   "稿件承接",
   "发布承接",
   "下一步",
@@ -659,7 +635,7 @@ addContentCheck("today next step", "src/app/today/page.tsx", [
   "下一步",
   "处理动作",
   "可执行入口",
-  "回周计划确认",
+  "回月度计划确认",
   "生成稿件",
   "终稿确认",
   "人工发布",
@@ -711,60 +687,9 @@ addContentCheck("blog monitor next step", "src/app/blog-monitor/page.tsx", [
   "继续观察",
   "disabled={candidateLocked}",
   "Link href=\"/blog-candidates\"",
-  "Link href=\"/weekly-plan\"",
-  "Link href=\"/weekly-report\""
+  "Link href=\"/monthly-plan\"",
+  "Link href=\"/monthly-review\""
 ]);
-addContentCheck("geo empty state", "src/app/geo-test/page.tsx", ["ActionEmpty", "还没有 GEO 测试结果"]);
-addContentCheck("geo confirmations", "src/app/geo-test/page.tsx", ["Popconfirm", "确认批量运行 GEO 测试", "确认保存人工修正"]);
-addContentCheck("geo result filters", "src/app/geo-test/page.tsx", [
-  "promptGroupLabels",
-  "executionStatusLabels",
-  "platformFilter",
-  "promptGroupFilter",
-  "executionStatusFilter",
-  "jotoMentionFilter",
-  "officialCitationFilter",
-  "dataConfidenceFilter",
-  "filteredGeoResults",
-  "按平台筛选",
-  "按 Prompt 组筛选",
-  "按执行状态筛选",
-  "按 JOTO 提及筛选",
-  "按官网引用筛选",
-  "当前筛选没有 GEO 测试结果",
-  "清空筛选"
-]);
-addContentCheck("geo result next step", "src/app/geo-test/page.tsx", [
-  "geoIssueLevelLabels",
-  "geoNextStepLabels",
-  "geoCandidateStatusLabels",
-  "candidateByGeoResultId",
-  "getGeoIssueLevel",
-  "getGeoNextStep",
-  "getGeoSuggestionReason",
-  "getGeoActionText",
-  "renderGeoEntry",
-  "renderGeoMaintenance",
-  "GEO 结果共",
-  "待配置/排查",
-  "问题级别",
-  "候选状态",
-  "建议原因",
-  "下一步",
-  "处理动作",
-  "可执行入口",
-  "维护",
-  "建议入候选池",
-  "补官网引用",
-  "Link href=\"/ai-config\"",
-  "Link href=\"/blog-candidates\"",
-  "Link href=\"/weekly-plan\"",
-  "Link href=\"/weekly-report\"",
-  "disabled={cannotAddCandidate}"
-]);
-addContentCheck("geo candidate api", "src/app/api/geo-test-results/[id]/candidate/route.ts", ["addGeoResultToCandidatePool"]);
-addContentCheck("geo candidate store", "src/lib/workbench-store.ts", ["addGeoResultToCandidatePool", "geo_result_added_to_candidate_pool", "geo-candidate-"]);
-addContentCheck("geo candidate page", "src/app/geo-test/page.tsx", ["handleAddCandidate", "/candidate", "确认加入博客候选池", "loading={addingCandidateId === result.id}", "入候选池", "await refresh()"]);
 addContentCheck("draft confirmations", "src/app/drafts/[taskId]/page.tsx", ["Popconfirm", "确认重新生成稿件", "确认加入发布队列"]);
 addContentCheck("draft context panel", "src/app/drafts/[taskId]/page.tsx", [
   "任务上下文",
@@ -798,47 +723,38 @@ addContentCheck("draft next step", "src/app/drafts/[taskId]/page.tsx", [
   "人工发布",
   "回填 URL",
   "录入指标",
-  "去周报复盘"
+  "去月度复盘"
 ]);
-addContentCheck("weekly report action", "src/app/weekly-report/page.tsx", ["/api/weekly-reports/", "生成周报", "nextWeekSuggestions"]);
-addContentCheck("weekly report markdown export api", "src/app/api/weekly-reports/[week]/export/route.ts", ["exportWeeklyReportMarkdown"]);
-addContentCheck("weekly report markdown export store", "src/lib/workbench-store.ts", ["exportWeeklyReportMarkdown", "JOTO GTM 周报", "## 5. 下周建议"]);
-addContentCheck("weekly report markdown export page", "src/app/weekly-report/page.tsx", ["handleExportMarkdown", "/export", "navigator.clipboard.writeText", "导出 Markdown", "loading={exportingMarkdown}"]);
-addContentCheck("weekly report next plan api", "src/app/api/weekly-reports/[week]/next-plan/route.ts", ["createNextWeeklyPlanFromReport"]);
-addContentCheck("weekly report next plan store", "src/lib/workbench-store.ts", ["createNextWeeklyPlanFromReport", "next_week_plan_created_from_report", "周报建议"]);
-addContentCheck("weekly report next plan page", "src/app/weekly-report/page.tsx", ["handleCreateNextPlan", "/next-plan", "生成下周计划草稿", "Popconfirm", "loading={creatingNextPlan}", "await refresh()"]);
-addContentCheck("weekly report detail review", "src/app/weekly-report/page.tsx", [
+addContentCheck("monthly report action", "src/app/monthly-review/page.tsx", ["/api/monthly-reviews/", "生成月度复盘", "nextMonthSuggestions"]);
+addContentCheck("monthly report markdown export api", "src/app/api/monthly-reviews/[month]/export/route.ts", ["exportMonthlyReviewMarkdown"]);
+addContentCheck("monthly report markdown export store", "src/lib/workbench-store.ts", ["exportMonthlyReviewMarkdown", "JOTO GTM 月度复盘", "## 4. 下月建议"]);
+addContentCheck("monthly report markdown export page", "src/app/monthly-review/page.tsx", ["handleExportMarkdown", "/export", "navigator.clipboard.writeText", "导出 Markdown", "loading={exportingMarkdown}"]);
+addContentCheck("monthly report next plan api", "src/app/api/monthly-reviews/[month]/next-plan/route.ts", ["createNextMonthlyPlanFromReview"]);
+addContentCheck("monthly report next plan store", "src/lib/workbench-store.ts", ["createNextMonthlyPlanFromReview", "next_month_plan_created_from_review", "月度复盘建议"]);
+addContentCheck("monthly report next plan page", "src/app/monthly-review/page.tsx", ["handleCreateNextPlan", "/next-plan", "生成下月计划草稿", "Popconfirm", "loading={creatingNextPlan}", "await refresh()"]);
+addContentCheck("monthly report detail review", "src/app/monthly-review/page.tsx", [
   "reportPublishRecords",
   "reportBlogDiagnostics",
-  "reportGeoResults",
   "renderChannelMetrics",
   "channelMetrics",
   "官网博客诊断复盘",
-  "GEO 测试明细",
   "candidateStatus",
-  "mentionedJoto",
-  "citedOfficialUrl",
   "DataConfidenceTag"
 ]);
-addContentCheck("weekly report detail filters", "src/app/weekly-report/page.tsx", [
+addContentCheck("monthly report detail filters", "src/app/monthly-review/page.tsx", [
   "publishStatusLabels",
   "blogGeoResultLabels",
-  "geoExecutionStatusLabels",
   "publishStatusFilter",
   "blogGeoResultFilter",
-  "geoExecutionStatusFilter",
   "filteredReportPublishRecords",
   "filteredReportBlogDiagnostics",
-  "filteredReportGeoResults",
   "按发布状态筛选",
   "按博客 GEO 结果筛选",
-  "按 GEO 执行状态筛选",
   "当前筛选没有渠道执行记录",
   "当前筛选没有博客诊断记录",
-  "当前筛选没有 GEO 测试明细",
   "清空筛选"
 ]);
-addContentCheck("weekly report action queue", "src/app/weekly-report/page.tsx", [
+addContentCheck("monthly report action queue", "src/app/monthly-review/page.tsx", [
   "ReportActionStep",
   "reportActionStepLabels",
   "reportActionStepColors",
@@ -854,30 +770,28 @@ addContentCheck("weekly report action queue", "src/app/weekly-report/page.tsx", 
   "回填 URL",
   "录入指标",
   "处理博客候选",
-  "排查 GEO",
-  "沉淀候选",
-  "生成下周计划",
+  "生成下月计划",
   "可执行入口"
 ]);
-addContentCheck("weekly report suggestion closure", "src/app/weekly-report/page.tsx", [
-  "WeeklySuggestionStep",
-  "WeeklySuggestionAction",
-  "weeklySuggestionStepLabels",
-  "weeklySuggestionStepColors",
-  "createWeeklySuggestionActions",
-  "weeklySuggestionActions",
-  "renderWeeklySuggestionEntry",
-  "下周建议",
-  "先生成周报",
+addContentCheck("monthly report suggestion closure", "src/app/monthly-review/page.tsx", [
+  "MonthlySuggestionStep",
+  "MonthlySuggestionAction",
+  "monthlySuggestionStepLabels",
+  "monthlySuggestionStepColors",
+  "createMonthlySuggestionActions",
+  "monthlySuggestionActions",
+  "renderMonthlySuggestionEntry",
+  "下月建议",
+  "先生成月度复盘",
   "复核建议",
   "生成计划草稿",
   "建议",
   "下一步",
   "处理动作",
   "可执行入口",
-  "生成周报",
+  "生成月度复盘",
   "生成计划",
-  "看周计划"
+  "看月度计划"
 ]);
 addContentCheck("real integration page", "src/app/real-integration/page.tsx", [
   "真实接入",
@@ -921,14 +835,14 @@ addContentCheck("real integration next step", "src/app/real-integration/page.tsx
   "执行诊断",
   "排查失败",
   "验数据库",
-  "GEO 试跑",
+  "内容生成试跑",
   "同步博客",
   "导入日志",
   "下一步",
   "处理动作",
   "可执行入口",
   "看配置",
-  "去试跑",
+  "去生成",
   "去导入",
   "跑 MySQL 检查",
   "手动试跑",
@@ -958,40 +872,38 @@ addContentCheck("real integration sequence closure", "src/app/real-integration/p
 addContentCheck("workflow smoke script", "scripts/smoke-workflow.mjs", [
   "/api/config-diagnostics",
   "/api/knowledge-bases",
-  "/api/weekly-plans/generate",
+  "/api/monthly-plans/generate",
   "/api/workspace-settings",
   "/api/pipeline/run",
-  "pending_config",
   "final_state_has_pipeline_runs"
 ]);
 addContentCheck("page smoke script", "scripts/smoke-pages.mjs", [
   "/real-integration",
   "/api/config-diagnostics",
-  "/api/weekly-reports/",
-  "/api/weekly-reports/2026-06-17/export",
+  "/api/monthly-reviews/",
+  "/api/monthly-reviews/2026-06-17/export",
   "smoke-pages",
   "workspaceSetting"
 ]);
 addContentCheck("interaction smoke script", "scripts/smoke-interactions.mjs", [
   "smoke-interactions",
   "dashboard_run_pipeline",
-  "weekly_plan_generate_confirmed",
+  "monthly_plan_generate_confirmed",
   "publish_url_modal",
-  "geo_override_modal_confirmed",
   "real_integration_diagnostics"
 ]);
 addContentCheck("browser smoke script", "scripts/smoke-browser.mjs", [
   "smoke-browser",
-  "weekly_plan_popconfirm_generate",
+  "monthly_plan_popconfirm_generate",
   "knowledge_modal_create_dom_refresh",
   "publish_url_modal_fill_dom_refresh",
   "data-testid",
   "remote-debugging-port",
   "WebSocket"
 ]);
-addContentCheck("browser smoke stable selectors", "src/app/weekly-plan/page.tsx", [
-  "data-testid=\"weekly-plan-generate-button\"",
-  "data-testid\": \"weekly-plan-generate-confirm\""
+addContentCheck("browser smoke stable selectors", "src/app/monthly-plan/page.tsx", [
+  "data-testid=\"monthly-plan-generate-button\"",
+  "data-testid\": \"monthly-plan-generate-confirm\""
 ]);
 addContentCheck("browser smoke knowledge selectors", "src/app/knowledge/page.tsx", [
   "data-testid=\"knowledge-create-button\"",

@@ -1,4 +1,4 @@
-import { botVisits, geoResults, publishRecords, tasks, weeklyPlan } from "./demo-data";
+import { botVisits, publishRecords, tasks, monthlyPlan } from "./demo-data";
 
 export function getDashboardSummary() {
   const generated = tasks.filter((task) =>
@@ -9,16 +9,14 @@ export function getDashboardSummary() {
   const pendingUrl = publishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
 
   return {
-    weeklyPlan,
+    monthlyPlan,
     metrics: {
-      targetTotal: weeklyPlan.targetTotalCount,
+      targetTotal: monthlyPlan.targetTotalCount,
       generated,
       approved,
       published,
       pendingUrl,
-      geoHitRate: `${geoResults.filter((item) => item.mentionedJoto).length}/${geoResults.length}`,
       aiBotPv: botVisits.reduce((sum, item) => sum + item.pv, 0)
     }
   };
 }
-

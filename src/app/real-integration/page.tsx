@@ -71,7 +71,7 @@ interface IntegrationSequenceStep {
 type ScheduledTaskNextStep = "run_manual_pipeline" | "run_worker" | "configure_scheduler" | "confirm_channel_template";
 type ScheduledTaskEntry = { type: "link"; href: string; label: string } | { type: "command"; label: string };
 type IntegrationGroup = "storage" | "ai_provider" | "blog_source" | "log_source";
-type IntegrationNextStep = "fill_required_config" | "run_diagnostic" | "inspect_failure" | "verify_storage" | "trial_geo" | "sync_blog" | "import_log";
+type IntegrationNextStep = "fill_required_config" | "run_diagnostic" | "inspect_failure" | "verify_storage" | "trial_generation" | "sync_blog" | "import_log";
 
 const integrationGroupLabels: Record<IntegrationGroup, string> = {
   storage: "数据底座",
@@ -91,7 +91,7 @@ const integrationNextStepLabels: Record<IntegrationNextStep, string> = {
   run_diagnostic: "执行诊断",
   inspect_failure: "排查失败",
   verify_storage: "验数据库",
-  trial_geo: "GEO 试跑",
+  trial_generation: "内容生成试跑",
   sync_blog: "同步博客",
   import_log: "导入日志"
 };
@@ -101,7 +101,7 @@ const integrationNextStepColors: Record<IntegrationNextStep, string> = {
   run_diagnostic: "blue",
   inspect_failure: "red",
   verify_storage: "green",
-  trial_geo: "green",
+  trial_generation: "green",
   sync_blog: "green",
   import_log: "green"
 };
@@ -132,25 +132,25 @@ const integrationItems: IntegrationItem[] = [
   {
     key: "qwen",
     group: "ai_provider",
-    stage: "通义千问 GEO 与生成",
+    stage: "通义千问内容生成",
     owner: "业务负责人 / 开发",
-    evidence: "配置诊断返回 ready，通义千问平台测试不再 pending_config",
+    evidence: "配置诊断返回 ready，内容生成不再 pending_config",
     nextAction: "提供 DASHSCOPE_API_KEY、QWEN_MODEL，可选 QWEN_BASE_URL。"
   },
   {
     key: "deepseek",
     group: "ai_provider",
-    stage: "DeepSeek GEO 与生成",
+    stage: "DeepSeek 内容生成",
     owner: "业务负责人 / 开发",
-    evidence: "配置诊断返回 ready，DeepSeek 平台测试有回答快照",
+    evidence: "配置诊断返回 ready，DeepSeek 可生成真实稿件",
     nextAction: "提供 DEEPSEEK_API_KEY、DEEPSEEK_MODEL，可选 DEEPSEEK_BASE_URL。"
   },
   {
     key: "doubao",
     group: "ai_provider",
-    stage: "豆包 GEO 测试",
+    stage: "豆包内容生成",
     owner: "业务负责人 / 开发",
-    evidence: "配置诊断返回 ready，豆包平台测试有回答快照",
+    evidence: "配置诊断返回 ready，豆包可生成真实稿件",
     nextAction: "提供 DOUBAO_API_KEY、DOUBAO_MODEL，可选 DOUBAO_BASE_URL。"
   },
   {
@@ -186,7 +186,7 @@ const scheduledTasks: ScheduledTask[] = [
     status: "ready",
     evidence: "首页按钮和 /api/pipeline/run 已接通",
     nextStep: "run_manual_pipeline",
-    actionText: "去首页手动运行 GTM Pipeline，确认博客同步、日志导入、渠道数据和 GEO 试跑的串联结果。",
+    actionText: "去首页手动运行 GTM Pipeline，确认博客同步、日志导入和渠道数据的串联结果。",
     entry: { type: "link", href: "/", label: "去首页" }
   },
   {
@@ -258,7 +258,7 @@ function getIntegrationNextStep(item: IntegrationItem, capability?: RuntimeCapab
     return "import_log";
   }
 
-  return "trial_geo";
+  return "trial_generation";
 }
 
 function getIntegrationActionText(item: IntegrationItem, capability?: RuntimeCapability, diagnostic?: DiagnosticResult) {
@@ -278,7 +278,7 @@ function getIntegrationActionText(item: IntegrationItem, capability?: RuntimeCap
   }
 
   if (nextStep === "verify_storage") {
-    return "先执行 MySQL 连接检查和 schema 初始化，再跑一周 workflow smoke 验证持久化链路。";
+    return "先执行 MySQL 连接检查和 schema 初始化，再跑一个月 workflow smoke 验证持久化链路。";
   }
 
   if (nextStep === "sync_blog") {
@@ -289,7 +289,7 @@ function getIntegrationActionText(item: IntegrationItem, capability?: RuntimeCap
     return "去博客监控页导入真实日志，确认 AI Bot PV 不再只停留在 Demo 数据。";
   }
 
-  return "去 GEO 测试页对该平台跑真实 Prompt，确认回答快照、引用和候选池承接正常。";
+  return "去今日任务页运行真实内容生成，确认模型输出和质检链路正常。";
 }
 
 function getIntegrationEntry(item: IntegrationItem, capability?: RuntimeCapability, diagnostic?: DiagnosticResult) {
@@ -299,8 +299,8 @@ function getIntegrationEntry(item: IntegrationItem, capability?: RuntimeCapabili
     return { type: "link" as const, href: "/ai-config", label: "看配置" };
   }
 
-  if (nextStep === "trial_geo") {
-    return { type: "link" as const, href: "/geo-test", label: "去试跑" };
+  if (nextStep === "trial_generation") {
+    return { type: "link" as const, href: "/today", label: "去生成" };
   }
 
   if (nextStep === "sync_blog" || nextStep === "import_log") {
@@ -315,7 +315,7 @@ function getIntegrationEntry(item: IntegrationItem, capability?: RuntimeCapabili
 }
 
 function isIntegrationReadyStep(step: IntegrationNextStep) {
-  return step === "verify_storage" || step === "trial_geo" || step === "sync_blog" || step === "import_log";
+  return step === "verify_storage" || step === "trial_generation" || step === "sync_blog" || step === "import_log";
 }
 
 function inferBotConfidence(values: { dataConfidence: DataConfidence }[]) {
@@ -381,15 +381,15 @@ function createIntegrationSequenceSteps(input: {
       key: "ai_provider_sequence",
       step: "AI Provider 试跑",
       status: aiStatus,
-      evidence: `已就绪 ${aiReadyCount}/${aiItems.length} 个 Provider；GEO 平台：${state.workspaceSetting.geoPlatforms.join("、")}`,
-      nextStep: aiStatus === "ready" ? "进入 GEO 试跑" : aiFailedCount ? "先排查失败 Provider" : "补齐 Provider 配置并诊断",
+      evidence: `已就绪 ${aiReadyCount}/${aiItems.length} 个 Provider`,
+      nextStep: aiStatus === "ready" ? "进入内容生成试跑" : aiFailedCount ? "先排查失败 Provider" : "补齐 Provider 配置并诊断",
       actionText:
         aiStatus === "ready"
-          ? "逐个平台跑真实 GEO Prompt，确认回答快照、官网引用和候选池承接正常。"
+          ? "运行真实内容生成，确认模型输出、质检和终稿承接正常。"
           : aiFailedCount
             ? "先在 AI 配置页排查失败的 Provider，再决定是否继续试跑其他平台。"
-            : "先补必填配置并完成诊断，再进入 GEO 和内容生成试跑。",
-      entry: aiStatus === "ready" ? { type: "link", href: "/geo-test", label: "去试跑" } : { type: "link", href: "/ai-config", label: "看配置" }
+            : "先补必填配置并完成诊断，再进入内容生成试跑。",
+      entry: aiStatus === "ready" ? { type: "link", href: "/today", label: "去生成" } : { type: "link", href: "/ai-config", label: "看配置" }
     },
     {
       key: "blog_log_sources",
@@ -411,7 +411,7 @@ function createIntegrationSequenceSteps(input: {
       status: automationStatus,
       evidence: hasPipelineRun ? `最近 Pipeline：${state.pipelineRuns?.[0]?.status || "unknown"} / ${state.pipelineRuns?.[0]?.finishedAt || "-"}` : "尚无 Pipeline 运行记录",
       nextStep: hasPipelineRun ? "继续接定时任务和模板" : "先手动试跑 Pipeline",
-      actionText: hasPipelineRun ? "在自动化与模板表继续确认定时任务和渠道模板，避免真实回填时字段错位。" : "先从首页手动运行一次 GTM Pipeline，确认博客、日志、渠道数据和 GEO 试跑已串起来。",
+      actionText: hasPipelineRun ? "在自动化与模板表继续确认定时任务和渠道模板，避免真实回填时字段错位。" : "先从首页手动运行一次 GTM Pipeline，确认博客、日志和渠道数据已串起来。",
       entry: hasPipelineRun ? { type: "link", href: "/publish", label: "看模板" } : { type: "link", href: "/", label: "去首页" }
     }
   ] satisfies IntegrationSequenceStep[];
@@ -622,8 +622,7 @@ export default function RealIntegrationPage() {
             dataSource={[
               `存储模式：${state.runtime.storage}`,
               `状态文件：${state.runtime.statePath}`,
-              `工作台设置：每周 ${state.workspaceSetting.defaultWeeklyDays} 天，每天 ${state.workspaceSetting.defaultDailyCount} 篇`,
-              `GEO 平台：${state.workspaceSetting.geoPlatforms.join("、")}`,
+              `工作台设置：每月 ${state.workspaceSetting.defaultPublishDays} 天，每天 ${state.workspaceSetting.defaultDailyCount} 篇`,
               `日志模式：${state.workspaceSetting.logMode}`,
               `AI Bot 数据可信度：${botConfidence}`,
               `Pipeline 运行记录：${state.pipelineRuns?.length || 0} 次`,

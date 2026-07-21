@@ -9,7 +9,6 @@ Phase 0 的目标是为开发建立可执行输入。本阶段确认：
 3. 数据库采用 `MySQL`。
 4. 官网博客内容同步由 `XCrawl` 承担。
 5. AI Bot 指标 MVP 阶段使用 `Demo CSV / 模拟日志`，后续接入 `Nginx/CDN access log`。
-6. GEO 测试使用 `DeepSeek / 豆包 / ChatGPT` 三个平台 API。
 
 ## 2. 可迁移资产
 
@@ -24,7 +23,6 @@ Phase 0 的目标是为开发建立可执行输入。本阶段确认：
 | GEO SEO | 渠道分发规则 | P0 迁移为渠道规则库 |
 | GEO SEO | 历史选题与文章生产库 | P0 迁移为去重与选题参考库 |
 | XCrawl | 官网博客采集脚本 | P0 封装为 Worker |
-| GEO Citation Monitor | GEO 测试 Prompt | P0 迁移为 GEO 测试 Prompt 组 |
 | 原信源站 | 内容资产 | P2 作为低可信参考语料，不作为模块 |
 
 ## 3. 知识库分级
@@ -51,9 +49,6 @@ Phase 0 的目标是为开发建立可执行输入。本阶段确认：
 
 | Provider | 用途 | 必要配置 |
 |---|---|---|
-| OpenAI / ChatGPT | GEO 测试、内容生成可选 | base_url、api_key、model |
-| DeepSeek | GEO 测试、内容生成可选 | base_url、api_key、model |
-| 豆包 | GEO 测试 | base_url、api_key、model |
 
 密钥不写入文档和代码，后续通过环境变量或配置中心管理。
 

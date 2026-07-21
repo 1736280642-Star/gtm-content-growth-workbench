@@ -168,14 +168,14 @@ function getDraftReviewActionText(nextStep: DraftReviewNextStep, hasWarnings: bo
   }
 
   if (nextStep === "record_metrics") {
-    return "发布链路已完成，补录渠道表现数据后再进入周报复盘。";
+    return "发布链路已完成，补录渠道表现数据后再进入月度复盘。";
   }
 
   if (nextStep === "fix_publish") {
     return "发布记录出现失败，先去发布队列排查，再决定是否回到终稿继续调整。";
   }
 
-  return "终稿、发布和指标都已闭环，可以直接进入周度复盘。";
+  return "终稿、发布和指标都已闭环，可以直接进入月度复盘。";
 }
 
 export default function DraftReviewPage({ params }: { params: { taskId: string } }) {
@@ -352,8 +352,8 @@ export default function DraftReviewPage({ params }: { params: { taskId: string }
     }
 
     return (
-      <Link href="/weekly-report">
-        <Button size="small">去周报复盘</Button>
+      <Link href="/monthly-review">
+        <Button size="small">去月度复盘</Button>
       </Link>
     );
   }

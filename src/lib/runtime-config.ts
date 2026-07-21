@@ -42,21 +42,21 @@ export function getRuntimeConfigStatus() {
     createCapability({
       key: "qwen",
       label: "通义千问 / Qwen",
-      purpose: "GEO 测试与内容生成",
+      purpose: "内容生成",
       requiredEnv: ["DASHSCOPE_API_KEY", "QWEN_MODEL"],
       optionalEnv: ["QWEN_BASE_URL"]
     }),
     createCapability({
       key: "deepseek",
       label: "DeepSeek",
-      purpose: "GEO 测试与内容生成",
+      purpose: "内容生成",
       requiredEnv: ["DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"],
       optionalEnv: ["DEEPSEEK_BASE_URL"]
     }),
     createCapability({
       key: "doubao",
       label: "豆包",
-      purpose: "GEO 测试",
+      purpose: "内容生成",
       requiredEnv: ["DOUBAO_API_KEY", "DOUBAO_MODEL"],
       optionalEnv: ["DOUBAO_BASE_URL"]
     }),
@@ -99,14 +99,4 @@ export function getMissingEnvFor(keys: string[]) {
   const selected = status.capabilities.filter((item) => keys.includes(item.key));
 
   return Array.from(new Set(selected.flatMap((item) => item.missingEnv)));
-}
-
-export function getProviderMissingEnv(platforms: string[]) {
-  const providerKeys = platforms.map((platform) => {
-    if (platform === "DeepSeek") return "deepseek";
-    if (platform === "豆包") return "doubao";
-    return "qwen";
-  });
-
-  return getMissingEnvFor(providerKeys);
 }

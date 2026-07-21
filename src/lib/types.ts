@@ -2,8 +2,6 @@ export type ChannelKey = "wechat" | "csdn" | "juejin" | "zhihu_toutiao_general";
 
 export type ProductKey = "joto_brand" | "weike_guardrails";
 
-export type GeoPlatformName = "DeepSeek" | "豆包" | "通义千问";
-
 export type FinalReviewMode = "default_final" | "manual_review";
 
 export type LogMode = "demo_csv" | "csv_import" | "nginx_log" | "cdn_log";
@@ -24,29 +22,28 @@ export type TaskStatus =
 
 export type ContentType = "brand" | "scenario" | "technical" | "faq" | "comparison" | "case";
 
-export interface WeeklyPlan {
+export interface MonthlyPlan {
   id: string;
-  weekStart: string;
-  weekEnd: string;
+  monthStart: string;
+  monthEnd: string;
   targetTotalCount: number;
   status: "draft" | "confirmed" | "running" | "completed";
 }
 
 export interface WorkspaceSetting {
   id: string;
-  defaultWeeklyDays: number;
+  defaultPublishDays: number;
   defaultDailyCount: number;
   enabledChannels: ChannelKey[];
   enabledProducts: ProductKey[];
   finalReviewMode: FinalReviewMode;
-  geoPlatforms: GeoPlatformName[];
   logMode: LogMode;
   updatedAt?: string;
 }
 
 export interface ContentTask {
   id: string;
-  weeklyPlanId: string;
+  monthlyPlanId: string;
   publishDate: string;
   channel: ChannelKey;
   product: ProductKey;
@@ -116,28 +113,6 @@ export interface BlogArticle {
   candidateStatus?: "none" | "candidate" | "planned" | "dismissed";
   candidateReason?: string;
   candidateAddedAt?: string;
-}
-
-export interface GeoTestResult {
-  id: string;
-  platform: GeoPlatformName;
-  promptGroup: "品牌认知" | "产品场景" | "对比" | "FAQ";
-  prompt: string;
-  mentionedJoto: boolean;
-  mentionedWeike: boolean;
-  citedOfficialUrl: boolean;
-  competitorAppeared?: boolean;
-  citedUrls?: string[];
-  accuracyStatus?: "accurate" | "needs_review" | "inaccurate";
-  reviewStatus?: "auto_checked" | "manual_review_needed" | "manual_confirmed";
-  answerSnapshot: string;
-  manualOverride: boolean;
-  dataConfidence?: DataConfidence;
-  executionStatus?: "success" | "pending_config" | "failed";
-  providerKey?: "deepseek" | "doubao" | "qwen";
-  modelName?: string;
-  testedAt?: string;
-  errorMessage?: string;
 }
 
 export interface BotVisitSummary {
