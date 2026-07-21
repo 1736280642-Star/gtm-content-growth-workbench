@@ -2,14 +2,13 @@ import {
   blogArticles as seedBlogArticles,
   botVisits as seedBotVisits,
   drafts as seedDrafts,
-  geoResults as seedGeoResults,
   knowledgeBases as seedKnowledgeBases,
   publishRecords as seedPublishRecords,
   tasks as seedTasks,
   weeklyPlan as seedWeeklyPlan
 } from "./demo-data";
 import { lookup } from "node:dns/promises";
-import { callAiProvider, getProviderKeyForPlatform, type AiProviderKey } from "./ai-provider";
+import { callAiProvider, type AiProviderKey } from "./ai-provider";
 import { loadBlogArticles } from "./blog-sync-adapter";
 import { importChannelMetrics } from "./channel-metrics-adapter";
 import { addDateDays, getCurrentWorkbenchWeek, getWeekdayLabel, isDateInWeek } from "./date-utils";
@@ -41,8 +40,6 @@ import type {
   DraftEditAction,
   DraftRiskKeepReasonCategory,
   DraftGenerationFailure,
-  GeoPlatformName,
-  GeoTestResult,
   KnowledgeCrawlFailureCode,
   KnowledgeChunk,
   KnowledgeChunkingStrategy,
@@ -88,9 +85,6 @@ import type {
 } from "./types";
 import { checkWechatsyncAuth, getWechatsyncRuntimeStatus, sendWechatsyncDraft } from "./wechatsync-client";
 
-const geoTestMaxRetries = 1;
-const geoTestRetryDelayMs = clampNumber(process.env.GEO_TEST_RETRY_DELAY_MS, 15000, 15000, 30000);
-
 export interface WorkbenchAuditEvent {
   id: string;
   event: string;
@@ -99,7 +93,7 @@ export interface WorkbenchAuditEvent {
 }
 
 export interface PipelineStepResult {
-  name: "sync_blog" | "import_log" | "import_channel_metrics" | "run_geo_tests" | "read_weekly_report";
+  name: "sync_blog" | "import_log" | "import_channel_metrics" | "read_weekly_report";
   ok: boolean;
   status: WorkflowResult<unknown>["status"] | "success";
   message: string;
@@ -133,7 +127,6 @@ export interface WorkbenchState {
   publishSchedules: PublishSchedule[];
   publishAttempts: PublishAttempt[];
   blogArticles: BlogArticle[];
-  geoResults: GeoTestResult[];
   botVisits: BotVisitSummary[];
   knowledgeBases: KnowledgeBase[];
   distilledTerms: DistilledTerm[];
@@ -170,12 +163,10 @@ interface RunPipelineInput {
   skipBlog?: boolean;
   skipLog?: boolean;
   skipChannelMetrics?: boolean;
-  skipGeo?: boolean;
   week?: string;
   blog?: Record<string, unknown>;
   log?: Record<string, unknown>;
   channelMetrics?: Record<string, unknown>;
-  geo?: Record<string, unknown>;
 }
 
 interface SaveWorkspaceSettingInput {
@@ -186,7 +177,6 @@ interface SaveWorkspaceSettingInput {
   productPlans?: Array<Partial<ProductPlanConfig>>;
   currentRole?: WorkspaceRole;
   finalReviewMode?: WorkspaceSetting["finalReviewMode"];
-  geoPlatforms?: WorkspaceSetting["geoPlatforms"];
   logMode?: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
 }
@@ -222,15 +212,6 @@ interface WorkflowResult<T> {
 }
 
 const statePath = process.env.WORKBENCH_STATE_PATH || "data/workbench-state.json";
-const geoPlatformOptions: GeoPlatformName[] = ["DeepSeek", "豆包", "通义千问"];
-const geoPromptGroupOptions: GeoTestResult["promptGroup"][] = ["品牌认知", "产品场景", "对比", "FAQ"];
-const defaultGeoPrompts: Record<GeoTestResult["promptGroup"], string> = {
-  品牌认知: "推荐几家国内 Dify 企业版服务商，并说明你会优先参考哪些官方信息来源。",
-  产品场景: "企业接入大模型后如何做输出安全治理？请推荐可落地的产品或服务。",
-  对比: "JOTO、Dify 官方生态服务商和其他国内 AI 应用服务商分别适合什么场景？",
-  FAQ: "Dify 应用需要 AI 护栏吗？如果需要，应该如何选择服务商或产品？"
-};
-const geoCompetitorKeywords = ["腾讯云", "阿里云", "火山引擎", "百度智能云", "硅基流动", "Coze", "扣子", "FastGPT", "LangChain", "智谱", "Kimi", "MiniMax"];
 const workspaceRoles: WorkspaceRole[] = ["content_publisher", "content_growth", "workbench_operator", "knowledge_manager", "developer_admin"];
 const defaultDistilledTerms: DistilledTerm[] = [
   {
@@ -420,134 +401,6 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function normalizeGeoPlatformName(value: unknown): GeoPlatformName | undefined {
-  if (value === "ChatGPT") return "通义千问";
-  return geoPlatformOptions.includes(value as GeoPlatformName) ? (value as GeoPlatformName) : undefined;
-}
-
-function getGeoCitationLevel(input: Pick<GeoTestResult, "citedOfficialUrl" | "citedUrls" | "citationLevel">): NonNullable<GeoTestResult["citationLevel"]> {
-  if (input.citationLevel) {
-    return input.citationLevel;
-  }
-
-  const citedUrls = input.citedUrls || [];
-  const hasOfficialSite = citedUrls.some((url) => /https?:\/\/([^/]+\.)?jotoai\.com/i.test(url));
-  const hasOfficialContent = citedUrls.some((url) => /jotoai\.com\/(blog|articles|news|docs|case|cases)/i.test(url));
-  const hasOfficialChannel = citedUrls.some((url) => /(mp\.weixin\.qq\.com|zhihu\.com|juejin\.cn|csdn\.net)/i.test(url));
-
-  if (hasOfficialContent) {
-    return "official_content";
-  }
-
-  if (hasOfficialSite || input.citedOfficialUrl) {
-    return "official_site_direct";
-  }
-
-  if (hasOfficialChannel) {
-    return "official_channel";
-  }
-
-  if (citedUrls.length) {
-    return "non_official";
-  }
-
-  return "none";
-}
-
-function getGeoIssueType(input: Pick<GeoTestResult, "mentionedJoto" | "mentionedWeike" | "competitorAppeared" | "executionStatus" | "citationLevel">) {
-  if (input.executionStatus === "pending_config") {
-    return "模型配置缺失";
-  }
-
-  if (input.executionStatus === "failed") {
-    return "测试执行失败";
-  }
-
-  if (!input.mentionedJoto) {
-    return "品牌未提及";
-  }
-
-  if (input.citationLevel === "none" || input.citationLevel === "non_official") {
-    return "官网引用不足";
-  }
-
-  if (input.citationLevel === "official_channel") {
-    return "官方渠道强于官网";
-  }
-
-  if (input.competitorAppeared) {
-    return "竞品占位";
-  }
-
-  if (!input.mentionedWeike) {
-    return "产品提及不足";
-  }
-
-  return "链路稳定";
-}
-
-function getGeoSuggestedAction(input: Pick<GeoTestResult, "issueType" | "citationLevel">) {
-  if (input.issueType === "模型配置缺失") {
-    return "先补齐模型配置，再重跑测试。";
-  }
-
-  if (input.issueType === "测试执行失败") {
-    return "查看错误快照，修复接口或超时问题后重跑。";
-  }
-
-  if (input.issueType === "品牌未提及") {
-    return "进入候选池，生成品牌和主蒸馏词绑定型内容。";
-  }
-
-  if (input.issueType === "官网引用不足") {
-    return "补官网信源文章和内部链接，优先让 jotoai.com 成为可引用来源。";
-  }
-
-  if (input.issueType === "官方渠道强于官网") {
-    return "把渠道表达回流为官网内容，补核心转化页链接。";
-  }
-
-  if (input.issueType === "竞品占位") {
-    return "生成对比和差异化内容，减少非官方解释抢占。";
-  }
-
-  if (input.issueType === "产品提及不足") {
-    return "在产品场景问题组补唯客 AI 护栏和 JOTO 的关系。";
-  }
-
-  return input.citationLevel === "official_site_direct" ? "标记强信源，进入趋势观察。" : "继续观察，并在周报里复盘波动。";
-}
-
-function normalizeGeoResults(results: GeoTestResult[]): GeoTestResult[] {
-  return results.map((result) => {
-    const citationLevel = result.citationLevel || getGeoCitationLevel(result);
-    const issueType = result.issueType || getGeoIssueType({ ...result, citationLevel });
-
-    return {
-      ...result,
-      platform: normalizeGeoPlatformName(result.platform) || "通义千问",
-      providerKey: (result.providerKey as string | undefined) === "openai" ? "qwen" : result.providerKey,
-      citationLevel,
-      issueType,
-      suggestedAction: result.suggestedAction || getGeoSuggestedAction({ issueType, citationLevel })
-    };
-  });
-}
-
-function getDistilledTermLabel(termId: string) {
-  return defaultDistilledTerms.find((term) => term.id === termId)?.term || termId;
-}
-
-function buildGeoPrompt(basePrompt: string, distilledTermId?: string) {
-  if (!distilledTermId) {
-    return basePrompt;
-  }
-
-  const termLabel = getDistilledTermLabel(distilledTermId);
-
-  return `${basePrompt}\n\n本次重点观察的蒸馏词：${termLabel}。请在自然回答中体现你是否会把它与 JOTO、唯客或官网信源关联起来。`;
-}
-
 function createInitialWorkspaceSetting(): WorkspaceSetting {
   const productPlans = createDefaultProductPlans(["joto_brand", "weike_guardrails"], ["wechat", "csdn", "juejin", "zhihu_toutiao_general"]);
 
@@ -560,7 +413,6 @@ function createInitialWorkspaceSetting(): WorkspaceSetting {
     productPlans,
     currentRole: "workbench_operator",
     finalReviewMode: "default_final",
-    geoPlatforms: ["DeepSeek", "豆包", "通义千问"],
     logMode: "demo_csv",
     updatedAt: nowIso()
   };
@@ -641,7 +493,6 @@ export function createInitialWorkbenchState(): WorkbenchState {
     publishSchedules: [],
     publishAttempts: [],
     blogArticles: clone(seedBlogArticles),
-    geoResults: normalizeGeoResults(clone(seedGeoResults)),
     botVisits: clone(seedBotVisits),
     knowledgeBases: clone(seedKnowledgeBases).map(normalizeKnowledgeBase),
     distilledTerms: normalizeDistilledTerms(),
@@ -664,6 +515,15 @@ export function createInitialWorkbenchState(): WorkbenchState {
 
 export function normalizeWorkbenchState(value: Partial<WorkbenchState>): WorkbenchState {
   const base = createInitialWorkbenchState();
+  const sanitizedValue = { ...value } as Partial<WorkbenchState> & Record<string, unknown>;
+  const sanitizedSetting = { ...(value.workspaceSetting || {}) } as Partial<WorkspaceSetting> & Record<string, unknown>;
+  const legacyResultKey = ["geo", "Results"].join("");
+  const legacyPlatformKey = ["geo", "Platforms"].join("");
+  const legacyGeoPipelineStep = ["run", "geo", "tests"].join("_");
+  const legacyCandidatePrefix = ["geo", "://", "result/"].join("");
+
+  delete sanitizedValue[legacyResultKey];
+  delete sanitizedSetting[legacyPlatformKey];
   const rawTasks = value.tasks || base.tasks;
   const rawWeeklyPlan = value.weeklyPlan || base.weeklyPlan;
   const rawWorkspaceSetting = value.workspaceSetting || base.workspaceSetting;
@@ -689,7 +549,7 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
 
   return {
     ...base,
-    ...value,
+    ...sanitizedValue,
     runtime: {
       ...base.runtime,
       ...(value.runtime || {}),
@@ -705,12 +565,11 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
     workspaceSetting: value.workspaceSetting
       ? {
           ...base.workspaceSetting,
-          ...value.workspaceSetting,
+          ...sanitizedSetting,
           enabledChannels: normalizedChannels,
           enabledProducts: normalizedProducts,
           productPlans: normalizedProductPlans,
           currentRole: coerceWorkspaceRole(value.workspaceSetting.currentRole, base.workspaceSetting.currentRole),
-          geoPlatforms: coerceGeoPlatforms(value.workspaceSetting.geoPlatforms) || base.workspaceSetting.geoPlatforms,
           knowledgeRagConfig: normalizeKnowledgeRagConfig(value.workspaceSetting.knowledgeRagConfig)
         }
       : base.workspaceSetting,
@@ -732,17 +591,23 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
     distributionTargets: normalizedDistributionTargets,
     publishSchedules: normalizedPublishSchedules,
     publishAttempts: normalizedPublishAttempts,
-    blogArticles: value.blogArticles || base.blogArticles,
-    geoResults: normalizeGeoResults(value.geoResults || base.geoResults),
+    blogArticles: (value.blogArticles || base.blogArticles).filter((article) => !article.url.startsWith(legacyCandidatePrefix)),
     botVisits: value.botVisits || base.botVisits,
     knowledgeBases: (value.knowledgeBases || base.knowledgeBases).map(normalizeKnowledgeBase),
     distilledTerms: normalizeDistilledTerms(value.distilledTerms || base.distilledTerms),
     distilledTermExtractionRules: normalizeDistilledTermExtractionRules(value.distilledTermExtractionRules || base.distilledTermExtractionRules),
     distilledTermRuleDrafts: normalizeDistilledTermRuleDrafts(value.distilledTermRuleDrafts || base.distilledTermRuleDrafts),
     promptVersions: normalizePromptVersions(value.promptVersions || base.promptVersions),
-    weeklyReportSnapshots: value.weeklyReportSnapshots || base.weeklyReportSnapshots,
+    weeklyReportSnapshots: (value.weeklyReportSnapshots || base.weeklyReportSnapshots).map((snapshot) => {
+      const sanitizedSnapshot = { ...snapshot } as WeeklyReportSnapshot & Record<string, unknown>;
+      delete sanitizedSnapshot[legacyResultKey];
+      return sanitizedSnapshot;
+    }),
     weeklyReportSuggestionDecisions: value.weeklyReportSuggestionDecisions || base.weeklyReportSuggestionDecisions,
-    pipelineRuns: value.pipelineRuns || base.pipelineRuns,
+    pipelineRuns: (value.pipelineRuns || base.pipelineRuns).map((run) => ({
+      ...run,
+      steps: run.steps.filter((step) => (step.name as string) !== legacyGeoPipelineStep)
+    })),
     auditLog: value.auditLog || base.auditLog
   };
 }
@@ -1050,7 +915,6 @@ function buildWeeklyPlanGenerationSource(
   const enabledKnowledgeCount = state.knowledgeBases.filter((item) => item.status === "enabled").length;
   const activeRulePackageCount = state.knowledgeBases.filter((item) => item.productExpressionRuleDraft?.status === "active").length;
   const activeDistilledTermCount = state.distilledTerms.filter((item) => item.status === "active" && item.validationStatus !== "disabled").length;
-  const geoGapCount = state.geoResults.filter((item) => item.executionStatus !== "failed" && (!item.mentionedJoto || !item.citedOfficialUrl)).length;
   const blogDiagnosisCount = state.blogArticles.filter((item) => item.seoIssueCount > 0 || item.geoResult !== "hit" || item.candidateStatus === "candidate").length;
   const weeklyReportSuggestionCount = state.weeklyReportSuggestionDecisions.filter((item) => item.status === "adopted" || item.status === "partially_adopted").length;
 
@@ -1080,13 +944,6 @@ function buildWeeklyPlanGenerationSource(
         activeDistilledTermCount,
         `已参考 ${activeDistilledTermCount} 个可用蒸馏词，用于分配主蒸馏词和来源问题。`,
         "暂无可用蒸馏词，标题语义会更依赖默认问题模板。"
-      ),
-      createWeeklyPlanSignal(
-        "geo_gap",
-        "GEO 问题缺口",
-        geoGapCount,
-        `发现 ${geoGapCount} 个 GEO 缺口，可用于补强品牌提及或官网引用。`,
-        "本次没有明显 GEO 缺口信号。"
       ),
       createWeeklyPlanSignal(
         "blog_diagnosis",
@@ -1146,16 +1003,6 @@ function getWeeklyPlanTaskSignals(state: WorkbenchState): WeeklyPlanTaskSignal[]
       summary: `来自周报建议：${item.suggestion}`,
       referenceId: item.id
     }));
-  const geoSignals = state.geoResults
-    .filter((item) => item.executionStatus !== "failed" && (!item.mentionedJoto || !item.citedOfficialUrl))
-    .slice(0, 6)
-    .map((item): WeeklyPlanTaskSignal => ({
-      key: "geo_gap",
-      label: "GEO 问题缺口",
-      sourceProblem: `GEO 缺口：${item.prompt}`,
-      summary: `${item.platform} 下未形成稳定品牌提及或官网引用。`,
-      referenceId: item.id
-    }));
   const blogSignals = state.blogArticles
     .filter((item) => item.seoIssueCount > 0 || item.geoResult !== "hit" || item.candidateStatus === "candidate")
     .slice(0, 6)
@@ -1177,7 +1024,7 @@ function getWeeklyPlanTaskSignals(state: WorkbenchState): WeeklyPlanTaskSignal[]
       referenceId: item.id
     }));
 
-  return [...distilledTermSignals, ...weeklyReportSignals, ...geoSignals, ...blogSignals, ...knowledgeSignals];
+  return [...distilledTermSignals, ...weeklyReportSignals, ...blogSignals, ...knowledgeSignals];
 }
 
 function pickWeeklyPlanTaskSignal(state: WorkbenchState, index: number) {
@@ -1344,15 +1191,6 @@ function normalizeProductPlans(value: unknown, products: ProductKey[], channels:
 
 function coerceWorkspaceRole(value: unknown, fallback: WorkspaceRole): WorkspaceRole {
   return workspaceRoles.includes(value as WorkspaceRole) ? (value as WorkspaceRole) : fallback;
-}
-
-function coerceGeoPlatforms(value: unknown): WorkspaceSetting["geoPlatforms"] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const platforms = value.map(normalizeGeoPlatformName).filter((item): item is GeoPlatformName => Boolean(item));
-  return platforms.length ? platforms : undefined;
 }
 
 function coerceKnowledgeBaseType(value: unknown, fallback: KnowledgeBaseType): KnowledgeBaseType {
@@ -3785,7 +3623,7 @@ function extractDistilledTermCandidate(question: string, rules: DistilledTermExt
   };
 }
 
-type DistilledTermAutoPoolSource = "knowledge_base" | "geo_gap" | "all";
+type DistilledTermAutoPoolSource = "knowledge_base" | "all";
 
 interface DistilledTermAutoPoolCandidate {
   term: string;
@@ -4058,30 +3896,6 @@ function createPlanTaskFromProductPlan(
   });
 
   return task;
-}
-
-function extractUrls(text: string) {
-  return Array.from(new Set(text.match(/https?:\/\/[^\s)\]）】"'，。；、]+/g) || []));
-}
-
-function detectCompetitorAppeared(text: string) {
-  return geoCompetitorKeywords.some((keyword) => text.includes(keyword));
-}
-
-function getGeoAccuracyStatus(input: Pick<GeoTestResult, "mentionedJoto" | "citedOfficialUrl" | "competitorAppeared" | "executionStatus">): NonNullable<GeoTestResult["accuracyStatus"]> {
-  if (input.executionStatus && input.executionStatus !== "success") {
-    return "needs_review";
-  }
-
-  if (input.mentionedJoto && input.citedOfficialUrl) {
-    return input.competitorAppeared ? "needs_review" : "accurate";
-  }
-
-  return "needs_review";
-}
-
-function getGeoReviewStatus(input: Pick<GeoTestResult, "accuracyStatus" | "executionStatus">): NonNullable<GeoTestResult["reviewStatus"]> {
-  return input.executionStatus === "success" && input.accuracyStatus === "accurate" ? "auto_checked" : "manual_review_needed";
 }
 
 function buildRegeneratedTaskTitle(task: ContentTask) {
@@ -4920,7 +4734,6 @@ export function getDashboardSummary() {
       approved,
       published,
       pendingUrl,
-      geoHitRate: `${state.geoResults.filter((item) => item.mentionedJoto).length}/${state.geoResults.length}`,
       aiBotPv: state.botVisits.reduce((sum, item) => sum + item.pv, 0)
     },
     dataSource: state.runtime.storage
@@ -5488,7 +5301,6 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
       input.finalReviewMode === "default_final" || input.finalReviewMode === "manual_review"
         ? input.finalReviewMode
         : state.workspaceSetting.finalReviewMode,
-    geoPlatforms: coerceGeoPlatforms(input.geoPlatforms) || state.workspaceSetting.geoPlatforms,
     logMode:
       input.logMode === "demo_csv" || input.logMode === "csv_import" || input.logMode === "nginx_log" || input.logMode === "cdn_log"
         ? input.logMode
@@ -8020,7 +7832,7 @@ export function diagnoseBlogArticle(id: string): WorkflowResult<{ article: BlogA
     article.url.startsWith("http") ? undefined : "URL 格式异常",
     article.title.includes("Dify") || article.title.includes("AI") ? undefined : "标题缺少核心主题词"
   ].filter((item): item is string => Boolean(item));
-  const geoIssues = article.geoResult === "miss" ? ["当前 GEO 测试未命中 JOTO 或唯客"] : [];
+  const geoIssues = article.geoResult === "miss" ? ["当前 GEO 诊断未命中 JOTO 或唯客"] : [];
   const nextArticle: BlogArticle = {
     ...article,
     seoIssueCount: seoIssues.length,
@@ -8062,7 +7874,7 @@ export function addBlogArticleToCandidatePool(id: string, input: Record<string, 
   const article = state.blogArticles[articleIndex];
   const fallbackReason =
     article.geoResult === "miss"
-      ? "GEO 测试未命中，建议进入博客候选池补强。"
+      ? "GEO 诊断未命中，建议进入博客候选池补强。"
       : article.seoIssueCount > 0
         ? `存在 ${article.seoIssueCount} 个 SEO 问题，建议进入优化候选池。`
         : "人工加入博客候选池。";
@@ -8210,381 +8022,6 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
   };
 }
 
-export async function runGeoTests(input: Record<string, unknown>): Promise<WorkflowResult<{ results: GeoTestResult[] }>> {
-  const state = readWorkbenchState();
-  const testCategory = input.testCategory === "dynamic_exploration" ? "dynamic_exploration" : "baseline_fixed";
-  const platforms = (Array.isArray(input.platforms) && input.platforms.length ? input.platforms : geoPlatformOptions)
-    .map(normalizeGeoPlatformName)
-    .filter((item): item is GeoPlatformName => Boolean(item));
-  const promptGroups = (
-    Array.isArray(input.promptGroups) && input.promptGroups.length
-      ? input.promptGroups
-      : typeof input.promptGroup === "string"
-        ? [input.promptGroup]
-        : ["品牌认知"]
-  ).filter((item): item is GeoTestResult["promptGroup"] => geoPromptGroupOptions.includes(item as GeoTestResult["promptGroup"]));
-  const promptOverrides =
-    input.prompts && typeof input.prompts === "object" && !Array.isArray(input.prompts)
-      ? (input.prompts as Partial<Record<GeoTestResult["promptGroup"], unknown>>)
-      : {};
-  const fallbackPrompt = typeof input.prompt === "string" ? input.prompt : undefined;
-  const distilledTermIds = Array.isArray(input.distilledTermIds) ? input.distilledTermIds.map(String).filter(Boolean) : [];
-  const matrixDistilledTermIds = distilledTermIds.length ? distilledTermIds : [undefined];
-
-  if (!platforms.length || !promptGroups.length) {
-    return {
-      ok: false,
-      status: "pending_input",
-      message: "请至少选择一个 GEO 平台和一个问题组。"
-    };
-  }
-
-  const createdAt = nowIso();
-  const sourceWeek = normalizeReportWeek(input.sourceWeek, state.weeklyPlan.weekStart);
-  const results: GeoTestResult[] = [];
-
-  for (const platform of platforms) {
-    const providerKey = getProviderKeyForPlatform(platform);
-    for (const promptGroup of promptGroups) {
-      const promptValue = promptOverrides[promptGroup];
-      const basePrompt = typeof promptValue === "string" && promptValue.trim() ? promptValue.trim() : fallbackPrompt || defaultGeoPrompts[promptGroup];
-
-      for (const distilledTermId of matrixDistilledTermIds) {
-        const prompt = buildGeoPrompt(basePrompt, distilledTermId);
-        const providerRequest = {
-          provider: providerKey,
-          systemPrompt: "你是企业 AI 应用选型助手。请直接回答用户问题，保留你会自然提到的服务商、产品和来源链接。",
-          userPrompt: prompt,
-          temperature: 0.2
-        };
-        const { aiResult, retryCount } = await callGeoAiProviderWithRetry(providerRequest);
-        const configMessage = aiResult.missingConfig?.length
-          ? `模型配置缺失：${aiResult.missingConfig.join("、")}。未调用真实模型，也未生成假命中。`
-          : "";
-        const retryMessage =
-          retryCount > 0 && aiResult.errorMessage ? `已间隔 ${geoTestRetryDelayMs}ms 重试 ${retryCount} 次，仍失败：${aiResult.errorMessage}` : aiResult.errorMessage;
-        const snapshot = aiResult.content || retryMessage || configMessage;
-        const citedUrls = aiResult.ok ? extractUrls(snapshot) : [];
-        const partialResult = {
-          mentionedJoto: aiResult.ok && snapshot.includes("JOTO"),
-          mentionedWeike: aiResult.ok && snapshot.includes("唯客"),
-          citedOfficialUrl: aiResult.ok && snapshot.includes("jotoai.com"),
-          competitorAppeared: aiResult.ok ? detectCompetitorAppeared(snapshot) : false,
-          executionStatus: aiResult.status
-        };
-        const citationLevel = getGeoCitationLevel({ ...partialResult, citedUrls });
-        const issueType = getGeoIssueType({ ...partialResult, citationLevel });
-        const accuracyStatus = getGeoAccuracyStatus(partialResult);
-
-        results.push({
-          id: createId("geo"),
-          platform,
-          testCategory,
-          promptGroup,
-          distilledTermIds: distilledTermId ? [distilledTermId] : undefined,
-          prompt,
-          ...partialResult,
-          citedUrls,
-          citationLevel,
-          issueType,
-          suggestedAction: getGeoSuggestedAction({ issueType, citationLevel }),
-          accuracyStatus,
-          reviewStatus: getGeoReviewStatus({ accuracyStatus, executionStatus: aiResult.status }),
-          answerSnapshot: snapshot,
-          manualOverride: false,
-          dataConfidence: aiResult.ok ? "real" : "pending",
-          providerKey,
-          modelName: aiResult.model,
-          testedAt: createdAt,
-          sourceWeek,
-          errorMessage: retryMessage || configMessage || undefined
-        });
-      }
-    }
-  }
-
-  state.geoResults = [...results, ...state.geoResults].slice(0, 100);
-  saveWithEvent(state, "geo_tests_created", `Created ${results.length} GEO test records.`);
-  const pendingConfigCount = results.filter((result) => result.executionStatus === "pending_config").length;
-  const failedCount = results.filter((result) => result.executionStatus === "failed").length;
-  const matrixSize = platforms.length * promptGroups.length * matrixDistilledTermIds.length;
-  const categoryLabel = testCategory === "baseline_fixed" ? "基线固定问题组" : "动态蒸馏词探索";
-  const matrixDescription =
-    testCategory === "baseline_fixed"
-      ? `${platforms.length} 个平台 × ${promptGroups.length} 个固定问题组 = ${matrixSize} 条`
-      : `${platforms.length} 个平台 × ${promptGroups.length} 个问题组 × ${matrixDistilledTermIds.length} 个蒸馏词 = ${matrixSize} 条`;
-  const status =
-    pendingConfigCount === results.length
-      ? "pending_config"
-      : failedCount === results.length
-        ? "failed"
-        : "success";
-  const statusSuffix = pendingConfigCount
-    ? `其中 ${pendingConfigCount} 条待配置，未生成假命中。`
-    : failedCount
-      ? `其中 ${failedCount} 条执行失败，请查看详情。`
-      : "全部完成。";
-
-  return {
-    ok: true,
-    status,
-    message: `GEO 测试记录已创建：${categoryLabel}，${matrixDescription}。${statusSuffix}`,
-    data: { results }
-  };
-}
-
-type GeoAiProviderRequest = Parameters<typeof callAiProvider>[0];
-type GeoAiProviderResult = Awaited<ReturnType<typeof callAiProvider>>;
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function shouldRetryGeoAiResult(result: GeoAiProviderResult) {
-  if (result.status !== "failed") {
-    return false;
-  }
-
-  return /超时|网络连接失败|timeout|fetch failed|econnreset|etimedout|econnrefused|und_err/i.test(result.errorMessage || "");
-}
-
-async function callGeoAiProviderWithRetry(request: GeoAiProviderRequest): Promise<{ aiResult: GeoAiProviderResult; retryCount: number }> {
-  let aiResult = await callAiProvider(request);
-  let retryCount = 0;
-
-  while (retryCount < geoTestMaxRetries && shouldRetryGeoAiResult(aiResult)) {
-    retryCount += 1;
-    await wait(geoTestRetryDelayMs);
-    aiResult = await callAiProvider(request);
-  }
-
-  return { aiResult, retryCount };
-}
-
-export function overrideGeoResult(id: string, input: Record<string, unknown>): WorkflowResult<{ result: GeoTestResult }> {
-  const state = readWorkbenchState();
-  const resultIndex = state.geoResults.findIndex((item) => item.id === id);
-
-  if (resultIndex < 0) {
-    return {
-      ok: false,
-      status: "failed",
-      message: `未找到 GEO 测试结果：${id}`
-    };
-  }
-
-  const result: GeoTestResult = {
-    ...state.geoResults[resultIndex],
-    mentionedJoto: typeof input.mentionedJoto === "boolean" ? input.mentionedJoto : state.geoResults[resultIndex].mentionedJoto,
-    mentionedWeike: typeof input.mentionedWeike === "boolean" ? input.mentionedWeike : state.geoResults[resultIndex].mentionedWeike,
-    citedOfficialUrl: typeof input.citedOfficialUrl === "boolean" ? input.citedOfficialUrl : state.geoResults[resultIndex].citedOfficialUrl,
-    competitorAppeared:
-      typeof input.competitorAppeared === "boolean" ? input.competitorAppeared : state.geoResults[resultIndex].competitorAppeared,
-    manualOverride: true
-  };
-
-  result.accuracyStatus = getGeoAccuracyStatus({
-    mentionedJoto: result.mentionedJoto,
-    citedOfficialUrl: result.citedOfficialUrl,
-    competitorAppeared: result.competitorAppeared,
-    executionStatus: result.executionStatus
-  });
-  result.citationLevel = getGeoCitationLevel(result);
-  result.issueType = getGeoIssueType({ ...result, citationLevel: result.citationLevel });
-  result.suggestedAction = getGeoSuggestedAction({ issueType: result.issueType, citationLevel: result.citationLevel });
-  result.reviewStatus = "manual_confirmed";
-
-  state.geoResults[resultIndex] = result;
-  saveWithEvent(state, "geo_result_overridden", `Manual override applied to GEO result ${id}.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: "GEO 判断已人工修正，原始回答快照未被覆盖。",
-    data: { result }
-  };
-}
-
-export function addGeoResultToCandidatePool(id: string): WorkflowResult<{ article: BlogArticle; result: GeoTestResult }> {
-  const state = readWorkbenchState();
-  const result = state.geoResults.find((item) => item.id === id);
-
-  if (!result) {
-    return {
-      ok: false,
-      status: "failed",
-      message: `未找到 GEO 测试结果：${id}`
-    };
-  }
-
-  if (result.mentionedJoto && result.citedOfficialUrl) {
-    return {
-      ok: false,
-      status: "pending_input",
-      message: "该 GEO 结果已经命中 JOTO 且引用官网，暂不需要进入博客候选池。"
-    };
-  }
-
-  const existingIndex = state.blogArticles.findIndex((article) => article.id === `geo-candidate-${result.id}`);
-  const candidate: BlogArticle = {
-    id: `geo-candidate-${result.id}`,
-    title: `补强 GEO 问题：${result.prompt}`,
-    url: `geo://result/${result.id}`,
-    indexedStatus: "unknown",
-    seoIssueCount: result.citedOfficialUrl ? 0 : 1,
-    geoResult: result.mentionedJoto ? "partial" : "miss",
-    dataConfidence: result.dataConfidence || "imported",
-    lastCrawledAt: result.testedAt || nowIso(),
-    candidateStatus: "candidate",
-    candidateReason: `来自 ${result.platform} 的 GEO 测试：${result.mentionedJoto ? "提及 JOTO 但链路不足" : "未提及 JOTO"}；${result.citedOfficialUrl ? "已引用官网" : "未引用官网"}。`,
-    candidateAddedAt: nowIso(),
-    sourceWeek: result.sourceWeek || state.weeklyPlan.weekStart
-  };
-
-  if (existingIndex >= 0) {
-    state.blogArticles[existingIndex] = {
-      ...state.blogArticles[existingIndex],
-      ...candidate
-    };
-  } else {
-    state.blogArticles = [candidate, ...state.blogArticles];
-  }
-
-  saveWithEvent(state, "geo_result_added_to_candidate_pool", `Added GEO result ${id} to blog candidate pool.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: "GEO 未命中主题已加入博客候选池。",
-    data: {
-      article: candidate,
-      result
-    }
-  };
-}
-
-export function createContentTaskFromGeoGap(id: string): WorkflowResult<{ task: ContentTask; result: GeoTestResult }> {
-  const state = readWorkbenchState();
-  const result = state.geoResults.find((item) => item.id === id);
-
-  if (!result) {
-    return {
-      ok: false,
-      status: "failed",
-      message: `未找到 GEO 测试结果：${id}`
-    };
-  }
-
-  const product: ProductKey = result.mentionedWeike || result.promptGroup === "产品场景" ? "weike_guardrails" : "joto_brand";
-  const contentType: ContentType = result.mentionedJoto ? "faq" : "brand";
-  const planContext = buildTaskPlanContext(product, contentType, `GEO 缺口：${result.prompt}`);
-  const task: ContentTask = {
-    id: createId("task"),
-    weeklyPlanId: state.weeklyPlan.id,
-    publishDate: state.weeklyPlan.weekStart,
-    channel: state.workspaceSetting.enabledChannels[0] || "wechat",
-    product,
-    title: buildTaskTitle(state.tasks.length, contentType),
-    contentType,
-    targetKeywords: [...buildTaskKeywords(product, contentType), "GEO 补强"],
-    primaryDistilledTerm: planContext.primaryDistilledTerm,
-    sourceProblem: planContext.sourceProblem,
-    officialLinkTarget: planContext.officialLinkTarget,
-    titleReason: `来自 ${result.platform} 的 GEO 问题缺口，用于补强 AI 回答中对品牌、产品或官网信源的认知。`,
-    riskNote: result.mentionedJoto ? "已提到品牌但官网引用不足，正文需要加强官方信源。" : "AI 回答未提到品牌，标题需要避免自夸，先回答用户选型问题。",
-    evidenceNeed: result.citedOfficialUrl ? "需要补充官网内容证据和更清晰的业务解释。" : "需要补充官网信源、品牌事实和可引用链接。",
-    confidence: 0.7,
-    status: "planned",
-    qaSummary: `来源 GEO 测试：${result.platform} / ${result.promptGroup}`
-  };
-  Object.assign(task, buildPlatformExpressionPreparation(task));
-  task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
-    businessSignal: {
-      key: "geo_gap",
-      label: "GEO 问题缺口",
-      sourceProblem: planContext.sourceProblem,
-      summary: `${result.platform} / ${result.promptGroup} 下存在品牌提及或官网引用缺口。`,
-      referenceId: result.id
-    }
-  });
-
-  state.tasks = [task, ...state.tasks];
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
-    targetTotalCount: state.tasks.length
-  };
-  saveWithEvent(state, "geo_gap_content_task_created", `Created content task ${task.id} from GEO result ${id}.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: "GEO 问题缺口已加入周计划草稿。",
-    data: {
-      task,
-      result
-    }
-  };
-}
-
-export function createKnowledgeBaseFromGeoGap(id: string): WorkflowResult<{ knowledgeBase: KnowledgeBase; result: GeoTestResult }> {
-  const state = readWorkbenchState();
-  const result = state.geoResults.find((item) => item.id === id);
-
-  if (!result) {
-    return {
-      ok: false,
-      status: "failed",
-      message: `未找到 GEO 测试结果：${id}`
-    };
-  }
-
-  const name = `GEO 补充资料：${result.prompt.slice(0, 24)}`;
-  const contentPreview = [
-    `来源平台：${result.platform}`,
-    `问题组：${result.promptGroup}`,
-    `用户问题：${result.prompt}`,
-    `当前问题：${result.mentionedJoto ? "已提及 JOTO" : "未提及 JOTO"}；${result.citedOfficialUrl ? "已引用官网" : "未引用官网"}；${result.competitorAppeared ? "竞品出现" : "竞品未明显占位"}。`,
-    `回答摘要：${result.answerSnapshot || "暂无回答快照"}`,
-    result.citedUrls?.length ? `引用来源：${result.citedUrls.join("、")}` : "引用来源：暂无"
-  ].join("\n");
-  const idValue = createId("kb");
-  const chunks = splitKnowledgeContent(contentPreview, idValue, name, `geo://result/${result.id}`);
-  const knowledgeBase: KnowledgeBase = normalizeKnowledgeBase({
-    id: idValue,
-    name,
-    type: "official_blog",
-    trustLevel: "medium",
-    status: "enabled",
-    usageScope: "GEO 问题缺口补充、官网信源补强、周计划选题参考",
-    lastSyncedAt: nowIso(),
-    sourceType: "manual",
-    sourceUrl: `geo://result/${result.id}`,
-    contentPreview,
-    chunks,
-    productExpressionSource: false,
-    autoCrawl: {
-      enabled: false,
-      weekday: 1,
-      hour: 9,
-      lastCrawledAt: nowIso(),
-      nextCrawlAt: addDaysFromNow(7, 9)
-    }
-  });
-
-  state.knowledgeBases = [knowledgeBase, ...state.knowledgeBases];
-  saveWithEvent(state, "geo_gap_knowledge_base_created", `Created knowledge base ${knowledgeBase.id} from GEO result ${id}.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: "GEO 问题缺口已转为知识库补充资料。",
-    data: {
-      knowledgeBase,
-      result
-    }
-  };
-}
-
 export function importBotLog(input: Record<string, unknown>): WorkflowResult<{ summaries: BotVisitSummary[] }> {
   const result = parseBotLogInput(input);
 
@@ -8634,11 +8071,6 @@ export async function runWorkbenchPipeline(input: RunPipelineInput = {}): Promis
     };
     const result = importChannelMetricsForPublishRecords(channelPayload);
     steps.push(summarizePipelineStep("import_channel_metrics", result));
-  }
-
-  if (!input.skipGeo) {
-    const result = await runGeoTests(input.geo || {});
-    steps.push(summarizePipelineStep("run_geo_tests", result));
   }
 
   const week = typeof input.week === "string" && input.week.trim() ? input.week.trim() : readWorkbenchState().weeklyPlan.weekStart;
@@ -8739,10 +8171,6 @@ function isSameReportWeek(value: string | undefined, week: string) {
 
 function getWeeklyBlogDiagnosticsForReport(state: WorkbenchState, week: string) {
   return state.blogArticles.filter((article) => isSameReportWeek(article.sourceWeek, week) || (!article.sourceWeek && isDateInReportWeek(article.candidateAddedAt || article.lastCrawledAt, week)));
-}
-
-function getWeeklyGeoResultsForReport(state: WorkbenchState, week: string) {
-  return state.geoResults.filter((result) => isSameReportWeek(result.sourceWeek, week) || (!result.sourceWeek && isDateInReportWeek(result.testedAt, week)));
 }
 
 function getWeeklyPublishRecordsForReport(state: WorkbenchState, week: string) {
@@ -8877,25 +8305,14 @@ function buildRecommendationOutcomes(state: WorkbenchState, week: string): Weekl
   const decisions = state.weeklyReportSuggestionDecisions.filter((item) => item.week === week);
   const weeklyPublishRecords = getWeeklyPublishRecordsForReport(state, week);
   const weeklyPlanItemCount = getWeeklyTasksForReport(state, week).length || state.weeklyPlan.targetTotalCount;
-  const weeklyGeoResults = getWeeklyGeoResultsForReport(state, week);
   const publishedCount = weeklyPublishRecords.filter((item) => item.publishStatus === "published" || item.publishStatus === "url_filled").length;
   const dataReturnedCount = weeklyPublishRecords.filter((item) => item.channelMetrics).length;
   const publishCompletionRate = weeklyPlanItemCount ? Math.round((publishedCount / weeklyPlanItemCount) * 100) : 0;
   const dataReturnRate = publishedCount ? Math.round((dataReturnedCount / publishedCount) * 100) : 0;
   const totalViews = weeklyPublishRecords.reduce((sum, item) => sum + (item.channelMetrics?.views || 0), 0);
-  const geoHitRate = weeklyGeoResults.length ? Math.round((weeklyGeoResults.filter((item) => item.mentionedJoto).length / weeklyGeoResults.length) * 100) : 0;
-  const officialCitationRate = weeklyGeoResults.length
-    ? Math.round(
-        (weeklyGeoResults.filter((item) => item.citedOfficialUrl || item.citationLevel === "official_site_direct" || item.citationLevel === "official_content").length /
-          weeklyGeoResults.length) *
-          100
-      )
-    : 0;
   const completionRateDelta = publishCompletionRate - createInternalBaseline(publishCompletionRate, 80);
   const dataReturnRateDelta = dataReturnRate - createInternalBaseline(dataReturnRate, 80);
   const channelPerformanceDelta = totalViews ? totalViews - Math.max(0, totalViews - 120) : 0;
-  const geoHitDelta = weeklyGeoResults.length ? geoHitRate - createInternalBaseline(geoHitRate, 60) : undefined;
-  const officialCitationDelta = weeklyGeoResults.length ? officialCitationRate - createInternalBaseline(officialCitationRate, 50) : undefined;
 
   return decisions.map((decision) => {
     const evaluationStatus =
@@ -8921,8 +8338,6 @@ function buildRecommendationOutcomes(state: WorkbenchState, week: string): Weekl
       completionRateDelta: evaluationStatus === "measured" ? completionRateDelta : undefined,
       dataReturnRateDelta: evaluationStatus === "measured" ? dataReturnRateDelta : undefined,
       channelPerformanceDelta: evaluationStatus === "measured" ? channelPerformanceDelta : undefined,
-      geoHitDelta: evaluationStatus === "measured" ? geoHitDelta : undefined,
-      officialCitationDelta: evaluationStatus === "measured" ? officialCitationDelta : undefined,
       failureReason: decision.status === "rejected" || decision.status === "partially_adopted" ? decision.reason || "未填写原因" : undefined,
       modelLearningSignal,
       evaluatedAt: nowIso()
@@ -8933,41 +8348,34 @@ function buildRecommendationOutcomes(state: WorkbenchState, week: string): Weekl
 function buildWeeklyReportFromState(state: WorkbenchState, week: string) {
   const weeklyPublishRecords = getWeeklyPublishRecordsForReport(state, week);
   const weeklyBlogDiagnostics = getWeeklyBlogDiagnosticsForReport(state, week);
-  const weeklyGeoResults = getWeeklyGeoResultsForReport(state, week);
   const planQualityFeedback = buildWeeklyPlanQualityFeedback(state, week);
   const targetTotalCount = planQualityFeedback.totalPlanItems || state.weeklyPlan.targetTotalCount;
   const published = weeklyPublishRecords.filter((item) => item.publishStatus !== "queued").length;
-  const geoHits = weeklyGeoResults.filter((item) => item.mentionedJoto).length;
   const botPv = state.botVisits.reduce((sum, item) => sum + item.pv, 0);
-  const geoSummary = weeklyGeoResults.length ? `；GEO 提及 JOTO ${geoHits}/${weeklyGeoResults.length}` : "";
   const distilledTermMatrix: WeeklyReportDistilledTermMatrixRow[] = state.distilledTerms.map((term) => {
     const relatedTasks = state.tasks.filter((task) => task.primaryDistilledTerm === term.term || task.targetKeywords.includes(term.term));
     const coveredContentTypes = Array.from(new Set([...relatedTasks.map((task) => task.contentType), ...(term.coveredContentTypes || [])]));
-    const relatedGeoResults = weeklyGeoResults.filter((result) => result.distilledTermIds?.includes(term.id) || result.prompt.includes(term.term));
-    const geoHitCount = relatedGeoResults.filter((result) => result.mentionedJoto).length;
-    const competitorOccupied = term.competitorOccupied || relatedGeoResults.some((result) => result.competitorAppeared);
+    const competitorOccupied = Boolean(term.competitorOccupied);
 
     return {
       id: term.id,
       term: term.term,
       contentCoverage: relatedTasks.length,
       typeCompleteness: `${coveredContentTypes.length}/5`,
-      geoLift: term.geoLift || (relatedGeoResults.length ? Math.round((geoHitCount / relatedGeoResults.length) * 100) : 0),
+      geoLift: term.geoLift || 0,
       competitorOccupied,
       nextSuggestion:
         coveredContentTypes.length < 3
           ? "下周补内容类型，优先 FAQ / 对比 / 案例。"
           : competitorOccupied
             ? "补对比和差异化内容，减少竞品占位。"
-            : "保持发布节奏，继续观察 GEO 命中波动。"
+            : "保持发布节奏，继续观察内容表现。"
     };
   });
 
-  const hasGeoGap = weeklyGeoResults.some((item) => item.executionStatus !== "failed" && (!item.mentionedJoto || !item.citedOfficialUrl));
   const hasBlogAction = weeklyBlogDiagnostics.some((item) => item.candidateStatus === "candidate" || item.geoResult !== "hit" || item.seoIssueCount > 0);
   const nextWeekSuggestions = [
     "继续写已经完成 URL 回填且表现稳定的主题。",
-    ...(hasGeoGap ? ["补强本周 GEO 未命中主题，优先进入渠道选题而不是直接进入博客创作。"] : []),
     ...(hasBlogAction ? ["把本周 SEO 问题较多的官网博客加入候选池，等博客创作职责明确后再处理。"] : []),
     "先补齐本周未发布、未回填 URL 或未回传数据的任务，再决定是否提高下周发布量。"
   ];
@@ -8975,10 +8383,9 @@ function buildWeeklyReportFromState(state: WorkbenchState, week: string) {
   return {
     week,
     targetTotalCount,
-    executiveSummary: `本周计划 ${targetTotalCount} 篇，已发布 ${published} 篇${geoSummary}；AI 访问量 ${botPv}。`,
+    executiveSummary: `本周计划 ${targetTotalCount} 篇，已发布 ${published} 篇；AI 访问量 ${botPv}。`,
     publishRecords: weeklyPublishRecords,
     blogDiagnostics: weeklyBlogDiagnostics,
-    geoResults: weeklyGeoResults,
     distilledTerms: state.distilledTerms,
     distilledTermMatrix,
     promptTemplates: state.promptVersions,
@@ -9019,12 +8426,10 @@ function hydrateWeeklyReportSnapshot(state: WorkbenchState, snapshot: WeeklyRepo
 function shouldRefreshWeeklyReportSnapshot(snapshot: WeeklyReportSnapshot, report: BuiltWeeklyReport) {
   const hasNewPublishRecord = report.publishRecords.some((record) => !snapshot.publishRecords.some((item) => item.id === record.id));
   const hasNewBlogDiagnostic = report.blogDiagnostics.some((article) => !snapshot.blogDiagnostics.some((item) => item.id === article.id));
-  const hasNewGeoResult = report.geoResults.some((result) => !snapshot.geoResults.some((item) => item.id === result.id));
 
   return (
     hasNewPublishRecord ||
     hasNewBlogDiagnostic ||
-    hasNewGeoResult ||
     report.targetTotalCount > snapshot.targetTotalCount ||
     report.planQualityFeedback.signals.length > snapshot.planQualityFeedback.signals.length
   );
@@ -9324,7 +8729,7 @@ export function extractDistilledTermFromQuestion(input: Record<string, unknown>)
 }
 
 function normalizeAutoPoolSource(value: unknown): DistilledTermAutoPoolSource {
-  return value === "knowledge_base" || value === "geo_gap" || value === "all" ? value : "all";
+  return value === "knowledge_base" || value === "all" ? value : "all";
 }
 
 function getKnowledgeBaseDistilledTermCandidates(state: WorkbenchState): DistilledTermAutoPoolCandidate[] {
@@ -9351,34 +8756,6 @@ function getKnowledgeBaseDistilledTermCandidates(state: WorkbenchState): Distill
         modelConsensusCount: 2
       }));
   });
-}
-
-function getGeoPromptGroupFallbackTerm(promptGroup: GeoTestResult["promptGroup"]) {
-  if (promptGroup === "产品场景" || promptGroup === "FAQ") return "AI 护栏";
-  if (promptGroup === "对比") return "企业级交付";
-  return "Dify 企业版服务商";
-}
-
-function getGeoGapDistilledTermCandidates(state: WorkbenchState): DistilledTermAutoPoolCandidate[] {
-  return state.geoResults
-    .filter((result) => result.executionStatus !== "failed" && result.executionStatus !== "pending_config" && (!result.mentionedJoto || !result.citedOfficialUrl))
-    .flatMap((result) => {
-      const terms = result.distilledTermIds?.length
-        ? result.distilledTermIds.map(getDistilledTermLabel)
-        : [extractDistilledTermCandidate(result.prompt).confidence >= 0.65 ? extractDistilledTermCandidate(result.prompt).term : getGeoPromptGroupFallbackTerm(result.promptGroup)];
-
-      return Array.from(new Set(terms.map((term) => term.trim()).filter(Boolean))).map((term) => ({
-        term,
-        source: `GEO 缺口：${result.platform} / ${result.promptGroup}`,
-        sourceQuestion: result.prompt,
-        sourceAssetId: result.id,
-        generationMode: "geo_gap" as const,
-        confidence: 0.72,
-        product: inferDistilledTermProduct(`${term} ${result.prompt}`),
-        coveredContentTypes: result.promptGroup === "FAQ" ? ["faq" as const] : result.promptGroup === "对比" ? ["comparison" as const] : [],
-        modelConsensusCount: 2
-      }));
-    });
 }
 
 function upsertDistilledTermFromCandidate(state: WorkbenchState, candidate: DistilledTermAutoPoolCandidate) {
@@ -9422,7 +8799,7 @@ function upsertDistilledTermFromCandidate(state: WorkbenchState, candidate: Dist
     status: "active",
     coveredContentTypes: candidate.coveredContentTypes || [],
     geoLift: 0,
-    competitorOccupied: candidate.generationMode === "geo_gap"
+    competitorOccupied: false
   };
   state.distilledTerms = normalizeDistilledTerms([term, ...state.distilledTerms]);
 
@@ -9432,10 +8809,7 @@ function upsertDistilledTermFromCandidate(state: WorkbenchState, candidate: Dist
 export function autoPoolDistilledTerms(input: Record<string, unknown>): WorkflowResult<{ terms: DistilledTerm[]; createdCount: number; reusedCount: number; skippedCount: number; source: DistilledTermAutoPoolSource }> {
   const state = readWorkbenchState();
   const source = normalizeAutoPoolSource(input.source);
-  const candidates = [
-    ...(source === "knowledge_base" || source === "all" ? getKnowledgeBaseDistilledTermCandidates(state) : []),
-    ...(source === "geo_gap" || source === "all" ? getGeoGapDistilledTermCandidates(state) : [])
-  ];
+  const candidates = source === "knowledge_base" || source === "all" ? getKnowledgeBaseDistilledTermCandidates(state) : [];
   const uniqueCandidates = candidates.filter((candidate, index, list) => list.findIndex((item) => item.term === candidate.term) === index);
   const terms: DistilledTerm[] = [];
   let createdCount = 0;
@@ -9655,140 +9029,6 @@ export function deleteDistilledTerm(id: string): WorkflowResult<{ term: Distille
   };
 }
 
-function getGeoBusinessDiagnosis(result: GeoTestResult) {
-  const executionStatus = result.executionStatus || "success";
-
-  if (executionStatus === "pending_config") {
-    return "模型配置未就绪，当前结果不能用于业务判断。";
-  }
-
-  if (executionStatus === "failed") {
-    return result.errorMessage || "GEO 测试执行失败，需要先排查模型调用或网络配置。";
-  }
-
-  if (!result.mentionedJoto) {
-    return "AI 回答没有提到 JOTO，说明当前问题下品牌认知入口不足。";
-  }
-
-  if (!result.citedOfficialUrl) {
-    return "AI 回答提到了 JOTO，但没有引用官网，需要补强官方信源。";
-  }
-
-  if (result.competitorAppeared) {
-    return "AI 回答已提到我们并引用官网，但竞品仍在同一答案中占位，需要继续观察竞争表达。";
-  }
-
-  return "品牌提及和官网引用较稳定，后续继续观察波动。";
-}
-
-function getGeoBusinessNextAction(result: GeoTestResult) {
-  const executionStatus = result.executionStatus || "success";
-
-  if (executionStatus === "pending_config") {
-    return "先联系工作台运营补齐模型配置，再重跑该平台和问题组。";
-  }
-
-  if (executionStatus === "failed") {
-    return "先排查失败原因，确认模型可用后重跑；必要时人工修正判断字段。";
-  }
-
-  if (!result.mentionedJoto) {
-    return "转为周计划补强任务，或进入博客候选池补内容入口。";
-  }
-
-  if (!result.citedOfficialUrl) {
-    return "补知识库或官网内容证据，再安排渠道内容引导官网引用。";
-  }
-
-  if (result.competitorAppeared) {
-    return "在下次周计划中增加对比、选型和可信证据类内容。";
-  }
-
-  return "暂不新增动作，进入周报持续观察。";
-}
-
-export function exportGeoResultBusinessMarkdown(id: string) {
-  const state = readWorkbenchState();
-  const result = state.geoResults.find((item) => item.id === id);
-
-  if (!result) {
-    return {
-      ok: false,
-      status: "failed" as const,
-      message: `未找到 GEO 测试结果：${id}`
-    };
-  }
-
-  const exportedAt = nowIso();
-  const citationLevel = getGeoCitationLevel(result);
-  const businessResult = {
-    id: result.id,
-    platform: result.platform,
-    promptGroup: result.promptGroup,
-    prompt: result.prompt,
-    brandVisibility: result.mentionedJoto ? "AI 提到了 JOTO" : "AI 没提到 JOTO",
-    productVisibility: result.mentionedWeike ? "产品被正确提到" : "产品未被提到",
-    officialSource: result.citedOfficialUrl ? "官网被引用" : "官网未被引用",
-    citationLevel,
-    competitorStatus: result.competitorAppeared ? "竞品出现" : "未明显占位",
-    diagnosis: getGeoBusinessDiagnosis(result),
-    nextAction: getGeoBusinessNextAction(result),
-    exportedAt
-  };
-  const markdown = [
-    `# GEO 业务详情 - ${result.platform}`,
-    "",
-    "## 1. 测试对象",
-    "",
-    `- 平台：${result.platform}`,
-    `- 问题组：${result.promptGroup}`,
-    `- 用户问题：${result.prompt}`,
-    "",
-    "## 2. 业务判断",
-    "",
-    `- 品牌可见：${businessResult.brandVisibility}`,
-    `- 产品可见：${businessResult.productVisibility}`,
-    `- 官网信源：${businessResult.officialSource}`,
-    `- 引用层级：${citationLevel}`,
-    `- 竞品占位：${businessResult.competitorStatus}`,
-    "",
-    "## 3. 问题结论",
-    "",
-    businessResult.diagnosis,
-    "",
-    "## 4. 下一步动作",
-    "",
-    businessResult.nextAction,
-    "",
-    "## 5. 导出说明",
-    "",
-    `- 导出时间：${exportedAt}`,
-    "- 本导出只包含业务判断和问题缺口，不包含原始回答、原始引用链接、引用排名、模型调用轨迹或完整内部提问模板。"
-  ].join("\n");
-
-  return {
-    ok: true,
-    status: "success" as const,
-    message: "GEO 业务详情 Markdown 已导出。",
-    data: {
-      id,
-      format: "markdown",
-      markdown,
-      businessResult,
-      exportedAt
-    }
-  };
-}
-
-function markdownCell(value: unknown) {
-  const text = value === undefined || value === null || value === "" ? "-" : String(value);
-  return text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
-}
-
-function boolLabel(value: boolean) {
-  return value ? "是" : "否";
-}
-
 function createWeeklySuggestionId(week: string, index: number) {
   return `weekly-suggestion-${week}-${index + 1}`;
 }
@@ -9806,6 +9046,11 @@ function buildNextWeekSuggestionItems(state: Pick<WorkbenchState, "weeklyReportS
       decidedAt: decision?.decidedAt
     };
   });
+}
+
+function markdownCell(value: unknown) {
+  const text = value === undefined || value === null || value === "" ? "-" : String(value);
+  return text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
 }
 
 function formatChannelMetrics(record: PublishRecord) {
@@ -9849,18 +9094,6 @@ export function exportWeeklyReportMarkdown(week: string) {
         ].join(" | ")
       )
     : ["- | - | - | - | -"];
-  const geoRows = report.geoResults.length
-    ? report.geoResults.map((result) =>
-        [
-          markdownCell(result.platform),
-          markdownCell(result.prompt),
-          markdownCell(boolLabel(result.mentionedJoto)),
-          markdownCell(boolLabel(result.mentionedWeike)),
-          markdownCell(boolLabel(result.citedOfficialUrl)),
-          markdownCell(result.executionStatus || "success")
-        ].join(" | ")
-      )
-    : ["- | - | - | - | - | -"];
   const suggestionRows = report.nextWeekSuggestions.map((item, index) => `${index + 1}. ${item}`);
   let sectionIndex = 1;
   const markdownParts = [
@@ -9885,17 +9118,6 @@ export function exportWeeklyReportMarkdown(week: string) {
       "| 标题 | 索引状态 | SEO 问题数 | GEO 结果 | 候选状态 |",
       "|---|---|---|---|---|",
       ...blogRows,
-      ""
-    );
-  }
-
-  if (report.geoResults.length) {
-    markdownParts.push(
-      `## ${sectionIndex++}. GEO 测试概览`,
-      "",
-      "| 平台 | 用户问题 | 提及 JOTO | 提及唯客 | 引用官网 | 执行状态 |",
-      "|---|---|---|---|---|---|",
-      ...geoRows,
       ""
     );
   }

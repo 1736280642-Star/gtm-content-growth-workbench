@@ -1,7 +1,7 @@
 "use client";
 
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
-import { Alert, Button, Form, Input, InputNumber, Modal, Select, Slider, Space, Tag, message } from "antd";
+import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Tag, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import type { MonthlyPlanConfig, MonthlyPlanGroupQuota, RulePackageOption } from "@/lib/v5/monthly-workspace-contracts";
 
@@ -53,15 +53,13 @@ export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, on
   const unusedPackages = availablePackages.filter((item) => !selectedPackageIds.has(item.id));
   const monthlyTotal = draft.groups.reduce((total, group) => total + group.articleQuota, 0);
   const coveredChannels = Array.from(new Set(draft.groups.flatMap((group) => group.selectedChannels)));
-  const explorationRatio = 100 - draft.baselineRatio;
   const issues = [
     !draft.month ? "请选择月份。" : "",
     !draft.businessGoal.trim() ? "请填写月度业务目标。" : "",
     draft.groups.length === 0 ? "至少选择 1 个可进入生产池的规则包。" : "",
     draft.groups.some((group) => group.articleQuota <= 0) ? "每个产品分组的文章数量必须大于 0。" : "",
     draft.groups.some((group) => group.selectedChannels.length === 0) ? "每个产品分组至少选择 1 个发布渠道。" : "",
-    selectedPackageIds.size !== draft.groups.length ? "同一个产品规则包不能重复配置。" : "",
-    draft.baselineRatio !== 20 && !draft.ratioAdjustmentReason.trim() ? "调整默认 20/80 测试比例时必须填写原因。" : ""
+    selectedPackageIds.size !== draft.groups.length ? "同一个产品规则包不能重复配置。" : ""
   ].filter(Boolean);
 
   function getRulePackage(packageId: string) {
@@ -163,18 +161,6 @@ export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, on
               onChange={(event) => setDraft((current) => ({ ...current, month: event.target.value }))}
             />
           </Form.Item>
-          <Form.Item label="GEO 基线比例" required>
-            <div className="monthly-plan-ratio-control">
-              <Slider
-                min={0}
-                max={100}
-                step={5}
-                value={draft.baselineRatio}
-                onChange={(baselineRatio) => setDraft((current) => ({ ...current, baselineRatio }))}
-              />
-              <Tag color="blue">{`基线 ${draft.baselineRatio}% / 探索 ${explorationRatio}%`}</Tag>
-            </div>
-          </Form.Item>
           <Form.Item label="月度业务目标" required className="monthly-plan-goal-field">
             <Input.TextArea
               value={draft.businessGoal}
@@ -186,18 +172,6 @@ export function MonthlyPlanConfigPanel({ open, value, rulePackages, channels, on
             />
           </Form.Item>
         </Form>
-
-        {draft.baselineRatio !== 20 ? (
-          <Form layout="vertical">
-            <Form.Item label="测试比例调整原因" required>
-              <Input
-                value={draft.ratioAdjustmentReason}
-                placeholder="说明为什么本月不采用默认 20% baseline / 80% exploration"
-                onChange={(event) => setDraft((current) => ({ ...current, ratioAdjustmentReason: event.target.value }))}
-              />
-            </Form.Item>
-          </Form>
-        ) : null}
 
         <div className="monthly-plan-groups-header">
           <div>

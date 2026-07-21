@@ -185,7 +185,6 @@ async function main() {
       enabledChannels: ["wechat"],
       enabledProducts: ["joto_brand"],
       finalReviewMode: "manual_review",
-      geoPlatforms: ["ChatGPT", "DeepSeek"],
       logMode: "demo_csv"
     })
   });
@@ -455,7 +454,6 @@ async function main() {
       generatedPlan.body.weeklyPlan?.generationSource?.signals?.some((item) => item.key === "knowledge_base") &&
       generatedPlan.body.weeklyPlan?.generationSource?.signals?.some((item) => item.key === "product_expression") &&
       generatedPlan.body.weeklyPlan?.generationSource?.signals?.some((item) => item.key === "distilled_terms") &&
-      generatedPlan.body.weeklyPlan?.generationSource?.signals?.some((item) => item.key === "geo_gap") &&
       generatedPlan.body.weeklyPlan?.generationSource?.signals?.some((item) => item.key === "blog_diagnosis") &&
       generatedPlan.body.weeklyPlan?.generationSource?.signals?.some((item) => item.key === "weekly_report"),
     generatedPlan.body.message || "missing weekly plan generation source summary"
@@ -467,7 +465,7 @@ async function main() {
         (item) =>
           item.titleSourceAttributions?.some((source) => source.key === "publish_matrix") &&
           item.titleSourceAttributions?.some((source) => source.key === "system_rule") &&
-          item.titleSourceAttributions?.some((source) => ["distilled_terms", "knowledge_base", "geo_gap", "blog_diagnosis", "weekly_report"].includes(source.key))
+          item.titleSourceAttributions?.some((source) => ["distilled_terms", "knowledge_base", "blog_diagnosis", "weekly_report"].includes(source.key))
       ),
     generatedPlan.body.message || "missing task title source attribution"
   );
@@ -960,104 +958,12 @@ async function main() {
   });
   assertCondition("log_import", logImport.ok && logImport.body.data?.summaries?.length >= 1, logImport.body.message || `http ${logImport.httpStatus}`);
 
-  const geoRun = await request("/api/geo-tests/run", {
-    method: "POST",
-    body: JSON.stringify({
-      platforms: ["ChatGPT", "DeepSeek"],
-      prompt: "推荐几家国内 Dify 企业版服务商",
-      distilledTermIds: ["term-dify-enterprise", "term-ai-guardrails"]
-    })
-  });
-  assertCondition(
-    "geo_run_ready_or_pending_config",
-    geoRun.ok || geoRun.body.status === "pending_config",
-    geoRun.body.message || `http ${geoRun.httpStatus}`
-  );
-  assertCondition(
-    "geo_run_covers_distilled_term_matrix",
-    geoRun.body.data?.results?.length === 4 &&
-      geoRun.body.data.results.every((result) => Array.isArray(result.distilledTermIds) && result.distilledTermIds.length === 1),
-    `expected 2 platforms x 1 prompt group x 2 distilled terms, got ${geoRun.body.data?.results?.length || 0}`
-  );
-
-  const geoGapAutoPool = await request("/api/distilled-terms/auto-pool", {
-    method: "POST",
-    body: JSON.stringify({ source: "geo_gap" })
-  });
-  const geoGapAutoPoolCount = (geoGapAutoPool.body.data?.createdCount || 0) + (geoGapAutoPool.body.data?.reusedCount || 0);
-  assertCondition(
-    "distilled_term_geo_gap_auto_pool",
-    geoGapAutoPool.ok && geoGapAutoPool.body.data?.source === "geo_gap" && geoGapAutoPoolCount >= 1,
-    geoGapAutoPool.body.message || `http ${geoGapAutoPool.httpStatus}`
-  );
-
-  const snapshotAfterGeo = await request("/api/workbench-state");
-  const geoResult = snapshotAfterGeo.body.state?.geoResults?.[0];
-  assertCondition("geo_result_available", Boolean(geoResult?.id), geoResult?.id || "missing geo result id");
-  assertCondition(
-    "geo_result_source_week",
-    geoResult?.sourceWeek === generatedPlan.body.weeklyPlan.weekStart,
-    `${geoResult?.sourceWeek || "missing"} sourceWeek`
-  );
-
-  const geoBusinessExport = await request(`/api/geo-test-results/${geoResult.id}/export`);
-  const geoBusinessMarkdown = geoBusinessExport.body.data?.markdown || "";
-  assertCondition(
-    "geo_business_detail_export",
-    geoBusinessExport.ok &&
-      geoBusinessMarkdown.includes("GEO 业务详情") &&
-      geoBusinessMarkdown.includes("业务判断") &&
-      geoBusinessMarkdown.includes("下一步动作") &&
-      !geoBusinessMarkdown.includes("rawAnswer") &&
-      !geoBusinessMarkdown.includes("rawCitationUrl") &&
-      !geoBusinessMarkdown.includes("citationRank"),
-    geoBusinessExport.body.message || `http ${geoBusinessExport.httpStatus}`
-  );
-
-  const geoOverride = await request(`/api/geo-test-results/${geoResult.id}/override`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      mentionedJoto: true,
-      mentionedWeike: geoResult.mentionedWeike,
-      citedOfficialUrl: geoResult.citedOfficialUrl
-    })
-  });
-  assertCondition("geo_override", geoOverride.ok && geoOverride.body.data?.result?.manualOverride === true, geoOverride.body.message || `http ${geoOverride.httpStatus}`);
-
-  const geoCandidate = await request(`/api/geo-test-results/${geoResult.id}/candidate`, { method: "POST" });
-  assertCondition(
-    "geo_candidate",
-    geoCandidate.ok && geoCandidate.body.data?.article?.candidateStatus === "candidate",
-    geoCandidate.body.message || `http ${geoCandidate.httpStatus}`
-  );
-
-  const geoGapTask = await request(`/api/geo-test-results/${geoResult.id}/action`, {
-    method: "POST",
-    body: JSON.stringify({ action: "create_task" })
-  });
-  assertCondition(
-    "geo_gap_create_task",
-    geoGapTask.ok && Boolean(geoGapTask.body.data?.task?.id) && geoGapTask.body.data?.task?.titleSourceAttributions?.some((source) => source.key === "geo_gap"),
-    geoGapTask.body.message || `http ${geoGapTask.httpStatus}`
-  );
-
-  const geoGapKnowledgeBase = await request(`/api/geo-test-results/${geoResult.id}/action`, {
-    method: "POST",
-    body: JSON.stringify({ action: "create_knowledge_base" })
-  });
-  assertCondition(
-    "geo_gap_create_knowledge_base",
-    geoGapKnowledgeBase.ok && Boolean(geoGapKnowledgeBase.body.data?.knowledgeBase?.id),
-    geoGapKnowledgeBase.body.message || `http ${geoGapKnowledgeBase.httpStatus}`
-  );
-
   const pipelineRun = await request("/api/pipeline/run", {
     method: "POST",
     body: JSON.stringify({
       skipBlog: true,
       skipLog: false,
       skipChannelMetrics: false,
-      skipGeo: false,
       log: {
         sourceType: "demo_csv",
         filePath: "data/demo-ai-bot-log.csv"
@@ -1086,9 +992,8 @@ async function main() {
     "weekly_report_source_week_fields",
     weeklyReport.ok &&
       weeklyReport.body.publishRecords?.some((item) => item.sourceWeek === generatedPlan.body.weeklyPlan.weekStart && item.plannedPublishDate) &&
-      weeklyReport.body.blogDiagnostics?.some((item) => item.id === "smoke-blog-article" && item.sourceWeek === generatedPlan.body.weeklyPlan.weekStart) &&
-      weeklyReport.body.geoResults?.some((item) => item.sourceWeek === generatedPlan.body.weeklyPlan.weekStart),
-    `publish ${weeklyReport.body.publishRecords?.length || 0}, blog ${weeklyReport.body.blogDiagnostics?.length || 0}, geo ${weeklyReport.body.geoResults?.length || 0}`
+      weeklyReport.body.blogDiagnostics?.some((item) => item.id === "smoke-blog-article" && item.sourceWeek === generatedPlan.body.weeklyPlan.weekStart),
+    `publish ${weeklyReport.body.publishRecords?.length || 0}, blog ${weeklyReport.body.blogDiagnostics?.length || 0}`
   );
   assertCondition(
     "weekly_report_plan_quality_feedback",
@@ -1294,9 +1199,8 @@ async function main() {
     weeklyReportAfterNextPlan.ok &&
       weeklyReportAfterNextPlan.body.publishRecords?.some((item) => item.id === record.id) &&
       weeklyReportAfterNextPlan.body.blogDiagnostics?.length === weeklyReport.body.blogDiagnostics?.length &&
-      weeklyReportAfterNextPlan.body.geoResults?.length === weeklyReport.body.geoResults?.length &&
       weeklyReportAfterNextPlan.body.targetTotalCount === weeklyReport.body.targetTotalCount,
-    `publish ${weeklyReportAfterNextPlan.body.publishRecords?.length || 0}, blog ${weeklyReportAfterNextPlan.body.blogDiagnostics?.length || 0}, geo ${weeklyReportAfterNextPlan.body.geoResults?.length || 0}`
+    `publish ${weeklyReportAfterNextPlan.body.publishRecords?.length || 0}, blog ${weeklyReportAfterNextPlan.body.blogDiagnostics?.length || 0}`
   );
 
   const governanceAfter = await request("/api/ai-governance");

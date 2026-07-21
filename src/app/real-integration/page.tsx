@@ -77,7 +77,7 @@ type IntegrationNextStep =
   | "run_diagnostic"
   | "inspect_failure"
   | "verify_storage"
-  | "trial_geo"
+  | "generate_content"
   | "sync_blog"
   | "import_log"
   | "send_platform_draft";
@@ -101,7 +101,7 @@ const integrationNextStepLabels: Record<IntegrationNextStep, string> = {
   run_diagnostic: "执行诊断",
   inspect_failure: "排查失败",
   verify_storage: "验数据库",
-  trial_geo: "GEO 试跑",
+  generate_content: "内容生成",
   sync_blog: "同步博客",
   import_log: "导入日志",
   send_platform_draft: "发送草稿"
@@ -112,7 +112,7 @@ const integrationNextStepColors: Record<IntegrationNextStep, string> = {
   run_diagnostic: "blue",
   inspect_failure: "red",
   verify_storage: "green",
-  trial_geo: "green",
+  generate_content: "green",
   sync_blog: "green",
   import_log: "green",
   send_platform_draft: "green"
@@ -144,25 +144,25 @@ const integrationItems: IntegrationItem[] = [
   {
     key: "qwen",
     group: "ai_provider",
-    stage: "通义千问 GEO 与生成",
+    stage: "通义千问内容生成",
     owner: "业务负责人 / 开发",
-    evidence: "通义千问可以正常返回 GEO 测试结果",
+    evidence: "通义千问可以正常生成内容",
     nextAction: "填写通义千问模型和授权信息。"
   },
   {
     key: "deepseek",
     group: "ai_provider",
-    stage: "DeepSeek GEO 与生成",
+    stage: "DeepSeek 内容生成",
     owner: "业务负责人 / 开发",
-    evidence: "DeepSeek 可以正常返回 GEO 测试结果",
+    evidence: "DeepSeek 可以正常生成内容",
     nextAction: "填写 DeepSeek 模型和授权信息。"
   },
   {
     key: "doubao",
     group: "ai_provider",
-    stage: "豆包 GEO 测试",
+    stage: "豆包内容生成",
     owner: "业务负责人 / 开发",
-    evidence: "豆包可以正常返回 GEO 测试结果",
+    evidence: "豆包可以正常生成内容",
     nextAction: "填写豆包模型和授权信息。"
   },
   {
@@ -246,7 +246,7 @@ const scheduledTasks: ScheduledTask[] = [
     status: "ready",
     evidence: "自动任务可以手动运行",
     nextStep: "run_manual_pipeline",
-    actionText: "运行一次自动任务，确认博客、访问数据、渠道数据和 GEO 测试可以顺利衔接。",
+    actionText: "运行一次自动任务，确认博客、访问数据和渠道数据可以顺利衔接。",
     entry: { type: "command", label: "npm.cmd run worker:run-pipeline" }
   },
   {
@@ -322,7 +322,7 @@ function getIntegrationNextStep(item: IntegrationItem, capability?: RuntimeCapab
     return "send_platform_draft";
   }
 
-  return "trial_geo";
+  return "generate_content";
 }
 
 function getIntegrationActionText(item: IntegrationItem, capability?: RuntimeCapability, diagnostic?: DiagnosticResult) {
@@ -359,7 +359,7 @@ function getIntegrationActionText(item: IntegrationItem, capability?: RuntimeCap
       : "去今日发布页发送一篇微信草稿；成功后到公众号后台草稿箱人工预览、发布，再回工作台填 URL。";
   }
 
-    return "去 GEO 测试页运行一组问题，确认回答、引用和候选池均可正常使用。";
+  return "去批量生成中心运行一次内容生成，确认模型连接和结果回写正常。";
 }
 
 function getIntegrationEntry(item: IntegrationItem, capability?: RuntimeCapability, diagnostic?: DiagnosticResult) {
@@ -369,8 +369,8 @@ function getIntegrationEntry(item: IntegrationItem, capability?: RuntimeCapabili
     return { type: "link" as const, href: "/ai-config", label: "看配置" };
   }
 
-  if (nextStep === "trial_geo") {
-    return { type: "link" as const, href: "/geo-test", label: "去试跑" };
+  if (nextStep === "generate_content") {
+    return { type: "link" as const, href: "/batch-generation", label: "去生成" };
   }
 
   if (item.key === "knowledge_url_crawler" && nextStep === "sync_blog") {
@@ -393,7 +393,7 @@ function getIntegrationEntry(item: IntegrationItem, capability?: RuntimeCapabili
 }
 
 function isIntegrationReadyStep(step: IntegrationNextStep) {
-  return step === "verify_storage" || step === "trial_geo" || step === "sync_blog" || step === "import_log" || step === "send_platform_draft";
+  return step === "verify_storage" || step === "generate_content" || step === "sync_blog" || step === "import_log" || step === "send_platform_draft";
 }
 
 function inferBotConfidence(values: { dataConfidence: DataConfidence }[]) {
@@ -461,15 +461,15 @@ function createIntegrationSequenceSteps(input: {
       key: "ai_provider_sequence",
       step: "模型连接",
       status: aiStatus,
-      evidence: `已就绪 ${aiReadyCount}/${aiItems.length} 个模型接入；GEO 平台：${state.workspaceSetting.geoPlatforms.join("、")}`,
-      nextStep: aiStatus === "ready" ? "进入 GEO 试跑" : aiFailedCount ? "先排查失败模型接入" : "补齐模型配置并诊断",
+      evidence: `已就绪 ${aiReadyCount}/${aiItems.length} 个模型接入`,
+      nextStep: aiStatus === "ready" ? "进入内容生成" : aiFailedCount ? "先排查失败模型接入" : "补齐模型配置并诊断",
       actionText:
         aiStatus === "ready"
-          ? "逐个平台运行 GEO 测试，确认回答、官网引用和候选池承接正常。"
+          ? "运行一次内容生成，确认模型调用和结果回写正常。"
           : aiFailedCount
             ? "先在 AI 配置页排查失败的模型接入，再决定是否继续试跑其他平台。"
-            : "先补齐必填信息并完成检查，再进入 GEO 和内容生成。",
-      entry: aiStatus === "ready" ? { type: "link", href: "/geo-test", label: "去测试" } : { type: "link", href: "/ai-config", label: "看配置" }
+            : "先补齐必填信息并完成检查，再进入内容生成。",
+      entry: aiStatus === "ready" ? { type: "link", href: "/batch-generation", label: "去生成" } : { type: "link", href: "/ai-config", label: "看配置" }
     },
     {
       key: "blog_log_sources",
@@ -491,7 +491,7 @@ function createIntegrationSequenceSteps(input: {
       status: automationStatus,
       evidence: hasPipelineRun ? `最近自动任务：${state.pipelineRuns?.[0]?.status || "unknown"} / ${state.pipelineRuns?.[0]?.finishedAt || "-"}` : "尚无自动任务记录",
       nextStep: hasPipelineRun ? "继续确认定时任务和模板" : "先运行一次自动任务",
-      actionText: hasPipelineRun ? "继续确认定时任务和渠道模板，避免数据回填时字段错位。" : "先运行一次自动任务，确认博客、访问数据、渠道数据和 GEO 测试可以顺利衔接。",
+      actionText: hasPipelineRun ? "继续确认定时任务和渠道模板，避免数据回填时字段错位。" : "先运行一次自动任务，确认博客、访问数据和渠道数据可以顺利衔接。",
       entry: hasPipelineRun ? { type: "link", href: "/publish", label: "看模板" } : { type: "command", label: "npm.cmd run worker:run-pipeline" }
     }
   ] satisfies IntegrationSequenceStep[];
@@ -703,7 +703,6 @@ export default function RealIntegrationPage() {
             loading={loading}
             dataSource={[
               `内容节奏：每周 ${state.workspaceSetting.defaultWeeklyDays} 天，每天 ${state.workspaceSetting.defaultDailyCount} 篇`,
-              `GEO 平台：${state.workspaceSetting.geoPlatforms.join("、")}`,
               `日志模式：${state.workspaceSetting.logMode}`,
               `AI 访问数据：${botConfidence}`,
               `自动任务记录：${state.pipelineRuns?.length || 0} 次`,

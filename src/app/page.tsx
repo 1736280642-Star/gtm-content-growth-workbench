@@ -7,7 +7,7 @@ import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { V5StatusRail } from "@/components/V5StatusRail";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
-import type { BlogArticle, GeoTestResult } from "@/lib/types";
+import type { BlogArticle } from "@/lib/types";
 import {
   batchQueueItems,
   dailyExecutionItems,
@@ -16,7 +16,6 @@ import {
   nextMonthCandidates,
   strategyTermHits
 } from "@/lib/v5-ui-mock-data";
-import { useMemo } from "react";
 
 interface DashboardActionItem {
   key: string;
@@ -38,17 +37,6 @@ function needsBlogAction(article: BlogArticle) {
   return article.candidateStatus === "candidate" || article.geoResult === "miss" || article.seoIssueCount > 0 || article.indexedStatus !== "indexed";
 }
 
-function needsGeoAction(result: GeoTestResult, candidateArticle?: BlogArticle) {
-  const executionStatus = result.executionStatus || "success";
-  const candidateStatus = candidateArticle?.candidateStatus || "none";
-
-  if (candidateStatus === "planned" || candidateStatus === "dismissed") {
-    return false;
-  }
-
-  return executionStatus !== "success" || candidateStatus === "candidate" || !result.mentionedJoto || !result.citedOfficialUrl;
-}
-
 export default function DashboardPage() {
   const { state, summary, loading, error, refresh } = useWorkbenchSnapshot();
   const monthlyQuota = monthlyGoal.groups.reduce((sum, group) => sum + group.articleQuota, 0);
@@ -62,23 +50,7 @@ export default function DashboardPage() {
   const pendingDataReturnCount = state.publishRecords.filter(
     (record) => record.publishStatus === "published" || (record.publishStatus === "url_filled" && !record.channelMetrics)
   ).length;
-  const candidateByGeoResultId = useMemo(
-    () =>
-      new Map(
-        state.blogArticles
-          .map((article) => {
-            if (!article.url.startsWith("geo://result/")) {
-              return undefined;
-            }
-
-            return [article.url.replace("geo://result/", ""), article] as const;
-          })
-          .filter((item): item is readonly [string, BlogArticle] => Boolean(item))
-      ),
-    [state.blogArticles]
-  );
   const blogActionCount = state.blogArticles.filter(needsBlogAction).length;
-  const geoActionCount = state.geoResults.filter((result) => needsGeoAction(result, candidateByGeoResultId.get(result.id))).length;
 
   const dashboardActionItems: DashboardActionItem[] = [
     {
@@ -135,23 +107,13 @@ export default function DashboardPage() {
       entryLabel: "查看博客监控"
     },
     {
-      key: "geo-test",
-      title: "GEO 测试",
-      count: geoActionCount,
-      status: "待跟进",
-      statusColor: "gold",
-      description: "查看平台测试、引用诊断，并处理 GEO 内容缺口。",
-      href: "/geo-test",
-      entryLabel: "查看 GEO 测试"
-    },
-    {
       key: "monthly-review",
       title: "月度复盘",
       count: pendingReviewCount,
       primary: true,
       status: "候选待确认",
       statusColor: "purple",
-      description: "回看 baseline / exploration、GEO 缺口并审核下月策略候选。",
+      description: "回看月度内容表现与证据缺口，并审核下月策略候选。",
       href: "/monthly-review",
       entryLabel: "进入月度复盘"
     }
@@ -193,14 +155,13 @@ export default function DashboardPage() {
       <div className="dashboard-section-heading">
         <div>
           <h2>待办与增长反馈</h2>
-          <p>处理发布后的数据补全、博客优化和 GEO 内容缺口。</p>
+          <p>处理发布后的数据补全、博客优化和月度候选反馈。</p>
         </div>
       </div>
-      <div className="metric-grid metric-grid-four">
+      <div className="metric-grid">
         <MetricCard title="待回填 URL" value={summary.metrics.pendingUrl} suffix="条" />
         <MetricCard title="待数据回传" value={pendingDataReturnCount} suffix="条" />
         <MetricCard title="博客待处置" value={blogActionCount} suffix="条" />
-        <MetricCard title="GEO 待处置" value={geoActionCount} suffix="条" />
       </div>
 
       <Card title="重点事项">

@@ -1333,29 +1333,6 @@ async function clickVisiblePaginationNext(page) {
   return clicked;
 }
 
-async function resolveCurrentGeoResultId() {
-  const snapshot = await requestJson(`${baseUrl}/api/workbench-state`);
-  const geoResultId = snapshot.body.state?.geoResults?.[0]?.id || snapshot.body.geoResults?.[0]?.id;
-
-  if (!snapshot.ok || !geoResultId) {
-    throw new Error("No GEO result id found for responsive detail validation");
-  }
-
-  return geoResultId;
-}
-
-async function resolveActionableGeoGapResult() {
-  const snapshot = await requestJson(`${baseUrl}/api/workbench-state`);
-  const geoResults = snapshot.body.state?.geoResults || snapshot.body.geoResults || [];
-  const result = geoResults.find((item) => item.executionStatus !== "failed" && (!item.mentionedJoto || !item.citedOfficialUrl));
-
-  if (!snapshot.ok || !result?.id) {
-    throw new Error("No actionable GEO gap result found for weekly plan inheritance validation");
-  }
-
-  return result;
-}
-
 async function resolveKnowledgeBaseWithRuleDraftId() {
   const snapshot = await requestJson(`${baseUrl}/api/workbench-state`);
   const knowledgeBases = snapshot.body.state?.knowledgeBases || snapshot.body.knowledgeBases || [];
@@ -1455,7 +1432,6 @@ const businessPageBoundaryExpectations = [
   { testName: "business_boundary_content_publisher_publish", role: "content_publisher", roleLabel: "内容发布人员", pathName: "/publish", expectedText: "数据回传" },
   { testName: "business_boundary_content_growth_weekly_report", role: "content_growth", roleLabel: "内容增长 / GEO 人员", pathName: "/weekly-report", expectedText: "周度复盘" },
   { testName: "business_boundary_content_growth_distilled_terms", role: "content_growth", roleLabel: "内容增长 / GEO 人员", pathName: "/distilled-terms", expectedText: "蒸馏词池" },
-  { testName: "business_boundary_content_growth_geo", role: "content_growth", roleLabel: "内容增长 / GEO 人员", pathName: "/geo-test", expectedText: "GEO 测试" },
   { testName: "business_boundary_knowledge_manager_knowledge", role: "knowledge_manager", roleLabel: "知识库 / 产品表达维护", pathName: "/knowledge", expectedText: "知识库" },
   { testName: "business_boundary_knowledge_manager_weekly_report", role: "knowledge_manager", roleLabel: "知识库 / 产品表达维护", pathName: "/weekly-report", expectedText: "周度复盘" }
 ];
@@ -1667,7 +1643,6 @@ async function main() {
         const boundaryPage = await openPage();
 
         try {
-          const geoResultId = await resolveCurrentGeoResultId();
           const knowledgeBaseId = await resolveKnowledgeBaseWithRuleDraftId();
           const dynamicBusinessPageBoundaryExpectations = [
             ...businessPageBoundaryExpectations,
@@ -1681,13 +1656,6 @@ async function main() {
                 await clickButtonByText(currentPage, "查看发布明细");
                 await waitFor(() => currentPage.containsText("发布与渠道明细"), 15000);
               }
-            },
-            {
-              testName: "business_boundary_content_growth_geo_detail",
-              role: "content_growth",
-              roleLabel: "内容增长 / GEO 人员",
-              pathName: `/geo-test/${geoResultId}`,
-              expectedText: "GEO 详情"
             },
             {
               testName: "business_boundary_knowledge_manager_knowledge_detail",
@@ -2054,92 +2022,6 @@ async function main() {
         }
       });
 
-      await runStep("geo_gap_detail_to_weekly_plan_inheritance", async () => {
-        const geoGap = await resolveActionableGeoGapResult();
-
-        await setCurrentRole("content_growth");
-
-        try {
-          await page.navigate(`/geo-test/${geoGap.id}?content-smoke=geo-gap-${Date.now()}`);
-          await waitFor(() => page.containsText("GEO 详情"), 20000);
-          await waitFor(() => page.containsText("内容动作"), 15000);
-          await clickButtonByText(page, "转周计划");
-          await waitFor(() => page.containsText("确认加入周计划草稿"), 15000);
-          await clickButtonByText(page, "加入");
-
-          const taskState = await waitFor(async () => {
-            const snapshot = await requestJson(`${baseUrl}/api/workbench-state`);
-            const tasks = snapshot.body.state?.tasks || [];
-            const task = tasks.find((item) =>
-              item.titleSourceAttributions?.some((source) => source.key === "geo_gap" && source.referenceId === geoGap.id)
-            );
-            return snapshot.ok && task?.id ? { snapshot, task } : false;
-          }, 30000);
-
-          await page.navigate(`/weekly-plan?content-smoke=geo-gap-plan-${Date.now()}`);
-          await waitFor(() => page.containsText("周计划生成预览"), 20000);
-          await waitFor(() => page.exists(`tr[data-row-key='${taskState.task.id}']`), 20000);
-          await clickElementBySelector(page, `tr[data-row-key='${taskState.task.id}'] .ant-table-row-expand-icon`);
-          await waitFor(() => page.containsText("标题来源归因"), 15000);
-
-          const bodyText = await page.evaluate("document.body.innerText");
-          const requiredText = ["GEO 问题缺口", "标题来源归因", "来源问题", geoGap.prompt];
-          const missing = requiredText.filter((item) => !bodyText.includes(item));
-
-          if (missing.length) {
-            throw new Error(`GEO gap weekly plan inheritance missing text: ${missing.join(", ")}`);
-          }
-
-          record("geo_gap_detail_to_weekly_plan_inheritance", true, `${geoGap.id} -> ${taskState.task.id}`);
-        } finally {
-          await setCurrentRole("workbench_operator");
-        }
-      });
-
-      await runStep("geo_gap_detail_to_knowledge_inheritance", async () => {
-        const geoGap = await resolveActionableGeoGapResult();
-
-        await setCurrentRole("content_growth");
-
-        try {
-          await page.navigate(`/geo-test/${geoGap.id}?content-smoke=geo-gap-kb-${Date.now()}`);
-          await waitFor(() => page.containsText("GEO 详情"), 20000);
-          await waitFor(() => page.exists(`[data-testid='geo-detail-create-knowledge-button-${geoGap.id}']`), 15000);
-          await page.click(`[data-testid='geo-detail-create-knowledge-button-${geoGap.id}']`);
-
-          const knowledgeState = await waitFor(async () => {
-            const snapshot = await requestJson(`${baseUrl}/api/workbench-state`);
-            const knowledgeBases = snapshot.body.state?.knowledgeBases || [];
-            const knowledgeBase = knowledgeBases.find((item) => item.sourceUrl === `geo://result/${geoGap.id}`);
-            return snapshot.ok && knowledgeBase?.id ? { snapshot, knowledgeBase } : false;
-          }, 30000);
-
-          await setCurrentRole("knowledge_manager");
-          await page.navigate(`/knowledge/${knowledgeState.knowledgeBase.id}?content-smoke=geo-gap-kb-detail-${Date.now()}`);
-          await waitFor(() => page.containsText("知识库详情"), 20000);
-          await waitFor(() => page.exists("[data-testid='knowledge-detail-source-card']"), 15000);
-          await waitFor(() => page.exists("[data-testid='knowledge-detail-preview-card']"), 15000);
-
-          const bodyText = await page.evaluate("document.body.innerText");
-          const requiredText = [
-            "GEO 补充资料",
-            "GEO 问题缺口补充",
-            `geo://result/${geoGap.id}`,
-            geoGap.prompt,
-            "内容预览"
-          ];
-          const missing = requiredText.filter((item) => !bodyText.includes(item));
-
-          if (missing.length) {
-            throw new Error(`GEO gap knowledge inheritance missing text: ${missing.join(", ")}`);
-          }
-
-          record("geo_gap_detail_to_knowledge_inheritance", true, `${geoGap.id} -> ${knowledgeState.knowledgeBase.id}`);
-        } finally {
-          await setCurrentRole("workbench_operator");
-        }
-      });
-
       const draftRiskPrepared = await runStep("prepare_draft_risk_review_task", () => prepareDraftRiskReviewTask());
       await runStep("draft_qa_risk_actions_dom", async () => {
         await page.navigate(`/drafts/${draftRiskPrepared.task.id}?content-smoke=risk-${Date.now()}`);
@@ -2230,12 +2112,6 @@ async function main() {
           await clickButtonByText(currentPage, "查看发布明细");
           await waitFor(() => currentPage.containsText("发布与渠道明细"), 15000);
         }
-      }));
-      const geoResultId = await runStep("resolve_geo_result_id", () => resolveCurrentGeoResultId());
-      await runStep("responsive_geo_detail_mobile", () => assertResponsiveLayout(page, {
-        name: "responsive_geo_detail_mobile",
-        pathName: `/geo-test/${geoResultId}`,
-        expectedText: "GEO 详情"
       }));
       const knowledgeBaseId = await runStep("resolve_knowledge_base_rule_id", () => resolveKnowledgeBaseWithRuleDraftId());
       await runStep("responsive_knowledge_rule_version_drawer_mobile", () => assertResponsiveLayout(page, {

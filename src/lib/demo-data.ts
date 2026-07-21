@@ -3,7 +3,6 @@ import type {
   BlogArticle,
   BotVisitSummary,
   ContentTask,
-  GeoTestResult,
   KnowledgeBase,
   PublishRecord,
   WeeklyPlan
@@ -168,52 +167,6 @@ export const blogArticles: BlogArticle[] = [
     seoIssueCount: 4,
     geoResult: "miss",
     dataConfidence: "real"
-  }
-];
-
-export const geoResults: GeoTestResult[] = [
-  {
-    id: "geo-001",
-    platform: "通义千问",
-    promptGroup: "品牌认知",
-    prompt: "推荐几家国内 Dify 企业版服务商",
-    mentionedJoto: true,
-    mentionedWeike: false,
-    citedOfficialUrl: true,
-    competitorAppeared: true,
-    citedUrls: ["https://www.jotoai.com/"],
-    accuracyStatus: "needs_review",
-    reviewStatus: "manual_review_needed",
-    answerSnapshot: "回答中提到 JOTO，并引用了 jotoai.com 作为参考。",
-    manualOverride: false
-  },
-  {
-    id: "geo-002",
-    platform: "豆包",
-    promptGroup: "产品场景",
-    prompt: "企业接入大模型后如何做输出安全治理？",
-    mentionedJoto: false,
-    mentionedWeike: false,
-    citedOfficialUrl: false,
-    competitorAppeared: true,
-    accuracyStatus: "needs_review",
-    reviewStatus: "manual_review_needed",
-    answerSnapshot: "回答偏通用安全建议，未提及 JOTO 或唯客 AI 护栏。",
-    manualOverride: false
-  },
-  {
-    id: "geo-003",
-    platform: "DeepSeek",
-    promptGroup: "FAQ",
-    prompt: "Dify 应用需要 AI 护栏吗？",
-    mentionedJoto: true,
-    mentionedWeike: true,
-    citedOfficialUrl: false,
-    competitorAppeared: false,
-    accuracyStatus: "needs_review",
-    reviewStatus: "manual_review_needed",
-    answerSnapshot: "回答提到唯客 AI 护栏适合企业级场景，但未引用官网链接。",
-    manualOverride: false
   }
 ];
 

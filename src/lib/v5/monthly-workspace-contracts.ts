@@ -7,7 +7,6 @@ export type EvidenceReadinessStatus =
   | "blocked"
   | "pending_config";
 export type StrategyRowStatus = "ready" | "ready_with_conditions" | "needs_material" | "needs_review" | "quota_error" | "blocked";
-export type GeoTestMode = "baseline" | "exploration";
 export type MatrixDisplayStatus = "preparing" | "ready" | "generating" | "qualified" | "exception" | "scheduled" | "published" | "publish_failed";
 export type GenerationStatus = "title_pending" | "pending" | "generating" | "generated" | "provider_failed" | "input_expired";
 export type FinalEvidenceGateStatus = "not_created" | "ready" | "needs_review" | "blocked" | "pending_config";
@@ -38,8 +37,6 @@ export interface MonthlyPlanGroupQuota {
 export interface MonthlyPlanConfig {
   month: string;
   businessGoal: string;
-  baselineRatio: number;
-  ratioAdjustmentReason: string;
   groups: MonthlyPlanGroupQuota[];
 }
 
@@ -49,16 +46,11 @@ export interface StrategyTermHit {
   term: string;
   source: string;
   priorityReason: string;
-  previousGeoSummary: string;
   productName: string;
   rulePackageVersion: string;
   allocatedQuota: number;
   channelAllocation: string[];
   contentTypeSuggestions: string[];
-  geoTestMode: GeoTestMode;
-  testHypothesis: string;
-  querySet: string;
-  successSignal: string;
   evidenceStatus: EvidenceReadinessStatus;
   estimatedReadyItemCount: number;
   estimatedAutoDowngradeItemCount: number;
@@ -76,7 +68,6 @@ export interface BatchQueueItem {
   title: string;
   primaryDistilledTerm: string;
   priority: "P0" | "P1" | "P2";
-  geoTestMode: GeoTestMode;
   contentType: string;
   product: string;
   rulePackageVersion: string;
@@ -164,13 +155,8 @@ export interface MonthlyTermReview {
   id: string;
   term: string;
   product: string;
-  mode: GeoTestMode;
   planned: number;
   published: number;
-  visibilityChange: string;
-  citationChange: string;
-  entityAccuracy: string;
-  coverageChange: string;
   gapConclusion: string;
   issueSource: string;
 }

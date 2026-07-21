@@ -42,7 +42,7 @@ test("cutover migration drops exactly the obsolete V4 weekly tables", async () =
     assert.match(migration, new RegExp(`DROP TABLE IF EXISTS ${table}\\s*;`));
   }
 
-  for (const table of ["workspace_setting", "knowledge_base", "blog_article", "geo_test_result", "workbench_state_snapshot"]) {
+  for (const table of ["workspace_setting", "knowledge_base", "blog_article", "workbench_state_snapshot"]) {
     assert.doesNotMatch(migration, new RegExp(`DROP TABLE IF EXISTS ${table}\\s*;`));
   }
 });

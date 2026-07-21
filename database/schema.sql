@@ -61,29 +61,6 @@ CREATE TABLE IF NOT EXISTS blog_diagnosis (
   INDEX idx_blog_diagnosis_blog_article_id (blog_article_id)
 );
 
-CREATE TABLE IF NOT EXISTS geo_test_result (
-  id VARCHAR(64) PRIMARY KEY,
-  platform VARCHAR(64) NOT NULL,
-  provider_key VARCHAR(64),
-  model_name VARCHAR(128),
-  prompt_group VARCHAR(64) NOT NULL,
-  prompt TEXT NOT NULL,
-  answer_snapshot MEDIUMTEXT NOT NULL,
-  mentioned_joto BOOLEAN NOT NULL DEFAULT FALSE,
-  mentioned_weike BOOLEAN NOT NULL DEFAULT FALSE,
-  cited_official_url BOOLEAN NOT NULL DEFAULT FALSE,
-  cited_urls JSON,
-  parser_result JSON,
-  manual_override BOOLEAN NOT NULL DEFAULT FALSE,
-  data_confidence VARCHAR(32) NOT NULL DEFAULT 'pending',
-  execution_status VARCHAR(32) NOT NULL DEFAULT 'pending_config',
-  error_message TEXT,
-  tested_at DATETIME NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_geo_test_result_platform (platform),
-  INDEX idx_geo_test_result_execution_status (execution_status)
-);
-
 CREATE TABLE IF NOT EXISTS log_import_batch (
   id VARCHAR(64) PRIMARY KEY,
   source_type VARCHAR(64) NOT NULL,

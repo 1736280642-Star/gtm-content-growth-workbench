@@ -43,7 +43,6 @@ function assertContract(contract) {
 
 const weeklyReportInternalExcludes = [
   "固定 Prompt 模板",
-  "GEO 测试明细\" style",
   "蒸馏词矩阵复盘\" style",
   "openDetailDrawer(\"prompt\")",
   "内部 Prompt 版本",
@@ -54,16 +53,11 @@ const weeklyReportInternalExcludes = [
   "完成率变化",
   "回传率变化",
   "渠道表现变化",
-  "GEO 变化",
-  "官网引用变化",
   "Prompt 版本",
   "Prompt / AI 配置",
   "模型 trace",
   "证据 Chunk",
   "模型学习信号",
-  "const reportGeoResults = activeReport?.geoResults || geoResults;",
-  "本周没有 GEO 动作，周报不展示 GEO 复盘模块。",
-  "title: \"引用层级\""
 ];
 
 const weeklyReportBusinessExcludes = ["置信度", "低置信度", "置信度低于 65%", "Math.round((record.confidence", "AI Provider"];
@@ -80,8 +74,6 @@ const contracts = [
       "mode=\"multiple\"",
       "发布渠道",
       "文章数量",
-      "GEO 基线比例",
-      "ratioAdjustmentReason",
       "新增产品分组",
       "不能进入生产池",
       "handleSave",
@@ -96,7 +88,6 @@ const contracts = [
     file: "src/app/monthly-matrix/page.tsx",
     includes: [
       "月度策略包审核",
-      "GEO 测试分配",
       "MonthlyStrategyTable",
       "strategyTermHits",
       "策略方向确认后仍需检查单篇证据",
@@ -542,69 +533,6 @@ const contracts = [
     excludes: ["handleMarkPublished", "handleFillUrl", "/published"]
   },
   {
-    name: "geo_diagnostic_contract",
-    file: "src/app/geo-test/page.tsx",
-    includes: [
-      "诊断摘要",
-      "测试频率与自动化",
-      "GEO / AI 可见度结果",
-      "AI 是否提到我们",
-      "产品是否正确提到",
-      "官网是否被引用",
-      "竞品是否占位",
-      "问题缺口",
-      "handleCreateTaskFromGeoGap",
-      "handleCreateKnowledgeBaseFromGeoGap",
-      "/api/geo-test-results/${resultId}/action",
-      "转周计划",
-      "补知识库",
-      "`/geo-test/${record.id}`",
-      "看详情",
-      "问题组",
-      "selectedDistilledTermIds",
-      "promptDrawerOpen",
-      "Drawer",
-      "testCategory",
-      "baseline_fixed",
-      "dynamic_exploration",
-      "distilledTermIds: activeDistilledTermIds",
-      "citationLevelFilter",
-      "引用层级",
-      "getFrequencySuggestion"
-    ],
-    excludes: ["officialCitationFilter", "按官网引用筛选", "citationRank", "rawAnswer", "answerSnapshot", "citedUrls.join", "snapshotResult", "查看快照", "回答快照", "Prompt 组", "Provider", "补齐 Provider"]
-  },
-  {
-    name: "geo_detail_page_contract",
-    file: "src/app/geo-test/[id]/page.tsx",
-    includes: [
-      "GEO 详情",
-      "AI 回答摘要",
-      "引用来源",
-      "竞品提及",
-      "内容动作",
-      "原始数据",
-      "getGeoBusinessConclusion",
-      "getGeoNextStep",
-      "问题组：",
-      "/api/geo-test-results/${result.id}/export",
-      "/api/geo-test-results/${result.id}/action",
-      "/api/geo-test-results/${result.id}/candidate",
-      "复制业务详情",
-      "转周计划",
-      "补知识库",
-      "入候选池",
-      "原始数据仅用于排查和追溯"
-    ],
-    excludes: ["rawAnswer", "rawCitationUrl", "citationRank", "Prompt 原文", "Prompt 组", "Provider", "补齐 Provider"]
-  },
-  {
-    name: "geo_business_export_api_contract",
-    file: "src/app/api/geo-test-results/[id]/export/route.ts",
-    includes: ["exportGeoResultBusinessMarkdown", "force-dynamic", "GET"],
-    excludes: ["rawAnswer", "rawCitationUrl", "citationRank", "TODO"]
-  },
-  {
     name: "blog_monitor_diagnosis_contract",
     file: "src/app/blog-monitor/page.tsx",
     includes: ["getBlogAuditIndicators", "GEO 健康分", "引用准备不足", "引用片段不足", "问题分布", "官网信源状态", "优先处理问题", "博客明细", "getArticleTitle"],
@@ -613,7 +541,7 @@ const contracts = [
   {
     name: "real_integration_business_wording_contract",
     file: "src/app/real-integration/page.tsx",
-    includes: ["连接管理", "模型连接", "GEO 测试", "AI 访问量", "AI 访问数据", "GovernanceEntry"],
+    includes: ["连接管理", "模型连接", "AI 访问量", "AI 访问数据", "GovernanceEntry"],
     excludes: ["AI Provider", "AI Bot PV", "AI Bot 数据可信度", "真实 Prompt", "GEO Prompt"]
   },
   {
@@ -717,19 +645,12 @@ const contracts = [
     excludes: ["TODO"]
   },
   {
-    name: "geo_gap_action_api_contract",
-    file: "src/app/api/geo-test-results/[id]/action/route.ts",
-    includes: ["createContentTaskFromGeoGap", "createKnowledgeBaseFromGeoGap", "create_knowledge_base"],
-    excludes: ["TODO"]
-  },
-  {
     name: "distilled_terms_contract",
     file: "src/app/distilled-terms/page.tsx",
     includes: [
       "蒸馏词池",
       "自动入池来源",
       "知识库生成",
-      "GEO 缺口生成",
       "待确认规则",
       "从搜索问题提取蒸馏词",
       "/api/distilled-terms/extract",
@@ -752,7 +673,6 @@ const contracts = [
       "handleArchiveTerm",
       "使用记录",
       "distilled-auto-pool-knowledge",
-      "distilled-auto-pool-geo",
       "distilled-auto-pool-all",
       "distilled-question-input",
       "distilled-extract-button",
@@ -833,15 +753,6 @@ const contracts = [
       "/api/weekly-reports/${activeReport.week}/suggestions/${record.id}",
       "handleDecideSuggestion",
       "report-kpi-trend",
-      "filterGeoResultsForReport",
-      "fallbackReportGeoResults",
-      "activeReport?.geoResults || fallbackReportGeoResults",
-      "getGeoBusinessGap",
-      "getGeoBusinessNextStep",
-      "官网引用情况",
-      "问题缺口",
-      "下一步动作",
-      "`/geo-test/${record.id}`",
       "AI 可见度变化",
       "openDetailDrawer",
       "openDetailDrawer(\"suggestion_failures\")",
@@ -1040,8 +951,6 @@ const contracts = [
       "clickButtonByText",
       "clickElementByText",
       "clickElementBySelector",
-      "resolveCurrentGeoResultId",
-      "resolveActionableGeoGapResult",
       "resolveKnowledgeBaseWithRuleDraftId",
       "ensureVisibleDistilledTerm",
       "resolveDistilledTermByQuestion",
@@ -1058,8 +967,6 @@ const contracts = [
       "beforeAssert",
       "dynamicBusinessPageBoundaryExpectations",
       "business_boundary_content_publisher_weekly_plan",
-      "business_boundary_content_growth_geo",
-      "business_boundary_content_growth_geo_detail",
       "business_boundary_content_growth_weekly_report_publish_drawer",
       "business_boundary_knowledge_manager_knowledge",
       "business_boundary_knowledge_manager_knowledge_detail",
@@ -1071,8 +978,6 @@ const contracts = [
       "distilled_term_search_question_ui_auto_pool",
       "distilled_term_low_confidence_ui_discarded",
       "distilled_term_weekly_plan_inheritance",
-      "geo_gap_detail_to_weekly_plan_inheritance",
-      "geo_gap_detail_to_knowledge_inheritance",
       "draft_qa_risk_actions_dom",
       "weekly_report_next_plan_source_inheritance",
       "publish_data_return_manual_metrics_dom_refresh",
@@ -1090,9 +995,6 @@ const contracts = [
       "today-write-platform-drafts-",
       "today-write-platform-drafts-confirm-",
       "distilled-question-input",
-      "geo-detail-create-knowledge-button-",
-      "knowledge-detail-source-card",
-      "knowledge-detail-preview-card",
       "distilled-extract-button",
       "distilled-term-generation-mode-",
       "distilled-term-detail-",
@@ -1110,7 +1012,6 @@ const contracts = [
       "responsive_draft_qa_mobile",
       "responsive_weekly_report_mobile",
       "responsive_weekly_report_drawer_mobile",
-      "responsive_geo_detail_mobile",
       "responsive_knowledge_rule_version_drawer_mobile",
       "responsive_knowledge_source_drawer_mobile",
       "responsive_distilled_term_drawer_mobile",
@@ -1132,7 +1033,6 @@ const contracts = [
       "AI 生成理由",
       "查看发布明细",
       "发布与渠道明细",
-      "GEO 详情",
       "产品表达规则包版本差异",
       "产品表达规则包来源片段",
       "蒸馏词详情",
@@ -1249,19 +1149,15 @@ const contracts = [
       "hydrateWeeklyReportSnapshot",
       "getWeeklyPublishRecordsForReport",
       "getWeeklyBlogDiagnosticsForReport",
-      "getWeeklyGeoResultsForReport",
       "sourceWeek",
       "plannedPublishDate",
       "targetTotalCount",
       "filterWeeklyReportForRole",
       "getWeeklyReportForRole",
-      "exportGeoResultBusinessMarkdown",
       "WeeklyRecommendationOutcome",
       "buildRecommendationOutcomes",
       "recommendationOutcomes",
-      "sectionIndex",
-      "用户问题",
-      "不包含原始回答、原始引用链接、引用排名"
+      "sectionIndex"
     ]
   }
 ];

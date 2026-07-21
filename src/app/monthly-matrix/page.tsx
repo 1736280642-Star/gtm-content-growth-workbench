@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRightOutlined, SettingOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Empty, Progress, Space, Spin, Tag } from "antd";
+import { Alert, Button, Card, Empty, Space, Spin, Tag } from "antd";
 import Link from "next/link";
 import { useState } from "react";
 import { MonthlyPlanConfigPanel } from "@/components/MonthlyPlanConfigPanel";
@@ -13,8 +13,6 @@ import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
 const loadingPlan = {
   month: "",
   businessGoal: "",
-  baselineRatio: 20,
-  ratioAdjustmentReason: "",
   groups: []
 };
 
@@ -25,8 +23,6 @@ export default function MonthlyMatrixPage() {
   const strategyTermHits = workspace?.strategyRows || [];
   const totalQuota = configuredGoal.groups.reduce((total, group) => total + group.articleQuota, 0);
   const channelCount = new Set(configuredGoal.groups.flatMap((group) => group.selectedChannels)).size;
-  const baselineCount = Math.round(totalQuota * (configuredGoal.baselineRatio / 100));
-  const explorationCount = totalQuota - baselineCount;
   const evidenceExceptionCount = strategyTermHits.reduce((total, item) => total + item.estimatedMissingEvidenceItemCount, 0);
   const estimatedGeneratableCount = strategyTermHits.reduce(
     (total, item) => total + item.estimatedReadyItemCount + item.estimatedAutoDowngradeItemCount,
@@ -38,7 +34,7 @@ export default function MonthlyMatrixPage() {
       <PageHeader
         title="月度内容矩阵"
         titleExtra={<Tag color="blue">{configuredGoal.month || "读取中"}</Tag>}
-        subtitle="确认本月产品、内容配额、主题方向、GEO 测试目标和证据准备度。"
+        subtitle="确认本月产品、内容配额、主题方向和证据准备度。"
         actions={
           <Button type="primary" icon={<SettingOutlined />} loading={loading} disabled={!workspace} onClick={() => setConfigOpen(true)}>
             月度计划配置
@@ -86,8 +82,6 @@ export default function MonthlyMatrixPage() {
           { label: "本月计划", value: `${totalQuota} 篇`, helper: "月度矩阵总配额" },
           { label: "可用产品", value: configuredGoal.groups.length, helper: "已审核且资料充分" },
           { label: "覆盖渠道", value: channelCount, helper: "已选择的发布渠道" },
-          { label: "GEO 基线", value: `${baselineCount} 篇`, helper: `${configuredGoal.baselineRatio}% 稳定复测` },
-          { label: "动态探索", value: `${explorationCount} 篇`, helper: `${100 - configuredGoal.baselineRatio}% 新缺口验证` },
           { label: "策略建议", value: "待确认", helper: "确认后进入内容生产" },
           { label: "证据异常", value: evidenceExceptionCount, helper: "仅阻断受影响矩阵项" }
         ]}
@@ -114,23 +108,6 @@ export default function MonthlyMatrixPage() {
           </Space>
         }
       >
-        <div className="v5-geo-allocation">
-          <div className="v5-geo-allocation-copy">
-            <strong>GEO 测试分配</strong>
-            <span>20/80 是内容配额的默认测试结构，不是流量分配；人工调整时必须填写原因。</span>
-          </div>
-          <div className="v5-geo-allocation-bars">
-            <div>
-              <span>{`baseline ${configuredGoal.baselineRatio}% · ${baselineCount} 篇`}</span>
-              <Progress percent={configuredGoal.baselineRatio} showInfo={false} strokeColor="#6554c0" trailColor="#ece9fb" />
-            </div>
-            <div>
-              <span>{`exploration ${100 - configuredGoal.baselineRatio}% · ${explorationCount} 篇`}</span>
-              <Progress percent={100 - configuredGoal.baselineRatio} showInfo={false} strokeColor="#1677ff" trailColor="#e8f1ff" />
-            </div>
-          </div>
-        </div>
-
         <Alert
           showIcon
           type="warning"

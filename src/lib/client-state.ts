@@ -5,7 +5,6 @@ import {
   blogArticles,
   botVisits,
   drafts,
-  geoResults,
   knowledgeBases,
   publishRecords,
   tasks,
@@ -35,7 +34,6 @@ const initialState: WorkbenchState = {
     productPlans: weeklyPlan.productPlans,
     currentRole: "content_publisher",
     finalReviewMode: "default_final",
-    geoPlatforms: ["DeepSeek", "豆包", "通义千问"],
     logMode: "demo_csv"
   },
   tasks,
@@ -46,7 +44,6 @@ const initialState: WorkbenchState = {
   publishSchedules: [],
   publishAttempts: [],
   blogArticles,
-  geoResults,
   botVisits,
   knowledgeBases,
   distilledTerms: [

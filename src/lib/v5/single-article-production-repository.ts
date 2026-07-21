@@ -449,7 +449,7 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
     return {
       id: String(row.id), monthlyPlanId: String(row.monthly_plan_id), matrixVersionId: String(row.matrix_version_id), matrixItemId: String(row.id),
       title: String(row.title), primaryDistilledTerm: String(row.primary_distilled_term_id || "未设置"), priority: "P0" as const,
-      geoTestMode: "baseline" as const, contentType: String(row.content_type), product: String(row.product_display_name || row.product_canonical_name || row.product_id),
+      contentType: String(row.content_type), product: String(row.product_display_name || row.product_canonical_name || row.product_id),
       rulePackageVersion: String(row.rule_version || row.rule_package_version_id || ""), channel: String(row.channel),
       platformExpressionType: String(row.platform_content_type || row.content_type), titleConfirmed: ["approved", "ready_for_generation", "generated"].includes(String(row.status)),
       evidencePreview, finalEvidenceGate,

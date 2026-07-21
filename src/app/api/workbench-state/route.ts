@@ -64,7 +64,6 @@ function getClientDashboardSummary(state: WorkbenchState) {
       approved,
       published,
       pendingUrl,
-      geoHitRate: `${state.geoResults.filter((item) => item.mentionedJoto).length}/${state.geoResults.length}`,
       aiBotPv: state.botVisits.reduce((sum, item) => sum + item.pv, 0)
     },
     dataSource: state.runtime.storage

@@ -25,7 +25,7 @@ type CandidateRow = BlogArticle & {
 };
 
 const candidateSourceLabels: Record<CandidateSource, string> = {
-  geo: "GEO 测试",
+  geo: "GEO 诊断",
   seo: "SEO 诊断",
   manual: "人工加入"
 };
@@ -130,7 +130,7 @@ export default function BlogCandidatesPage() {
       reason:
         item.candidateReason ||
         (item.geoResult === "miss"
-          ? "GEO 测试未命中，建议补强官网内容。"
+          ? "GEO 诊断未命中，建议补强官网内容。"
           : item.seoIssueCount > 0
             ? `存在 ${item.seoIssueCount} 个 SEO 问题。`
             : "建议继续观察。"),

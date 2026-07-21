@@ -41,7 +41,6 @@ const sourceFilterLabels: Record<WeeklyPlanSourceFilter, string> = {
   knowledge_base: "知识库",
   product_expression: "产品表达",
   distilled_terms: "蒸馏词",
-  geo_gap: "GEO 缺口",
   blog_diagnosis: "博客诊断",
   weekly_report: "周报建议",
   publish_matrix: "发布矩阵",

@@ -108,7 +108,6 @@ function createSettingsRuleChecks(input: {
   products: Array<keyof typeof productLabels>;
   currentRole: WorkspaceRole;
   finalReviewMode: keyof typeof finalReviewModeLabels;
-  geoPlatforms: string[];
   logMode: keyof typeof logModeLabels;
 }): SettingsRuleCheck[] {
   const weeklyCapacity = input.weeklyDays * input.dailyCount;
@@ -199,33 +198,12 @@ function createSettingsRuleChecks(input: {
           action: "可以继续在博客监控页导入日志。",
           nextStep: "ready"
         },
-    input.geoPlatforms.length
-      ? {
-          key: "geo_platforms",
-          item: "GEO 平台",
-          status: `已选择 ${input.geoPlatforms.length} 个平台`,
-          detail: input.geoPlatforms.join("、"),
-          action: "可以进入 GEO 测试页运行。",
-          nextStep: "ready"
-        }
-      : {
-          key: "geo_platforms",
-          item: "GEO 平台",
-          status: "未选择 GEO 平台",
-          detail: "GEO 测试无法判断应该调用哪些平台。",
-          action: "先选择至少一个 GEO 平台。",
-          nextStep: "configure_geo"
-        }
   ];
 }
 
 function getSettingsRuleEntry(nextStep: SettingsRuleNextStep) {
   if (nextStep === "configure_real_log") {
     return { type: "link" as const, href: "/real-integration", label: "查看连接" };
-  }
-
-  if (nextStep === "configure_geo") {
-    return { type: "link" as const, href: "/geo-test", label: "去 GEO 测试" };
   }
 
   if (nextStep === "ready") {
@@ -252,7 +230,6 @@ export default function SettingsPage() {
   const previewProducts = (Form.useWatch("enabledProducts", form) ?? workspaceSetting.enabledProducts) as Array<keyof typeof productLabels>;
   const previewCurrentRole = (Form.useWatch("currentRole", form) ?? workspaceSetting.currentRole) as WorkspaceRole;
   const previewFinalReviewMode = (Form.useWatch("finalReviewMode", form) ?? workspaceSetting.finalReviewMode) as keyof typeof finalReviewModeLabels;
-  const previewGeoPlatforms = (Form.useWatch("geoPlatforms", form) ?? workspaceSetting.geoPlatforms) as string[];
   const previewLogMode = (Form.useWatch("logMode", form) ?? workspaceSetting.logMode) as keyof typeof logModeLabels;
   const settingsRuleChecks = createSettingsRuleChecks({
     weeklyDays: Number(previewWeeklyDays) || 0,
@@ -261,7 +238,6 @@ export default function SettingsPage() {
     products: previewProducts,
     currentRole: previewCurrentRole,
     finalReviewMode: previewFinalReviewMode,
-    geoPlatforms: previewGeoPlatforms,
     logMode: previewLogMode
   });
   const blockingRuleChecks = settingsRuleChecks.filter((item) => item.nextStep !== "ready");
@@ -389,12 +365,6 @@ export default function SettingsPage() {
                 {previewProducts.length ? previewProducts.map((item) => <Tag color="purple" key={item}>{productLabels[item]}</Tag>) : <Tag>未选择产品</Tag>}
               </Space>
             </div>
-            <div>
-              GEO 平台：
-              <Space wrap>
-                {previewGeoPlatforms.length ? previewGeoPlatforms.map((item) => <Tag color="cyan" key={item}>{item}</Tag>) : <Tag>未选择平台</Tag>}
-              </Space>
-            </div>
           </Space>
         }
       />
@@ -403,7 +373,7 @@ export default function SettingsPage() {
         showIcon
         style={{ marginBottom: 16 }}
         message={blockingRuleChecks.length ? `规则检查发现 ${blockingRuleChecks.length} 个待处理项` : "当前规则可进入主流程"}
-        description={firstBlockingRule ? `${firstBlockingRule.item}：${firstBlockingRule.action}` : "渠道、产品、产能、终稿、日志和 GEO 平台都已具备可执行入口。"}
+        description={firstBlockingRule ? `${firstBlockingRule.item}：${firstBlockingRule.action}` : "渠道、产品、产能、终稿和日志都已具备可执行入口。"}
       />
       <Card title="规则检查" style={{ marginBottom: 16 }}>
         <Table
@@ -489,9 +459,6 @@ export default function SettingsPage() {
                   { label: "人工确认", value: "manual_review" }
                 ]}
               />
-            </Form.Item>
-            <Form.Item label="GEO 平台" name="geoPlatforms">
-              <Checkbox.Group options={["DeepSeek", "豆包", "通义千问"]} />
             </Form.Item>
             <Form.Item label="日志模式" name="logMode">
               <Radio.Group

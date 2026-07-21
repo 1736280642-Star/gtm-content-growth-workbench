@@ -11,7 +11,7 @@ import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { contentTypeLabels, productLabels } from "@/lib/labels";
 import type { ContentTask, DistilledTerm, DistilledTermRuleDraft } from "@/lib/types";
 
-type AutoPoolSource = "knowledge_base" | "geo_gap" | "all";
+type AutoPoolSource = "knowledge_base" | "all";
 
 const levelLabels: Record<DistilledTerm["level"], string> = {
   core: "核心词",
@@ -33,7 +33,6 @@ const statusColors: Record<DistilledTerm["status"], string> = {
 
 const generationModeLabels: Record<NonNullable<DistilledTerm["generationMode"]>, string> = {
   knowledge_base: "知识库自动生成",
-  geo_gap: "GEO 缺口生成",
   search_question: "搜索问题生成",
   manual_seed: "系统预置"
 };
@@ -73,7 +72,6 @@ export default function DistilledTermsPage() {
   const autoPooledCount = distilledTerms.filter((term) => term.status !== "disabled" && term.validationStatus === "auto_validated").length;
   const searchQuestionSuccessCount = distilledTerms.filter((term) => term.status !== "disabled" && term.generationMode === "search_question").length;
   const knowledgeBaseGeneratedCount = distilledTerms.filter((term) => term.status !== "disabled" && term.generationMode === "knowledge_base").length;
-  const geoGapGeneratedCount = distilledTerms.filter((term) => term.status !== "disabled" && term.generationMode === "geo_gap").length;
   const usedTermCount = visibleTerms.filter((term) => getTermUsage(term, tasks).length > 0).length;
   const selectedTermUsage = useMemo(() => (selectedTerm ? getTermUsage(selectedTerm, tasks) : []), [selectedTerm, tasks]);
 
@@ -212,7 +210,6 @@ export default function DistilledTermsPage() {
         <MetricCard title="自动入池" value={autoPooledCount} suffix="个" />
         <MetricCard title="搜索问题生成" value={searchQuestionSuccessCount} suffix="个" />
         <MetricCard title="知识库生成" value={knowledgeBaseGeneratedCount} suffix="个" />
-        <MetricCard title="GEO 缺口生成" value={geoGapGeneratedCount} suffix="个" />
         <MetricCard title="待确认规则" value={pendingRuleDrafts.length} suffix="条" />
         <MetricCard title="周计划调用" value={usedTermCount} suffix="个" />
       </div>
@@ -226,9 +223,6 @@ export default function DistilledTermsPage() {
             >
               从知识库建议入池
             </Button>
-            <Button loading={autoPoolingSource === "geo_gap"} onClick={() => handleAutoPoolTerms("geo_gap")} data-testid="distilled-auto-pool-geo">
-              从 GEO 缺口入池
-            </Button>
             <Button type="primary" loading={autoPoolingSource === "all"} onClick={() => handleAutoPoolTerms("all")} data-testid="distilled-auto-pool-all">
               同步全部来源
             </Button>
@@ -236,8 +230,8 @@ export default function DistilledTermsPage() {
           <Alert
             showIcon
             type="info"
-            message="自动入池范围：已生效知识库规则包建议、GEO 品牌提及或官网引用缺口、真实搜索问题。"
-            description="知识库草稿不会直接入池；GEO 失败或待配置结果不会入池；搜索问题会优先命中已生效规则，未命中的高价值问题会生成待确认规则建议。"
+            message="自动入池范围：已生效知识库规则包建议和真实搜索问题。"
+            description="知识库草稿不会直接入池；搜索问题会优先命中已生效规则，未命中的高价值问题会生成待确认规则建议。"
           />
         </Space>
       </Card>

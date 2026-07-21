@@ -134,8 +134,6 @@ function buildDraftPlan(month: string): MonthlyPlanConfig {
   return {
     month,
     businessGoal: "",
-    baselineRatio: 20,
-    ratioAdjustmentReason: "",
     groups: []
   };
 }
@@ -211,13 +209,6 @@ function validateMonthlyPlan(config: MonthlyPlanConfig, month: string, rulePacka
   if (config.month !== month || !MONTH_PATTERN.test(config.month)) issues.push("配置月份必须与接口路径月份一致。");
   if (typeof config.businessGoal !== "string" || !config.businessGoal.trim()) issues.push("请填写月度业务目标。");
   if (typeof config.businessGoal === "string" && config.businessGoal.length > 160) issues.push("月度业务目标不能超过 160 个字符。");
-  if (!Number.isInteger(config.baselineRatio) || config.baselineRatio < 0 || config.baselineRatio > 100) issues.push("GEO 基线比例必须是 0 到 100 的整数。");
-  if (config.baselineRatio !== 20 && (typeof config.ratioAdjustmentReason !== "string" || !config.ratioAdjustmentReason.trim())) {
-    issues.push("调整默认 20/80 测试比例时必须填写原因。");
-  }
-  if (typeof config.ratioAdjustmentReason !== "string" || config.ratioAdjustmentReason.length > 300) {
-    issues.push("测试比例调整原因必须是 300 个字符以内的文本。");
-  }
   if (!Array.isArray(config.groups) || config.groups.length === 0) issues.push("至少选择 1 个可进入生产池的规则包。");
   if (Array.isArray(config.groups) && config.groups.length > 50) issues.push("单个月度计划最多包含 50 个产品分组。");
 
@@ -263,8 +254,6 @@ function validateMonthlyPlan(config: MonthlyPlanConfig, month: string, rulePacka
   return {
     month: config.month,
     businessGoal: config.businessGoal.trim(),
-    baselineRatio: config.baselineRatio,
-    ratioAdjustmentReason: config.ratioAdjustmentReason.trim(),
     groups: config.groups.map((group) => ({
       groupQuotaId: group.groupQuotaId.trim(),
       rulePackageVersionId: group.rulePackageVersionId,

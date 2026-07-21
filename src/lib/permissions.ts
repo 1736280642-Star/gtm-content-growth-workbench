@@ -29,7 +29,6 @@ export const workspaceRouteLabels: Record<string, string> = {
   "/distilled-terms": "蒸馏词池",
   "/blog-monitor": "官网博客监控",
   "/blog-candidates": "博客候选池",
-  "/geo-test": "GEO 测试",
   "/real-integration": "连接管理",
   "/ai-config": "AI 配置",
   "/settings": "工作台设置"
@@ -37,7 +36,7 @@ export const workspaceRouteLabels: Record<string, string> = {
 
 const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   content_publisher: ["/", "/today", "/publish", "/weekly-plan", "/weekly-report", "/settings"],
-  content_growth: ["/", "/weekly-plan", "/weekly-report", "/distilled-terms", "/blog-monitor", "/blog-candidates", "/geo-test", "/settings"],
+  content_growth: ["/", "/weekly-plan", "/weekly-report", "/distilled-terms", "/blog-monitor", "/blog-candidates", "/settings"],
   workbench_operator: [
     "/",
     "/monthly-matrix",
@@ -53,12 +52,11 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
     "/distilled-terms",
     "/blog-monitor",
     "/blog-candidates",
-    "/geo-test",
     "/real-integration",
     "/ai-config",
     "/settings"
   ],
-  knowledge_manager: ["/", "/knowledge", "/distilled-terms", "/geo-test", "/weekly-report", "/settings"],
+  knowledge_manager: ["/", "/knowledge", "/distilled-terms", "/weekly-report", "/settings"],
   developer_admin: [
     "/",
     "/monthly-matrix",
@@ -74,7 +72,6 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
     "/distilled-terms",
     "/blog-monitor",
     "/blog-candidates",
-    "/geo-test",
     "/real-integration",
     "/ai-config",
     "/settings"

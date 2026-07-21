@@ -132,9 +132,9 @@ interface DiagnosticResponse {
 }
 
 const providers = [
-  { key: "qwen", name: "通义千问", usage: "GEO 测试 / 内容生成", model: "QWEN_MODEL" },
-  { key: "deepseek", name: "DeepSeek", usage: "GEO 测试 / 内容生成", model: "DEEPSEEK_MODEL" },
-  { key: "doubao", name: "豆包", usage: "GEO 测试", model: "DOUBAO_MODEL" },
+  { key: "qwen", name: "通义千问", usage: "内容生成", model: "QWEN_MODEL" },
+  { key: "deepseek", name: "DeepSeek", usage: "内容生成", model: "DEEPSEEK_MODEL" },
+  { key: "doubao", name: "豆包", usage: "内容生成", model: "DOUBAO_MODEL" },
   { key: "knowledge_url_crawler", name: "URL 抓取", usage: "知识库 URL 导入", model: "XCRAWL_API_KEY / KNOWLEDGE_PROXY_FETCH_BASE_URL" },
   { key: "xcrawl_blog_sync", name: "博客源", usage: "官网博客同步", model: "XCRAWL_BLOG_INDEX_URL" },
   { key: "mysql_repository", name: "MySQL", usage: "生产级数据持久化", model: "MYSQL_*" }
@@ -268,7 +268,7 @@ function getCapabilityLink(capability: RuntimeCapability | undefined, diagnostic
   const nextStep = getCapabilityNextStep(capability, diagnostic);
 
   if (capability.key === "qwen" || capability.key === "deepseek" || capability.key === "doubao") {
-    return nextStep === "ready" ? { href: "/geo-test", label: "去测试" } : { href: "/real-integration", label: "看缺口" };
+    return nextStep === "ready" ? { href: "/batch-generation", label: "去生成" } : { href: "/real-integration", label: "看缺口" };
   }
 
   if (capability.key === "knowledge_url_crawler") {

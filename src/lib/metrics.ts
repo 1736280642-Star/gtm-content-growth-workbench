@@ -1,4 +1,4 @@
-import { botVisits, geoResults, publishRecords, tasks, weeklyPlan } from "./demo-data";
+import { botVisits, publishRecords, tasks, weeklyPlan } from "./demo-data";
 
 export function getDashboardSummary() {
   const generated = tasks.filter((task) =>
@@ -16,7 +16,6 @@ export function getDashboardSummary() {
       approved,
       published,
       pendingUrl,
-      geoHitRate: `${geoResults.filter((item) => item.mentionedJoto).length}/${geoResults.length}`,
       aiBotPv: botVisits.reduce((sum, item) => sum + item.pv, 0)
     }
   };

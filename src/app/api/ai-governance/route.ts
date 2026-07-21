@@ -60,7 +60,6 @@ function getPipelineStepModule(stepName: string) {
   if (stepName === "sync_blog") return { module: "blog", moduleLabel: "官网博客同步" };
   if (stepName === "import_log") return { module: "bot_log", moduleLabel: "AI 访问日志" };
   if (stepName === "import_channel_metrics") return { module: "publish", moduleLabel: "数据回传" };
-  if (stepName === "run_geo_tests") return { module: "geo", moduleLabel: "GEO 可见度" };
   if (stepName === "read_weekly_report") return { module: "weekly", moduleLabel: "周报复盘" };
   return { module: "pipeline", moduleLabel: "自动 Pipeline" };
 }

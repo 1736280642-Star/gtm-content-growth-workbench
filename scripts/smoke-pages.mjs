@@ -29,21 +29,8 @@ async function setCurrentRole(currentRole) {
   });
 }
 
-async function resolveCurrentGeoResultId() {
-  try {
-    const response = await fetch(`${baseUrl}/api/workbench-state`, {
-      headers: { accept: "application/json" }
-    });
-    const body = await response.json();
-    return body.state?.geoResults?.[0]?.id || body.geoResults?.[0]?.id || "geo-002";
-  } catch {
-    return "geo-002";
-  }
-}
-
 const previousRole = await resolveCurrentRole();
 await setCurrentRole("workbench_operator");
-const currentGeoResultId = await resolveCurrentGeoResultId();
 
 const targets = [
   { name: "dashboard_page", path: "/", expect: "JOTO GTM" },
@@ -62,8 +49,6 @@ const targets = [
   { name: "publish_page", path: "/publish", expect: "数据回传" },
   { name: "blog_monitor_page", path: "/blog-monitor", expect: "官网博客监控" },
   { name: "blog_candidates_page", path: "/blog-candidates", expect: "博客候选池" },
-  { name: "geo_test_page", path: "/geo-test", expect: "GEO 测试" },
-  { name: "geo_test_detail_page", path: `/geo-test/${currentGeoResultId}`, expect: "GEO 详情" },
   { name: "weekly_report_page", path: "/weekly-report", expect: "周度复盘" },
   { name: "knowledge_page", path: "/knowledge", expect: "知识库" },
   { name: "knowledge_detail_page", path: "/knowledge/kb-001", expect: "知识库详情" },
@@ -76,8 +61,7 @@ const targets = [
   { name: "runtime_config_api", path: "/api/runtime-config/status", expect: "capabilities" },
   { name: "config_diagnostics_api", path: "/api/config-diagnostics", expect: "results" },
   { name: "weekly_report_api", path: "/api/weekly-reports/2026-06-17", expect: "executiveSummary" },
-  { name: "weekly_report_markdown_export_api", path: "/api/weekly-reports/2026-06-17/export", expect: "JOTO GTM 周报" },
-  { name: "geo_business_detail_export_api", path: `/api/geo-test-results/${currentGeoResultId}/export`, expect: "GEO 业务详情" }
+  { name: "weekly_report_markdown_export_api", path: "/api/weekly-reports/2026-06-17/export", expect: "JOTO GTM 周报" }
 ];
 
 async function checkTarget(target) {

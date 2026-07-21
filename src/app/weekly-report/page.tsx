@@ -14,7 +14,7 @@ import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { channelLabels } from "@/lib/labels";
 import { canManageWeeklyReportSuggestions, canViewAiGovernance } from "@/lib/permissions";
 import type { PromptTemplate } from "@/lib/prompt-templates";
-import type { BlogArticle, DistilledTerm, GeoTestResult, PublishRecord, WeeklyPlanQualityFeedback, WeeklyPlanQualitySignal } from "@/lib/types";
+import type { BlogArticle, DistilledTerm, PublishRecord, WeeklyPlanQualityFeedback, WeeklyPlanQualitySignal } from "@/lib/types";
 
 interface WeeklyReport {
   week: string;
@@ -22,7 +22,6 @@ interface WeeklyReport {
   executiveSummary: string;
   publishRecords: PublishRecord[];
   blogDiagnostics: BlogArticle[];
-  geoResults: GeoTestResult[];
   distilledTerms?: DistilledTerm[];
   distilledTermMatrix?: DistilledTermMatrixRow[];
   promptTemplates?: PromptTemplate[];
@@ -60,16 +59,14 @@ interface WeeklyRecommendationOutcome {
   completionRateDelta?: number;
   dataReturnRateDelta?: number;
   channelPerformanceDelta?: number;
-  geoHitDelta?: number;
-  officialCitationDelta?: number;
   failureReason?: string;
   modelLearningSignal: string;
   evaluatedAt: string;
 }
 
 type ReportView = "content_growth" | "workbench_ops";
-type DetailDrawerKey = "publish" | "blog" | "geo" | "distilled" | "suggestion_failures" | "ops_modules" | "plan_quality" | undefined;
-type ReportActionStep = "publish_records" | "fill_url" | "record_metrics" | "blog_candidates" | "geo_config" | "geo_candidates" | "create_next_plan" | "ready";
+type DetailDrawerKey = "publish" | "blog" | "distilled" | "suggestion_failures" | "ops_modules" | "plan_quality" | undefined;
+type ReportActionStep = "publish_records" | "fill_url" | "record_metrics" | "blog_candidates" | "create_next_plan" | "ready";
 type WeeklySuggestionStep = "generate_report" | "review_suggestion" | "create_next_plan";
 type OpsModuleStatus = "normal" | "attention" | "blocked" | "idle";
 
@@ -134,27 +131,11 @@ const blogGeoResultLabels: Record<BlogArticle["geoResult"], string> = {
   partial: "部分命中"
 };
 
-const geoExecutionStatusLabels: Record<NonNullable<GeoTestResult["executionStatus"]>, string> = {
-  success: "成功",
-  pending_config: "待配置",
-  failed: "失败"
-};
-
-const citationLevelLabels: Record<string, string> = {
-  official_site_direct: "官网被直接引用",
-  official_content: "官网内容被引用",
-  official_channel: "官方渠道被引用",
-  non_official: "非官方来源",
-  none: "未形成引用"
-};
-
 const reportActionStepLabels: Record<ReportActionStep, string> = {
   publish_records: "处理发布队列",
   fill_url: "回填 URL",
   record_metrics: "录入指标",
   blog_candidates: "处理博客候选",
-  geo_config: "排查 GEO",
-  geo_candidates: "沉淀候选",
   create_next_plan: "生成下周计划",
   ready: "可归档"
 };
@@ -164,8 +145,6 @@ const reportActionStepColors: Record<ReportActionStep, string> = {
   fill_url: "gold",
   record_metrics: "blue",
   blog_candidates: "purple",
-  geo_config: "red",
-  geo_candidates: "purple",
   create_next_plan: "green",
   ready: "green"
 };
@@ -253,28 +232,6 @@ function filterBlogDiagnosticsForReport(articles: BlogArticle[], weekStart: stri
   return articles.filter((article) => isSameReportWeek(article.sourceWeek, weekStart) || (!article.sourceWeek && isDateInReportWeek(article.candidateAddedAt || article.lastCrawledAt, weekStart)));
 }
 
-function filterGeoResultsForReport(results: GeoTestResult[], weekStart: string) {
-  return results.filter((result) => isSameReportWeek(result.sourceWeek, weekStart) || (!result.sourceWeek && isDateInReportWeek(result.testedAt, weekStart)));
-}
-
-function getGeoBusinessGap(result: GeoTestResult) {
-  if (result.executionStatus === "pending_config" || result.executionStatus === "failed") return "测试未完成";
-  if (!result.mentionedJoto) return "AI 未主动提到品牌";
-  if (!result.mentionedWeike) return "产品表达不稳定";
-  if (!result.citedOfficialUrl) return "官网信源未被引用";
-  if (result.competitorAppeared) return "竞品出现占位";
-  return "暂无明显缺口";
-}
-
-function getGeoBusinessNextStep(result: GeoTestResult) {
-  if (result.suggestedAction) return result.suggestedAction;
-  if (result.executionStatus === "pending_config" || result.executionStatus === "failed") return "先排查配置并重跑测试。";
-  if (!result.mentionedJoto || !result.mentionedWeike) return "把该问题转入下周选题，补品牌和产品解释。";
-  if (!result.citedOfficialUrl) return "补官网内容或知识库证据，让 AI 更容易引用官方信源。";
-  if (result.competitorAppeared) return "补对比和差异化内容，减少竞品占位。";
-  return "继续观察，不需要本周新增动作。";
-}
-
 function ReportKpiCard({ title, value, suffix, trend, positiveGood = true }: ReportKpiCardProps) {
   return (
     <Card size="small" className="report-kpi-card">
@@ -291,7 +248,6 @@ function ReportKpiCard({ title, value, suffix, trend, positiveGood = true }: Rep
 function createReportActionItems(
   reportPublishRecords: PublishRecord[],
   reportBlogDiagnostics: BlogArticle[],
-  reportGeoResults: GeoTestResult[],
   hasActiveReport: boolean
 ): ReportActionItem[] {
   const queuedPublishCount = reportPublishRecords.filter((item) => item.publishStatus === "queued").length;
@@ -303,10 +259,6 @@ function createReportActionItems(
     (item) =>
       item.candidateStatus === "candidate" ||
       ((item.geoResult === "miss" || item.seoIssueCount > 0) && item.candidateStatus !== "planned" && item.candidateStatus !== "dismissed")
-  ).length;
-  const geoConfigCount = reportGeoResults.filter((item) => item.executionStatus === "pending_config" || item.executionStatus === "failed").length;
-  const geoCandidateCount = reportGeoResults.filter(
-    (item) => (item.executionStatus || "success") === "success" && (!item.mentionedJoto || !item.citedOfficialUrl)
   ).length;
   const actionItems: ReportActionItem[] = [];
 
@@ -358,30 +310,6 @@ function createReportActionItems(
     });
   }
 
-  if (geoConfigCount) {
-    actionItems.push({
-      key: "geo_config",
-      issue: "GEO 测试待配置或失败",
-      count: geoConfigCount,
-      actionText: "先排查模型配置与执行失败",
-      nextStep: "诊断通过后重新运行 GEO 测试",
-      entryHref: "/ai-config",
-      entryLabel: "看 AI 配置"
-    });
-  }
-
-  if (geoCandidateCount) {
-    actionItems.push({
-      key: "geo_candidates",
-      issue: "GEO 命中或官网引用不足",
-      count: geoCandidateCount,
-      actionText: "把缺口沉淀为内容候选",
-      nextStep: "加入博客候选池后进入周计划",
-      entryHref: "/geo-test",
-      entryLabel: "去 GEO 测试"
-    });
-  }
-
   if (!actionItems.length && hasActiveReport) {
     actionItems.push({
       key: "create_next_plan",
@@ -399,7 +327,7 @@ function createReportActionItems(
       key: "ready",
       issue: "先生成周报再归纳行动",
       count: 1,
-      actionText: "读取当前发布、博客和 GEO 数据",
+      actionText: "读取当前发布和博客数据",
       nextStep: "点击生成周报",
       entryHref: "/weekly-report",
       entryLabel: "留在本页"
@@ -411,9 +339,9 @@ function createReportActionItems(
 
 function createWeeklySuggestionActions(suggestions: WeeklySuggestionItem[] | undefined, fallbackSuggestionTexts: string[] | undefined, hasActiveReport: boolean): WeeklySuggestionAction[] {
   const fallbackSuggestions = [
-    "先点击生成周报，汇总本周发布记录、博客诊断和 GEO 测试结果。",
+    "先点击生成周报，汇总本周发布记录和博客诊断。",
     "AI 访问数据不足时，先补齐数据再做正式策略判断。",
-    "把 SEO 问题较多或 GEO 未命中的主题优先加入博客候选池。"
+    "把 SEO 问题较多或诊断未命中的主题优先加入博客候选池。"
   ];
   const sourceSuggestions: WeeklySuggestionItem[] =
     suggestions?.length
@@ -505,7 +433,6 @@ function createOpsModuleRows(input: {
   reportActionItems: ReportActionItem[];
   reportPublishRecords: PublishRecord[];
   reportBlogDiagnostics: BlogArticle[];
-  reportGeoResults: GeoTestResult[];
   reportDistilledTermMatrix: DistilledTermMatrixRow[];
   reportPromptTemplates: PromptTemplate[];
   planQualityFeedback?: WeeklyPlanQualityFeedback;
@@ -515,8 +442,6 @@ function createOpsModuleRows(input: {
   const queuedPublishCount = getActionCount(input.reportActionItems, ["publish_records"]);
   const missingDataCount = Math.max(0, input.publishedCount - input.dataReturnedCount);
   const blogCandidateCount = getActionCount(input.reportActionItems, ["blog_candidates"]);
-  const geoConfigCount = getActionCount(input.reportActionItems, ["geo_config"]);
-  const geoCandidateCount = getActionCount(input.reportActionItems, ["geo_candidates"]);
   const rows: OpsModuleRow[] = [];
 
   if (!input.hasActiveReport) {
@@ -584,18 +509,6 @@ function createOpsModuleRows(input: {
     });
   }
 
-  if (input.reportGeoResults.length) {
-    rows.push({
-      key: "geo_visibility",
-      module: "GEO 可见度",
-      status: geoConfigCount ? "blocked" : geoCandidateCount ? "attention" : "normal",
-      count: geoConfigCount || geoCandidateCount || input.reportGeoResults.length,
-      issue: geoConfigCount ? "存在 GEO 配置或执行失败。" : geoCandidateCount ? "品牌或官网引用仍有缺口。" : "本周 GEO 测试结果可归档。",
-      nextStep: geoConfigCount ? "先排查 AI 配置，再重跑测试。" : geoCandidateCount ? "沉淀缺口问题进入周计划。" : "继续观察趋势。",
-      entry: { type: "drawer", drawerKey: "geo", label: "GEO 详情" }
-    });
-  }
-
   if (input.reportDistilledTermMatrix.length || input.hasActiveReport) {
     rows.push({
       key: "distilled_matrix",
@@ -623,7 +536,7 @@ function createOpsModuleRows(input: {
 
 export default function WeeklyReportPage() {
   const {
-    state: { blogArticles, botVisits, geoResults, publishRecords, weeklyPlan, workspaceSetting },
+    state: { blogArticles, botVisits, publishRecords, weeklyPlan, workspaceSetting },
     loading,
     error,
     refresh
@@ -644,14 +557,11 @@ export default function WeeklyReportPage() {
   const showOpsView = canViewOpsReport && activeView === "workbench_ops";
   const fallbackReportPublishRecords = useMemo(() => filterPublishRecordsForReport(publishRecords, weeklyPlan.weekStart), [publishRecords, weeklyPlan.weekStart]);
   const fallbackReportBlogDiagnostics = useMemo(() => filterBlogDiagnosticsForReport(blogArticles, weeklyPlan.weekStart), [blogArticles, weeklyPlan.weekStart]);
-  const fallbackReportGeoResults = useMemo(() => filterGeoResultsForReport(geoResults, weeklyPlan.weekStart), [geoResults, weeklyPlan.weekStart]);
   const reportPublishRecords = activeReport?.publishRecords || fallbackReportPublishRecords;
   const reportBlogDiagnostics = activeReport?.blogDiagnostics || fallbackReportBlogDiagnostics;
-  const reportGeoResults = activeReport?.geoResults || fallbackReportGeoResults;
   const reportDistilledTermMatrix = activeReport?.distilledTermMatrix || [];
   const reportPromptTemplates = canViewOpsReport ? activeReport?.promptTemplates || [] : [];
   const planQualityFeedback = activeReport?.planQualityFeedback;
-  const hasGeoActivity = reportGeoResults.length > 0;
   const hasBlogAction = reportBlogDiagnostics.some((item) => item.candidateStatus === "candidate" || item.geoResult !== "hit" || item.seoIssueCount > 0);
   const hasDistilledActivity = Boolean(activeReport && reportDistilledTermMatrix.length);
   const publishedCount = reportPublishRecords.filter((item) => item.publishStatus === "published" || item.publishStatus === "url_filled").length;
@@ -661,21 +571,14 @@ export default function WeeklyReportPage() {
     (sum, item) => sum + (item.channelMetrics?.likes || 0) + (item.channelMetrics?.favorites || 0) + (item.channelMetrics?.comments || 0) + (item.channelMetrics?.shares || 0),
     0
   );
-  const geoJotoHits = reportGeoResults.filter((item) => item.mentionedJoto).length;
-  const geoWeikeHits = reportGeoResults.filter((item) => item.mentionedWeike).length;
-  const officialCitationCount = reportGeoResults.filter((item) => item.citedOfficialUrl || item.citationLevel === "official_site_direct" || item.citationLevel === "official_content").length;
   const reportTargetTotalCount = activeReport?.targetTotalCount || activeReport?.planQualityFeedback?.totalPlanItems || weeklyPlan.targetTotalCount;
   const publishCompletionRate = reportTargetTotalCount ? Math.round((publishedCount / reportTargetTotalCount) * 100) : 0;
   const dataReturnRate = publishedCount ? Math.round((dataReturnedCount / publishedCount) * 100) : 0;
-  const geoHitRate = reportGeoResults.length ? Math.round((geoJotoHits / reportGeoResults.length) * 100) : 0;
-  const officialCitationRate = reportGeoResults.length ? Math.round((officialCitationCount / reportGeoResults.length) * 100) : 0;
   const previousCompletionRate = createPreviousValue(publishCompletionRate, 80);
   const previousDataReturnRate = createPreviousValue(dataReturnRate, 80);
-  const previousGeoHitRate = createPreviousValue(geoHitRate, 60);
-  const previousOfficialCitationRate = createPreviousValue(officialCitationRate, 50);
   const previousViews = Math.max(0, totalViews - 120);
   const generatedCount = reportTargetTotalCount ? Math.min(reportTargetTotalCount, reportPublishRecords.length) : reportPublishRecords.length;
-  const reportActionItems = createReportActionItems(reportPublishRecords, reportBlogDiagnostics, reportGeoResults, Boolean(activeReport));
+  const reportActionItems = createReportActionItems(reportPublishRecords, reportBlogDiagnostics, Boolean(activeReport));
   const reportActionTotal = reportActionItems.reduce((sum, item) => sum + item.count, 0);
   const weeklySuggestionActions = createWeeklySuggestionActions(activeReport?.nextWeekSuggestionItems, activeReport?.nextWeekSuggestions, Boolean(activeReport));
   const suggestionTotal = activeReport?.nextWeekSuggestionItems?.length || 0;
@@ -695,7 +598,6 @@ export default function WeeklyReportPage() {
     reportActionItems,
     reportPublishRecords,
     reportBlogDiagnostics,
-    reportGeoResults,
     reportDistilledTermMatrix,
     reportPromptTemplates,
     planQualityFeedback,
@@ -738,10 +640,7 @@ export default function WeeklyReportPage() {
   const reviewInsights = [
     publishCompletionRate >= 80 ? "本周发布完成率处于可接受区间，下周可以优先优化选题质量和回传完整度。" : "本周发布完成率偏低，下周发布数量建议先保守，优先处理未发布任务。",
     dataReturnRate >= 80 ? "数据回传比较完整，可以支撑下周渠道分配判断。" : "数据回传不足，当前不适合只按渠道表现调整发布量。",
-    bestChannel ? `${bestChannel.channel} 当前阅读最高，但是否加量仍需要结合选题质量和回传完整度判断。` : "当前还没有形成可用的渠道表现样本。",
-    ...(hasGeoActivity
-      ? [geoHitRate >= 60 ? "AI 可见度已有基础命中，下一步重点看官网是否被引用。" : "AI 可见度仍有缺口，应把未命中的用户问题沉淀为下周内容动作。"]
-      : [])
+    bestChannel ? `${bestChannel.channel} 当前阅读最高，但是否加量仍需要结合选题质量和回传完整度判断。` : "当前还没有形成可用的渠道表现样本。"
   ];
 
   const opsSignals = [
@@ -756,9 +655,6 @@ export default function WeeklyReportPage() {
     `待处理行动项：${reportActionTotal}`,
     `发布队列待处理：${reportActionItems.filter((item) => item.key === "publish_records").reduce((sum, item) => sum + item.count, 0)}`,
     `URL / 指标缺口：${reportActionItems.filter((item) => item.key === "fill_url" || item.key === "record_metrics").reduce((sum, item) => sum + item.count, 0)}`,
-    ...(hasGeoActivity
-      ? [`GEO 配置或候选问题：${reportActionItems.filter((item) => item.key === "geo_config" || item.key === "geo_candidates").reduce((sum, item) => sum + item.count, 0)}`]
-      : []),
     `AI 访问量：${botPv}`
   ];
 
@@ -935,36 +831,6 @@ export default function WeeklyReportPage() {
       );
     }
 
-    if (detailDrawer === "geo") {
-      return (
-        <Table
-          rowKey="id"
-          size="small"
-          dataSource={reportGeoResults}
-          scroll={{ x: 1040 }}
-          columns={[
-            { title: "平台", dataIndex: "platform" },
-            { title: "用户问题", dataIndex: "prompt" },
-            { title: "品牌", dataIndex: "mentionedJoto", render: (value) => <Tag color={value ? "green" : "red"}>{value ? "被提到" : "未提到"}</Tag> },
-            { title: "产品", dataIndex: "mentionedWeike", render: (value) => <Tag color={value ? "green" : "gold"}>{value ? "被提到" : "未提到"}</Tag> },
-            { title: "官网", dataIndex: "citedOfficialUrl", render: (value) => <Tag color={value ? "green" : "gold"}>{value ? "被引用" : "未引用"}</Tag> },
-            { title: "官网引用情况", dataIndex: "citationLevel", render: (value) => citationLevelLabels[value || "none"] || value },
-            { title: "问题缺口", render: (_, record) => getGeoBusinessGap(record) },
-            { title: "下一步动作", render: (_, record) => getGeoBusinessNextStep(record) },
-            { title: "测试状态", dataIndex: "executionStatus", render: (value) => <Tag>{geoExecutionStatusLabels[(value || "success") as NonNullable<GeoTestResult["executionStatus"]>]}</Tag> },
-            {
-              title: "详情",
-              render: (_, record) => (
-                <Link href={`/geo-test/${record.id}`}>
-                  <Button size="small">看详情</Button>
-                </Link>
-              )
-            }
-          ]}
-        />
-      );
-    }
-
     if (detailDrawer === "distilled") {
       return (
         <Table
@@ -1087,7 +953,6 @@ export default function WeeklyReportPage() {
   const drawerTitles: Record<Exclude<DetailDrawerKey, undefined>, string> = {
     publish: "发布与渠道明细",
     blog: "官网博客诊断详情",
-    geo: "GEO 业务详情",
     distilled: "蒸馏词覆盖详情",
     suggestion_failures: "建议失败原因详情",
     ops_modules: "模块执行情况详情",
@@ -1134,8 +999,6 @@ export default function WeeklyReportPage() {
               <ReportKpiCard title="数据回传率" value={dataReturnRate} suffix="%" trend={dataReturnRate - previousDataReturnRate} />
               <ReportKpiCard title="总阅读" value={totalViews} trend={totalViews - previousViews} />
               <ReportKpiCard title="总互动" value={totalEngagement} trend={totalEngagement ? 12 : 0} />
-              {hasGeoActivity ? <ReportKpiCard title="品牌被 AI 提到" value={geoHitRate} suffix="%" trend={geoHitRate - previousGeoHitRate} /> : null}
-              {hasGeoActivity ? <ReportKpiCard title="官网被引用" value={officialCitationRate} suffix="%" trend={officialCitationRate - previousOfficialCitationRate} /> : null}
             </div>
           </Card>
 
@@ -1152,7 +1015,7 @@ export default function WeeklyReportPage() {
               }
             />
           ) : (
-            <Alert showIcon type="info" message="本周复盘尚未生成" description="点击生成周报，汇总本周发布、博客诊断、GEO 测试和下周建议。" />
+            <Alert showIcon type="info" message="本周复盘尚未生成" description="点击生成周报，汇总本周发布、博客诊断和下周建议。" />
           )}
 
           <div className="report-two-column">
@@ -1174,9 +1037,6 @@ export default function WeeklyReportPage() {
                   <Link href="/blog-candidates">
                     <Button>处理博客候选</Button>
                   </Link>
-                ) : null}
-                {hasGeoActivity ? (
-                  <Button onClick={() => openDetailDrawer("geo")}>查看 GEO 详情</Button>
                 ) : null}
                 {hasDistilledActivity ? (
                   <Button onClick={() => openDetailDrawer("distilled")}>查看蒸馏词详情</Button>
@@ -1376,7 +1236,6 @@ export default function WeeklyReportPage() {
                 <Button onClick={() => openDetailDrawer("ops_modules")}>模块执行情况详情</Button>
                 <Button onClick={() => openDetailDrawer("publish")}>发布与回传明细</Button>
                 {hasBlogAction ? <Button onClick={() => openDetailDrawer("blog")}>博客诊断详情</Button> : null}
-                {hasGeoActivity ? <Button onClick={() => openDetailDrawer("geo")}>GEO 业务详情</Button> : null}
                 {hasDistilledActivity ? <Button onClick={() => openDetailDrawer("distilled")}>蒸馏词覆盖详情</Button> : null}
                 <GovernanceEntry label="进入 AI 配置" reason="模型规则版本、调用记录和排查信息属于 AI 配置页；周报只保留运营判断和处理入口。" />
               </Space>

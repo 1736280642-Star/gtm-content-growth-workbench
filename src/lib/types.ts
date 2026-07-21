@@ -53,8 +53,6 @@ export type DistributionTargetErrorCode =
 
 export type ProductKey = "joto_brand" | "weike_guardrails";
 
-export type GeoPlatformName = "DeepSeek" | "豆包" | "通义千问";
-
 export type FinalReviewMode = "default_final" | "manual_review";
 
 export type LogMode = "demo_csv" | "csv_import" | "nginx_log" | "cdn_log";
@@ -235,7 +233,7 @@ export interface WeeklyPlan {
 }
 
 export interface WeeklyPlanGenerationSignal {
-  key: "knowledge_base" | "product_expression" | "distilled_terms" | "geo_gap" | "blog_diagnosis" | "weekly_report";
+  key: "knowledge_base" | "product_expression" | "distilled_terms" | "blog_diagnosis" | "weekly_report";
   label: string;
   status: "used" | "available" | "missing";
   count?: number;
@@ -268,8 +266,6 @@ export interface WeeklyRecommendationOutcome {
   completionRateDelta?: number;
   dataReturnRateDelta?: number;
   channelPerformanceDelta?: number;
-  geoHitDelta?: number;
-  officialCitationDelta?: number;
   failureReason?: string;
   modelLearningSignal: string;
   evaluatedAt: string;
@@ -314,7 +310,6 @@ export interface WeeklyReportSnapshot {
   executiveSummary: string;
   publishRecords: PublishRecord[];
   blogDiagnostics: BlogArticle[];
-  geoResults: GeoTestResult[];
   distilledTerms: DistilledTerm[];
   distilledTermMatrix: WeeklyReportDistilledTermMatrixRow[];
   promptTemplates: PromptVersionRecord[];
@@ -334,7 +329,6 @@ export interface WorkspaceSetting {
   productPlans?: ProductPlanConfig[];
   currentRole: WorkspaceRole;
   finalReviewMode: FinalReviewMode;
-  geoPlatforms: GeoPlatformName[];
   logMode: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
   updatedAt?: string;
@@ -665,7 +659,7 @@ export interface DistilledTerm {
   sourceAssetId?: string;
   product?: ProductKey;
   confidence?: number;
-  generationMode?: "knowledge_base" | "geo_gap" | "search_question" | "manual_seed";
+  generationMode?: "knowledge_base" | "search_question" | "manual_seed";
   generatedAt?: string;
   archivedAt?: string;
   validationStatus: "auto_validated" | "pending" | "disabled";
@@ -723,34 +717,6 @@ export interface BlogArticle {
   candidateReason?: string;
   candidateAddedAt?: string;
   sourceWeek?: string;
-}
-
-export interface GeoTestResult {
-  id: string;
-  platform: GeoPlatformName;
-  testCategory?: "baseline_fixed" | "dynamic_exploration";
-  promptGroup: "品牌认知" | "产品场景" | "对比" | "FAQ";
-  distilledTermIds?: string[];
-  prompt: string;
-  mentionedJoto: boolean;
-  mentionedWeike: boolean;
-  citedOfficialUrl: boolean;
-  citationLevel?: "official_site_direct" | "official_content" | "official_channel" | "non_official" | "none";
-  competitorAppeared?: boolean;
-  citedUrls?: string[];
-  issueType?: string;
-  suggestedAction?: string;
-  accuracyStatus?: "accurate" | "needs_review" | "inaccurate";
-  reviewStatus?: "auto_checked" | "manual_review_needed" | "manual_confirmed";
-  answerSnapshot: string;
-  manualOverride: boolean;
-  dataConfidence?: DataConfidence;
-  executionStatus?: "success" | "pending_config" | "failed";
-  providerKey?: "deepseek" | "doubao" | "qwen";
-  modelName?: string;
-  testedAt?: string;
-  sourceWeek?: string;
-  errorMessage?: string;
 }
 
 export interface BotVisitSummary {

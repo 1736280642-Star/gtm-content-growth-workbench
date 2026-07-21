@@ -67,8 +67,6 @@ function addRegexCheck(label, filePath, patterns) {
   "src/app/today/page.tsx",
   "src/app/drafts/[taskId]/page.tsx",
   "src/app/publish/page.tsx",
-  "src/app/geo-test/page.tsx",
-  "src/app/geo-test/[id]/page.tsx",
   "src/app/blog-monitor/page.tsx",
   "src/app/knowledge/page.tsx",
   "src/app/distilled-terms/page.tsx",
@@ -96,7 +94,6 @@ function addRegexCheck(label, filePath, patterns) {
   "src/app/api/content-tasks/[id]/review/route.ts",
   "src/app/api/content-tasks/[id]/generate/route.ts",
   "src/app/api/content-tasks/batch-generate/route.ts",
-  "src/app/api/geo-tests/run/route.ts",
   "src/app/api/distribution/wechatsync/status/route.ts",
   "src/app/api/distribution/wechatsync/check-auth/route.ts",
   "src/app/api/publish-records/[id]/distribution-targets/route.ts",
@@ -152,7 +149,6 @@ addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
   "数据回传",
   "知识库",
   "AI 配置",
-  "GEO 测试",
   "月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘"
 ]);
 
@@ -194,7 +190,6 @@ addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx
   "月度策略包审核",
   "生成策略包",
   "确认策略包",
-  "GEO 测试分配",
   "策略方向确认后仍需检查单篇证据",
   "MonthlyStrategyTable",
   "strategyTermHits",
@@ -215,8 +210,6 @@ addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanCo
   "mode=\"multiple\"",
   "发布渠道",
   "文章数量",
-  "GEO 基线比例",
-  "ratioAdjustmentReason",
   "月度总量",
   "当前可用规则包",
   "不能进入生产池",
@@ -419,9 +412,6 @@ addContentCheck("v5 daily execution nested route redirects", "src/app/publish-sc
 addContentCheck("v5 monthly review page shell", "src/app/monthly-review/page.tsx", [
   "月度复盘",
   "蒸馏词和产品",
-  "baseline",
-  "exploration",
-  "GEO 缺口",
   "主蒸馏词月度结果",
   "下月候选调整",
   "系统建议 · 人工确认"
@@ -481,7 +471,6 @@ addContentCheck("dashboard scoped v5 replacement", "src/app/page.tsx", [
   "待回填 URL",
   "待数据回传",
   "博客监控",
-  "GEO 测试",
   "重点事项"
 ]);
 addAbsentCheck("dashboard hides engineering state copy", "src/app/page.tsx", [
@@ -752,56 +741,6 @@ addContentCheck("data return page only", "src/app/publish/page.tsx", [
 ]);
 addAbsentCheck("data return no publish confirmation", "src/app/publish/page.tsx", ["handleMarkPublished", "/published", "回填发布 URL", "handleFillUrl"]);
 
-addContentCheck("geo v3 diagnostic", "src/app/geo-test/page.tsx", [
-  "测试范围",
-  "测试频率与自动化",
-  "诊断摘要",
-  "问题组",
-  "Drawer",
-  "selectedDistilledTermIds",
-  "testCategory",
-  "baseline_fixed",
-  "dynamic_exploration",
-  "GEO 测试拆成 2:8 两类",
-  "蒸馏词默认全选",
-  "citationLevelLabels",
-  "引用层级",
-  "问题类型",
-  "建议动作",
-  "getFrequencySuggestion",
-  "看失败详情",
-  "distilledTermIds: activeDistilledTermIds"
-]);
-addAbsentCheck("geo main no prompt group wording", "src/app/geo-test/page.tsx", ["Prompt 组", "Provider", "补齐 Provider"]);
-addAbsentCheck("geo no binary official citation filter", "src/app/geo-test/page.tsx", ["officialCitationFilter", "按官网引用筛选"]);
-addAbsentCheck("geo main no raw snapshot modal", "src/app/geo-test/page.tsx", [
-  "snapshotResult",
-  "setSnapshotResult",
-  "回答快照",
-  "查看快照",
-  "answerSnapshot",
-  "citedUrls.join"
-]);
-
-addContentCheck("geo v4 detail subpage", "src/app/geo-test/[id]/page.tsx", [
-  "GEO 详情",
-  "AI 回答摘要",
-  "引用来源",
-  "竞品提及",
-  "内容动作",
-  "原始数据",
-  "getGeoBusinessConclusion",
-  "getGeoNextStep",
-  "问题组：",
-  "复制业务详情",
-  "转周计划",
-  "补知识库",
-  "入候选池",
-  "原始数据仅用于排查和追溯"
-]);
-addAbsentCheck("geo detail no prompt group wording", "src/app/geo-test/[id]/page.tsx", ["Prompt 组", "Provider", "补齐 Provider"]);
-addAbsentCheck("geo business export no prompt group wording", "src/lib/workbench-store.ts", ["Prompt 组"]);
-
 addContentCheck("blog monitor v3 diagnosis first", "src/app/blog-monitor/page.tsx", [
   "GEO 健康分",
   "引用准备不足",
@@ -959,7 +898,6 @@ addContentCheck("distilled terms v4 pool and actions", "src/app/distilled-terms/
   "蒸馏词池",
   "自动入池来源",
   "知识库生成",
-  "GEO 缺口生成",
   "待确认规则",
   "从搜索问题提取蒸馏词",
   "/api/distilled-terms/extract",
@@ -982,7 +920,6 @@ addContentCheck("distilled terms v4 pool and actions", "src/app/distilled-terms/
   "来源问题",
   "使用记录",
   "distilled-auto-pool-knowledge",
-  "distilled-auto-pool-geo",
   "distilled-auto-pool-all",
   "distilled-question-input",
   "distilled-extract-button",
@@ -1039,14 +976,12 @@ addContentCheck("weekly plan consumes pooled distilled terms", "src/lib/workbenc
   "state.distilledTerms = normalizeDistilledTerms([nextTerm, ...state.distilledTerms.filter((term) => term.id !== existing.id)])",
   "autoPoolDistilledTerms",
   "getKnowledgeBaseDistilledTermCandidates",
-  "getGeoGapDistilledTermCandidates",
   "defaultDistilledTermExtractionRules",
   "distilledTermSemanticTemplates",
   "upsertDistilledTermRuleDraft",
   "activateDistilledTermRuleDraft",
   "discardDistilledTermRuleDraft",
-  "generationMode: \"knowledge_base\"",
-  "generationMode: \"geo_gap\""
+  "generationMode: \"knowledge_base\""
 ]);
 
 addContentCheck("smoke workflow distilled term lifecycle", "scripts/smoke-workflow.mjs", [
@@ -1055,7 +990,6 @@ addContentCheck("smoke workflow distilled term lifecycle", "scripts/smoke-workfl
   "distilled_term_rule_draft_created",
   "distilled_term_rule_draft_activated",
   "distilled_term_knowledge_base_auto_pool",
-  "distilled_term_geo_gap_auto_pool",
   "distilled_term_patch_rejects_unsupported_action",
   "distilled_term_archive",
   "distilled_term_delete",
@@ -1133,35 +1067,17 @@ addContentCheck("weekly report v4 matrix", "src/app/weekly-report/page.tsx", [
 addContentCheck("weekly report current week fallback filters", "src/app/weekly-report/page.tsx", [
   "filterPublishRecordsForReport",
   "filterBlogDiagnosticsForReport",
-  "filterGeoResultsForReport",
   "fallbackReportPublishRecords",
   "fallbackReportBlogDiagnostics",
-  "fallbackReportGeoResults",
-  "weeklyPlan.weekStart",
-  "activeReport?.geoResults || fallbackReportGeoResults"
+  "weeklyPlan.weekStart"
 ]);
 
-addContentCheck("weekly report conditional geo summary", "src/lib/workbench-store.ts", [
-  "const geoSummary = weeklyGeoResults.length",
-  "已发布 ${published} 篇${geoSummary}；AI 访问量"
-]);
 addAbsentCheck("dashboard and weekly report no visible ai bot pv wording", "src/app/page.tsx", ["AI Bot PV", "AI Bot 日志", "Demo PV"]);
 addAbsentCheck("weekly report no visible ai bot pv wording", "src/app/weekly-report/page.tsx", ["AI Bot 指标", "Demo Bot PV"]);
 addAbsentCheck("weekly report store no ai bot pv summary", "src/lib/workbench-store.ts", ["AI Bot PV"]);
 
-addContentCheck("weekly report geo drawer business fields", "src/app/weekly-report/page.tsx", [
-  "getGeoBusinessGap",
-  "getGeoBusinessNextStep",
-  "官网引用情况",
-  "问题缺口",
-  "下一步动作",
-  "`/geo-test/${record.id}`",
-  "AI 可见度变化"
-]);
-
 addAbsentCheck("weekly report no raw technical main modules", "src/app/weekly-report/page.tsx", [
   "固定 Prompt 模板",
-  "GEO 测试明细\" style",
   "蒸馏词矩阵复盘\" style",
   "openDetailDrawer(\"prompt\")",
   "内部 Prompt 版本",
@@ -1183,9 +1099,6 @@ addAbsentCheck("weekly report no raw technical main modules", "src/app/weekly-re
   "官网引用变化",
   "模型学习信号",
   "AI Provider",
-  "const reportGeoResults = activeReport?.geoResults || geoResults;",
-  "本周没有 GEO 动作，周报不展示 GEO 复盘模块。",
-  "title: \"引用层级\""
 ]);
 
 addContentCheck("weekly report api role filter", "src/app/api/weekly-reports/[week]/route.ts", [
@@ -1276,8 +1189,6 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
   "clickButtonByText",
   "clickElementByText",
   "clickElementBySelector",
-  "resolveCurrentGeoResultId",
-  "resolveActionableGeoGapResult",
   "resolveKnowledgeBaseWithRuleDraftId",
   "ensureVisibleDistilledTerm",
   "resolveDistilledTermByQuestion",
@@ -1294,8 +1205,6 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
   "beforeAssert",
   "dynamicBusinessPageBoundaryExpectations",
   "business_boundary_content_publisher_weekly_plan",
-  "business_boundary_content_growth_geo",
-  "business_boundary_content_growth_geo_detail",
   "business_boundary_content_growth_weekly_report_publish_drawer",
   "business_boundary_knowledge_manager_knowledge",
   "business_boundary_knowledge_manager_knowledge_detail",
@@ -1307,8 +1216,6 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
   "distilled_term_search_question_ui_auto_pool",
   "distilled_term_low_confidence_ui_discarded",
   "distilled_term_weekly_plan_inheritance",
-  "geo_gap_detail_to_weekly_plan_inheritance",
-  "geo_gap_detail_to_knowledge_inheritance",
   "draft_qa_risk_actions_dom",
   "weekly_report_next_plan_source_inheritance",
   "publish_data_return_manual_metrics_dom_refresh",
@@ -1326,9 +1233,6 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
   "today-write-platform-drafts-",
   "today-write-platform-drafts-confirm-",
   "distilled-question-input",
-  "geo-detail-create-knowledge-button-",
-  "knowledge-detail-source-card",
-  "knowledge-detail-preview-card",
   "distilled-extract-button",
   "distilled-term-generation-mode-",
   "distilled-term-detail-",
@@ -1346,7 +1250,6 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
   "responsive_draft_qa_mobile",
   "responsive_weekly_report_mobile",
   "responsive_weekly_report_drawer_mobile",
-  "responsive_geo_detail_mobile",
   "responsive_knowledge_rule_version_drawer_mobile",
   "responsive_knowledge_source_drawer_mobile",
   "responsive_distilled_term_drawer_mobile",
@@ -1360,7 +1263,6 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
   "AI 生成理由",
   "查看发布明细",
   "发布与渠道明细",
-  "GEO 详情",
   "产品表达规则包版本差异",
   "产品表达规则包来源片段",
   "蒸馏词详情",
@@ -1371,8 +1273,6 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
   "未达到自动确认阈值",
   "生成 Brief 与证据选择",
   "正文生成会锁定周计划字段",
-  "确认加入周计划草稿",
-  "GEO 问题缺口",
   "高风险！问题",
   "保留高风险片段",
   "rawAnswer",
@@ -1473,7 +1373,6 @@ addContentCheck("business pages use governance entry", "src/app/real-integration
 ]);
 addContentCheck("real integration business wording", "src/app/real-integration/page.tsx", [
   "模型连接",
-  "GEO 测试",
   "AI 访问量",
   "AI 访问数据"
 ]);
@@ -1491,24 +1390,6 @@ addAbsentCheck("real integration no legacy ai bot provider wording", "src/app/re
   "AI Bot 数据可信度",
   "真实 Prompt",
   "GEO Prompt"
-]);
-
-addContentCheck("geo pages use governance entry", "src/app/geo-test/page.tsx", [
-  "GovernanceEntry",
-  "GEO 模型配置属于工作台运营权限"
-]);
-
-addContentCheck("geo detail uses governance entry", "src/app/geo-test/[id]/page.tsx", [
-  "GovernanceEntry",
-  "GEO 测试配置需要工作台运营或开发管理员处理"
-]);
-
-addContentCheck("geo provider retry guard", "src/lib/workbench-store.ts", [
-  "geoTestMaxRetries = 1",
-  "geoTestRetryDelayMs",
-  "callGeoAiProviderWithRetry",
-  "shouldRetryGeoAiResult",
-  "已间隔"
 ]);
 
 addContentCheck("ai config v4 call log governance", "src/app/ai-config/page.tsx", [
@@ -1733,10 +1614,6 @@ addContentCheck("types v4 structures", "src/lib/types.ts", [
   "contentPreview",
   "chunks?: KnowledgeChunk[]",
   "autoCrawl",
-  "distilledTermIds",
-  "citationLevel",
-  "issueType",
-  "suggestedAction",
   "WeeklyRecommendationOutcome",
   "WeeklyReportSnapshot",
   "WeeklyReportDistilledTermMatrixRow",
@@ -1780,7 +1657,6 @@ addContentCheck("store v4 rules", "src/lib/workbench-store.ts", [
   "hydrateWeeklyReportSnapshot",
   "getWeeklyPublishRecordsForReport",
   "getWeeklyBlogDiagnosticsForReport",
-  "getWeeklyGeoResultsForReport",
   "sourceWeek",
   "plannedPublishDate",
   "targetTotalCount",
@@ -1811,11 +1687,7 @@ addContentCheck("store v4 rules", "src/lib/workbench-store.ts", [
   "buildRecommendationOutcomes",
   "recommendationOutcomes",
   "distilledTermMatrix",
-  "sectionIndex",
-  "用户问题",
-  "getGeoCitationLevel",
-  "getGeoIssueType",
-  "getGeoSuggestedAction"
+  "sectionIndex"
 ]);
 
 addAbsentCheck("weekly report markdown no internal signals", "src/lib/workbench-store.ts", ["## 6. 内部优化信号"]);

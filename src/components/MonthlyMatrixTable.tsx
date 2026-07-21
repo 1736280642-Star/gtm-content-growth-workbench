@@ -38,9 +38,6 @@ export function MonthlyStrategyTable({ items }: { items: StrategyTermHit[] }) {
         expandedRowRender: (record) => (
           <Descriptions className="v5-expanded-detail" size="small" bordered column={2}>
             <Descriptions.Item label="优先级原因">{record.priorityReason}</Descriptions.Item>
-            <Descriptions.Item label="上月 GEO 指标">{record.previousGeoSummary}</Descriptions.Item>
-            <Descriptions.Item label="测试假设">{record.testHypothesis}</Descriptions.Item>
-            <Descriptions.Item label="成功信号">{record.successSignal}</Descriptions.Item>
             <Descriptions.Item label="必需事实依据">{record.requiredClaims.join("、")}</Descriptions.Item>
             <Descriptions.Item label="证据缺口">{record.evidenceGaps.length ? record.evidenceGaps.join("；") : "当前无缺口"}</Descriptions.Item>
           </Descriptions>
@@ -58,7 +55,6 @@ export function MonthlyStrategyTable({ items }: { items: StrategyTermHit[] }) {
                 <strong>{record.term}</strong>
               </Space>
               <span>{record.source}</span>
-              <span className="muted">{record.previousGeoSummary}</span>
             </div>
           )
         },
@@ -74,20 +70,6 @@ export function MonthlyStrategyTable({ items }: { items: StrategyTermHit[] }) {
               </Space>
               <span>{record.channelAllocation.join(" · ")}</span>
               <span className="muted">{record.contentTypeSuggestions.join(" / ")}</span>
-            </div>
-          )
-        },
-        {
-          title: "测试目标",
-          key: "test",
-          width: 230,
-          render: (_, record: StrategyTermHit) => (
-            <div className="v5-table-stack">
-              <Tag color={record.geoTestMode === "baseline" ? "purple" : "geekblue"}>
-                {record.geoTestMode === "baseline" ? "baseline" : "exploration"}
-              </Tag>
-              <span>{record.querySet}</span>
-              <span className="muted">{record.testHypothesis}</span>
             </div>
           )
         },

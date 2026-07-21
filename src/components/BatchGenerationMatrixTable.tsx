@@ -187,7 +187,7 @@ export function BatchGenerationMatrixTable({
             <Tag>{record.channel}</Tag>
             <Tag>{record.contentType}</Tag>
           </Space>
-          <span>{record.geoTestMode === "baseline" ? "基线测试" : "动态探索"} · {record.primaryDistilledTerm}</span>
+          <span>{record.primaryDistilledTerm}</span>
         </div>
       )
     },

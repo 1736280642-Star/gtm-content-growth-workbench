@@ -15,18 +15,11 @@ function readGoalText(plan: V5MonthlyPlan, key: string) {
   return typeof value === "string" ? value : "";
 }
 
-function readGoalNumber(plan: V5MonthlyPlan, key: string, fallback: number) {
-  const value = plan.goals[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
 function toWorkspacePlanConfig(plan: V5MonthlyPlan, rulePackages: RulePackageOption[]): MonthlyPlanConfig {
   const configuredChannels = Object.keys(plan.channelMix);
   return {
     month: plan.month,
     businessGoal: readGoalText(plan, "businessGoal"),
-    baselineRatio: readGoalNumber(plan, "baselineRatio", 20),
-    ratioAdjustmentReason: readGoalText(plan, "ratioAdjustmentReason"),
     groups: Object.entries(plan.productQuotas).map(([productId, articleQuota]) => {
       const rulePackage = rulePackages.find((item) => item.productId === productId);
       const selectedChannels = rulePackage
