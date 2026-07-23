@@ -123,5 +123,35 @@ export function useMonthlyWorkspace(requestedMonth?: string) {
     [refresh, workspace]
   );
 
-  return { workspace, loading, error, refresh, saveMonthlyPlan };
+  const mutateStrategy = useCallback(
+    async (action: "strategy-preview" | "strategy-approval") => {
+      if (!workspace?.plan) throw new Error("请先保存月度计划。");
+      const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(workspace.month)}/${action}`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json", "x-idempotency-key": createIdempotencyKey() },
+        body: JSON.stringify({
+          expectedVersion: workspace.plan.version,
+          auditReason: action === "strategy-preview" ? "运行内容策略包生产预检" : "批准本月内容策略包"
+        })
+      });
+      const body = (await response.json()) as V5ApiEnvelope<V5MonthlyPlanRecord>;
+      if (!response.ok || !body.ok) {
+        if (!body.ok) throw createRequestError(body);
+        throw new Error(`内容策略操作失败（HTTP ${response.status}）。`);
+      }
+      await refresh(workspace.month);
+      return body.data;
+    },
+    [refresh, workspace]
+  );
+
+  return {
+    workspace,
+    loading,
+    error,
+    refresh,
+    saveMonthlyPlan,
+    preflightStrategy: () => mutateStrategy("strategy-preview"),
+    approveStrategy: () => mutateStrategy("strategy-approval")
+  };
 }

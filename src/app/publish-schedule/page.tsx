@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function PublishScheduleCompatPage() {
-  redirect("/batch-generation#schedule");
+  redirect("/monthly-matrix/batch-generation#schedule");
 }

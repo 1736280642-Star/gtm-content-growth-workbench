@@ -1,102 +1,42 @@
-import { Descriptions, Space, Table, Tag } from "antd";
-import { EvidenceGateTag } from "@/components/EvidenceGateTag";
-import type { StrategyTermHit } from "@/lib/v5-ui-mock-data";
+import { Button, Space, Table, Tag } from "antd";
+import type { ContentStrategyPackageRecord, StrategyPreflightStatus } from "@/lib/v5/monthly-workspace-contracts";
 
-const priorityColors: Record<StrategyTermHit["priority"], string> = {
-  P0: "red",
-  P1: "orange",
-  P2: "blue",
-  Hold: "default"
+const preflightLabels: Record<StrategyPreflightStatus, { label: string; color: string }> = {
+  generatable: { label: "可生产", color: "green" },
+  awaiting_material: { label: "待补资料", color: "gold" },
+  configuration_error: { label: "配置错误", color: "red" }
 };
 
-const strategyStatusLabels: Record<StrategyTermHit["status"], string> = {
-  ready: "可确认",
-  ready_with_conditions: "部分可确认",
-  needs_material: "需补证据",
-  needs_review: "需人工确认",
-  quota_error: "配额错误",
-  blocked: "已阻断"
-};
-
-const strategyStatusColors: Record<StrategyTermHit["status"], string> = {
-  ready: "green",
-  ready_with_conditions: "cyan",
-  needs_material: "orange",
-  needs_review: "blue",
-  quota_error: "red",
-  blocked: "red"
-};
-
-export function MonthlyStrategyTable({ items }: { items: StrategyTermHit[] }) {
+export function MonthlyStrategyTable({ strategyPackage, onEdit }: { strategyPackage: ContentStrategyPackageRecord; onEdit?: () => void }) {
+  const resultByRule = new Map(strategyPackage.preflightResults.map((item) => [item.quotaRuleId, item]));
+  const locked = strategyPackage.status === "approved" || strategyPackage.status === "partially_approved";
   return (
     <Table
-      rowKey="id"
+      rowKey="quotaRuleId"
       size="small"
       pagination={false}
-      dataSource={items}
-      expandable={{
-        expandedRowRender: (record) => (
-          <Descriptions className="v5-expanded-detail" size="small" bordered column={2}>
-            <Descriptions.Item label="优先级原因">{record.priorityReason}</Descriptions.Item>
-            <Descriptions.Item label="必需事实依据">{record.requiredClaims.join("、")}</Descriptions.Item>
-            <Descriptions.Item label="证据缺口">{record.evidenceGaps.length ? record.evidenceGaps.join("；") : "当前无缺口"}</Descriptions.Item>
-          </Descriptions>
-        )
-      }}
+      tableLayout="fixed"
+      dataSource={strategyPackage.quotaRules}
       columns={[
+        { title: "目标问题", dataIndex: "question", width: "30%", render: (value: string) => <strong>{value}</strong> },
+        { title: "文章类型", dataIndex: "contentType", width: 130 },
         {
-          title: "优先级与蒸馏词命中",
-          key: "term",
-          width: 250,
-          render: (_, record: StrategyTermHit) => (
-            <div className="v5-table-stack">
-              <Space size={6} wrap>
-                <Tag color={priorityColors[record.priority]}>{record.priority}</Tag>
-                <strong>{record.term}</strong>
-              </Space>
-              <span>{record.source}</span>
-            </div>
-          )
+          title: "渠道配额",
+          dataIndex: "channelQuotas",
+          width: "24%",
+          render: (value: Record<string, number>) => <Space size={[4, 4]} wrap>{Object.entries(value).map(([channel, quota]) => <Tag key={channel}>{channel} {quota} 篇</Tag>)}</Space>
         },
+        { title: "渠道成品", dataIndex: "expandedDeliverableCount", width: 100, render: (value: number) => <strong>{value} 篇</strong> },
         {
-          title: "产品与内容配额",
-          key: "allocation",
-          width: 245,
-          render: (_, record: StrategyTermHit) => (
-            <div className="v5-table-stack">
-              <Space size={6} wrap>
-                <strong>{record.productName}</strong>
-                <Tag color="blue">{record.allocatedQuota} 篇</Tag>
-              </Space>
-              <span>{record.channelAllocation.join(" · ")}</span>
-              <span className="muted">{record.contentTypeSuggestions.join(" / ")}</span>
-            </div>
-          )
-        },
-        {
-          title: "知识库证据准备度",
-          key: "evidence",
-          width: 250,
-          render: (_, record: StrategyTermHit) => {
-            const estimatedGeneratable = record.estimatedReadyItemCount + record.estimatedAutoDowngradeItemCount;
-            return (
-              <div className="v5-table-stack">
-                <Space size={6} wrap>
-                  <EvidenceGateTag status={record.evidenceStatus} />
-                  <strong>{`${estimatedGeneratable}/${record.allocatedQuota} 项预计可生成`}</strong>
-                </Space>
-                <span>{`直接 ${record.estimatedReadyItemCount} · 自动降级 ${record.estimatedAutoDowngradeItemCount} · 待补 ${record.estimatedMissingEvidenceItemCount}`}</span>
-                <span className="muted">标题确认后还会逐篇检查事实依据，检查通过才可生成正文。</span>
-              </div>
-            );
+          title: "生产准入",
+          key: "preflight",
+          width: 150,
+          render: (_: unknown, record) => {
+            const result = resultByRule.get(record.quotaRuleId);
+            return result ? <Tag color={preflightLabels[result.status].color}>{preflightLabels[result.status].label}</Tag> : <Tag>待预检</Tag>;
           }
         },
-        {
-          title: "状态",
-          dataIndex: "status",
-          width: 120,
-          render: (value: StrategyTermHit["status"]) => <Tag color={strategyStatusColors[value]}>{strategyStatusLabels[value]}</Tag>
-        }
+        { title: "操作", key: "action", width: 90, render: () => <Button size="small" disabled={locked} onClick={onEdit}>编辑</Button> }
       ]}
     />
   );

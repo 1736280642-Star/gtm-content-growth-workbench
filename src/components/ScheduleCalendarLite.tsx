@@ -1,9 +1,9 @@
 "use client";
 
 import { ClockCircleOutlined } from "@ant-design/icons";
-import { Button, Card, Collapse, Empty, List, Popover, Space, Tag } from "antd";
-import type { ScheduleDraftItem } from "@/lib/v5-ui-mock-data";
-import { useMemo } from "react";
+import { Button, Card, Collapse, Empty, Form, Input, List, Modal, Popover, Space, Tag } from "antd";
+import type { ScheduleDraftItem } from "@/lib/v5/monthly-workspace-contracts";
+import { useMemo, useState } from "react";
 
 const weekDays = ["一", "二", "三", "四", "五", "六", "日"];
 
@@ -67,7 +67,20 @@ function ScheduleDetails({ date, items }: { date: string; items: ScheduleDraftIt
   );
 }
 
-export function ScheduleCalendarLite({ items, month = "2026-08" }: { items: ScheduleDraftItem[]; month?: string }) {
+export function ScheduleCalendarLite({
+  items,
+  month = "2026-08",
+  onSchedule
+}: {
+  items: ScheduleDraftItem[];
+  month?: string;
+  onSchedule?: (item: ScheduleDraftItem, value: { date: string; time: string; platformAccount: string }) => Promise<void>;
+}) {
+  const [selected, setSelected] = useState<ScheduleDraftItem>();
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("09:00");
+  const [platformAccount, setPlatformAccount] = useState("");
+  const [saving, setSaving] = useState(false);
   const [year, monthNumber] = month.split("-").map(Number);
   const cells = buildMonthCells(year, monthNumber);
   const scheduledByDate = useMemo(() => {
@@ -156,7 +169,7 @@ export function ScheduleCalendarLite({ items, month = "2026-08" }: { items: Sche
                 dataSource={unscheduledItems}
                 locale={{ emptyText: "本月所有文章均已安排日期" }}
                 renderItem={(item) => (
-                  <List.Item actions={[<Button size="small" disabled key="schedule">安排日期</Button>]}>
+                  <List.Item actions={[<Button size="small" disabled={!onSchedule} key="schedule" onClick={() => { setSelected(item); setDate(item.date || ""); setTime(item.time || "09:00"); setPlatformAccount(item.platformAccount || ""); }}>安排日期</Button>]}>
                     <List.Item.Meta
                       title={item.title}
                       description={<Space size={4} wrap><span>{item.product}</span><span>·</span><span>{item.channel}</span></Space>}
@@ -169,8 +182,20 @@ export function ScheduleCalendarLite({ items, month = "2026-08" }: { items: Sche
         ]}
       />
       <div className="v5-inline-note">
-        排程草稿可以提前占用日期；证据、规则和内容质量检查通过后，才能转为正式排程。
+        可用正文会自动进入待排程；日期、时间、平台账号和发布方式由排程决定，不会修改已批准策略。
       </div>
+      <Modal
+        open={Boolean(selected)}
+        title={selected ? `安排发布：${selected.title}` : "安排发布"}
+        onCancel={() => setSelected(undefined)}
+        footer={<Space><Button onClick={() => setSelected(undefined)}>取消</Button><Button type="primary" loading={saving} disabled={!date || !time || !platformAccount.trim()} onClick={async () => { if (!selected || !onSchedule) return; setSaving(true); try { await onSchedule(selected, { date, time, platformAccount: platformAccount.trim() }); setSelected(undefined); } finally { setSaving(false); } }}>保存排程</Button></Space>}
+      >
+        <Form layout="vertical">
+          <Form.Item label="发布日期" required><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></Form.Item>
+          <Form.Item label="发布时间" required><Input type="time" value={time} onChange={(event) => setTime(event.target.value)} /></Form.Item>
+          <Form.Item label="平台账号" required><Input maxLength={120} value={platformAccount} onChange={(event) => setPlatformAccount(event.target.value)} /></Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

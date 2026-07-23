@@ -883,6 +883,192 @@ body {
 
 .monthly-plan-goal-field {
   min-width: 0;
+  grid-column: span 2;
+}
+
+.monthly-quota-list,
+.v5-production-groups {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.monthly-quota-row,
+.v5-production-group,
+.v5-strategy-workspace {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.monthly-quota-row {
+  padding: 14px;
+}
+
+.monthly-quota-row-header,
+.v5-production-group-heading,
+.v5-section-heading,
+.v5-inline-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.monthly-quota-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 0.7fr) minmax(220px, 1fr) minmax(180px, 0.8fr);
+  gap: 12px;
+}
+
+.monthly-quota-grid .ant-form-item,
+.monthly-channel-quota-grid .ant-form-item,
+.monthly-quota-number {
+  min-width: 0;
+  margin-bottom: 10px;
+}
+
+.monthly-channel-quota-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.monthly-quota-formula {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #d59d18;
+  background: #fffaf0;
+  color: #5f4a16;
+  line-height: 1.6;
+}
+
+.monthly-quota-bindings {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.v5-monthly-flow-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+  border: 1px solid #d9dee8;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.v5-monthly-flow-rail span {
+  min-width: 0;
+  padding: 10px 14px;
+  border-right: 1px solid #e4e7ed;
+  color: #667085;
+  font-size: 13px;
+  text-align: center;
+}
+
+.v5-monthly-flow-rail span:last-child {
+  border-right: 0;
+}
+
+.v5-monthly-flow-rail .is-active {
+  background: #17324d;
+  color: #fff;
+  font-weight: 600;
+}
+
+.v5-strategy-workspace {
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.v5-section-heading {
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.v5-section-heading h2 {
+  max-width: 760px;
+  margin: 4px 0 0;
+  font-size: 18px;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+
+.v5-matrix-tabs,
+.v5-production-tabs {
+  min-width: 0;
+}
+
+.v5-inline-entry {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.v5-inline-entry > div,
+.v5-production-group-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.v5-inline-entry span,
+.v5-production-group-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.v5-production-group {
+  overflow: hidden;
+}
+
+.v5-production-group-heading {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.v5-production-group .ant-table-wrapper {
+  padding: 0 12px 12px;
+}
+
+.v5-draft-preview {
+  display: grid;
+  gap: 16px;
+}
+
+.v5-draft-preview pre {
+  min-height: 360px;
+  max-height: 62vh;
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.v5-draft-preview section {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.v5-draft-preview section h5 {
+  margin-top: 0;
+}
+
+.v5-loading-row {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
 }
 
 .monthly-plan-ratio-control {
@@ -1514,6 +1700,15 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .monthly-plan-goal-field {
+    grid-column: auto;
+  }
+
+  .monthly-quota-grid,
+  .monthly-quota-bindings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .v5-batch-toolbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1545,8 +1740,28 @@ body {
   }
 
   .monthly-plan-group-row,
-  .v5-geo-allocation-bars {
+  .v5-geo-allocation-bars,
+  .monthly-quota-grid,
+  .monthly-quota-bindings,
+  .v5-monthly-flow-rail {
     grid-template-columns: 1fr;
+  }
+
+  .v5-monthly-flow-rail span {
+    border-right: 0;
+    border-bottom: 1px solid #e4e7ed;
+    text-align: left;
+  }
+
+  .v5-monthly-flow-rail span:last-child {
+    border-bottom: 0;
+  }
+
+  .monthly-quota-row-header,
+  .v5-section-heading,
+  .v5-inline-entry {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .v5-strategy-footer,

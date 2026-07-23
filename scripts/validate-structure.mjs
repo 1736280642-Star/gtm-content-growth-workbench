@@ -58,8 +58,7 @@ function addRegexCheck(label, filePath, patterns) {
 
 [
   "docs/usage.md",
-  "docs/V4-06-24/v4-workbench-development-prd.md",
-  "docs/V4-06-24/v4-development-task-plan.md",
+  "docs/方案与规划/分支二-月度策略与批量生产开发文档.md",
   "src/lib/prompt-templates.ts",
   "src/lib/client-state.ts",
   "src/app/page.tsx",
@@ -130,19 +129,23 @@ function addRegexCheck(label, filePath, patterns) {
   "src/lib/v5/monthly-contracts.ts",
   "src/lib/v5/monthly-repository.ts",
   "src/lib/v5/monthly-service.ts",
+  "src/lib/v5/monthly-strategy-policy.ts",
+  "src/lib/v5/monthly-production-service.ts",
   "src/lib/v5/monthly-plan-repository.ts",
   "src/lib/v5/monthly-plan-service.ts",
   "src/lib/v5/monthly-workspace-governance.ts",
   "src/lib/v5/monthly-workspace-read-model.ts",
   "src/lib/v5/use-monthly-workspace.ts",
   "src/app/api/v5/monthly-workspace/route.ts",
-  "src/app/api/v5/monthly-plans/[month]/route.ts"
+  "src/app/api/v5/monthly-plans/[month]/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/strategy-preview/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/strategy-approval/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/schedule/[taskId]/route.ts",
+  "scripts/v5-monthly-production.test.mjs"
 ].forEach((filePath) => addFileCheck(`v5 ui file: ${filePath}`, filePath));
 
 addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
   "月度内容矩阵",
-  "/batch-generation",
-  "批量生成中心",
   "/daily-execution",
   "当日执行",
   "月度复盘",
@@ -186,16 +189,15 @@ addContentCheck("v5 route labels", "src/lib/permissions.ts", [
 
 addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx", [
   "月度内容矩阵",
-  "月度计划配置",
-  "月度策略包审核",
-  "生成策略包",
-  "确认策略包",
-  "策略方向确认后仍需检查单篇证据",
+  "配置月度策略",
+  "内容策略包",
+  "运行生产预检",
+  "批准内容策略包",
+  "渠道成品总数",
   "MonthlyStrategyTable",
-  "strategyTermHits",
   "进入批量生成中心",
   "useMonthlyWorkspace",
-  "尚未配置本月业务目标",
+  "尚未配置月度业务目标",
   "MonthlyPlanConfigPanel"
 ]);
 
@@ -203,19 +205,18 @@ addAbsentCheck("v5 monthly kpi rail no duplicate period", "src/app/monthly-matri
 addAbsentCheck("v5 strategy package has no article title table", "src/components/MonthlyMatrixTable.tsx", ["文章标题", "人工排程", "plannedPublishAt"]);
 
 addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanConfigPanel.tsx", [
-  "月度计划配置",
-  "选择已审核的产品表达规则",
+  "配置月度内容策略",
+  "目标问题与渠道配额",
   "monthlyProductionReady",
-  "isSelectablePackage",
   "mode=\"multiple\"",
-  "发布渠道",
-  "文章数量",
-  "月度总量",
-  "当前可用规则包",
-  "不能进入生产池",
-  "保存配置",
-  "monthly-plan-save-button",
-  "月度计划已保存"
+  "每渠道配额",
+  "渠道成品",
+  "sameQuotaForAllChannels",
+  "channelQuotas",
+  "文章表达预设",
+  "知识库",
+  "保存草稿",
+  "配额已平衡"
 ]);
 
 addContentCheck("v5 monthly workspace api contract", "src/lib/v5/monthly-workspace-contracts.ts", [
@@ -323,31 +324,27 @@ addContentCheck("v5 strategy old route redirects", "src/app/monthly-strategy/pag
 
 addAbsentCheck("v4 ai config unchanged by v5 ui", "src/app/ai-config/page.tsx", ["V5GovernanceLogTabs", "V5 治理日志"]);
 
-addContentCheck("v5 batch page shell", "src/app/batch-generation/page.tsx", [
+addContentCheck("v5 batch page shell", "src/app/monthly-matrix/batch-generation/page.tsx", [
   "批量生成中心",
-  "批量确认标题与矩阵",
-  "批量生成当月可生成内容",
-  "证据检查",
-  "内容任务",
+  "生成可用内容",
+  "自动检查、修复和恢复",
+  "待补资料",
   "Tabs",
   "BatchGenerationMatrixTable",
   "ScheduleCalendarLite",
-  "ExceptionQueuePreview",
-  "只生成已通过检查的内容",
-  "异常内容会保留原因并单独进入处理队列"
+  "key: \"content\"",
+  "key: \"schedule\""
 ]);
 
 addContentCheck("v5 batch grouped task list", "src/components/BatchGenerationMatrixTable.tsx", [
-  "按产品分组",
-  "按渠道分组",
-  "按状态分组",
-  "按内容类型分组",
-  "按主蒸馏词分组",
-  "全部收起",
-  "v5-task-title-single-line",
-  "Tooltip",
-  "Collapse",
-  "batch-task-search"
+  "v5-production-group",
+  "question",
+  "contentType",
+  "预览正文",
+  "补充资料",
+  "Drawer",
+  "内容依据",
+  "保存并自动复检"
 ]);
 
 addContentCheck("v5 schedule full calendar details", "src/components/ScheduleCalendarLite.tsx", [
@@ -360,27 +357,28 @@ addContentCheck("v5 schedule full calendar details", "src/components/ScheduleCal
 ]);
 
 addContentCheck("v5 batch and schedule responsive styles", "src/app/globals.css", [
-  ".v5-grouped-task-list",
-  ".v5-task-title-single-line",
-  ".v5-stage-strip",
+  ".v5-production-groups",
+  ".v5-production-group",
+  ".v5-draft-preview",
+  ".v5-monthly-flow-rail",
   ".v5-calendar-status-summary",
   ".v5-calendar-popover-content",
   ".v5-unscheduled-collapse"
 ]);
 
-addContentCheck("v5 batch nested route redirects", "src/app/monthly-matrix/batch-generation/page.tsx", [
+addContentCheck("v5 legacy batch route redirects", "src/app/batch-generation/page.tsx", [
   "redirect",
-  "/batch-generation"
+  "/monthly-matrix/batch-generation"
 ]);
 
 addContentCheck("v5 exception old route redirects", "src/app/exceptions/page.tsx", [
   "redirect",
-  "/batch-generation#exceptions"
+  "/monthly-matrix/batch-generation"
 ]);
 
 addContentCheck("v5 publish schedule old route redirects", "src/app/publish-schedule/page.tsx", [
   "redirect",
-  "/batch-generation#schedule"
+  "/monthly-matrix/batch-generation#schedule"
 ]);
 
 addContentCheck("v5 daily execution page shell", "src/app/daily-execution/page.tsx", [
@@ -450,15 +448,15 @@ addContentCheck("v5 mock data boundary", "src/lib/v5-ui-mock-data.ts", [
 addAbsentCheck("v5 connected pages no direct mock imports", "src/app/monthly-matrix/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 batch page no direct mock imports", "src/app/batch-generation/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 monthly config no real backend calls", "src/components/MonthlyPlanConfigPanel.tsx", ["fetch(", "/api/"]);
-addContentCheck("v5 batch single formal generation call", "src/app/batch-generation/page.tsx", [
-  "fetch(",
-  "/api/v5/content-tasks/",
-  "prepare-and-generate",
-  "x-idempotency-key",
-  "generatingTaskId",
-  "问题已处理，重新尝试"
+addContentCheck("v5 formal generation automatically repairs and retries", "src/lib/v5/formal-generation-service.ts", [
+  "repairRound <= 2",
+  "attempt <= 3",
+  "automaticRepairCount",
+  "technicalRetryCount",
+  "不需要逐条重试"
 ]);
-addAbsentCheck("v5 batch keeps bulk generation disabled", "src/app/batch-generation/page.tsx", ["/api/content-tasks/batch-generate"]);
+addAbsentCheck("v5 batch has no quality or exception tabs", "src/app/monthly-matrix/batch-generation/page.tsx", ["key: \"quality\"", "key: \"exceptions\"", "ExceptionQueuePreview"]);
+addAbsentCheck("v5 batch business table hides internal fields", "src/components/BatchGenerationMatrixTable.tsx", ["softQualityScore", "hardRuleStatus", "claimCount", "EvidencePack", "Claim"]);
 addAbsentCheck("v5 daily execution no real backend calls", "src/app/daily-execution/page.tsx", ["fetch(", "/api/"]);
 addAbsentCheck("v5 monthly review no real backend calls", "src/app/monthly-review/page.tsx", ["fetch(", "/api/"]);
 

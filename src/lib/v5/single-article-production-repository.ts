@@ -369,13 +369,17 @@ export async function completeFormalGeneration(input: {
        SET status = 'completed', draft_version_id = ?, completed_at = ? WHERE id = ? AND status = 'running'`,
       [draftVersionId, completedAt, input.operationId]
     );
+    await connection.query(
+      "UPDATE content_matrix_item SET status = 'generated', updated_at = NOW() WHERE id = ? AND version = ?",
+      [input.pack.taskId, input.pack.taskVersion]
+    );
     await writeV5GovernanceAudit(connection, {
       ...input.actor,
       eventType: "formal_draft_persisted",
       objectType: "draft_version",
       objectId: draftVersionId,
       relatedSourceIds: input.pack.evidenceItems.map((item) => item.sourceRevisionId),
-      afterSummary: { generationRunId: input.generationRunId, taskId: input.pack.taskId, taskVersion: input.pack.taskVersion, finalEvidencePackId: input.pack.evidencePackId, traceableFactCount: input.factTraces.length, copyAllowed: true, testOnly: false },
+      afterSummary: { generationRunId: input.generationRunId, taskId: input.pack.taskId, taskVersion: input.pack.taskVersion, finalEvidencePackId: input.pack.evidencePackId, traceableFactCount: input.factTraces.length, technicalRetryCount: input.hardRuleResult.technicalRetryCount || 0, automaticRepairCount: input.hardRuleResult.automaticRepairCount || 0, copyAllowed: true, testOnly: false, previousUsableDraftPreservedUntilCompletion: true },
       correlationId: input.operationId
     });
     const [generationRows] = await connection.query<RowDataPacket[]>("SELECT * FROM generation_run WHERE id = ? LIMIT 1", [input.generationRunId]);
@@ -387,6 +391,57 @@ export async function completeFormalGeneration(input: {
 export async function readFormalDraftVersion(id: string) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>("SELECT * FROM draft_version WHERE id = ? AND test_only = FALSE LIMIT 1", [id]);
   return rows[0] ? mapDraft(rows[0]) : undefined;
+}
+
+export async function createEditedFormalDraftVersion(input: {
+  draftVersionId: string;
+  markdown: string;
+  actor: SingleArticleActor;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT d.*, g.prompt_group_version_id, g.channel_rule_version_id, g.correlation_id
+       FROM draft_version d JOIN generation_run g ON g.id = d.generation_run_id
+       WHERE d.id = ? AND d.test_only = FALSE FOR UPDATE`,
+      [input.draftVersionId]
+    );
+    const current = rows[0];
+    if (!current) throw new V5GovernanceRepositoryError("formal_draft_not_found", "可编辑正文不存在。", 404, "返回批量生成中心刷新任务状态。");
+    const [versionRows] = await connection.query<RowDataPacket[]>("SELECT COALESCE(MAX(version_number), 0) AS version_number FROM draft_version WHERE task_id = ? FOR UPDATE", [current.task_id]);
+    const versionNumber = Number(versionRows[0]?.version_number || 0) + 1;
+    const generationRunId = `generation-${randomUUID()}`;
+    const draftVersionId = `draft-${randomUUID()}`;
+    const pendingRuleResult = { passed: false, blockers: ["人工编辑后等待系统自动复检。"], checkedRuleCount: 0, traceableFactCount: 0 };
+    await connection.query(
+      `INSERT INTO generation_run
+       (id, task_id, task_version, matrix_item_id, final_evidence_pack_id, prompt_group_version_id, rule_package_version_id,
+        channel_rule_version_id, provider, status, correlation_id, idempotency_key, hard_rule_result, actor_id, audit_reason, test_only, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual_edit', 'running', ?, ?, ?, ?, ?, FALSE, NOW())`,
+      [generationRunId, current.task_id, current.task_version, current.matrix_item_id, current.final_evidence_pack_id,
+        current.prompt_group_version_id, current.rule_package_version_id, current.channel_rule_version_id, current.correlation_id,
+        `manual-edit-${draftVersionId}`, stringifyV5Json(pendingRuleResult), input.actor.actorId, input.actor.auditReason]
+    );
+    await connection.query(
+      `INSERT INTO draft_version
+       (id, generation_run_id, task_id, task_version, matrix_item_id, final_evidence_pack_id, rule_package_version_id,
+        version_number, title, markdown, fact_traces, hard_rule_result, copy_allowed, test_only, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, ?)`,
+      [draftVersionId, generationRunId, current.task_id, current.task_version, current.matrix_item_id, current.final_evidence_pack_id,
+        current.rule_package_version_id, versionNumber, current.title, input.markdown, current.fact_traces,
+        stringifyV5Json(pendingRuleResult), input.actor.actorId]
+    );
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "formal_draft_edit_saved",
+      objectType: "draft_version",
+      objectId: draftVersionId,
+      beforeSummary: { draftVersionId: input.draftVersionId, copyAllowed: Boolean(current.copy_allowed) },
+      afterSummary: { versionNumber, status: "checking", copyAllowed: false, lastUsableDraftPreserved: true },
+      correlationId: String(current.correlation_id)
+    });
+    const [createdRows] = await connection.query<RowDataPacket[]>("SELECT * FROM draft_version WHERE id = ? LIMIT 1", [draftVersionId]);
+    return mapDraft(createdRows[0]);
+  });
 }
 
 export async function readCompletedSingleArticleResult(operation: SingleArticleOperationRecord): Promise<SingleArticleResult | undefined> {
@@ -422,7 +477,9 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
      LEFT JOIN generation_run g ON g.id = (
        SELECT g2.id FROM generation_run g2 WHERE g2.matrix_item_id = i.id ORDER BY g2.started_at DESC LIMIT 1
      )
-     LEFT JOIN draft_version d ON d.generation_run_id = g.id AND d.test_only = FALSE
+     LEFT JOIN draft_version d ON d.id = (
+       SELECT d2.id FROM draft_version d2 WHERE d2.matrix_item_id = i.id AND d2.test_only = FALSE AND d2.copy_allowed = TRUE ORDER BY d2.created_at DESC LIMIT 1
+     )
      WHERE i.production_scope = ? AND p.plan_month = ?
      ORDER BY i.publish_date, i.created_at LIMIT 1`,
     [SINGLE_ARTICLE_SCOPE, month]
