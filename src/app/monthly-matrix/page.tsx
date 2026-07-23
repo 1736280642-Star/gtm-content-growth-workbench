@@ -1,10 +1,9 @@
 "use client";
 
-import { ArrowRightOutlined, CheckOutlined, ReloadOutlined, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, BookOutlined, CheckOutlined, ReloadOutlined, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
 import { Alert, Button, Empty, message, Space, Spin, Table, Tabs, Tag } from "antd";
 import Link from "next/link";
 import { useState } from "react";
-import { MonthlyPlanConfigPanel } from "@/components/MonthlyPlanConfigPanel";
 import { MonthlyStrategyTable } from "@/components/MonthlyMatrixTable";
 import { PageHeader } from "@/components/PageHeader";
 import { V5StatusRail } from "@/components/V5StatusRail";
@@ -15,9 +14,8 @@ const loadingPlan = { month: "", businessGoal: "", targetDeliverableCount: 0, qu
 
 export default function MonthlyMatrixPage() {
   const [messageApi, messageContext] = message.useMessage();
-  const [configOpen, setConfigOpen] = useState(false);
   const [mutating, setMutating] = useState<"preview" | "approval">();
-  const { workspace, loading, error, refresh, saveMonthlyPlan, preflightStrategy, approveStrategy } = useMonthlyWorkspace();
+  const { workspace, loading, error, refresh, preflightStrategy, approveStrategy } = useMonthlyWorkspace();
   const config = workspace?.draftPlan || loadingPlan;
   const strategy = workspace?.strategyPackage;
   const tasks = workspace?.productionTasks || [];
@@ -47,7 +45,7 @@ export default function MonthlyMatrixPage() {
         title="月度内容矩阵"
         titleExtra={<Space size={6}><Tag color="blue">{config.month || "读取中"}</Tag>{strategy ? <Tag>{`策略 v${strategy.version}`}</Tag> : null}</Space>}
         subtitle="创建、配置、预检并批准本月内容策略；批准后生成中心只负责生产和排程。"
-        actions={<Space wrap><Button icon={<ReloadOutlined />} onClick={() => void refresh().catch(() => undefined)}>刷新</Button><Button type="primary" icon={<SettingOutlined />} disabled={!workspace} onClick={() => setConfigOpen(true)}>{locked ? "查看策略" : "配置月度策略"}</Button></Space>}
+        actions={<Space wrap><Button icon={<ReloadOutlined />} onClick={() => void refresh().catch(() => undefined)}>刷新</Button><Link href="/monthly-matrix/content-types"><Button icon={<BookOutlined />}>管理内容类型</Button></Link><Link href="/monthly-matrix/strategy"><Button type="primary" icon={<SettingOutlined />} disabled={!workspace}>{locked ? "查看策略" : "配置月度策略"}</Button></Link></Space>}
       />
 
       {error ? <Alert showIcon type="error" message="月度工作区读取失败" description={error} /> : null}
@@ -71,7 +69,7 @@ export default function MonthlyMatrixPage() {
             <Button type="primary" icon={<CheckOutlined />} disabled={strategy?.status !== "preview_ready" || allocated !== target} loading={mutating === "approval"} onClick={() => void mutate("approval")}>批准内容策略包</Button>
           </Space>
         </div>
-        {strategy ? <MonthlyStrategyTable strategyPackage={strategy} onEdit={() => setConfigOpen(true)} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="先配置目标问题、文章类型和渠道配额" />}
+        {strategy ? <MonthlyStrategyTable strategyPackage={strategy} onEdit={() => { window.location.href = "/monthly-matrix/strategy"; }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="先配置目标问题、内容类型组合和渠道配额" />}
         {strategy?.status === "preview_ready" && allocated !== target ? <Alert showIcon type="warning" message={`当前已分配 ${allocated} 篇，月度目标 ${target} 篇；配额平衡后才能批准。`} /> : null}
       </section>
 
@@ -93,18 +91,6 @@ export default function MonthlyMatrixPage() {
         }
       ]} />
 
-      <MonthlyPlanConfigPanel
-        open={configOpen}
-        locked={locked}
-        value={config}
-        rulePackages={workspace?.rulePackages || []}
-        channels={workspace?.channels || []}
-        targetQuestions={workspace?.targetQuestions || []}
-        knowledgeBases={workspace?.knowledgeBases || []}
-        articleExpressionPresets={workspace?.articleExpressionPresets || []}
-        onClose={() => setConfigOpen(false)}
-        onSave={saveMonthlyPlan}
-      />
     </>
   );
 }

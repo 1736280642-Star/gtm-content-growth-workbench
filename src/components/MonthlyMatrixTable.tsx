@@ -19,7 +19,9 @@ export function MonthlyStrategyTable({ strategyPackage, onEdit }: { strategyPack
       dataSource={strategyPackage.quotaRules}
       columns={[
         { title: "目标问题", dataIndex: "question", width: "30%", render: (value: string) => <strong>{value}</strong> },
-        { title: "文章类型", dataIndex: "contentType", width: 130 },
+        { title: "内容类型 / 来源", key: "contentType", width: 180, render: (_: unknown, record) => <div className="v5-table-stack"><strong>{record.articleTypeNameSnapshot}</strong><span>{record.typeSelectionSource === "ai_recommended" ? "AI 推荐后确认" : "用户手动选择"} · {record.articleTypeProfileVersionId}</span></div> },
+        { title: "匹配理由", dataIndex: "matchReasonSnapshot", width: "24%" },
+        { title: "Prompt 约束", dataIndex: "articleTypePromptConstraintSnapshotHash", width: 130, render: (value: string) => <Tag>{value.slice(0, 12)}</Tag> },
         {
           title: "渠道配额",
           dataIndex: "channelQuotas",

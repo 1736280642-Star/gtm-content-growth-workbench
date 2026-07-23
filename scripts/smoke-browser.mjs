@@ -1712,14 +1712,15 @@ async function main() {
         pathName: "/monthly-matrix",
         expectedText: "内容策略包"
       }));
-      await runStep("v5_monthly_config_modal_mobile", () => assertResponsiveLayout(page, {
-        name: "v5_monthly_config_modal_mobile",
-        pathName: "/monthly-matrix",
-        expectedText: "月度内容矩阵",
-        beforeAudit: async (currentPage) => {
-          await clickButtonByText(currentPage, "配置月度策略");
-          await waitFor(() => currentPage.containsText("目标问题与渠道配额"), 15000);
-        }
+      await runStep("v5_article_type_library_desktop", () => assertDesktopLayout(page, {
+        name: "v5_article_type_library_desktop",
+        pathName: "/monthly-matrix/content-types",
+        expectedText: "系统起始模板不是固定枚举"
+      }));
+      await runStep("v5_monthly_strategy_desktop", () => assertDesktopLayout(page, {
+        name: "v5_monthly_strategy_desktop",
+        pathName: "/monthly-matrix/strategy",
+        expectedText: "月度目标与目标问题"
       }));
       await runStep("v5_batch_generation_desktop", () => assertDesktopLayout(page, {
         name: "v5_batch_generation_desktop",

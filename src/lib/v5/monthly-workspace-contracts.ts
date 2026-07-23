@@ -62,26 +62,24 @@ export interface KnowledgeBaseOption {
   source: "v4_adapter" | "v5_formal";
 }
 
-export interface ArticleExpressionPresetOption {
-  articleExpressionProfileVersionId: string;
-  name: string;
-  summary: string;
-  status: "active" | "pending_config";
-  source: "v4_adapter" | "v5_formal";
-}
-
 export interface ContentQuotaRule {
   quotaRuleId: string;
   questionVersionId: string;
   question: string;
   contentType: string;
+  articleTypeProfileVersionId: string;
+  articleTypeNameSnapshot: string;
+  typeMatchRunId: string;
+  typeSelectionSource: "ai_recommended" | "user_selected";
+  matchReasonSnapshot: string;
+  articleTypePromptConstraintSnapshot: string;
+  articleTypePromptConstraintSnapshotHash: string;
   sameQuotaForAllChannels: boolean;
   perChannelQuota: number;
   channelQuotas: Record<string, number>;
   expandedDeliverableCount: number;
   rulePackageVersionId: string;
   knowledgeBaseIds: string[];
-  articleExpressionProfileVersionId: string;
   sourceSnapshotHash: string;
   rulePackageSourceSnapshotHash: string;
   knowledgeIndexSourceSnapshotHash: string;
@@ -130,10 +128,16 @@ export interface ProductionMatrixTask {
   baseTopicIndex: number;
   title: string;
   contentType: string;
+  articleTypeProfileVersionId: string;
+  articleTypeNameSnapshot: string;
+  typeMatchRunId: string;
+  typeSelectionSource: "ai_recommended" | "user_selected";
+  matchReasonSnapshot: string;
+  articleTypePromptConstraintSnapshot: string;
+  articleTypePromptConstraintSnapshotHash: string;
   channel: string;
   rulePackageVersionId: string;
   knowledgeBaseIds: string[];
-  articleExpressionProfileVersionId: string;
   sourceSnapshotHash: string;
   evidencePackSourceSnapshotHash: string;
   status: ProductionTaskStatus;
@@ -326,7 +330,8 @@ export interface MonthlyWorkspaceBase {
   scheduleDraftItems: ScheduleDraftItem[];
   targetQuestions: TargetQuestionOption[];
   knowledgeBases: KnowledgeBaseOption[];
-  articleExpressionPresets: ArticleExpressionPresetOption[];
+  articleTypeProfiles: ArticleTypeProfileSummary[];
+  typeMatchRun?: QuestionTypeMatchRun;
   strategyPackage: ContentStrategyPackageRecord | null;
   productionTasks: ProductionMatrixTask[];
   source: {
@@ -396,4 +401,5 @@ export type V5ApiEnvelope<T> =
   | { ok: false; error: V5ApiError };
 
 import type { V5MonthlyPlan, V5MonthlyProductionReadiness, V5ProductionPoolEntry } from "./monthly-contracts";
+import type { ArticleTypeProfileSummary, QuestionTypeMatchRun } from "./article-type-contracts";
 

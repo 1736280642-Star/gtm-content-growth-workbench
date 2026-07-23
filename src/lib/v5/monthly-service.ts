@@ -5,7 +5,6 @@ import { channelLabels, productLabels } from "@/lib/labels";
 import { createInitialWorkbenchState, normalizeWorkbenchState } from "@/lib/workbench-store";
 import type { ProductPlanConfig, WorkspaceRole } from "@/lib/types";
 import type {
-  ArticleExpressionPresetOption,
   BatchGenerationSummary,
   ContentQuotaRule,
   ContentStrategyPackageRecord,
@@ -23,6 +22,13 @@ import type {
   V5MonthlyPlanRecord,
   V5ReferenceSource
 } from "./monthly-workspace-contracts";
+import type { ArticleTypeProfileVersion, QuestionTypeMatchRun } from "./article-type-contracts";
+import {
+  getArticleTypeVersionsByIds,
+  getLatestQuestionTypeMatchRun,
+  getQuestionTypeMatchRun,
+  listArticleTypeProfiles
+} from "./article-type-service";
 import { readV5MonthlyState, updateV5MonthlyState } from "./monthly-repository";
 import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
 import { calculateExpandedDeliverableCount, evaluateStrategyPreflight, expandApprovedStrategyTasks } from "./monthly-strategy-policy";
@@ -177,12 +183,6 @@ function buildKnowledgeBases(state: WorkbenchState, source: V5ReferenceSource): 
   });
 }
 
-const expressionPresetAdapters: ArticleExpressionPresetOption[] = [
-  { articleExpressionProfileVersionId: "v4-expression-professional-decision-v1", name: "专业决策型", summary: "面向企业决策者，强调条件、边界与可验证依据。", status: "active", source: "v4_adapter" },
-  { articleExpressionProfileVersionId: "v4-expression-practical-guide-v1", name: "实用指南型", summary: "面向执行人员，强调步骤、前置条件与落地检查。", status: "active", source: "v4_adapter" },
-  { articleExpressionProfileVersionId: "v4-expression-natural-explanation-v1", name: "自然科普型", summary: "面向通用读者，使用克制、易理解的说明方式。", status: "active", source: "v4_adapter" }
-];
-
 function buildDraftPlan(month: string): MonthlyPlanConfig {
   return {
     month,
@@ -226,6 +226,10 @@ export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<
   const rulePackages = buildRulePackages(reference.state, reference.source);
   const targetQuestions = buildTargetQuestions(reference.state, reference.source);
   const knowledgeBases = buildKnowledgeBases(reference.state, reference.source);
+  const [articleTypeProfiles, typeMatchRun] = await Promise.all([
+    listArticleTypeProfiles(),
+    getLatestQuestionTypeMatchRun(month)
+  ]);
 
   return {
     schemaVersion: 1,
@@ -240,7 +244,8 @@ export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<
     scheduleDraftItems,
     targetQuestions,
     knowledgeBases,
-    articleExpressionPresets: reference.source === "v4_runtime" ? expressionPresetAdapters : [],
+    articleTypeProfiles,
+    typeMatchRun,
     strategyPackage: plan?.strategyPackage || null,
     productionTasks: plan?.matrixTasks || [],
     source: {
@@ -268,13 +273,14 @@ function validateMonthlyPlan(
   rulePackages: RulePackageOption[],
   targetQuestions: TargetQuestionOption[],
   knowledgeBases: KnowledgeBaseOption[],
-  expressionPresets: ArticleExpressionPresetOption[]
+  articleTypeVersions: ArticleTypeProfileVersion[],
+  matchRuns: Map<string, QuestionTypeMatchRun>
 ): MonthlyPlanConfig {
   const issues: string[] = [];
   const packageById = new Map(rulePackages.map((item) => [item.id, item]));
   const questionById = new Map(targetQuestions.map((item) => [item.questionVersionId, item]));
   const knowledgeById = new Map(knowledgeBases.map((item) => [item.knowledgeBaseId, item]));
-  const expressionById = new Map(expressionPresets.map((item) => [item.articleExpressionProfileVersionId, item]));
+  const articleTypeById = new Map(articleTypeVersions.map((item) => [item.profileVersionId, item]));
 
   if (!isRecord(config)) {
     throw new V5ServiceError(400, "INVALID_MONTHLY_PLAN", "月度计划配置格式不正确。");
@@ -296,29 +302,61 @@ function validateMonthlyPlan(
   for (const rule of config.quotaRules || []) {
     const rulePackage = packageById.get(rule.rulePackageVersionId);
     const question = questionById.get(rule.questionVersionId);
+    const articleTypeVersion = articleTypeById.get(rule.articleTypeProfileVersionId);
+    const matchRun = matchRuns.get(rule.typeMatchRunId);
+    const matchedSuggestion = matchRun?.suggestions.find((item) =>
+      item.questionVersionId === rule.questionVersionId
+      && item.articleTypeProfileVersionId === rule.articleTypeProfileVersionId
+      && (item.selectionStatus === "accepted" || item.selectionStatus === "manual_added")
+    );
     const selectedKnowledge = rule.knowledgeBaseIds.map((id) => knowledgeById.get(id));
     const channelEntries = Object.entries(rule.channelQuotas);
     if (!rule.quotaRuleId || quotaRuleIds.has(rule.quotaRuleId)) issues.push("每条配额必须使用唯一标识。");
     quotaRuleIds.add(rule.quotaRuleId);
     if (!question || question.question !== rule.question) issues.push("配额中的目标问题与已选问题版本不一致。");
-    if (!rule.contentType.trim()) issues.push(`${rule.question || "目标问题"} 缺少文章类型。`);
+    if (!articleTypeVersion) issues.push(`${rule.question || "目标问题"} 使用的内容类型版本不存在。`);
+    if (articleTypeVersion && (rule.contentType !== articleTypeVersion.name || rule.articleTypeNameSnapshot !== articleTypeVersion.name)) {
+      issues.push(`${rule.question || "目标问题"} 的内容类型名称快照与版本不一致。`);
+    }
+    if (articleTypeVersion && (rule.articleTypePromptConstraintSnapshotHash !== articleTypeVersion.promptConstraintSnapshotHash || rule.articleTypePromptConstraintSnapshot !== articleTypeVersion.promptConstraintSnapshot)) {
+      issues.push(`${rule.question || "目标问题"} 的内容类型 Prompt 约束快照不一致。`);
+    }
+    if (!matchRun || matchRun.status !== "confirmed" || !matchedSuggestion) issues.push(`${rule.question || "目标问题"} 的内容类型匹配尚未人工确认。`);
+    if (matchedSuggestion && (rule.typeSelectionSource !== matchedSuggestion.selectionSource || rule.matchReasonSnapshot !== matchedSuggestion.reason)) {
+      issues.push(`${rule.question || "目标问题"} 的匹配来源或推荐理由快照不一致。`);
+    }
     if (!channelEntries.length || channelEntries.some(([, quota]) => !Number.isInteger(quota) || quota < 1 || quota > 200)) {
       issues.push(`${rule.question || "目标问题"} 的每个渠道配额必须是 1 到 200 的整数。`);
     }
     if (!rulePackage || rulePackage.status !== "active" || !rulePackage.monthlyProductionReady) issues.push(`${rule.question || "目标问题"} 使用的规则包未达到生产准入。`);
     if (rulePackage && channelEntries.some(([channel]) => !rulePackage.allowedChannels.includes(channel))) issues.push(`${rule.question || "目标问题"} 包含规则包未允许的渠道。`);
     if (!rule.knowledgeBaseIds.length || selectedKnowledge.some((item) => !item || item.status !== "ready")) issues.push(`${rule.question || "目标问题"} 必须选择已就绪知识库。`);
-    if (!expressionById.has(rule.articleExpressionProfileVersionId)) issues.push(`${rule.question || "目标问题"} 的文章表达预设不可用。`);
     const expandedDeliverableCount = calculateExpandedDeliverableCount(rule.channelQuotas);
     if (expandedDeliverableCount !== rule.expandedDeliverableCount) issues.push(`${rule.question || "目标问题"} 的渠道成品数计算不一致。`);
     const sourceHashes = [rule.sourceSnapshotHash, rule.rulePackageSourceSnapshotHash, rule.knowledgeIndexSourceSnapshotHash, rule.evidencePackSourceSnapshotHash];
     if (!sourceHashes[0] || new Set(sourceHashes).size !== 1) issues.push(`${rule.question || "目标问题"} 的策略包、知识索引和 EvidencePack 快照不一致。`);
     normalizedQuotaRules.push({
-      ...rule,
+      quotaRuleId: rule.quotaRuleId,
+      questionVersionId: rule.questionVersionId,
       question: rule.question.trim(),
       contentType: rule.contentType.trim(),
+      articleTypeProfileVersionId: rule.articleTypeProfileVersionId,
+      articleTypeNameSnapshot: rule.articleTypeNameSnapshot,
+      typeMatchRunId: rule.typeMatchRunId,
+      typeSelectionSource: rule.typeSelectionSource,
+      matchReasonSnapshot: rule.matchReasonSnapshot,
+      articleTypePromptConstraintSnapshot: rule.articleTypePromptConstraintSnapshot,
+      articleTypePromptConstraintSnapshotHash: rule.articleTypePromptConstraintSnapshotHash,
+      sameQuotaForAllChannels: Boolean(rule.sameQuotaForAllChannels),
+      perChannelQuota: Number(rule.perChannelQuota),
       channelQuotas: Object.fromEntries(channelEntries),
-      expandedDeliverableCount
+      expandedDeliverableCount,
+      rulePackageVersionId: rule.rulePackageVersionId,
+      knowledgeBaseIds: Array.from(new Set(rule.knowledgeBaseIds)),
+      sourceSnapshotHash: rule.sourceSnapshotHash,
+      rulePackageSourceSnapshotHash: rule.rulePackageSourceSnapshotHash,
+      knowledgeIndexSourceSnapshotHash: rule.knowledgeIndexSourceSnapshotHash,
+      evidencePackSourceSnapshotHash: rule.evidencePackSourceSnapshotHash
     });
   }
 
@@ -376,7 +414,21 @@ export async function saveV5MonthlyPlan(
   const rulePackages = governance.source === "v5_mysql" ? governance.rulePackages : candidateRulePackages;
   const targetQuestions = buildTargetQuestions(reference.state, reference.source);
   const knowledgeBases = buildKnowledgeBases(reference.state, reference.source);
-  const config = validateMonthlyPlan(request.config, month, rulePackages, targetQuestions, knowledgeBases, expressionPresetAdapters);
+  const referencedArticleTypeIds = Array.from(new Set((request.config.quotaRules || []).map((rule) => rule.articleTypeProfileVersionId).filter(Boolean)));
+  const referencedMatchRunIds = Array.from(new Set((request.config.quotaRules || []).map((rule) => rule.typeMatchRunId).filter(Boolean)));
+  const [articleTypeVersions, matchRunEntries] = await Promise.all([
+    getArticleTypeVersionsByIds(referencedArticleTypeIds),
+    Promise.all(referencedMatchRunIds.map(async (id) => [id, await getQuestionTypeMatchRun(id)] as const))
+  ]);
+  const config = validateMonthlyPlan(
+    request.config,
+    month,
+    rulePackages,
+    targetQuestions,
+    knowledgeBases,
+    articleTypeVersions,
+    new Map(matchRunEntries.filter((entry): entry is readonly [string, QuestionTypeMatchRun] => Boolean(entry[1])))
+  );
 
   const requestHash = createHash("sha256")
     .update(JSON.stringify({ month, expectedVersion: request.expectedVersion, config }))

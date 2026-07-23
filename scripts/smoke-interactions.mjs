@@ -64,24 +64,34 @@ const weeklyReportBusinessExcludes = ["置信度", "低置信度", "置信度低
 
 const contracts = [
   {
-    name: "v5_monthly_manual_configuration_contract",
+    name: "v5_monthly_strategy_workspace_contract",
     file: "src/components/MonthlyPlanConfigPanel.tsx",
     includes: [
-      "配置月度内容策略",
-      "目标问题与渠道配额",
+      "月度目标与目标问题",
+      "AI 推荐内容组合",
+      "类型、渠道和配额",
+      "规则包、知识库与版本确认",
       "monthlyProductionReady",
       "mode=\"multiple\"",
       "每渠道配额",
       "渠道成品",
       "sameQuotaForAllChannels",
       "channelQuotas",
-      "文章表达预设",
+      "articleTypeProfileVersionId",
+      "articleTypePromptConstraintSnapshotHash",
+      "typeMatchRunId",
       "知识库",
       "onSave(cloneConfig(draft))",
       "月度策略草稿已保存",
       "配额已平衡"
     ],
-    excludes: ["fetch(", "/api/", "workbench-state.json"]
+    excludes: ["fetch(", "/api/", "workbench-state.json", "文章表达预设", "articleExpressionProfileVersionId"]
+  },
+  {
+    name: "v5_article_type_library_contract",
+    file: "src/app/monthly-matrix/content-types/page.tsx",
+    includes: ["内容类型库", "系统起始模板不是固定枚举", "新建内容类型", "编辑新版本", "示例问题测试"],
+    excludes: ["const contentTypes", "articleExpressionProfileVersionId", "workbench-state.json"]
   },
   {
     name: "v5_monthly_strategy_embedded_contract",
@@ -1012,7 +1022,8 @@ const contracts = [
       "v5_dashboard_scoped_replacement_desktop",
       "v5_dashboard_scoped_replacement_mobile",
       "v5_monthly_matrix_desktop",
-      "v5_monthly_config_modal_mobile",
+      "v5_article_type_library_desktop",
+      "v5_monthly_strategy_desktop",
       "v5_batch_generation_desktop",
       "v5_batch_generation_mobile",
       "v5_daily_execution_mobile",

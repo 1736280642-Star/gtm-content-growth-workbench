@@ -108,6 +108,7 @@ function addRegexCheck(label, filePath, patterns) {
 [
   "src/app/monthly-matrix/page.tsx",
   "src/app/monthly-matrix/strategy/page.tsx",
+  "src/app/monthly-matrix/content-types/page.tsx",
   "src/app/monthly-matrix/batch-generation/page.tsx",
   "src/app/monthly-strategy/page.tsx",
   "src/app/batch-generation/page.tsx",
@@ -119,6 +120,8 @@ function addRegexCheck(label, filePath, patterns) {
   "src/components/MonthlyMatrixTable.tsx",
   "src/components/BatchGenerationMatrixTable.tsx",
   "src/components/MonthlyPlanConfigPanel.tsx",
+  "src/components/ArticleTypeProfileEditor.tsx",
+  "src/components/QuestionTypeMatchPanel.tsx",
   "src/components/EvidenceGateTag.tsx",
   "src/components/PublishStatusTag.tsx",
   "src/components/ExceptionQueuePreview.tsx",
@@ -126,6 +129,10 @@ function addRegexCheck(label, filePath, patterns) {
   "src/components/V5StatusRail.tsx",
   "src/lib/v5-ui-mock-data.ts",
   "src/lib/v5/monthly-workspace-contracts.ts",
+  "src/lib/v5/article-type-contracts.ts",
+  "src/lib/v5/article-type-repository.ts",
+  "src/lib/v5/article-type-semantic-provider.ts",
+  "src/lib/v5/article-type-service.ts",
   "src/lib/v5/monthly-contracts.ts",
   "src/lib/v5/monthly-repository.ts",
   "src/lib/v5/monthly-service.ts",
@@ -138,10 +145,19 @@ function addRegexCheck(label, filePath, patterns) {
   "src/lib/v5/use-monthly-workspace.ts",
   "src/app/api/v5/monthly-workspace/route.ts",
   "src/app/api/v5/monthly-plans/[month]/route.ts",
+  "src/app/api/v5/article-type-profiles/route.ts",
+  "src/app/api/v5/article-type-profiles/[id]/route.ts",
+  "src/app/api/v5/article-type-profiles/[id]/activate/route.ts",
+  "src/app/api/v5/article-type-profiles/[id]/supplement/route.ts",
+  "src/app/api/v5/article-type-profiles/supplement/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/type-match/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/type-match/confirm/route.ts",
   "src/app/api/v5/monthly-plans/[month]/strategy-preview/route.ts",
   "src/app/api/v5/monthly-plans/[month]/strategy-approval/route.ts",
   "src/app/api/v5/monthly-plans/[month]/schedule/[taskId]/route.ts",
-  "scripts/v5-monthly-production.test.mjs"
+  "data/v5-article-type-templates.json",
+  "scripts/v5-monthly-production.test.mjs",
+  "scripts/v5-article-types.test.mjs"
 ].forEach((filePath) => addFileCheck(`v5 ui file: ${filePath}`, filePath));
 
 addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
@@ -178,6 +194,7 @@ addContentCheck("v5 route labels", "src/lib/permissions.ts", [
   "/monthly-strategy",
   "/monthly-matrix",
   "/monthly-matrix/strategy",
+  "/monthly-matrix/content-types",
   "/monthly-matrix/batch-generation",
   "/batch-generation",
   "/exceptions",
@@ -198,25 +215,74 @@ addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx
   "进入批量生成中心",
   "useMonthlyWorkspace",
   "尚未配置月度业务目标",
-  "MonthlyPlanConfigPanel"
+  "/monthly-matrix/strategy",
+  "/monthly-matrix/content-types"
 ]);
 
 addAbsentCheck("v5 monthly kpi rail no duplicate period", "src/app/monthly-matrix/page.tsx", ['label: "月份"']);
 addAbsentCheck("v5 strategy package has no article title table", "src/components/MonthlyMatrixTable.tsx", ["文章标题", "人工排程", "plannedPublishAt"]);
 
 addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanConfigPanel.tsx", [
-  "配置月度内容策略",
-  "目标问题与渠道配额",
+  "月度目标与目标问题",
+  "AI 推荐内容组合",
+  "类型、渠道和配额",
+  "规则包、知识库与版本确认",
   "monthlyProductionReady",
   "mode=\"multiple\"",
   "每渠道配额",
   "渠道成品",
   "sameQuotaForAllChannels",
   "channelQuotas",
-  "文章表达预设",
+  "articleTypeProfileVersionId",
+  "articleTypePromptConstraintSnapshotHash",
+  "typeMatchRunId",
   "知识库",
-  "保存草稿",
+  "保存月度策略草稿",
   "配额已平衡"
+]);
+
+addAbsentCheck("v5 monthly strategy has no standalone expression preset", "src/components/MonthlyPlanConfigPanel.tsx", [
+  "文章表达预设",
+  "articleExpressionProfileVersionId",
+  "articleExpressionPresets"
+]);
+
+addContentCheck("v5 article type contracts", "src/lib/v5/article-type-contracts.ts", [
+  "ArticleTypeProfileVersion",
+  "QuestionTypeMatchRun",
+  "QuestionTypeSuggestion",
+  "user_input",
+  "ai_suggested",
+  "user_confirmed",
+  "template_inherited"
+]);
+
+addContentCheck("v5 article type repository boundary", "src/lib/v5/article-type-repository.ts", [
+  "V5_ARTICLE_TYPE_STATE_PATH",
+  "data/v5-article-types.json",
+  "temporaryPath",
+  "rename(temporaryPath, statePath)",
+  "idempotency",
+  "auditLog"
+]);
+
+addContentCheck("v5 article type service guards", "src/lib/v5/article-type-service.ts", [
+  "WRITE_ROLES",
+  "requireIdempotencyKey",
+  "expectedVersion",
+  "ARTICLE_TYPE_VERSION_CONFLICT",
+  "TYPE_MATCH_VERSION_CONFLICT",
+  "pending_config",
+  "selectionStatus",
+  "selectionSource"
+]);
+
+addContentCheck("v5 content type library", "src/app/monthly-matrix/content-types/page.tsx", [
+  "内容类型库",
+  "系统起始模板不是固定枚举",
+  "新建内容类型",
+  "编辑新版本",
+  "示例问题测试"
 ]);
 
 addContentCheck("v5 monthly workspace api contract", "src/lib/v5/monthly-workspace-contracts.ts", [
@@ -312,9 +378,12 @@ addContentCheck("v5 monthly write api", "src/app/api/v5/monthly-plans/[month]/ro
   "x-idempotency-key"
 ]);
 
-addContentCheck("v5 strategy page merged redirect", "src/app/monthly-matrix/strategy/page.tsx", [
-  "redirect",
-  "/monthly-matrix#strategy-package"
+addContentCheck("v5 strategy workspace page", "src/app/monthly-matrix/strategy/page.tsx", [
+  "月度策略工作区",
+  "MonthlyPlanConfigPanel",
+  "runTypeMatch",
+  "confirmTypeMatch",
+  "/monthly-matrix/content-types"
 ]);
 
 addContentCheck("v5 strategy old route redirects", "src/app/monthly-strategy/page.tsx", [
@@ -1347,6 +1416,7 @@ addContentCheck("isolated browser smoke runner", "scripts/smoke-browser-isolated
   "--scope"
 ]);
 addContentCheck("package isolated browser smoke script", "package.json", ["smoke:browser:content:isolated", "smoke-browser-isolated.mjs"]);
+addContentCheck("package article type test script", "package.json", ["test:v5-article-types", "v5-article-types.test.mjs"]);
 addContentCheck("usage isolated browser smoke docs", "docs/usage.md", ["smoke:browser:content:isolated", "data/workbench-browser-smoke-state.json"]);
 addContentCheck("readme isolated browser smoke command", "README.md", ["smoke:browser:content:isolated"]);
 
