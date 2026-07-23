@@ -1966,6 +1966,13 @@ body {
   margin-bottom: 10px;
 }
 
+.foundation-field-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+
 .foundation-module-list {
   display: grid;
   gap: 8px;
@@ -1974,9 +1981,17 @@ body {
 
 .foundation-module-row {
   display: grid;
-  grid-template-columns: 32px minmax(130px, 0.55fr) minmax(220px, 1fr) 32px 32px;
+  grid-template-columns: 32px minmax(130px, 0.55fr) minmax(220px, 1fr) 32px 32px 32px;
   align-items: center;
   gap: 8px;
+}
+
+.foundation-optional-empty {
+  padding: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .foundation-module-order {

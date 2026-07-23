@@ -1798,6 +1798,43 @@ async function main() {
         pathName: "/configuration",
         expectedText: "前台测试连接"
       }));
+      await runStep("v5_expression_profile_editor_desktop", () => assertDesktopLayout(page, {
+        name: "v5_expression_profile_editor_desktop",
+        pathName: "/configuration",
+        expectedText: "文章表达预设",
+        beforeAudit: async (currentPage) => {
+          await currentPage.click('[data-node-key="expression_profiles"]');
+          await clickButtonByText(currentPage, "新建预设");
+          await waitFor(() => currentPage.containsText("未填写或无法映射的内容会遵循系统规则"), 15000);
+          const presetValues = await currentPage.evaluate(`(() => ({
+            targetAudience: document.querySelector('#targetAudience')?.value || '',
+            writingFocus: document.querySelector('#writingFocus')?.value || '',
+            minLength: document.querySelector('#minLength')?.value || '',
+            maxLength: document.querySelector('#maxLength')?.value || '',
+            cta: document.querySelector('#cta')?.value || '',
+            forbiddenStyles: document.querySelector('#forbiddenStyles')?.value || '',
+            otherInstructions: document.querySelector('#otherInstructions')?.value || '',
+            modules: document.querySelectorAll('.foundation-module-row').length,
+            radioGroups: document.querySelectorAll('.ant-radio-group').length,
+            selects: document.querySelectorAll('.ant-select').length
+          }))()`);
+          if (presetValues.targetAudience || presetValues.writingFocus || presetValues.minLength || presetValues.maxLength
+            || presetValues.cta || presetValues.forbiddenStyles || presetValues.otherInstructions || presetValues.modules !== 0
+            || presetValues.radioGroups !== 0 || presetValues.selects !== 0) {
+            throw new Error(`expected blank low-constraint preset form: ${JSON.stringify(presetValues)}`);
+          }
+        }
+      }));
+      await runStep("v5_expression_profile_editor_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_expression_profile_editor_mobile",
+        pathName: "/configuration",
+        expectedText: "文章表达预设",
+        beforeAudit: async (currentPage) => {
+          await currentPage.click('[data-node-key="expression_profiles"]');
+          await clickButtonByText(currentPage, "新建预设");
+          await waitFor(() => currentPage.containsText("未指定结构，将遵循系统规则"), 15000);
+        }
+      }));
     }
 
     if (shouldRunContent || shouldRunResponsive) {

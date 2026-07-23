@@ -5,6 +5,7 @@ import {
   ArrowUpOutlined,
   CheckCircleOutlined,
   CloudSyncOutlined,
+  DeleteOutlined,
   PlusOutlined,
   ReloadOutlined,
   SettingOutlined
@@ -17,8 +18,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Radio,
-  Select,
   Space,
   Table,
   Tabs,
@@ -43,14 +42,6 @@ import type {
 type ProfilesResponse = { ok: true; data: { profiles: V5ArticleExpressionProfileView[]; stateVersion: number } };
 type ConfigurationResponse = { ok: true; data: { items: V5ConfigurationStatusItem[] } };
 
-const defaultModules: V5ArticleExpressionStructureModule[] = [
-  { moduleId: "background", label: "问题背景", guidance: "说明读者正在面对的真实问题", required: true },
-  { moduleId: "criteria", label: "选择标准", guidance: "给出可验证的判断维度", required: true },
-  { moduleId: "solution", label: "方案说明", guidance: "只表达证据支持的能力", required: true },
-  { moduleId: "risk", label: "风险与限制", guidance: "说明边界和前置条件", required: true },
-  { moduleId: "cta", label: "行动建议", guidance: "给出清晰下一步", required: true }
-];
-
 function tabFromQuery(value: string | null) {
   return value === "connections" ? "publish_connections" : value || "models";
 }
@@ -67,7 +58,7 @@ export default function ConfigurationPage() {
   const [activeTab, setActiveTab] = useState(() => tabFromQuery(searchParams.get("tab")));
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<V5ArticleExpressionProfileView>();
-  const [modules, setModules] = useState<V5ArticleExpressionStructureModule[]>(defaultModules);
+  const [modules, setModules] = useState<V5ArticleExpressionStructureModule[]>([]);
   const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -92,28 +83,18 @@ export default function ConfigurationPage() {
   function openEditor(profile?: V5ArticleExpressionProfileView) {
     setEditingProfile(profile);
     const version = profile?.currentVersion;
-    setModules(version?.structureModules || defaultModules);
+    setModules(version?.structureModules || []);
+    form.resetFields();
     form.setFieldsValue(profile ? {
       name: profile.name,
-      applicableArticleTypes: profile.applicableArticleTypes,
-      applicableChannels: profile.applicableChannels,
       targetAudience: version!.targetAudience,
-      writingGoal: version!.writingGoal,
-      readerAwareness: version!.readerAwareness,
-      tones: version!.tones,
-      requiredTopics: version!.requiredTopics,
+      writingFocus: version!.writingFocus,
       minLength: version!.minLength,
       maxLength: version!.maxLength,
       cta: version!.cta,
-      notes: version!.notes
-    } : {
-      writingGoal: "selection",
-      readerAwareness: "initial",
-      tones: ["专业", "克制"],
-      requiredTopics: ["前置条件", "验收方式"],
-      minLength: 1800,
-      maxLength: 2500
-    });
+      forbiddenStyles: version!.forbiddenStyles.join("\n"),
+      otherInstructions: version!.otherInstructions || version!.notes
+    } : {});
     setEditorOpen(true);
   }
 
@@ -130,34 +111,41 @@ export default function ConfigurationPage() {
   function addModule() {
     setModules((current) => [...current, {
       moduleId: `custom-${Date.now()}`,
-      label: "自定义模块",
-      guidance: "说明该模块需要覆盖什么",
+      label: "",
+      guidance: "",
       required: false
     }]);
+  }
+
+  function removeModule(index: number) {
+    setModules((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   async function saveProfile() {
     const values = await form.validateFields();
     if (!profilesData) return;
+    if (modules.some((item) => Boolean(item.label.trim()) !== Boolean(item.guidance.trim()))) {
+      messageApi.error("结构模块需要同时填写名称和说明，或删除未完成模块。");
+      return;
+    }
     setSaving(true);
     const expectedVersion = editingProfile?.rowVersion ?? profilesData.stateVersion;
     const body = {
       ...createV5WritePayload(workspaceSetting.currentRole, expectedVersion, editingProfile ? "更新文章表达预设草稿" : "创建文章表达预设草稿"),
       name: values.name,
-      applicableArticleTypes: values.applicableArticleTypes || [],
-      applicableChannels: values.applicableChannels || [],
+      applicableArticleTypes: editingProfile?.applicableArticleTypes || [],
+      applicableChannels: editingProfile?.applicableChannels || [],
       version: {
-        targetAudience: values.targetAudience,
-        writingGoal: values.writingGoal,
-        readerAwareness: values.readerAwareness,
-        tones: values.tones || [],
-        structureModules: modules,
-        requiredTopics: values.requiredTopics || [],
-        forbiddenStyles: ["绝对排名", "泛化承诺", "无证据数据"],
+        targetAudience: values.targetAudience?.trim() || undefined,
+        writingFocus: values.writingFocus?.trim() || undefined,
+        structureModules: modules.filter((item) => item.label.trim() && item.guidance.trim()),
+        forbiddenStyles: typeof values.forbiddenStyles === "string"
+          ? values.forbiddenStyles.split(/[\n,，]/).map((item: string) => item.trim()).filter(Boolean)
+          : [],
         minLength: values.minLength,
         maxLength: values.maxLength,
-        cta: values.cta,
-        notes: values.notes || ""
+        cta: values.cta?.trim() || undefined,
+        otherInstructions: values.otherInstructions?.trim() || undefined
       }
     };
     try {
@@ -223,8 +211,8 @@ export default function ConfigurationPage() {
   const profilesTab = (
     <Card className="foundation-panel" bordered={false}>
       <div className="foundation-card-heading">
-        <div><Typography.Title level={4}>文章表达预设</Typography.Title><Typography.Text type="secondary">表单与结构模块会在生成时编译为指令，用户无需编写完整 Prompt。</Typography.Text></div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新建预设</Button>
+        <div><Typography.Title level={4}>文章表达预设</Typography.Title><Typography.Text type="secondary">只填写需要人工控制的部分；留空项由系统规则处理，避免固定模板限制文章表达。</Typography.Text></div>
+        <Button type="primary" icon={<PlusOutlined />} data-testid="expression-profile-create" onClick={() => openEditor()}>新建预设</Button>
       </div>
       <ListProfiles profiles={profilesData?.profiles || []} loading={loading} saving={saving} onEdit={openEditor} onPublish={publishProfile} />
     </Card>
@@ -279,37 +267,33 @@ export default function ConfigurationPage() {
         confirmLoading={saving}
         width={860}
       >
-        <Form form={form} layout="vertical">
-          <div className="foundation-form-grid">
-            <Form.Item name="name" label="预设名称" rules={[{ required: true, message: "请填写预设名称" }]}><Input /></Form.Item>
-            <Form.Item name="targetAudience" label="目标读者" rules={[{ required: true, message: "请填写目标读者" }]}><Input /></Form.Item>
-            <Form.Item name="applicableArticleTypes" label="适用文章类型"><Select mode="tags" tokenSeparators={[",", "，"]} /></Form.Item>
-            <Form.Item name="applicableChannels" label="适用渠道"><Select mode="tags" tokenSeparators={[",", "，"]} /></Form.Item>
-          </div>
-          <Form.Item name="writingGoal" label="写作目标"><Radio.Group options={[{ value: "selection", label: "帮助选型" }, { value: "explain", label: "解释能力" }, { value: "implementation", label: "指导实施" }]} /></Form.Item>
-          <Form.Item name="readerAwareness" label="读者认知"><Radio.Group options={[{ value: "initial", label: "初步了解" }, { value: "comparing", label: "正在比较" }, { value: "implementing", label: "准备实施" }]} /></Form.Item>
-          <Form.Item name="tones" label="语气"><Select mode="tags" tokenSeparators={[",", "，"]} /></Form.Item>
-          <div className="foundation-modules-heading"><Typography.Text strong>结构模块</Typography.Text><Button size="small" icon={<PlusOutlined />} onClick={addModule}>添加模块</Button></div>
+        <Form form={form} layout="vertical" data-testid="expression-profile-form">
+          <Form.Item name="name" label="预设名称" rules={[{ required: true, message: "请填写预设名称" }]}><Input placeholder="用于识别这套预设" /></Form.Item>
+          <Form.Item name="targetAudience" label="目标读者（选填）" extra="留空时由系统根据任务与渠道判断。"><Input placeholder="例如：首次接触该产品的业务负责人" /></Form.Item>
+          <Form.Item name="writingFocus" label="写作重心（选填）" extra="描述这篇文章最需要讲清楚的内容，不限定固定写作目标。"><Input.TextArea rows={2} maxLength={500} showCount /></Form.Item>
+          <div className="foundation-modules-heading"><div><Typography.Text strong>结构（选填）</Typography.Text><br /><Typography.Text type="secondary">不添加模块时，系统按文章任务组织结构。</Typography.Text></div><Button size="small" icon={<PlusOutlined />} onClick={addModule}>添加模块</Button></div>
           <div className="foundation-module-list">
+            {!modules.length ? <div className="foundation-optional-empty">未指定结构，将遵循系统规则</div> : null}
             {modules.map((module, index) => (
               <div className="foundation-module-row" key={module.moduleId}>
                 <div className="foundation-module-order">{index + 1}</div>
-                <Input value={module.label} onChange={(event) => setModules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} aria-label={`结构模块 ${index + 1} 名称`} />
-                <Input value={module.guidance} onChange={(event) => setModules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, guidance: event.target.value } : item))} aria-label={`结构模块 ${index + 1} 要求`} />
+                <Input placeholder="模块名称" value={module.label} onChange={(event) => setModules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} aria-label={`结构模块 ${index + 1} 名称`} />
+                <Input placeholder="该部分需要讲清什么" value={module.guidance} onChange={(event) => setModules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, guidance: event.target.value } : item))} aria-label={`结构模块 ${index + 1} 要求`} />
                 <Button icon={<ArrowUpOutlined />} aria-label="上移模块" disabled={index === 0} onClick={() => moveModule(index, -1)} />
                 <Button icon={<ArrowDownOutlined />} aria-label="下移模块" disabled={index === modules.length - 1} onClick={() => moveModule(index, 1)} />
+                <Button danger icon={<DeleteOutlined />} aria-label="删除模块" onClick={() => removeModule(index)} />
               </div>
             ))}
           </div>
-          <Form.Item name="requiredTopics" label="必须展开"><Select mode="tags" tokenSeparators={[",", "，"]} /></Form.Item>
-          <Form.Item label="禁止风格"><Space wrap>{["绝对排名", "泛化承诺", "无证据数据"].map((item) => <Tag key={item} color="red">{item} · 强制</Tag>)}</Space></Form.Item>
-          <Space wrap align="start">
-            <Form.Item name="minLength" label="最少字数" rules={[{ required: true }]}><InputNumber min={300} max={10000} /></Form.Item>
-            <Form.Item name="maxLength" label="最多字数" rules={[{ required: true }]}><InputNumber min={300} max={10000} /></Form.Item>
-          </Space>
-          <Form.Item name="cta" label="CTA" rules={[{ required: true, message: "请填写清晰的下一步动作" }]}><Input /></Form.Item>
-          <Form.Item name="notes" label="补充说明" extra="最多 200 字；能力、合作、案例或量化承诺需要证据支持。"><Input.TextArea rows={3} maxLength={200} showCount /></Form.Item>
-          <Alert showIcon type="info" message="系统会将表单、规则包、渠道配置和 EvidencePack 编译为最终指令。" />
+          <div className="foundation-field-heading"><Typography.Text strong>篇幅（选填）</Typography.Text><Typography.Text type="secondary">上下限都留空时由系统决定。</Typography.Text></div>
+          <div className="foundation-form-grid">
+            <Form.Item name="minLength" label="最少字数"><InputNumber min={300} max={10000} placeholder="系统决定" style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="maxLength" label="最多字数"><InputNumber min={300} max={10000} placeholder="系统决定" style={{ width: "100%" }} /></Form.Item>
+          </div>
+          <Form.Item name="cta" label="CTA（选填）" extra="留空时由系统根据文章目的判断是否需要 CTA。"><Input /></Form.Item>
+          <Form.Item name="forbiddenStyles" label="禁止风格（选填）" extra="一行一项。系统安全规则始终生效，无需重复填写。"><Input.TextArea rows={3} maxLength={500} /></Form.Item>
+          <Form.Item name="otherInstructions" label="其他（选填）" extra="仅填写以上字段无法表达的特殊要求；能力、合作、案例或量化承诺仍需证据支持。"><Input.TextArea rows={3} maxLength={500} showCount /></Form.Item>
+          <Alert showIcon type="info" message="未填写或无法映射的内容会遵循系统规则" description="系统规则、产品边界、渠道要求和 EvidencePack 共同组成最终指令，不会用固定选项补齐用户未选择的表达偏好。" />
         </Form>
       </Modal>
     </>
@@ -332,8 +316,8 @@ function ListProfiles({ profiles, loading, saving, onEdit, onPublish }: {
       scroll={{ x: 900 }}
       columns={[
         { title: "预设", width: 220, render: (_, record) => <Space><strong>{record.name}</strong><Tag>v{record.currentVersion.versionNumber}</Tag>{record.defaultProfile ? <Tag color="blue">默认</Tag> : null}</Space> },
-        { title: "适用", width: 250, render: (_, record) => `${record.applicableArticleTypes.join(" / ") || "未限定"} · ${record.applicableChannels.join("、") || "全渠道"}` },
-        { title: "结构", render: (_, record) => record.currentVersion.structureModules.map((item) => item.label).join(" > ") },
+        { title: "写作重心", width: 260, render: (_, record) => record.currentVersion.writingFocus || <Typography.Text type="secondary">遵循系统规则</Typography.Text> },
+        { title: "结构", render: (_, record) => record.currentVersion.structureModules.map((item) => item.label).join(" > ") || <Typography.Text type="secondary">遵循系统规则</Typography.Text> },
         { title: "状态", width: 110, render: (_, record) => <Tag color={record.currentVersion.status === "active" ? "green" : "gold"}>{record.currentVersion.status === "active" ? "已发布" : "草稿"}</Tag> },
         {
           title: "操作",

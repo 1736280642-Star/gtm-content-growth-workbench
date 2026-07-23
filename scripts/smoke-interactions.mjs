@@ -92,8 +92,8 @@ const contracts = [
   {
     name: "v5_foundation_configuration_contract",
     file: "src/app/configuration/page.tsx",
-    includes: ["配置管理", "模型服务", "文章表达预设", "发布连接", "前台测试连接", "structureModules: modules", "凭证不回显"],
-    excludes: ["API Key", "Secret", "完整 Prompt 原文"]
+    includes: ["配置管理", "文章表达预设", "目标读者（选填）", "写作重心（选填）", "结构（选填）", "篇幅", "CTA（选填）", "禁止风格（选填）", "其他（选填）", "未填写或无法映射的内容会遵循系统规则", "structureModules: modules", "凭证不回显"],
+    excludes: ["API Key", "Secret", "完整 Prompt 原文", "Radio.Group", "适用文章类型", "适用渠道", "读者认知", "必须展开"]
   },
   {
     name: "v5_foundation_compatibility_redirects",

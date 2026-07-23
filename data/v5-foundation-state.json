@@ -202,9 +202,7 @@
       "versionNumber": 1,
       "status": "active",
       "targetAudience": "企业 AI 项目负责人",
-      "writingGoal": "selection",
-      "readerAwareness": "comparing",
-      "tones": ["专业", "克制"],
+      "writingFocus": "优先解释选型风险、实施条件和验收方式。",
       "structureModules": [
         {"moduleId": "background", "label": "问题背景", "guidance": "说明决策场景", "required": true},
         {"moduleId": "criteria", "label": "选择标准", "guidance": "覆盖实施、安全、交付与运营", "required": true},
@@ -212,12 +210,12 @@
         {"moduleId": "risk", "label": "风险", "guidance": "明确限制与前置条件", "required": true},
         {"moduleId": "cta", "label": "行动建议", "guidance": "给出下一步评估方式", "required": true}
       ],
-      "requiredTopics": ["实施流程", "前置条件", "验收方式"],
-      "forbiddenStyles": ["绝对排名", "泛化承诺", "无证据数据"],
+      "forbiddenStyles": [],
       "minLength": 1800,
       "maxLength": 2500,
       "cta": "联系 JOTO 评估实施条件",
-      "notes": "优先解释选型风险。",
+      "systemRuleFallbackFields": ["forbiddenStyles", "other"],
+      "systemRuleVersion": "article-expression-system.v1.0.0",
       "evidenceWarning": false,
       "createdAt": "2026-07-22T01:00:00.000Z",
       "createdBy": "demo-seed"

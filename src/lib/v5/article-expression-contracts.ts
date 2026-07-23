@@ -7,22 +7,36 @@ export interface V5ArticleExpressionStructureModule {
   required: boolean;
 }
 
+export type V5ArticleExpressionField =
+  | "targetAudience"
+  | "writingFocus"
+  | "structure"
+  | "length"
+  | "cta"
+  | "forbiddenStyles"
+  | "other";
+
 export interface V5ArticleExpressionProfileVersion {
   profileVersionId: string;
   profileId: string;
   versionNumber: number;
   status: V5ArticleExpressionProfileStatus;
-  targetAudience: string;
-  writingGoal: "selection" | "explain" | "implementation";
-  readerAwareness: "initial" | "comparing" | "implementing";
-  tones: string[];
+  targetAudience?: string;
+  writingFocus?: string;
   structureModules: V5ArticleExpressionStructureModule[];
-  requiredTopics: string[];
   forbiddenStyles: string[];
-  minLength: number;
-  maxLength: number;
-  cta: string;
-  notes: string;
+  minLength?: number;
+  maxLength?: number;
+  cta?: string;
+  otherInstructions?: string;
+  systemRuleFallbackFields: V5ArticleExpressionField[];
+  systemRuleVersion: string;
+  /** 旧版本读取兼容；新表单不再写入枚举式约束。 */
+  writingGoal?: "selection" | "explain" | "implementation";
+  readerAwareness?: "initial" | "comparing" | "implementing";
+  tones?: string[];
+  requiredTopics?: string[];
+  notes?: string;
   evidenceWarning: boolean;
   createdAt: string;
   createdBy: string;

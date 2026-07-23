@@ -53,14 +53,21 @@ test("knowledge workspace exposes only the three actionable categories and keeps
   assert.doesNotMatch(files["src/app/knowledge/[id]/page.tsx"], /Source 数量|Chunk 数量|Claim 数量/);
 });
 
-test("expression profiles are structured, sortable and evidence guarded", () => {
+test("expression profiles keep user fields optional and fall back to system rules", () => {
   const service = files["src/lib/v5/article-expression-service.ts"];
   const page = files["src/app/configuration/page.tsx"];
-  assert.match(service, /mandatoryForbiddenStyles = \["绝对排名", "泛化承诺", "无证据数据"\]/);
+  assert.match(service, /V5_ARTICLE_EXPRESSION_SYSTEM_FORBIDDEN_STYLES/);
+  assert.match(service, /systemRuleFallbackFields: fallbackFields/);
+  assert.match(service, /systemRuleVersion: V5_ARTICLE_EXPRESSION_SYSTEM_RULE_VERSION/);
   assert.match(service, /evidencePromisePattern/);
   assert.match(page, /structureModules: modules/);
   assert.match(page, /moveModule\(index, -1\)/);
   assert.match(page, /moveModule\(index, 1\)/);
+  assert.match(page, /未填写或无法映射的内容会遵循系统规则/);
+  assert.match(page, /目标读者（选填）/);
+  assert.match(page, /写作重心（选填）/);
+  assert.match(page, /其他（选填）/);
+  assert.doesNotMatch(page, /Radio\.Group|适用文章类型|适用渠道|读者认知|语气|必须展开/);
   assert.doesNotMatch(files["src/lib/v5/article-expression-contracts.ts"], /fullPrompt|promptText/);
 });
 

@@ -1837,9 +1837,21 @@ addContentCheck("v5 foundation configuration page", "src/app/configuration/page.
   "文章表达预设",
   "发布连接",
   "前台测试连接",
+  "目标读者（选填）",
+  "写作重心（选填）",
+  "结构（选填）",
+  "禁止风格（选填）",
+  "其他（选填）",
+  "未填写或无法映射的内容会遵循系统规则",
   "structureModules: modules",
-  "用户无需编写完整 Prompt",
   "凭证不回显"
+]);
+addAbsentCheck("v5 foundation expression preset has no template enums", "src/app/configuration/page.tsx", [
+  "Radio.Group",
+  "适用文章类型",
+  "适用渠道",
+  "读者认知",
+  "必须展开"
 ]);
 addContentCheck("v5 foundation compatibility redirects", "src/app/distilled-terms/page.tsx", ["redirect(\"/questions-keywords\")"]);
 addContentCheck("v5 foundation ai config redirect", "src/app/ai-config/page.tsx", ["redirect(\"/configuration\")"]);

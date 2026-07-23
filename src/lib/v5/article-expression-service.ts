@@ -1,6 +1,7 @@
 import type { RuntimeCapability } from "../runtime-config";
 import { getRuntimeConfigStatus } from "../runtime-config";
 import type {
+  V5ArticleExpressionField,
   V5ArticleExpressionProfileVersion,
   V5ArticleExpressionProfileView,
   V5ConfigurationStatusItem
@@ -21,7 +22,8 @@ import {
 import type { V5WriteEnvelope } from "./knowledge-governance-service";
 
 const expressionRoles = ["workbench_operator", "developer_admin"] as const;
-const mandatoryForbiddenStyles = ["绝对排名", "泛化承诺", "无证据数据"];
+export const V5_ARTICLE_EXPRESSION_SYSTEM_RULE_VERSION = "article-expression-system.v1.0.0";
+export const V5_ARTICLE_EXPRESSION_SYSTEM_FORBIDDEN_STYLES = ["绝对排名", "泛化承诺", "无证据数据"];
 const evidencePromisePattern = /合作伙伴|客户案例|成功率|提升\s*\d|降低\s*\d|唯一|第一|保证|承诺/;
 
 function profileViews(): V5ArticleExpressionProfileView[] {
@@ -60,32 +62,38 @@ export function listV5ArticleExpressionProfiles() {
   return { ok: true as const, status: "success" as const, data: { profiles: profileViews(), stateVersion: state.version } };
 }
 
-export type ProfileVersionInput = Omit<V5ArticleExpressionProfileVersion,
-  "profileVersionId" | "profileId" | "versionNumber" | "status" | "evidenceWarning" | "createdAt" | "createdBy"
->;
+export interface ProfileVersionInput {
+  targetAudience?: string;
+  writingFocus?: string;
+  structureModules?: V5ArticleExpressionProfileVersion["structureModules"];
+  forbiddenStyles?: string[];
+  minLength?: number;
+  maxLength?: number;
+  cta?: string;
+  otherInstructions?: string;
+}
+
+function optionalText(value: unknown, field: string, maxLength: number) {
+  if (value === undefined || value === null || value === "") return;
+  if (typeof value !== "string") throw new V5FoundationServiceError("invalid_contract", `${field}必须是文本。`, 400);
+  if (value.trim().length > maxLength) throw new V5FoundationServiceError("invalid_contract", `${field}不能超过 ${maxLength} 个字符。`, 400);
+}
 
 function validateVersion(input: ProfileVersionInput | undefined): asserts input is ProfileVersionInput {
   if (!input || typeof input !== "object") {
     throw new V5FoundationServiceError("invalid_contract", "缺少表达预设版本。", 400, "补充表达预设后重试。");
   }
-  assertV5FoundationText(input.targetAudience, "目标读者", 120);
-  assertV5FoundationText(input.cta, "CTA", 160);
-  if (typeof input.notes !== "string") {
-    throw new V5FoundationServiceError("invalid_contract", "补充说明必须是文本。", 400);
-  }
-  if (!Array.isArray(input.tones) || !input.tones.every((item) => typeof item === "string")) {
-    throw new V5FoundationServiceError("invalid_contract", "语气风格必须是文本列表。", 400);
-  }
-  if (!Array.isArray(input.requiredTopics) || !input.requiredTopics.every((item) => typeof item === "string")) {
-    throw new V5FoundationServiceError("invalid_contract", "必含内容必须是文本列表。", 400);
-  }
-  if (!Array.isArray(input.forbiddenStyles) || !input.forbiddenStyles.every((item) => typeof item === "string")) {
+  optionalText(input.targetAudience, "目标读者", 120);
+  optionalText(input.writingFocus, "写作重心", 500);
+  optionalText(input.cta, "CTA", 160);
+  optionalText(input.otherInstructions, "其他", 500);
+  if (input.forbiddenStyles !== undefined && (!Array.isArray(input.forbiddenStyles) || !input.forbiddenStyles.every((item) => typeof item === "string"))) {
     throw new V5FoundationServiceError("invalid_contract", "禁用表达必须是文本列表。", 400);
   }
-  if (!Array.isArray(input.structureModules) || input.structureModules.length < 2 || input.structureModules.length > 12) {
-    throw new V5FoundationServiceError("invalid_contract", "结构模块需要 2-12 个。", 400);
+  if (input.structureModules !== undefined && (!Array.isArray(input.structureModules) || input.structureModules.length > 12)) {
+    throw new V5FoundationServiceError("invalid_contract", "结构模块不能超过 12 个。", 400);
   }
-  for (const structureModule of input.structureModules) {
+  for (const structureModule of input.structureModules || []) {
     if (!structureModule || typeof structureModule !== "object" || typeof structureModule.moduleId !== "string" || typeof structureModule.label !== "string"
       || typeof structureModule.guidance !== "string" || typeof structureModule.required !== "boolean") {
       throw new V5FoundationServiceError("invalid_contract", "结构模块字段不完整。", 400, "检查模块名称、写作提示和必填状态后重试。");
@@ -94,23 +102,52 @@ function validateVersion(input: ProfileVersionInput | undefined): asserts input 
     assertV5FoundationText(structureModule.label, "结构模块名称", 80);
     assertV5FoundationText(structureModule.guidance, "结构模块提示", 300);
   }
-  if (!Number.isInteger(input.minLength) || !Number.isInteger(input.maxLength) || input.minLength < 300 || input.maxLength < input.minLength || input.maxLength > 10000) {
-    throw new V5FoundationServiceError("invalid_contract", "篇幅范围必须是 300-10000 的有效整数区间。", 400);
+  if (input.minLength !== undefined && (!Number.isInteger(input.minLength) || input.minLength < 300 || input.minLength > 10000)) {
+    throw new V5FoundationServiceError("invalid_contract", "最少字数必须是 300-10000 的整数。", 400);
   }
+  if (input.maxLength !== undefined && (!Number.isInteger(input.maxLength) || input.maxLength < 300 || input.maxLength > 10000)) {
+    throw new V5FoundationServiceError("invalid_contract", "最多字数必须是 300-10000 的整数。", 400);
+  }
+  if (input.minLength !== undefined && input.maxLength !== undefined && input.maxLength < input.minLength) {
+    throw new V5FoundationServiceError("invalid_contract", "最多字数不能小于最少字数。", 400);
+  }
+}
+
+function fallbackFields(input: ProfileVersionInput): V5ArticleExpressionField[] {
+  const result: V5ArticleExpressionField[] = [];
+  if (!input.targetAudience?.trim()) result.push("targetAudience");
+  if (!input.writingFocus?.trim()) result.push("writingFocus");
+  if (!input.structureModules?.length) result.push("structure");
+  if (input.minLength === undefined && input.maxLength === undefined) result.push("length");
+  if (!input.cta?.trim()) result.push("cta");
+  if (!input.forbiddenStyles?.some((item) => item.trim())) result.push("forbiddenStyles");
+  if (!input.otherInstructions?.trim()) result.push("other");
+  return result;
 }
 
 function buildVersion(input: ProfileVersionInput, profileId: string, versionNumber: number, actorId: string): V5ArticleExpressionProfileVersion {
   validateVersion(input);
-  const forbiddenStyles = Array.from(new Set([...mandatoryForbiddenStyles, ...input.forbiddenStyles]));
+  const normalized = {
+    targetAudience: input.targetAudience?.trim() || undefined,
+    writingFocus: input.writingFocus?.trim() || undefined,
+    structureModules: input.structureModules || [],
+    forbiddenStyles: Array.from(new Set((input.forbiddenStyles || []).map((item) => item.trim()).filter(Boolean))),
+    minLength: input.minLength,
+    maxLength: input.maxLength,
+    cta: input.cta?.trim() || undefined,
+    otherInstructions: input.otherInstructions?.trim().slice(0, 500) || undefined
+  };
+  const evidenceText = [normalized.targetAudience, normalized.writingFocus, normalized.cta, normalized.otherInstructions,
+    ...normalized.structureModules.flatMap((item) => [item.label, item.guidance])].filter(Boolean).join(" ");
   return {
-    ...input,
-    notes: input.notes.slice(0, 200),
-    forbiddenStyles,
+    ...normalized,
+    systemRuleFallbackFields: fallbackFields(normalized),
+    systemRuleVersion: V5_ARTICLE_EXPRESSION_SYSTEM_RULE_VERSION,
     profileVersionId: createV5FoundationId("expression-version"),
     profileId,
     versionNumber,
     status: "draft",
-    evidenceWarning: evidencePromisePattern.test(input.notes),
+    evidenceWarning: evidencePromisePattern.test(evidenceText),
     createdAt: new Date().toISOString(),
     createdBy: actorId
   };
@@ -216,7 +253,7 @@ export function publishV5ArticleExpressionProfile(input: V5WriteEnvelope & { pro
       if (!profile || !version) throw new V5FoundationServiceError("not_found", "预设或版本不存在。", 404);
       assertV5ExpectedVersion(profile.rowVersion, input.expectedVersion);
       if (version.evidenceWarning) {
-        throw new V5FoundationServiceError("evidence_required", "补充说明包含需要证据支持的承诺，不能直接发布。", 409, "删除无证据承诺，或先补充可追溯资料。 ");
+        throw new V5FoundationServiceError("evidence_required", "预设内容包含需要证据支持的承诺，不能直接发布。", 409, "删除无证据承诺，或先补充可追溯资料。 ");
       }
       for (const item of state.articleExpressionProfileVersions.filter((item) => item.profileId === profile.profileId && item.status === "active")) {
         item.status = "archived";
