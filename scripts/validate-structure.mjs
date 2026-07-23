@@ -58,8 +58,7 @@ function addRegexCheck(label, filePath, patterns) {
 
 [
   "docs/usage.md",
-  "docs/V4-06-24/v4-workbench-development-prd.md",
-  "docs/V4-06-24/v4-development-task-plan.md",
+  "docs/方案与规划/分支二-月度策略与批量生产开发文档.md",
   "src/lib/prompt-templates.ts",
   "src/lib/client-state.ts",
   "src/app/page.tsx",
@@ -109,6 +108,7 @@ function addRegexCheck(label, filePath, patterns) {
 [
   "src/app/monthly-matrix/page.tsx",
   "src/app/monthly-matrix/strategy/page.tsx",
+  "src/app/monthly-matrix/content-types/page.tsx",
   "src/app/monthly-matrix/batch-generation/page.tsx",
   "src/app/monthly-strategy/page.tsx",
   "src/app/batch-generation/page.tsx",
@@ -120,6 +120,8 @@ function addRegexCheck(label, filePath, patterns) {
   "src/components/MonthlyMatrixTable.tsx",
   "src/components/BatchGenerationMatrixTable.tsx",
   "src/components/MonthlyPlanConfigPanel.tsx",
+  "src/components/ArticleTypeProfileEditor.tsx",
+  "src/components/QuestionTypeMatchPanel.tsx",
   "src/components/EvidenceGateTag.tsx",
   "src/components/PublishStatusTag.tsx",
   "src/components/ExceptionQueuePreview.tsx",
@@ -127,22 +129,39 @@ function addRegexCheck(label, filePath, patterns) {
   "src/components/V5StatusRail.tsx",
   "src/lib/v5-ui-mock-data.ts",
   "src/lib/v5/monthly-workspace-contracts.ts",
+  "src/lib/v5/article-type-contracts.ts",
+  "src/lib/v5/article-type-repository.ts",
+  "src/lib/v5/article-type-semantic-provider.ts",
+  "src/lib/v5/article-type-service.ts",
   "src/lib/v5/monthly-contracts.ts",
   "src/lib/v5/monthly-repository.ts",
   "src/lib/v5/monthly-service.ts",
+  "src/lib/v5/monthly-strategy-policy.ts",
+  "src/lib/v5/monthly-production-service.ts",
   "src/lib/v5/monthly-plan-repository.ts",
   "src/lib/v5/monthly-plan-service.ts",
   "src/lib/v5/monthly-workspace-governance.ts",
   "src/lib/v5/monthly-workspace-read-model.ts",
   "src/lib/v5/use-monthly-workspace.ts",
   "src/app/api/v5/monthly-workspace/route.ts",
-  "src/app/api/v5/monthly-plans/[month]/route.ts"
+  "src/app/api/v5/monthly-plans/[month]/route.ts",
+  "src/app/api/v5/article-type-profiles/route.ts",
+  "src/app/api/v5/article-type-profiles/[id]/route.ts",
+  "src/app/api/v5/article-type-profiles/[id]/activate/route.ts",
+  "src/app/api/v5/article-type-profiles/[id]/supplement/route.ts",
+  "src/app/api/v5/article-type-profiles/supplement/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/type-match/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/type-match/confirm/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/strategy-preview/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/strategy-approval/route.ts",
+  "src/app/api/v5/monthly-plans/[month]/schedule/[taskId]/route.ts",
+  "data/v5-article-type-templates.json",
+  "scripts/v5-monthly-production.test.mjs",
+  "scripts/v5-article-types.test.mjs"
 ].forEach((filePath) => addFileCheck(`v5 ui file: ${filePath}`, filePath));
 
 addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
   "月度内容矩阵",
-  "/batch-generation",
-  "批量生成中心",
   "/daily-execution",
   "当日执行",
   "月度复盘",
@@ -175,6 +194,7 @@ addContentCheck("v5 route labels", "src/lib/permissions.ts", [
   "/monthly-strategy",
   "/monthly-matrix",
   "/monthly-matrix/strategy",
+  "/monthly-matrix/content-types",
   "/monthly-matrix/batch-generation",
   "/batch-generation",
   "/exceptions",
@@ -186,36 +206,83 @@ addContentCheck("v5 route labels", "src/lib/permissions.ts", [
 
 addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx", [
   "月度内容矩阵",
-  "月度计划配置",
-  "月度策略包审核",
-  "生成策略包",
-  "确认策略包",
-  "策略方向确认后仍需检查单篇证据",
+  "配置月度策略",
+  "内容策略包",
+  "运行生产预检",
+  "批准内容策略包",
+  "渠道成品总数",
   "MonthlyStrategyTable",
-  "strategyTermHits",
   "进入批量生成中心",
   "useMonthlyWorkspace",
-  "尚未配置本月业务目标",
-  "MonthlyPlanConfigPanel"
+  "尚未配置月度业务目标",
+  "/monthly-matrix/strategy",
+  "/monthly-matrix/content-types"
 ]);
 
 addAbsentCheck("v5 monthly kpi rail no duplicate period", "src/app/monthly-matrix/page.tsx", ['label: "月份"']);
 addAbsentCheck("v5 strategy package has no article title table", "src/components/MonthlyMatrixTable.tsx", ["文章标题", "人工排程", "plannedPublishAt"]);
 
 addContentCheck("v5 monthly manual configuration", "src/components/MonthlyPlanConfigPanel.tsx", [
-  "月度计划配置",
-  "选择已审核的产品表达规则",
+  "月度目标与目标问题",
+  "AI 推荐内容组合",
+  "类型、渠道和配额",
+  "规则包、知识库与版本确认",
   "monthlyProductionReady",
-  "isSelectablePackage",
   "mode=\"multiple\"",
-  "发布渠道",
-  "文章数量",
-  "月度总量",
-  "当前可用规则包",
-  "不能进入生产池",
-  "保存配置",
-  "monthly-plan-save-button",
-  "月度计划已保存"
+  "每渠道配额",
+  "渠道成品",
+  "sameQuotaForAllChannels",
+  "channelQuotas",
+  "articleTypeProfileVersionId",
+  "articleTypePromptConstraintSnapshotHash",
+  "typeMatchRunId",
+  "知识库",
+  "保存月度策略草稿",
+  "配额已平衡"
+]);
+
+addAbsentCheck("v5 monthly strategy has no standalone expression preset", "src/components/MonthlyPlanConfigPanel.tsx", [
+  "文章表达预设",
+  "articleExpressionProfileVersionId",
+  "articleExpressionPresets"
+]);
+
+addContentCheck("v5 article type contracts", "src/lib/v5/article-type-contracts.ts", [
+  "ArticleTypeProfileVersion",
+  "QuestionTypeMatchRun",
+  "QuestionTypeSuggestion",
+  "user_input",
+  "ai_suggested",
+  "user_confirmed",
+  "template_inherited"
+]);
+
+addContentCheck("v5 article type repository boundary", "src/lib/v5/article-type-repository.ts", [
+  "V5_ARTICLE_TYPE_STATE_PATH",
+  "data/v5-article-types.json",
+  "temporaryPath",
+  "rename(temporaryPath, statePath)",
+  "idempotency",
+  "auditLog"
+]);
+
+addContentCheck("v5 article type service guards", "src/lib/v5/article-type-service.ts", [
+  "WRITE_ROLES",
+  "requireIdempotencyKey",
+  "expectedVersion",
+  "ARTICLE_TYPE_VERSION_CONFLICT",
+  "TYPE_MATCH_VERSION_CONFLICT",
+  "pending_config",
+  "selectionStatus",
+  "selectionSource"
+]);
+
+addContentCheck("v5 content type library", "src/app/monthly-matrix/content-types/page.tsx", [
+  "内容类型库",
+  "系统起始模板不是固定枚举",
+  "新建内容类型",
+  "编辑新版本",
+  "示例问题测试"
 ]);
 
 addContentCheck("v5 monthly workspace api contract", "src/lib/v5/monthly-workspace-contracts.ts", [
@@ -311,9 +378,12 @@ addContentCheck("v5 monthly write api", "src/app/api/v5/monthly-plans/[month]/ro
   "x-idempotency-key"
 ]);
 
-addContentCheck("v5 strategy page merged redirect", "src/app/monthly-matrix/strategy/page.tsx", [
-  "redirect",
-  "/monthly-matrix#strategy-package"
+addContentCheck("v5 strategy workspace page", "src/app/monthly-matrix/strategy/page.tsx", [
+  "月度策略工作区",
+  "MonthlyPlanConfigPanel",
+  "runTypeMatch",
+  "confirmTypeMatch",
+  "/monthly-matrix/content-types"
 ]);
 
 addContentCheck("v5 strategy old route redirects", "src/app/monthly-strategy/page.tsx", [
@@ -323,31 +393,27 @@ addContentCheck("v5 strategy old route redirects", "src/app/monthly-strategy/pag
 
 addAbsentCheck("v4 ai config unchanged by v5 ui", "src/app/ai-config/page.tsx", ["V5GovernanceLogTabs", "V5 治理日志"]);
 
-addContentCheck("v5 batch page shell", "src/app/batch-generation/page.tsx", [
+addContentCheck("v5 batch page shell", "src/app/monthly-matrix/batch-generation/page.tsx", [
   "批量生成中心",
-  "批量确认标题与矩阵",
-  "批量生成当月可生成内容",
-  "证据检查",
-  "内容任务",
+  "生成可用内容",
+  "自动检查、修复和恢复",
+  "待补资料",
   "Tabs",
   "BatchGenerationMatrixTable",
   "ScheduleCalendarLite",
-  "ExceptionQueuePreview",
-  "只生成已通过检查的内容",
-  "异常内容会保留原因并单独进入处理队列"
+  "key: \"content\"",
+  "key: \"schedule\""
 ]);
 
 addContentCheck("v5 batch grouped task list", "src/components/BatchGenerationMatrixTable.tsx", [
-  "按产品分组",
-  "按渠道分组",
-  "按状态分组",
-  "按内容类型分组",
-  "按主蒸馏词分组",
-  "全部收起",
-  "v5-task-title-single-line",
-  "Tooltip",
-  "Collapse",
-  "batch-task-search"
+  "v5-production-group",
+  "question",
+  "contentType",
+  "预览正文",
+  "补充资料",
+  "Drawer",
+  "内容依据",
+  "保存并自动复检"
 ]);
 
 addContentCheck("v5 schedule full calendar details", "src/components/ScheduleCalendarLite.tsx", [
@@ -360,27 +426,28 @@ addContentCheck("v5 schedule full calendar details", "src/components/ScheduleCal
 ]);
 
 addContentCheck("v5 batch and schedule responsive styles", "src/app/globals.css", [
-  ".v5-grouped-task-list",
-  ".v5-task-title-single-line",
-  ".v5-stage-strip",
+  ".v5-production-groups",
+  ".v5-production-group",
+  ".v5-draft-preview",
+  ".v5-monthly-flow-rail",
   ".v5-calendar-status-summary",
   ".v5-calendar-popover-content",
   ".v5-unscheduled-collapse"
 ]);
 
-addContentCheck("v5 batch nested route redirects", "src/app/monthly-matrix/batch-generation/page.tsx", [
+addContentCheck("v5 legacy batch route redirects", "src/app/batch-generation/page.tsx", [
   "redirect",
-  "/batch-generation"
+  "/monthly-matrix/batch-generation"
 ]);
 
 addContentCheck("v5 exception old route redirects", "src/app/exceptions/page.tsx", [
   "redirect",
-  "/batch-generation#exceptions"
+  "/monthly-matrix/batch-generation"
 ]);
 
 addContentCheck("v5 publish schedule old route redirects", "src/app/publish-schedule/page.tsx", [
   "redirect",
-  "/batch-generation#schedule"
+  "/monthly-matrix/batch-generation#schedule"
 ]);
 
 addContentCheck("v5 daily execution page shell", "src/app/daily-execution/page.tsx", [
@@ -450,15 +517,15 @@ addContentCheck("v5 mock data boundary", "src/lib/v5-ui-mock-data.ts", [
 addAbsentCheck("v5 connected pages no direct mock imports", "src/app/monthly-matrix/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 batch page no direct mock imports", "src/app/batch-generation/page.tsx", ["v5-ui-mock-data", "v5DemoLabel"]);
 addAbsentCheck("v5 monthly config no real backend calls", "src/components/MonthlyPlanConfigPanel.tsx", ["fetch(", "/api/"]);
-addContentCheck("v5 batch single formal generation call", "src/app/batch-generation/page.tsx", [
-  "fetch(",
-  "/api/v5/content-tasks/",
-  "prepare-and-generate",
-  "x-idempotency-key",
-  "generatingTaskId",
-  "问题已处理，重新尝试"
+addContentCheck("v5 formal generation automatically repairs and retries", "src/lib/v5/formal-generation-service.ts", [
+  "repairRound <= 2",
+  "attempt <= 3",
+  "automaticRepairCount",
+  "technicalRetryCount",
+  "不需要逐条重试"
 ]);
-addAbsentCheck("v5 batch keeps bulk generation disabled", "src/app/batch-generation/page.tsx", ["/api/content-tasks/batch-generate"]);
+addAbsentCheck("v5 batch has no quality or exception tabs", "src/app/monthly-matrix/batch-generation/page.tsx", ["key: \"quality\"", "key: \"exceptions\"", "ExceptionQueuePreview"]);
+addAbsentCheck("v5 batch business table hides internal fields", "src/components/BatchGenerationMatrixTable.tsx", ["softQualityScore", "hardRuleStatus", "claimCount", "EvidencePack", "Claim"]);
 addAbsentCheck("v5 daily execution no real backend calls", "src/app/daily-execution/page.tsx", ["fetch(", "/api/"]);
 addAbsentCheck("v5 monthly review no real backend calls", "src/app/monthly-review/page.tsx", ["fetch(", "/api/"]);
 
@@ -1349,6 +1416,7 @@ addContentCheck("isolated browser smoke runner", "scripts/smoke-browser-isolated
   "--scope"
 ]);
 addContentCheck("package isolated browser smoke script", "package.json", ["smoke:browser:content:isolated", "smoke-browser-isolated.mjs"]);
+addContentCheck("package article type test script", "package.json", ["test:v5-article-types", "v5-article-types.test.mjs"]);
 addContentCheck("usage isolated browser smoke docs", "docs/usage.md", ["smoke:browser:content:isolated", "data/workbench-browser-smoke-state.json"]);
 addContentCheck("readme isolated browser smoke command", "README.md", ["smoke:browser:content:isolated"]);
 

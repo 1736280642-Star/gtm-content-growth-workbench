@@ -1,148 +1,96 @@
 "use client";
 
-import { ArrowRightOutlined, SettingOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Empty, Space, Spin, Tag } from "antd";
+import { ArrowRightOutlined, BookOutlined, CheckOutlined, ReloadOutlined, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
+import { Alert, Button, Empty, message, Space, Spin, Table, Tabs, Tag } from "antd";
 import Link from "next/link";
 import { useState } from "react";
-import { MonthlyPlanConfigPanel } from "@/components/MonthlyPlanConfigPanel";
 import { MonthlyStrategyTable } from "@/components/MonthlyMatrixTable";
 import { PageHeader } from "@/components/PageHeader";
 import { V5StatusRail } from "@/components/V5StatusRail";
 import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
+import type { ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
 
-const loadingPlan = {
-  month: "",
-  businessGoal: "",
-  groups: []
-};
+const loadingPlan = { month: "", businessGoal: "", targetDeliverableCount: 0, questionVersionIds: [], quotaRules: [], groups: [] };
 
 export default function MonthlyMatrixPage() {
-  const [configOpen, setConfigOpen] = useState(false);
-  const { workspace, loading, error, refresh, saveMonthlyPlan } = useMonthlyWorkspace();
-  const configuredGoal = workspace?.draftPlan || loadingPlan;
-  const strategyTermHits = workspace?.strategyRows || [];
-  const totalQuota = configuredGoal.groups.reduce((total, group) => total + group.articleQuota, 0);
-  const channelCount = new Set(configuredGoal.groups.flatMap((group) => group.selectedChannels)).size;
-  const evidenceExceptionCount = strategyTermHits.reduce((total, item) => total + item.estimatedMissingEvidenceItemCount, 0);
-  const estimatedGeneratableCount = strategyTermHits.reduce(
-    (total, item) => total + item.estimatedReadyItemCount + item.estimatedAutoDowngradeItemCount,
-    0
-  );
+  const [messageApi, messageContext] = message.useMessage();
+  const [mutating, setMutating] = useState<"preview" | "approval">();
+  const { workspace, loading, error, refresh, preflightStrategy, approveStrategy } = useMonthlyWorkspace();
+  const config = workspace?.draftPlan || loadingPlan;
+  const strategy = workspace?.strategyPackage;
+  const tasks = workspace?.productionTasks || [];
+  const allocated = (config.quotaRules || []).reduce((total, rule) => total + rule.expandedDeliverableCount, 0);
+  const target = Number(config.targetDeliverableCount || 0);
+  const awaitingMaterial = strategy?.preflightResults.filter((item) => item.status === "awaiting_material").reduce((total, item) => total + item.deliverableCount, 0) || 0;
+  const generatable = strategy?.preflightResults.filter((item) => item.status === "generatable").reduce((total, item) => total + item.deliverableCount, 0) || 0;
+  const locked = strategy?.status === "approved" || strategy?.status === "partially_approved";
+
+  async function mutate(type: "preview" | "approval") {
+    setMutating(type);
+    try {
+      if (type === "preview") await preflightStrategy();
+      else await approveStrategy();
+      messageApi.success(type === "preview" ? "生产预检已完成。" : "内容策略包已批准并展开为矩阵任务。");
+    } catch (reason) {
+      messageApi.error(reason instanceof Error ? reason.message : "内容策略操作失败。");
+    } finally {
+      setMutating(undefined);
+    }
+  }
 
   return (
     <>
+      {messageContext}
       <PageHeader
         title="月度内容矩阵"
-        titleExtra={<Tag color="blue">{configuredGoal.month || "读取中"}</Tag>}
-        subtitle="确认本月产品、内容配额、主题方向和证据准备度。"
-        actions={
-          <Button type="primary" icon={<SettingOutlined />} loading={loading} disabled={!workspace} onClick={() => setConfigOpen(true)}>
-            月度计划配置
-          </Button>
-        }
+        titleExtra={<Space size={6}><Tag color="blue">{config.month || "读取中"}</Tag>{strategy ? <Tag>{`策略 v${strategy.version}`}</Tag> : null}</Space>}
+        subtitle="创建、配置、预检并批准本月内容策略；批准后生成中心只负责生产和排程。"
+        actions={<Space wrap><Button icon={<ReloadOutlined />} onClick={() => void refresh().catch(() => undefined)}>刷新</Button><Link href="/monthly-matrix/content-types"><Button icon={<BookOutlined />}>管理内容类型</Button></Link><Link href="/monthly-matrix/strategy"><Button type="primary" icon={<SettingOutlined />} disabled={!workspace}>{locked ? "查看策略" : "配置月度策略"}</Button></Link></Space>}
       />
 
-      {error ? (
-        <Alert
-          showIcon
-          type="error"
-          message="月度计划读取失败"
-          description={error}
-          action={<Button size="small" onClick={() => void refresh().catch(() => undefined)}>重新读取</Button>}
-          style={{ marginBottom: 16 }}
-        />
-      ) : (
-        <Alert
-          showIcon
-          type={workspace?.source.governanceData === "failed" ? "error" : workspace?.source.governanceData === "pending_config" || workspace?.source.referenceData === "seed_fallback" ? "warning" : workspace?.source.monthlyData === "persisted" ? "success" : "info"}
-          message={
-            workspace?.source.governanceData === "failed"
-              ? "部分产品暂不可加入本月计划"
-              : workspace?.source.governanceData === "pending_config"
-                ? "部分产品尚未完成生产准备"
-                : workspace?.source.monthlyData === "persisted"
-                  ? "本月计划已更新"
-                  : "开始配置本月计划"
-          }
-          description={
-            workspace?.source.governanceData === "failed" || workspace?.source.governanceData === "pending_config" || workspace?.source.referenceData === "seed_fallback"
-              ? "请先完善产品资料并完成表达规则审核，再配置月度配额。"
-              : workspace?.source.monthlyData === "persisted"
-                ? "请核对业务目标、产品配额和渠道分配，再确认月度策略。"
-                : "先选择本月产品与渠道并填写内容配额，系统将据此生成策略建议。"
-          }
-          style={{ marginBottom: 16 }}
-        />
-      )}
+      {error ? <Alert showIcon type="error" message="月度工作区读取失败" description={error} /> : null}
+      {!error && workspace?.source.referenceData === "seed_fallback" ? <Alert showIcon type="warning" message="目标问题与知识来源尚未接入" description="当前没有可用的正式接口适配数据，页面不会生成演示问题或伪造生产结果。" /> : null}
+      {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取月度内容策略</span></div> : null}
 
-      {loading && !workspace ? <div style={{ marginBottom: 16, textAlign: "center" }}><Spin /><span style={{ marginLeft: 8 }}>正在加载月度计划</span></div> : null}
+      <div className="v5-monthly-flow-rail" aria-label="月度生产流程"><span className="is-active">1 内容策略包</span><span>2 矩阵任务</span><span>3 内容生成</span><span>4 人工排程</span></div>
+      <V5StatusRail items={[
+        { label: "渠道成品总数", value: target, helper: "按最终渠道文章计算" },
+        { label: "已分配", value: allocated, helper: "每渠道配额之和" },
+        { label: "待分配", value: Math.max(0, target - allocated), helper: "批准前必须为 0" },
+        { label: "可生产", value: generatable, helper: "资料快照一致" },
+        { label: "待补资料", value: awaitingMaterial, helper: "仅关键事实缺失" }
+      ]} />
 
-      <V5StatusRail
-        items={[
-          { label: "本月计划", value: `${totalQuota} 篇`, helper: "月度矩阵总配额" },
-          { label: "可用产品", value: configuredGoal.groups.length, helper: "已审核且资料充分" },
-          { label: "覆盖渠道", value: channelCount, helper: "已选择的发布渠道" },
-          { label: "策略建议", value: "待确认", helper: "确认后进入内容生产" },
-          { label: "证据异常", value: evidenceExceptionCount, helper: "仅阻断受影响矩阵项" }
-        ]}
-      />
-
-      <Card className="v5-goal-band" size="small">
-        <div>
-          <span className="v5-kicker">本月业务目标</span>
-          <strong>{configuredGoal.businessGoal || "尚未配置本月业务目标"}</strong>
-        </div>
-        <Tag color={workspace?.plan ? "green" : "default"}>{workspace?.plan ? "计划已保存" : "尚未保存"}</Tag>
-      </Card>
-
-      <Card
-        id="strategy-package"
-        className="v5-strategy-card"
-        title="月度策略包审核"
-        size="small"
-        extra={
+      <section className="v5-strategy-workspace" aria-labelledby="strategy-heading">
+        <div className="v5-section-heading">
+          <div><span className="v5-kicker">内容策略包</span><h2 id="strategy-heading">{config.businessGoal || "尚未配置月度业务目标"}</h2></div>
           <Space wrap>
-            <Button disabled>退回调整</Button>
-            <Button disabled>生成策略包</Button>
-            <Button type="primary" disabled>确认策略包</Button>
+            <Button icon={<SafetyCertificateOutlined />} disabled={!strategy || locked} loading={mutating === "preview"} onClick={() => void mutate("preview")}>运行生产预检</Button>
+            <Button type="primary" icon={<CheckOutlined />} disabled={strategy?.status !== "preview_ready" || allocated !== target} loading={mutating === "approval"} onClick={() => void mutate("approval")}>批准内容策略包</Button>
           </Space>
-        }
-      >
-        <Alert
-          showIcon
-          type="warning"
-          message="策略方向确认后仍需检查单篇证据"
-          description="本表用于审核选题方向和预计证据准备度；标题确认后，系统会逐篇检查事实依据，再决定是否可以生成正文。"
-          style={{ marginBottom: 12 }}
-        />
-
-        {strategyTermHits.length ? (
-          <MonthlyStrategyTable items={strategyTermHits} />
-        ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="本月还没有策略建议；请先保存月度计划，再生成并审核策略。" />
-        )}
-
-        <div className="v5-strategy-footer">
-          <div>
-            <strong>{estimatedGeneratableCount} 项预计可进入矩阵</strong>
-            <span>{evidenceExceptionCount} 项需补证据或人工处理；异常不会阻断其余月度生产。</span>
-          </div>
-          <Link href="/batch-generation">
-            <Button type="primary" icon={<ArrowRightOutlined />} iconPosition="end">
-              进入批量生成中心
-            </Button>
-          </Link>
         </div>
-      </Card>
+        {strategy ? <MonthlyStrategyTable strategyPackage={strategy} onEdit={() => { window.location.href = "/monthly-matrix/strategy"; }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="先配置目标问题、内容类型组合和渠道配额" />}
+        {strategy?.status === "preview_ready" && allocated !== target ? <Alert showIcon type="warning" message={`当前已分配 ${allocated} 篇，月度目标 ${target} 篇；配额平衡后才能批准。`} /> : null}
+      </section>
 
-      <MonthlyPlanConfigPanel
-        open={configOpen}
-        value={configuredGoal}
-        rulePackages={workspace?.rulePackages || []}
-        channels={workspace?.channels || []}
-        onClose={() => setConfigOpen(false)}
-        onSave={saveMonthlyPlan}
-      />
+      <Tabs className="v5-matrix-tabs" items={[
+        {
+          key: "tasks",
+          label: `矩阵任务 ${tasks.length}`,
+          children: tasks.length ? <Table<ProductionMatrixTask> rowKey="taskId" size="small" pagination={{ pageSize: 10 }} dataSource={tasks} columns={[
+            { title: "基础选题 / 渠道版本", dataIndex: "title", render: (value: string, record) => <div className="v5-table-stack"><strong>{value}</strong><span>{record.question}</span></div> },
+            { title: "文章类型", dataIndex: "contentType", width: 140 },
+            { title: "渠道", dataIndex: "channel", width: 100, render: (value: string) => <Tag>{value}</Tag> },
+            { title: "状态", dataIndex: "status", width: 130, render: (value: ProductionMatrixTask["status"]) => <Tag color={value === "awaiting_material" ? "gold" : "blue"}>{value === "awaiting_material" ? "待补资料" : "待生成"}</Tag> }
+          ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="策略批准后，系统会按渠道配额展开矩阵任务" />
+        },
+        {
+          key: "production",
+          label: "批量生成中心",
+          children: <div className="v5-inline-entry"><div><strong>已批准策略的内容生产与人工排程</strong><span>生成中心不会反向修改目标问题、文章类型、渠道配额或资料绑定。</span></div><Link href="/monthly-matrix/batch-generation"><Button type="primary" icon={<ArrowRightOutlined />} iconPosition="end" disabled={!locked}>进入批量生成中心</Button></Link></div>
+        }
+      ]} />
+
     </>
   );
 }

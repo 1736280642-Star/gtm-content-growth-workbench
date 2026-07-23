@@ -7,6 +7,7 @@ import type {
   V5MonthlyPlanRecord,
   V5MonthlyWorkspace
 } from "./monthly-workspace-contracts";
+import type { QuestionTypeMatchRun } from "./article-type-contracts";
 
 const workspaceCache = new Map<string, V5MonthlyWorkspace>();
 const inFlightRequests = new Map<string, Promise<V5MonthlyWorkspace>>();
@@ -123,5 +124,80 @@ export function useMonthlyWorkspace(requestedMonth?: string) {
     [refresh, workspace]
   );
 
-  return { workspace, loading, error, refresh, saveMonthlyPlan };
+  const mutateStrategy = useCallback(
+    async (action: "strategy-preview" | "strategy-approval") => {
+      if (!workspace?.plan) throw new Error("请先保存月度计划。");
+      const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(workspace.month)}/${action}`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json", "x-idempotency-key": createIdempotencyKey() },
+        body: JSON.stringify({
+          expectedVersion: workspace.plan.version,
+          auditReason: action === "strategy-preview" ? "运行内容策略包生产预检" : "批准本月内容策略包"
+        })
+      });
+      const body = (await response.json()) as V5ApiEnvelope<V5MonthlyPlanRecord>;
+      if (!response.ok || !body.ok) {
+        if (!body.ok) throw createRequestError(body);
+        throw new Error(`内容策略操作失败（HTTP ${response.status}）。`);
+      }
+      await refresh(workspace.month);
+      return body.data;
+    },
+    [refresh, workspace]
+  );
+
+  const runTypeMatch = useCallback(async (month: string, questionVersionIds: string[]) => {
+    const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(month)}/type-match`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", "x-idempotency-key": createIdempotencyKey() },
+      body: JSON.stringify({
+        expectedVersion: workspace?.typeMatchRun?.month === month ? workspace.typeMatchRun.revision : 0,
+        questionVersionIds,
+        auditReason: "为月度目标问题运行内容类型语义匹配"
+      })
+    });
+    const body = (await response.json()) as V5ApiEnvelope<QuestionTypeMatchRun>;
+    if (!response.ok || !body.ok) {
+      if (!body.ok) throw createRequestError(body);
+      throw new Error(`内容类型匹配失败（HTTP ${response.status}）。`);
+    }
+    await refresh(month);
+    return body.data;
+  }, [refresh, workspace?.typeMatchRun?.month, workspace?.typeMatchRun?.revision]);
+
+  const confirmTypeMatch = useCallback(async (
+    month: string,
+    selections: Array<{ questionVersionId: string; articleTypeProfileVersionId: string; selectionStatus: "accepted" | "rejected" | "manual_added" }>
+  ) => {
+    if (!workspace?.typeMatchRun) throw new Error("请先运行内容类型匹配。" );
+    const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(month)}/type-match/confirm`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", "x-idempotency-key": createIdempotencyKey() },
+      body: JSON.stringify({
+        expectedVersion: workspace.typeMatchRun.revision,
+        matchRunId: workspace.typeMatchRun.matchRunId,
+        selections,
+        auditReason: "人工确认月度内容类型组合"
+      })
+    });
+    const body = (await response.json()) as V5ApiEnvelope<QuestionTypeMatchRun>;
+    if (!response.ok || !body.ok) {
+      if (!body.ok) throw createRequestError(body);
+      throw new Error(`内容类型匹配确认失败（HTTP ${response.status}）。`);
+    }
+    await refresh(month);
+    return body.data;
+  }, [refresh, workspace?.typeMatchRun]);
+
+  return {
+    workspace,
+    loading,
+    error,
+    refresh,
+    saveMonthlyPlan,
+    runTypeMatch,
+    confirmTypeMatch,
+    preflightStrategy: () => mutateStrategy("strategy-preview"),
+    approveStrategy: () => mutateStrategy("strategy-approval")
+  };
 }

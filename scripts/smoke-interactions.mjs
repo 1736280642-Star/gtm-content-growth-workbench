@@ -64,62 +64,64 @@ const weeklyReportBusinessExcludes = ["置信度", "低置信度", "置信度低
 
 const contracts = [
   {
-    name: "v5_monthly_manual_configuration_contract",
+    name: "v5_monthly_strategy_workspace_contract",
     file: "src/components/MonthlyPlanConfigPanel.tsx",
     includes: [
-      "月度计划配置",
-      "选择已审核的产品表达规则",
-      "isSelectablePackage",
+      "月度目标与目标问题",
+      "AI 推荐内容组合",
+      "类型、渠道和配额",
+      "规则包、知识库与版本确认",
       "monthlyProductionReady",
       "mode=\"multiple\"",
-      "发布渠道",
-      "文章数量",
-      "新增产品分组",
-      "不能进入生产池",
-      "handleSave",
+      "每渠道配额",
+      "渠道成品",
+      "sameQuotaForAllChannels",
+      "channelQuotas",
+      "articleTypeProfileVersionId",
+      "articleTypePromptConstraintSnapshotHash",
+      "typeMatchRunId",
+      "知识库",
       "onSave(cloneConfig(draft))",
-      "月度计划已保存",
-      "monthly-plan-save-button"
+      "月度策略草稿已保存",
+      "配额已平衡"
     ],
-    excludes: ["fetch(", "/api/", "workbench-state.json"]
+    excludes: ["fetch(", "/api/", "workbench-state.json", "文章表达预设", "articleExpressionProfileVersionId"]
+  },
+  {
+    name: "v5_article_type_library_contract",
+    file: "src/app/monthly-matrix/content-types/page.tsx",
+    includes: ["内容类型库", "系统起始模板不是固定枚举", "新建内容类型", "编辑新版本", "示例问题测试"],
+    excludes: ["const contentTypes", "articleExpressionProfileVersionId", "workbench-state.json"]
   },
   {
     name: "v5_monthly_strategy_embedded_contract",
     file: "src/app/monthly-matrix/page.tsx",
     includes: [
-      "月度策略包审核",
+      "内容策略包",
       "MonthlyStrategyTable",
-      "strategyTermHits",
-      "策略方向确认后仍需检查单篇证据",
-      "逐篇检查事实依据",
+      "运行生产预检",
+      "批准内容策略包",
+      "渠道成品总数",
       "进入批量生成中心",
       "useMonthlyWorkspace",
-      "尚未配置本月业务目标"
+      "尚未配置月度业务目标"
     ],
     excludes: ["fetch(", "/api/", "v5-ui-mock-data", "v5DemoLabel"]
   },
   {
     name: "v5_batch_production_console_contract",
-    file: "src/app/batch-generation/page.tsx",
+    file: "src/app/monthly-matrix/batch-generation/page.tsx",
     includes: [
-      "批量确认标题与矩阵",
-      "批量生成当月可生成内容",
-      "只生成已通过检查的内容",
-      "本次可生成",
-      "证据闸门拦截",
-      "标题未确认",
-      "暂不可自动发布",
-      "预计进入异常",
+      "生成可用内容",
+      "系统自动检查、修复和恢复",
+      "待补资料",
+      "可用正文直接进入待排程",
       "BatchGenerationMatrixTable",
       "ScheduleCalendarLite",
-      "ExceptionQueuePreview",
-      "/api/v5/content-tasks/",
-      "prepare-and-generate",
-      "x-idempotency-key",
-      "generatingTaskId",
-      "问题已处理，重新尝试"
+      "key: \"content\"",
+      "key: \"schedule\""
     ],
-    excludes: ["/api/content-tasks/batch-generate", "v5-ui-mock-data", "v5DemoLabel"]
+    excludes: ["key: \"quality\"", "key: \"exceptions\"", "ExceptionQueuePreview", "v5-ui-mock-data", "v5DemoLabel"]
   },
   {
     name: "v5_monthly_repository_contract",
@@ -237,17 +239,16 @@ const contracts = [
     name: "v5_batch_grouping_contract",
     file: "src/components/BatchGenerationMatrixTable.tsx",
     includes: [
-      "按产品分组",
-      "按渠道分组",
-      "按状态分组",
-      "按内容类型分组",
-      "按主蒸馏词分组",
-      "全部收起",
-      "v5-task-title-single-line",
-      "batch-task-search",
-      "setActiveGroupKeys(groupKeys)"
+      "v5-production-group",
+      "question",
+      "contentType",
+      "预览正文",
+      "补充资料",
+      "Drawer",
+      "内容依据",
+      "保存并自动复检"
     ],
-    excludes: ["fetch(", "/api/"]
+    excludes: ["fetch(", "/api/", "softQualityScore", "hardRuleStatus", "claimCount", "EvidencePack", "Claim"]
   },
   {
     name: "v5_schedule_calendar_contract",
@@ -1021,7 +1022,8 @@ const contracts = [
       "v5_dashboard_scoped_replacement_desktop",
       "v5_dashboard_scoped_replacement_mobile",
       "v5_monthly_matrix_desktop",
-      "v5_monthly_config_modal_mobile",
+      "v5_article_type_library_desktop",
+      "v5_monthly_strategy_desktop",
       "v5_batch_generation_desktop",
       "v5_batch_generation_mobile",
       "v5_daily_execution_mobile",

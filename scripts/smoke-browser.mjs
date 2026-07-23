@@ -1710,49 +1710,47 @@ async function main() {
       await runStep("v5_monthly_matrix_desktop", () => assertDesktopLayout(page, {
         name: "v5_monthly_matrix_desktop",
         pathName: "/monthly-matrix",
-        expectedText: "月度策略包审核"
+        expectedText: "内容策略包"
       }));
-      await runStep("v5_monthly_config_modal_mobile", () => assertResponsiveLayout(page, {
-        name: "v5_monthly_config_modal_mobile",
-        pathName: "/monthly-matrix",
-        expectedText: "月度内容矩阵",
-        beforeAudit: async (currentPage) => {
-          await clickButtonByText(currentPage, "月度计划配置");
-          await waitFor(() => currentPage.containsText("选择已审核的产品表达规则"), 15000);
-        }
+      await runStep("v5_article_type_library_desktop", () => assertDesktopLayout(page, {
+        name: "v5_article_type_library_desktop",
+        pathName: "/monthly-matrix/content-types",
+        expectedText: "系统起始模板不是固定枚举"
+      }));
+      await runStep("v5_monthly_strategy_desktop", () => assertDesktopLayout(page, {
+        name: "v5_monthly_strategy_desktop",
+        pathName: "/monthly-matrix/strategy",
+        expectedText: "月度目标与目标问题"
       }));
       await runStep("v5_batch_generation_desktop", () => assertDesktopLayout(page, {
         name: "v5_batch_generation_desktop",
-        pathName: "/batch-generation",
-        expectedText: "内容任务",
+        pathName: "/monthly-matrix/batch-generation",
+        expectedText: "内容",
         beforeAudit: async (currentPage) => {
-          const expandedBeforeSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
-          if (expandedBeforeSearch !== 0) throw new Error(`expected collapsed groups, found ${expandedBeforeSearch} expanded`);
-          await waitFor(() => currentPage.containsText("本月还没有内容任务，请先完成月度计划和策略确认"), 30000);
-          await waitFor(() => currentPage.containsText("没有符合当前筛选条件的内容任务"), 30000);
+          await waitFor(() => currentPage.containsText("已批准策略还没有可执行内容任务"), 30000);
         }
       }));
       await runStep("v5_batch_generation_mobile", () => assertResponsiveLayout(page, {
         name: "v5_batch_generation_mobile",
-        pathName: "/batch-generation",
-        expectedText: "内容任务"
+        pathName: "/monthly-matrix/batch-generation",
+        expectedText: "内容"
       }));
       await runStep("v5_schedule_calendar_desktop_hover", () => assertDesktopLayout(page, {
         name: "v5_schedule_calendar_desktop_hover",
-        pathName: "/batch-generation#schedule",
+        pathName: "/monthly-matrix/batch-generation#schedule",
         expectedText: "人工排程日历",
         beforeAudit: async (currentPage) => {
           await currentPage.hover(".v5-calendar-day[data-testid]");
-          await waitFor(() => currentPage.containsText("当天暂无排程"), 15000);
+          await waitFor(() => currentPage.exists(".v5-calendar-popover-empty, .v5-calendar-popover-content"), 15000);
         }
       }));
       await runStep("v5_schedule_calendar_mobile_click", () => assertResponsiveLayout(page, {
         name: "v5_schedule_calendar_mobile_click",
-        pathName: "/batch-generation#schedule",
+        pathName: "/monthly-matrix/batch-generation#schedule",
         expectedText: "人工排程日历",
         beforeAudit: async (currentPage) => {
           await currentPage.click(".v5-calendar-day[data-testid]");
-          await waitFor(() => currentPage.containsText("当天暂无排程"), 15000);
+          await waitFor(() => currentPage.exists(".v5-calendar-popover-empty, .v5-calendar-popover-content"), 15000);
         }
       }));
       await runStep("v5_daily_execution_mobile", () => assertResponsiveLayout(page, {

@@ -12,7 +12,6 @@ import {
   FontSizeOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  RocketOutlined,
   SettingOutlined,
   UploadOutlined
 } from "@ant-design/icons";
@@ -50,7 +49,6 @@ const contentStyle: CSSProperties = {
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
-  { key: "/batch-generation", icon: <RocketOutlined />, label: <Link href="/batch-generation">批量生成中心</Link> },
   { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
   { key: "/monthly-review", icon: <BarChartOutlined />, label: <Link href="/monthly-review">月度复盘</Link> },
   { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },

@@ -60,13 +60,16 @@ export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Pro
   ]);
   const formalPlanRecord = governance.monthlyPlan ? toWorkspacePlanRecord(governance.monthlyPlan, governance.rulePackages) : null;
   const plan = formalPlanRecord || base.plan;
+  const adaptedRulePackages = governance.source === "v5_mysql" || base.source.referenceData !== "v4_runtime"
+    ? governance.rulePackages
+    : base.rulePackages;
 
   return {
     ...base,
     batchQueueItems: productionQueue.items,
     plan,
     draftPlan: plan?.config || base.draftPlan,
-    rulePackages: governance.rulePackages,
+    rulePackages: adaptedRulePackages,
     source: {
       ...base.source,
       monthlyData: plan ? "persisted" : base.source.monthlyData,
