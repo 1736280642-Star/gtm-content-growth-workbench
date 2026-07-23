@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "version": 1,
+  "questions": [
+    {
+      "questionId": "question-adp-provider",
+      "currentVersionId": "question-version-adp-provider-v1",
+      "status": "available",
+      "keywordIds": ["keyword-adp-provider", "keyword-adp-delivery"],
+      "evidenceGap": false,
+      "confidence": 0.94,
+      "rowVersion": 1,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "questionId": "question-workbuddy-scenes",
+      "currentVersionId": "question-version-workbuddy-scenes-v1",
+      "status": "observing",
+      "keywordIds": ["keyword-enterprise-search"],
+      "evidenceGap": true,
+      "confidence": 0.61,
+      "rowVersion": 1,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "questionId": "question-adp-ownership",
+      "currentVersionId": "question-version-adp-ownership-v1",
+      "status": "decision_required",
+      "keywordIds": [],
+      "evidenceGap": false,
+      "confidence": 0.86,
+      "rowVersion": 1,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    }
+  ],
+  "questionVersions": [
+    {
+      "questionVersionId": "question-version-adp-provider-v1",
+      "questionId": "question-adp-provider",
+      "versionNumber": 1,
+      "text": "企业应该如何选择腾讯云 ADP 服务商？",
+      "normalizedText": "企业应该如何选择腾讯云adp服务商",
+      "product": "腾讯云 ADP",
+      "entities": ["JOTO", "腾讯云"],
+      "relationship": "JOTO 提供实施与交付服务",
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": ["选型与比较", "实施指南", "FAQ"],
+      "sourceSummary": {"site_search": 12, "ai_observation": 3, "manual": 1},
+      "trace": {"source": "demo", "sourceIds": ["demo-signal-adp"], "algorithmVersion": "question-normalizer.v1.0.0", "confidence": 0.94, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "createdAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "questionVersionId": "question-version-workbuddy-scenes-v1",
+      "questionId": "question-workbuddy-scenes",
+      "versionNumber": 1,
+      "text": "WorkBuddy 适合哪些企业知识管理场景？",
+      "normalizedText": "workbuddy适合哪些企业知识管理场景",
+      "product": "WorkBuddy",
+      "entities": ["WorkBuddy", "JOTO"],
+      "relationship": "JOTO 提供相关实施服务",
+      "audience": "企业知识管理负责人",
+      "suggestedArticleTypes": ["场景解决方案", "服务能力"],
+      "sourceSummary": {"sales_question": 2},
+      "trace": {"source": "demo", "sourceIds": ["demo-signal-workbuddy"], "algorithmVersion": "question-normalizer.v1.0.0", "confidence": 0.61, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "createdAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "questionVersionId": "question-version-adp-ownership-v1",
+      "questionId": "question-adp-ownership",
+      "versionNumber": 1,
+      "text": "JOTO ADP 产品包含哪些能力？",
+      "normalizedText": "jotoadp产品包含哪些能力",
+      "product": "腾讯云 ADP",
+      "entities": ["JOTO", "腾讯云 ADP"],
+      "relationship": "产品归属尚不明确",
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": ["能力说明"],
+      "sourceSummary": {"manual": 1},
+      "trace": {"source": "demo", "sourceIds": ["demo-signal-conflict"], "algorithmVersion": "question-normalizer.v1.0.0", "confidence": 0.86, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "createdAt": "2026-07-22T01:00:00.000Z"
+    }
+  ],
+  "keywords": [
+    {
+      "keywordId": "keyword-adp-provider",
+      "text": "腾讯云 ADP 服务商",
+      "normalizedText": "腾讯云adp服务商",
+      "status": "effective",
+      "relatedQuestionIds": ["question-adp-provider"],
+      "relatedEntities": ["腾讯云 ADP"],
+      "recallScore": 0.91,
+      "trace": {"source": "demo", "sourceIds": ["demo-signal-adp"], "algorithmVersion": "semantic-keyword.v1.0.0", "confidence": 0.91, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "rowVersion": 1,
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "keywordId": "keyword-adp-delivery",
+      "text": "ADP 实施交付",
+      "normalizedText": "adp实施交付",
+      "status": "effective",
+      "relatedQuestionIds": ["question-adp-provider"],
+      "relatedEntities": ["JOTO", "腾讯云 ADP"],
+      "recallScore": 0.83,
+      "trace": {"source": "demo", "sourceIds": ["demo-signal-adp"], "algorithmVersion": "semantic-keyword.v1.0.0", "confidence": 0.83, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "rowVersion": 1,
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "keywordId": "keyword-enterprise-search",
+      "text": "企业知识检索",
+      "normalizedText": "企业知识检索",
+      "status": "observing",
+      "relatedQuestionIds": ["question-workbuddy-scenes"],
+      "relatedEntities": ["WorkBuddy"],
+      "recallScore": 0.58,
+      "trace": {"source": "demo", "sourceIds": ["demo-signal-workbuddy"], "algorithmVersion": "semantic-keyword.v1.0.0", "confidence": 0.58, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "rowVersion": 1,
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    }
+  ],
+  "decisionExceptions": [
+    {
+      "exceptionId": "decision-adp-ownership",
+      "questionId": "question-adp-ownership",
+      "questionVersionId": "question-version-adp-ownership-v1",
+      "type": "subject",
+      "title": "“JOTO ADP 产品能力”可能混淆产品归属",
+      "explanation": "系统无法确认 ADP 能力属于 JOTO 自有产品还是腾讯云产品服务。",
+      "suggestion": "改为“JOTO 的腾讯云 ADP 实施服务能力”。",
+      "status": "open",
+      "trace": {"source": "demo", "sourceIds": ["demo-signal-conflict"], "algorithmVersion": "question-boundary.v1.0.0", "confidence": 0.86, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "rowVersion": 1,
+      "createdAt": "2026-07-22T01:00:00.000Z"
+    }
+  ],
+  "monthlyQuestionLocks": [],
+  "contentCoverage": [
+    {"questionId": "question-adp-provider", "questionVersionId": "question-version-adp-provider-v1", "question": "企业应该如何选择腾讯云 ADP 服务商？", "articleType": "选型与比较", "publishedCount": 1, "plannedCount": 4},
+    {"questionId": "question-adp-provider", "questionVersionId": "question-version-adp-provider-v1", "question": "企业应该如何选择腾讯云 ADP 服务商？", "articleType": "FAQ", "publishedCount": 0, "plannedCount": 2, "evidenceGap": "尚无公开案例证据"}
+  ],
+  "knowledgeBases": [
+    {
+      "knowledgeBaseId": "kb-adp-service",
+      "name": "JOTO 腾讯云 ADP 服务能力",
+      "focus": "理解 JOTO 对腾讯云 ADP 的实施、交付和解决方案能力及合作关系。",
+      "defaultVisibility": "conditional_public",
+      "productionStatus": "ready",
+      "dataSource": "demo",
+      "sourceSnapshotHash": "demo-snapshot-adp-v1",
+      "sourceSnapshotVersion": 1,
+      "materialCount": 2,
+      "openActionCount": 1,
+      "productionBlockingActionCount": 0,
+      "rowVersion": 1,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    }
+  ],
+  "knowledgeMaterials": [
+    {"materialId": "material-adp-delivery", "knowledgeBaseId": "kb-adp-service", "title": "JOTO 腾讯云 ADP 项目交付方案", "kind": "document", "status": "ready", "importedAt": "2026-07-22T01:00:00.000Z", "updatedAt": "2026-07-22T01:00:00.000Z"},
+    {"materialId": "material-adp-product", "knowledgeBaseId": "kb-adp-service", "title": "腾讯云 ADP 产品页", "kind": "url", "status": "ready", "importedAt": "2026-07-22T01:00:00.000Z", "updatedAt": "2026-07-22T01:00:00.000Z"}
+  ],
+  "knowledgeUnderstanding": [
+    {
+      "understandingId": "understanding-adp-delivery",
+      "summary": "JOTO 可在约定项目范围内提供腾讯云 ADP 实施与交付服务。",
+      "evidenceExcerpt": "JOTO 提供项目实施、交付培训与后续支持。",
+      "materialId": "material-adp-delivery",
+      "materialTitle": "JOTO 腾讯云 ADP 项目交付方案",
+      "sourceOwner": "JOTO",
+      "visibility": "conditional_public",
+      "limitation": "不得公开客户名称、报价和未发布承诺。",
+      "trace": {"source": "demo", "sourceIds": ["material-adp-delivery"], "algorithmVersion": "knowledge-understanding.v1.0.0", "confidence": 0.9, "recordedAt": "2026-07-22T01:00:00.000Z"}
+    }
+  ],
+  "knowledgeActionItems": [
+    {
+      "actionItemId": "action-adp-partner-evidence",
+      "knowledgeBaseId": "kb-adp-service",
+      "type": "critical_evidence_missing",
+      "title": "需要补充合作伙伴表述依据",
+      "description": "暂无资料证明“JOTO 是腾讯云 ADP 战略合作伙伴”。系统已自动采用较稳妥表述。",
+      "recommendedAction": "只有需要使用该强关系表述时再补充资料。",
+      "affectsProduction": false,
+      "affectedExpression": "战略合作伙伴",
+      "status": "open",
+      "rowVersion": 1,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    }
+  ],
+  "articleExpressionProfiles": [
+    {"profileId": "profile-professional-decision", "name": "专业决策型", "applicableArticleTypes": ["选型与比较"], "applicableChannels": ["官网", "知乎"], "currentVersionId": "profile-professional-decision-v1", "defaultProfile": true, "rowVersion": 1, "createdAt": "2026-07-22T01:00:00.000Z", "updatedAt": "2026-07-22T01:00:00.000Z"}
+  ],
+  "articleExpressionProfileVersions": [
+    {
+      "profileVersionId": "profile-professional-decision-v1",
+      "profileId": "profile-professional-decision",
+      "versionNumber": 1,
+      "status": "active",
+      "targetAudience": "企业 AI 项目负责人",
+      "writingFocus": "优先解释选型风险、实施条件和验收方式。",
+      "structureModules": [
+        {"moduleId": "background", "label": "问题背景", "guidance": "说明决策场景", "required": true},
+        {"moduleId": "criteria", "label": "选择标准", "guidance": "覆盖实施、安全、交付与运营", "required": true},
+        {"moduleId": "comparison", "label": "方案比较", "guidance": "只比较有证据的维度", "required": true},
+        {"moduleId": "risk", "label": "风险", "guidance": "明确限制与前置条件", "required": true},
+        {"moduleId": "cta", "label": "行动建议", "guidance": "给出下一步评估方式", "required": true}
+      ],
+      "forbiddenStyles": [],
+      "minLength": 1800,
+      "maxLength": 2500,
+      "cta": "联系 JOTO 评估实施条件",
+      "systemRuleFallbackFields": ["forbiddenStyles", "other"],
+      "systemRuleVersion": "article-expression-system.v1.0.0",
+      "evidenceWarning": false,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "createdBy": "demo-seed"
+    }
+  ],
+  "audits": [],
+  "idempotency": []
+}

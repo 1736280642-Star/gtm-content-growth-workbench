@@ -83,7 +83,7 @@ export function ExceptionQueuePreview({ items }: { items: ExceptionItem[] }) {
                 return <Link href={buildEvidenceHref(record)}><Button size="small">补证据</Button></Link>;
               }
               if (record.code === "provider_pending_config") {
-                return <Link href="/ai-config"><Button size="small">完善生成条件</Button></Link>;
+                return <Link href="/configuration"><Button size="small">完善生成条件</Button></Link>;
               }
               return <Button size="small" disabled>{record.status === "auto_resolved" ? "已复检" : "待处理"}</Button>;
             }

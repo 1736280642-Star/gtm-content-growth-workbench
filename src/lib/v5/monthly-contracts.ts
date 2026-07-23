@@ -41,6 +41,7 @@ export interface V5MonthlyPlan {
   publishFrequency: Record<string, unknown>;
   strategyPackageVersionId?: string;
   matrixVersionId?: string;
+  questionVersionIds?: string[];
   approvedAt?: string;
   approvedBy?: string;
   version: number;
@@ -100,6 +101,7 @@ export interface V5ContentMatrixItem {
   platformExpressionProfileId?: string;
   platformExpressionSnapshot?: Record<string, unknown>;
   sourceProblem?: string;
+  questionVersionId?: string;
   status: V5ContentMatrixItemStatus;
   approvedAt?: string;
   approvedBy?: string;

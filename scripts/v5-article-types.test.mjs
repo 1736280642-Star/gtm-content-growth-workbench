@@ -7,11 +7,13 @@ import { join } from "node:path";
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "v5-article-types-"));
 const workbenchStatePath = join(temporaryDirectory, "workbench-state.json");
 const articleTypeStatePath = join(temporaryDirectory, "v5-article-types.json");
-const workbenchState = JSON.parse(await readFile("data/workbench-state.json", "utf8"));
-workbenchState.workspaceSetting.currentRole = "workbench_operator";
-await writeFile(workbenchStatePath, JSON.stringify(workbenchState), "utf8");
 process.env.WORKBENCH_STATE_PATH = workbenchStatePath;
 process.env.V5_ARTICLE_TYPE_STATE_PATH = articleTypeStatePath;
+
+const { createInitialWorkbenchState } = await import("../src/lib/workbench-store.ts");
+const workbenchState = createInitialWorkbenchState();
+workbenchState.workspaceSetting.currentRole = "workbench_operator";
+await writeFile(workbenchStatePath, JSON.stringify(workbenchState), "utf8");
 
 const service = await import("../src/lib/v5/article-type-service.ts");
 
