@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "validate:structure": "node scripts/validate-structure.mjs",
     "test:v5-workflow": "node --test scripts/v5-knowledge-workflow-policy.test.mjs",
+    "test:v5-foundation": "node --test scripts/v5-foundation-contracts.test.mjs",
     "prompt:wechat-images": "node scripts/wechat-image-prompt-library.mjs",
     "test:wechat-image-prompts": "node scripts/wechat-image-prompt-library.mjs --self-test",
     "smoke:pages": "node scripts/smoke-pages.mjs",

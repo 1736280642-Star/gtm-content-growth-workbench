@@ -527,8 +527,8 @@ function createOpsModuleRows(input: {
     status: input.reportPromptTemplates.length ? "normal" : "blocked",
     count: input.reportPromptTemplates.length,
     issue: input.reportPromptTemplates.length ? "已记录可追溯的模型规则版本。" : "缺少可追溯的模型规则版本。",
-    nextStep: input.reportPromptTemplates.length ? "必要时进入 AI 配置查看调用记录。" : "先补齐模型规则版本配置。",
-    entry: { type: "link", href: "/ai-config", label: "AI 配置" }
+    nextStep: input.reportPromptTemplates.length ? "必要时进入配置管理查看调用记录。" : "先补齐模型规则版本配置。",
+    entry: { type: "link", href: "/configuration", label: "配置管理" }
   });
 
   return rows;
@@ -768,8 +768,8 @@ export default function WeeklyReportPage() {
     }
 
     if (entry.type === "link") {
-      if (entry.href === "/ai-config") {
-        return <GovernanceEntry label={entry.label} reason="AI 配置和 Prompt 日志属于工作台运营视角；内容增长人员只看业务复盘和下周动作。" />;
+      if (entry.href === "/configuration") {
+        return <GovernanceEntry label={entry.label} reason="配置管理和 Prompt 日志属于工作台运营视角；内容增长人员只看业务复盘和下周动作。" />;
       }
 
       return (
@@ -1208,7 +1208,7 @@ export default function WeeklyReportPage() {
                   {
                     title: "入口",
                     render: (_, record) =>
-                      record.entryHref === "/ai-config" ? (
+                      record.entryHref === "/configuration" ? (
                         <GovernanceEntry label={record.entryLabel} reason="GEO 配置问题需要工作台运营或开发管理员处理；周报只保留业务动作入口。" />
                       ) : (
                         <Link href={record.entryHref}>
@@ -1237,7 +1237,7 @@ export default function WeeklyReportPage() {
                 <Button onClick={() => openDetailDrawer("publish")}>发布与回传明细</Button>
                 {hasBlogAction ? <Button onClick={() => openDetailDrawer("blog")}>博客诊断详情</Button> : null}
                 {hasDistilledActivity ? <Button onClick={() => openDetailDrawer("distilled")}>蒸馏词覆盖详情</Button> : null}
-                <GovernanceEntry label="进入 AI 配置" reason="模型规则版本、调用记录和排查信息属于 AI 配置页；周报只保留运营判断和处理入口。" />
+                <GovernanceEntry label="进入配置管理" reason="模型规则版本、调用记录和排查信息属于配置管理页；周报只保留运营判断和处理入口。" />
               </Space>
             </Card>
           </div>

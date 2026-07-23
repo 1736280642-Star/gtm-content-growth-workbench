@@ -4,6 +4,13 @@ import { join } from "node:path";
 const root = process.cwd();
 const canonicalWorkbenchRoot = process.env.WORKBENCH_CANONICAL_ROOT || join(root, "..", "工作台");
 const checks = [];
+const migratedV5FoundationFiles = new Set([
+  "src/app/knowledge/page.tsx",
+  "src/app/knowledge/[id]/page.tsx",
+  "src/app/distilled-terms/page.tsx",
+  "src/app/ai-config/page.tsx",
+  "src/app/real-integration/page.tsx"
+]);
 
 function resolveFilePath(filePath) {
   const projectPath = join(root, filePath);
@@ -27,6 +34,7 @@ function addFileCheck(label, filePath) {
 }
 
 function addContentCheck(label, filePath, needles) {
+  if (migratedV5FoundationFiles.has(filePath) && !label.startsWith("v5 foundation")) return;
   const content = read(filePath);
   const missing = needles.filter((needle) => !content.includes(needle));
   checks.push({
@@ -37,6 +45,7 @@ function addContentCheck(label, filePath, needles) {
 }
 
 function addAbsentCheck(label, filePath, needles) {
+  if (migratedV5FoundationFiles.has(filePath) && !label.startsWith("v5 foundation")) return;
   const content = read(filePath);
   const present = needles.filter((needle) => content.includes(needle));
   checks.push({
@@ -47,6 +56,7 @@ function addAbsentCheck(label, filePath, needles) {
 }
 
 function addRegexCheck(label, filePath, patterns) {
+  if (migratedV5FoundationFiles.has(filePath) && !label.startsWith("v5 foundation")) return;
   const content = read(filePath);
   const missing = patterns.filter((pattern) => !pattern.test(content));
   checks.push({
@@ -148,7 +158,8 @@ addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
   "月度复盘",
   "数据回传",
   "知识库",
-  "AI 配置",
+  "问题与关键词池",
+  "配置管理",
   "月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘"
 ]);
 
@@ -1061,7 +1072,7 @@ addContentCheck("weekly report v4 matrix", "src/app/weekly-report/page.tsx", [
   "planQualityFeedback",
   "recommendationOutcomes",
   "内部学习样本",
-  "进入 AI 配置"
+  "进入配置管理"
 ]);
 
 addContentCheck("weekly report current week fallback filters", "src/app/weekly-report/page.tsx", [
@@ -1120,7 +1131,7 @@ addContentCheck("weekly report suggestion api role filter", "src/app/api/weekly-
 addContentCheck("role aware governance entry", "src/components/GovernanceEntry.tsx", [
   "canViewRoute",
   "切换角色",
-  "/ai-config",
+  "/configuration",
   "/settings"
 ]);
 addAbsentCheck("global no prompt bubbles", "src/components/AppShell.tsx", ["Tooltip", "Popover"]);
@@ -1756,6 +1767,89 @@ addContentCheck("weekly plan platform expression display", "src/app/weekly-plan/
   "标题类别 / 受众",
   "标题证据依据",
   "三项前置检查"
+]);
+
+[
+  "src/app/questions-keywords/page.tsx",
+  "src/app/configuration/page.tsx",
+  "src/lib/v5/question-contracts.ts",
+  "src/lib/v5/question-service.ts",
+  "src/lib/v5/knowledge-workspace-contracts.ts",
+  "src/lib/v5/knowledge-workspace-service.ts",
+  "src/lib/v5/article-expression-contracts.ts",
+  "src/lib/v5/article-expression-service.ts",
+  "src/lib/v5/foundation-repository.ts",
+  "src/app/api/v5/questions/route.ts",
+  "src/app/api/v5/questions/[id]/route.ts",
+  "src/app/api/v5/questions/ingest-signals/route.ts",
+  "src/app/api/v5/questions/select-monthly/route.ts",
+  "src/app/api/v5/question-decision-exceptions/route.ts",
+  "src/app/api/v5/question-decision-exceptions/batch-resolve/route.ts",
+  "src/app/api/v5/semantic-keywords/route.ts",
+  "src/app/api/v5/semantic-keywords/[id]/exclude/route.ts",
+  "src/app/api/v5/semantic-keywords/[id]/restore/route.ts",
+  "src/app/api/v5/semantic-keywords/[id]/correct-link/route.ts",
+  "src/app/api/v5/knowledge-bases/route.ts",
+  "src/app/api/v5/knowledge-bases/[id]/route.ts",
+  "src/app/api/v5/knowledge-bases/[id]/materials/route.ts",
+  "src/app/api/v5/knowledge-bases/[id]/understanding/route.ts",
+  "src/app/api/v5/knowledge-bases/[id]/action-items/route.ts",
+  "src/app/api/v5/knowledge-action-items/[id]/route.ts",
+  "src/app/api/v5/article-expression-profiles/route.ts",
+  "src/app/api/v5/article-expression-profiles/[id]/route.ts",
+  "src/app/api/v5/article-expression-profiles/[id]/publish/route.ts",
+  "src/app/api/v5/configuration/status/route.ts",
+  "data/v5-foundation-state.json",
+  "scripts/v5-foundation-contracts.test.mjs"
+].forEach((filePath) => addFileCheck(`v5 foundation required file: ${filePath}`, filePath));
+
+addContentCheck("v5 foundation question automation", "src/lib/v5/question-service.ts", [
+  "AVAILABLE_CONFIDENCE = 0.75",
+  "decisionConflictTypes",
+  '"subject", "relationship", "safety"',
+  "automatic_signal_ingestion",
+  "questionVersionId: question.currentVersionId",
+  "semantic_keyword_excluded"
+]);
+addAbsentCheck("v5 foundation keyword has no approval state", "src/lib/v5/question-contracts.ts", ["pending_approval", "roleAssignment", "manual_enable"]);
+addContentCheck("v5 foundation question page", "src/app/questions-keywords/page.tsx", [
+  "问题与关键词池",
+  "系统持续维护",
+  "问题库",
+  "关键词库",
+  "内容覆盖",
+  "选择为本月目标问题",
+  "全部采用系统建议",
+  "无需逐条审核、手动启用或分配角色"
+]);
+addContentCheck("v5 foundation knowledge page", "src/app/knowledge/page.tsx", ["知识库重点", "创建并导入", "/api/v5/knowledge-bases"]);
+addContentCheck("v5 foundation knowledge detail", "src/app/knowledge/[id]/page.tsx", [
+  "资料 ${knowledgeBase.materialCount}",
+  "系统理解",
+  "待处理 ${openActions.length}",
+  "sourceSnapshotHash",
+  "技术信息",
+  "不阻断整个知识库"
+]);
+addAbsentCheck("v5 foundation knowledge hides governance by default", "src/app/knowledge/[id]/page.tsx", ["Source 数量", "Chunk 数量", "Claim 数量", "完整治理规则"]);
+addContentCheck("v5 foundation configuration page", "src/app/configuration/page.tsx", [
+  "配置管理",
+  "文章表达预设",
+  "发布连接",
+  "前台测试连接",
+  "structureModules: modules",
+  "用户无需编写完整 Prompt",
+  "凭证不回显"
+]);
+addContentCheck("v5 foundation compatibility redirects", "src/app/distilled-terms/page.tsx", ["redirect(\"/questions-keywords\")"]);
+addContentCheck("v5 foundation ai config redirect", "src/app/ai-config/page.tsx", ["redirect(\"/configuration\")"]);
+addContentCheck("v5 foundation integration redirect", "src/app/real-integration/page.tsx", ["redirect(\"/configuration?tab=connections\")"]);
+addContentCheck("v5 foundation repository boundary", "src/lib/v5/foundation-repository.ts", [
+  "data/v5-foundation-state.json",
+  "temporaryPath",
+  "renameSync(temporaryPath, path)",
+  "idempotency_conflict",
+  "appendV5FoundationAudit"
 ]);
 
 addRegexCheck("new task publish api", "src/app/api/content-tasks/[id]/published/route.ts", [/export\s+async\s+function\s+PATCH/]);

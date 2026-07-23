@@ -744,7 +744,7 @@ export function rollbackPromptVersion(id: string, input: Record<string, unknown>
   const reason =
     typeof input.reason === "string" && input.reason.trim()
       ? input.reason.trim()
-      : "工作台运营在 AI 配置页发起回滚，用于恢复上一版稳定口径。";
+      : "工作台运营在配置管理页发起回滚，用于恢复上一版稳定口径。";
   const promptVersion: PromptVersionRecord = {
     ...current,
     version: current.previousVersion,
@@ -940,7 +940,7 @@ function buildWeeklyPlanGenerationSource(
       ),
       createWeeklyPlanSignal(
         "distilled_terms",
-        "蒸馏词池",
+        "问题与关键词池",
         activeDistilledTermCount,
         `已参考 ${activeDistilledTermCount} 个可用蒸馏词，用于分配主蒸馏词和来源问题。`,
         "暂无可用蒸馏词，标题语义会更依赖默认问题模板。"
@@ -983,7 +983,7 @@ function getWeeklyPlanTaskSignals(state: WorkbenchState): WeeklyPlanTaskSignal[]
     .slice(0, 8)
     .map((item): WeeklyPlanTaskSignal => ({
       key: "distilled_terms",
-      label: "蒸馏词池",
+      label: "问题与关键词池",
       sourceProblem: item.sourceQuestion || `围绕蒸馏词「${item.term}」补强用户问题入口。`,
       summary: item.sourceQuestion
         ? `来自搜索问题或知识库自动入池：${item.sourceQuestion}`
@@ -1077,7 +1077,7 @@ function buildContentTaskTitleSourceAttributions(
   if (task.primaryDistilledTerm) {
     attributions.push({
       key: "distilled_terms",
-      label: "蒸馏词池",
+      label: "问题与关键词池",
       role: "supporting",
       summary: `围绕主蒸馏词「${task.primaryDistilledTerm}」生成标题和来源问题。`
     });
@@ -5729,7 +5729,7 @@ export async function vectorizeKnowledgeBase(
     return {
       ok: false,
       status: "pending_config",
-      message: "未选择真实 Embedding 模型，请先在 AI 配置页选择知识库 RAG 的 Embedding 模型。",
+      message: "未选择真实 Embedding 模型，请先在配置管理页选择知识库 RAG 的 Embedding 模型。",
       missingConfig: ["workspaceSetting.knowledgeRagConfig.embeddingModelProvider"]
     };
   }

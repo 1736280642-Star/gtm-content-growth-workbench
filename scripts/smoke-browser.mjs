@@ -1728,7 +1728,10 @@ async function main() {
         beforeAudit: async (currentPage) => {
           const expandedBeforeSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
           if (expandedBeforeSearch !== 0) throw new Error(`expected collapsed groups, found ${expandedBeforeSearch} expanded`);
-          await waitFor(() => currentPage.containsText("本月还没有内容任务，请先完成月度计划和策略确认"), 30000);
+          await waitFor(async () => (
+            await currentPage.containsText("本月还没有内容任务，请先完成月度计划和策略确认")
+            || await currentPage.containsText("部分内容暂不可生成")
+          ), 30000);
           await waitFor(() => currentPage.containsText("没有符合当前筛选条件的内容任务"), 30000);
         }
       }));
@@ -1764,6 +1767,36 @@ async function main() {
         name: "v5_monthly_review_mobile",
         pathName: "/monthly-review",
         expectedText: "下月候选调整"
+      }));
+      await runStep("v5_questions_keywords_desktop", () => assertDesktopLayout(page, {
+        name: "v5_questions_keywords_desktop",
+        pathName: "/questions-keywords",
+        expectedText: "系统持续维护"
+      }));
+      await runStep("v5_questions_keywords_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_questions_keywords_mobile",
+        pathName: "/questions-keywords",
+        expectedText: "内容覆盖"
+      }));
+      await runStep("v5_knowledge_workspace_desktop", () => assertDesktopLayout(page, {
+        name: "v5_knowledge_workspace_desktop",
+        pathName: "/knowledge/kb-adp-service",
+        expectedText: "系统理解"
+      }));
+      await runStep("v5_knowledge_workspace_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_knowledge_workspace_mobile",
+        pathName: "/knowledge/kb-adp-service",
+        expectedText: "待处理"
+      }));
+      await runStep("v5_configuration_desktop", () => assertDesktopLayout(page, {
+        name: "v5_configuration_desktop",
+        pathName: "/configuration",
+        expectedText: "文章表达预设"
+      }));
+      await runStep("v5_configuration_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_configuration_mobile",
+        pathName: "/configuration",
+        expectedText: "前台测试连接"
       }));
     }
 

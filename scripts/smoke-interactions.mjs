@@ -3,6 +3,13 @@ import { join } from "node:path";
 
 const root = process.cwd();
 const results = [];
+const migratedV5FoundationContracts = new Set([
+  "real_integration_business_wording_contract",
+  "knowledge_import_contract",
+  "knowledge_detail_contract",
+  "distilled_terms_contract",
+  "ai_config_governance_contract"
+]);
 
 function readSource(filePath) {
   const fullPath = join(root, filePath);
@@ -18,6 +25,7 @@ function getScopedSource(content, start, endMarkers = ["  async function ", "  f
 }
 
 function assertContract(contract) {
+  if (migratedV5FoundationContracts.has(contract.name)) return;
   const content = readSource(contract.file);
   const source = contract.scope ? getScopedSource(content, contract.scope.start, contract.scope.endMarkers) : content;
   const missing = [];
@@ -63,6 +71,35 @@ const weeklyReportInternalExcludes = [
 const weeklyReportBusinessExcludes = ["置信度", "低置信度", "置信度低于 65%", "Math.round((record.confidence", "AI Provider"];
 
 const contracts = [
+  {
+    name: "v5_foundation_question_pool_contract",
+    file: "src/app/questions-keywords/page.tsx",
+    includes: ["问题与关键词池", "问题库", "关键词库", "内容覆盖", "待决策", "选择为本月目标问题", "/api/v5/questions/select-monthly", "/api/v5/question-decision-exceptions/batch-resolve"],
+    excludes: ["子意图", "内容角色"]
+  },
+  {
+    name: "v5_foundation_question_service_contract",
+    file: "src/lib/v5/question-service.ts",
+    includes: ["AVAILABLE_CONFIDENCE = 0.75", "decisionConflictTypes", '"subject", "relationship", "safety"', "questionVersionId: question.currentVersionId", "monthlyQuestionLocks", "V5_KEYWORD_ALGORITHM_VERSION"],
+    excludes: ["pending_approval"]
+  },
+  {
+    name: "v5_foundation_knowledge_workspace_contract",
+    file: "src/app/knowledge/[id]/page.tsx",
+    includes: ["资料 ${knowledgeBase.materialCount}", "系统理解", "待处理 ${openActions.length}", "查看依据", "技术信息", "不阻断整个知识库"],
+    excludes: ["Source 数量", "Chunk 数量", "Claim 数量", "完整治理规则"]
+  },
+  {
+    name: "v5_foundation_configuration_contract",
+    file: "src/app/configuration/page.tsx",
+    includes: ["配置管理", "模型服务", "文章表达预设", "发布连接", "前台测试连接", "structureModules: modules", "凭证不回显"],
+    excludes: ["API Key", "Secret", "完整 Prompt 原文"]
+  },
+  {
+    name: "v5_foundation_compatibility_redirects",
+    file: "src/app/distilled-terms/page.tsx",
+    includes: ["redirect(\"/questions-keywords\")"]
+  },
   {
     name: "v5_monthly_manual_configuration_contract",
     file: "src/components/MonthlyPlanConfigPanel.tsx",
@@ -760,7 +797,7 @@ const contracts = [
       "openDetailDrawer(\"ops_modules\")",
       "renderWeeklySuggestionEntry",
       "renderOpsModuleEntry",
-      "进入 AI 配置"
+      "进入配置管理"
     ],
     excludes: [...weeklyReportInternalExcludes, ...weeklyReportBusinessExcludes]
   },
@@ -924,7 +961,7 @@ const contracts = [
   {
     name: "governance_entry_contract",
     file: "src/components/GovernanceEntry.tsx",
-    includes: ["canViewRoute", "切换角色", "/ai-config", "/settings"],
+    includes: ["canViewRoute", "切换角色", "/configuration", "/settings"],
     excludes: ["Tooltip", "Popover", "workspaceRoleLabels", "联系工作台运营"]
   },
   {
