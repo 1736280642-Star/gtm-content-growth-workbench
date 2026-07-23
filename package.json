@@ -34,6 +34,8 @@
     "script:v5-single-article:bootstrap": "node scripts/v5-single-article-bootstrap.mjs",
     "test:v5-single-article:contracts": "node --test scripts/v5-single-article-contracts.test.mjs",
     "test:v5-single-article": "node scripts/v5-single-article-acceptance.mjs",
+    "capture-runner:start": "node capture-runner/src/server.mjs",
+    "test:v5-observation": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-observation-review.test.mjs",
     "worker:v5-rag": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/rag-index-worker.mjs",
     "worker:v5-rag:index": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/rag-index-worker.mjs",
     "worker:v5-rag:source-import": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/rag-source-import-worker.mjs",

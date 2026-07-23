@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Card, Input, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from "antd";
+import { Alert, Button, Card, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Upload, message } from "antd";
 import type { UploadFile } from "antd";
 import Link from "next/link";
 import { ActionEmpty } from "@/components/ActionEmpty";
@@ -8,12 +8,14 @@ import { DataConfidenceTag } from "@/components/DataConfidenceTag";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { MetricCard } from "@/components/MetricCard";
+import { SiteAuditPanel } from "@/components/SiteAuditPanel";
 import { DEFAULT_BLOG_SOURCE_URLS } from "@/lib/blog-source";
 import { confidenceLabels } from "@/lib/labels";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
 import type { BlogArticle, DataConfidence } from "@/lib/types";
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 const indexedStatusLabels: Record<BlogArticle["indexedStatus"], string> = {
   indexed: "已收录",
@@ -271,9 +273,24 @@ function getBlogActionText(article: BlogArticle): string {
   return "当前没有明显处置动作，先继续观察后续 GEO 命中和 AI Bot 访问变化。";
 }
 
+function BlogMonitorTabs({ activeKey }: { activeKey: "articles" | "diagnosis" | "site-audit" }) {
+  return (
+    <Tabs
+      className="blog-monitor-section-tabs"
+      activeKey={activeKey}
+      items={[
+        { key: "articles", label: <Link href="/blog-monitor">文章监控</Link> },
+        { key: "diagnosis", label: <Link href="/blog-monitor#content-diagnosis">内容诊断</Link> },
+        { key: "site-audit", label: <Link href="/blog-monitor?tab=site-audit">官网审计 P1</Link> }
+      ]}
+    />
+  );
+}
+
 export default function BlogMonitorPage() {
+  const searchParams = useSearchParams();
   const {
-    state: { blogArticles, botVisits },
+    state: { blogArticles, botVisits, workspaceSetting },
     loading,
     error,
     refresh
@@ -295,6 +312,17 @@ export default function BlogMonitorPage() {
   const [indexedStatusFilter, setIndexedStatusFilter] = useState<BlogArticle["indexedStatus"][]>([]);
   const [geoResultFilter, setGeoResultFilter] = useState<BlogArticle["geoResult"][]>([]);
   const [dataConfidenceFilter, setDataConfidenceFilter] = useState<DataConfidence[]>([]);
+  const siteAuditActive = searchParams.get("tab") === "site-audit";
+
+  if (siteAuditActive) {
+    return (
+      <>
+        <PageHeader title="官网博客监控" subtitle="在同一工作区查看文章表现与 P1 官网审计；两套对象、状态和指标保持独立。" />
+        <BlogMonitorTabs activeKey="site-audit" />
+        <SiteAuditPanel role={workspaceSetting.currentRole} />
+      </>
+    );
+  }
   const botConfidence = botVisits.some((item) => item.dataConfidence === "real")
     ? "real"
     : botVisits.some((item) => item.dataConfidence === "imported")
@@ -560,6 +588,7 @@ export default function BlogMonitorPage() {
           </Space>
         }
       />
+      <BlogMonitorTabs activeKey="articles" />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
       <div className="metric-grid metric-grid-five">
         <MetricCard title="监控文章" value={blogArticles.length} suffix="篇" />

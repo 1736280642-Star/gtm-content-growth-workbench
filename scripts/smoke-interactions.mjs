@@ -64,6 +64,33 @@ const weeklyReportBusinessExcludes = ["置信度", "低置信度", "置信度低
 
 const contracts = [
   {
+    name: "v5_frontend_capture_tabs_contract",
+    file: "src/app/ai-front-test/page.tsx",
+    includes: ["采集任务", "回答与引用证据", "任务对比", "立即执行一次", "NewCaptureTaskDialog"],
+    excludes: ["D3", "D7", "D14", "D30", "周期计划"]
+  },
+  {
+    name: "v5_capture_comparison_contract",
+    file: "src/components/CaptureComparisonWorkspace.tsx",
+    includes: ["同一问题", "两次采集条件不一致", "不生成趋势结论", "baselineTaskId", "comparisonTaskId"]
+  },
+  {
+    name: "v5_capture_gap_routing_contract",
+    file: "src/components/ObservationGapReviewDrawer.tsx",
+    includes: ["blog_candidate", "knowledge_issue", "不会自动创建月度任务", "确认并分流", "业务去向"]
+  },
+  {
+    name: "v5_monthly_observation_review_contract",
+    file: "src/app/monthly-review/page.tsx",
+    includes: ["问题级视图", "MonthlyPlan", "已发布内容", "指标", "AI 前台测试", "Proposal", "useMonthlyObservationReview"],
+    excludes: ["修改渠道配额", "自动创建月度任务"]
+  },
+  {
+    name: "v5_site_audit_merged_tab_contract",
+    file: "src/app/blog-monitor/page.tsx",
+    includes: ["/blog-monitor?tab=site-audit", "SiteAuditPanel", "两套对象、状态和指标保持独立"]
+  },
+  {
     name: "v5_monthly_manual_configuration_contract",
     file: "src/components/MonthlyPlanConfigPanel.tsx",
     includes: [

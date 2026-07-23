@@ -58,8 +58,6 @@ function addRegexCheck(label, filePath, patterns) {
 
 [
   "docs/usage.md",
-  "docs/V4-06-24/v4-workbench-development-prd.md",
-  "docs/V4-06-24/v4-development-task-plan.md",
   "src/lib/prompt-templates.ts",
   "src/lib/client-state.ts",
   "src/app/page.tsx",
@@ -139,6 +137,36 @@ function addRegexCheck(label, filePath, patterns) {
   "src/app/api/v5/monthly-plans/[month]/route.ts"
 ].forEach((filePath) => addFileCheck(`v5 ui file: ${filePath}`, filePath));
 
+[
+  "src/app/ai-front-test/page.tsx",
+  "src/app/ai-front-test/environment/page.tsx",
+  "src/components/FrontendCaptureTaskTable.tsx",
+  "src/components/NewCaptureTaskDialog.tsx",
+  "src/components/CapturedAnswerWorkspace.tsx",
+  "src/components/CitationEvidenceDrawer.tsx",
+  "src/components/ObservationGapReviewDrawer.tsx",
+  "src/components/CaptureComparisonWorkspace.tsx",
+  "src/components/CaptureEnvironmentStatus.tsx",
+  "src/components/MonthlyQuestionReviewTable.tsx",
+  "src/components/MonthlyQuestionReviewDrawer.tsx",
+  "src/components/SiteAuditPanel.tsx",
+  "src/components/SiteAuditFindingDrawer.tsx",
+  "src/lib/v5/observation-contracts.ts",
+  "src/lib/v5/observation-repository.ts",
+  "src/lib/v5/observation-reference-adapter.ts",
+  "src/lib/v5/observation-service.ts",
+  "src/lib/v5/monthly-review-contracts.ts",
+  "src/lib/v5/monthly-review-service.ts",
+  "src/lib/v5/site-audit-contracts.ts",
+  "src/lib/v5/site-audit-service.ts",
+  "browser-extension/manifest.json",
+  "browser-extension/src/service-worker.js",
+  "browser-extension/src/adapters/chatgpt.js",
+  "browser-extension/src/content/chatgpt.js",
+  "capture-runner/src/server.mjs",
+  "scripts/v5-observation-review.test.mjs"
+].forEach((filePath) => addFileCheck(`v5 observation file: ${filePath}`, filePath));
+
 addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
   "月度内容矩阵",
   "/batch-generation",
@@ -146,10 +174,16 @@ addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
   "/daily-execution",
   "当日执行",
   "月度复盘",
+  "AI 前台测试",
   "数据回传",
   "知识库",
   "AI 配置",
   "月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘"
+]);
+
+addAbsentCheck("site audit has no standalone navigation", "src/components/AppShell.tsx", [
+  "/site-audit",
+  "官网审计"
 ]);
 
 addAbsentCheck("v5 merged flow routes not top-level nav", "src/components/AppShell.tsx", [
@@ -411,10 +445,97 @@ addContentCheck("v5 daily execution nested route redirects", "src/app/publish-sc
 
 addContentCheck("v5 monthly review page shell", "src/app/monthly-review/page.tsx", [
   "月度复盘",
-  "蒸馏词和产品",
-  "主蒸馏词月度结果",
-  "下月候选调整",
-  "系统建议 · 人工确认"
+  "问题级视图",
+  "MonthlyPlan",
+  "已发布内容",
+  "指标",
+  "AI 前台测试",
+  "Proposal",
+  "useMonthlyObservationReview"
+]);
+
+addContentCheck("v5 frontend capture tabs", "src/app/ai-front-test/page.tsx", [
+  "AI 前台测试",
+  "采集任务",
+  "回答与引用证据",
+  "任务对比",
+  "立即执行一次",
+  "NewCaptureTaskDialog"
+]);
+
+addContentCheck("v5 immediate capture only", "src/components/NewCaptureTaskDialog.tsx", [
+  "新建单次采集任务",
+  "P0 仅立即执行一次",
+  "不创建重复频率、固定日期或后台周期计划"
+]);
+addContentCheck("v5 immediate capture request", "src/lib/v5/use-frontend-capture.ts", [
+  "executionMode: \"immediate_once\"",
+  "用户发起立即执行的单次 AI 前台测试"
+]);
+addAbsentCheck("v5 has no fixed capture cadence", "src/components/NewCaptureTaskDialog.tsx", ["D3", "D7", "D14", "D30", "cron", "scheduleAt"]);
+
+addContentCheck("v5 observation service boundaries", "src/lib/v5/observation-service.ts", [
+  "SCHEDULED_CAPTURE_NOT_ALLOWED",
+  "immediate_once",
+  "ADAPTER_UNSUPPORTED",
+  "SENSITIVE_CAPTURE_FIELD",
+  "monthlyTaskCreated: false",
+  "trendConclusionAllowed: false",
+  "conditionsMatched",
+  "analysisVersion",
+  "reviewVersion",
+  "needs_login",
+  "adapter_mismatch",
+  "interrupted",
+  "timed_out",
+  "capture_failed"
+]);
+
+addContentCheck("v5 immutable artifact repository", "src/lib/v5/observation-repository.ts", [
+  "sha256",
+  "immutable: true",
+  "controlled_local",
+  "writeFile"
+]);
+
+addContentCheck("v5 reference adapter boundary", "src/lib/v5/observation-reference-adapter.ts", [
+  "V5_OBSERVATION_REFERENCE_PATH",
+  "questions",
+  "monthlyPlans",
+  "publishedContent"
+]);
+
+addContentCheck("v5 comparison warning", "src/components/CaptureComparisonWorkspace.tsx", [
+  "同一问题",
+  "两次采集条件不一致",
+  "不生成趋势结论"
+]);
+
+addContentCheck("v5 site audit merged tab", "src/app/blog-monitor/page.tsx", [
+  "site-audit",
+  "/blog-monitor?tab=site-audit",
+  "SiteAuditPanel"
+]);
+addContentCheck("v5 site audit independent objects", "src/components/SiteAuditPanel.tsx", [
+  "不与 AI 前台测试合并状态或总分",
+  "不会建立独立导航、独立规划周期或 AI/SEO 综合总分"
+]);
+
+addContentCheck("v5 chrome companion boundary", "browser-extension/manifest.json", [
+  "manifest_version",
+  "127.0.0.1:17321",
+  "chatgpt.com"
+]);
+addAbsentCheck("v5 chrome companion has no credential api", "browser-extension/src/service-worker.js", [
+  "chrome.cookies",
+  "localStorage",
+  "sessionStorage"
+]);
+addContentCheck("v5 local runner boundary", "capture-runner/src/server.mjs", [
+  "127.0.0.1",
+  "chrome-extension://",
+  "sensitivePaths",
+  "forbidden sensitive fields"
 ]);
 
 addContentCheck("v5 evidence gate labels", "src/components/EvidenceGateTag.tsx", [
@@ -460,7 +581,11 @@ addContentCheck("v5 batch single formal generation call", "src/app/batch-generat
 ]);
 addAbsentCheck("v5 batch keeps bulk generation disabled", "src/app/batch-generation/page.tsx", ["/api/content-tasks/batch-generate"]);
 addAbsentCheck("v5 daily execution no real backend calls", "src/app/daily-execution/page.tsx", ["fetch(", "/api/"]);
-addAbsentCheck("v5 monthly review no real backend calls", "src/app/monthly-review/page.tsx", ["fetch(", "/api/"]);
+addContentCheck("v5 monthly review api adapter", "src/lib/v5/use-monthly-observation-review.ts", [
+  "/api/v5/monthly-reviews/",
+  "/proposals",
+  "idempotencyKey"
+]);
 
 addContentCheck("dashboard scoped v5 replacement", "src/app/page.tsx", [
   "首页数据看板",
