@@ -1,18 +1,33 @@
--- V5 WeChat presentation artifacts. Selection and rendering are server-side and versioned.
-CREATE TABLE IF NOT EXISTS wechat_presentation_artifact (
+-- V5 WeChat-only manual template selection and approved presentation artifacts.
+CREATE TABLE IF NOT EXISTS wechat_template_selection (
   id VARCHAR(64) PRIMARY KEY,
   draft_version_id VARCHAR(64) NOT NULL,
   source_content_hash CHAR(64) NOT NULL,
+  platform_key VARCHAR(32) NOT NULL,
+  recommender_version VARCHAR(64) NOT NULL,
+  recommended_template_id VARCHAR(64) NULL,
+  recommendation_result JSON NOT NULL,
+  selected_template_id VARCHAR(64) NOT NULL,
+  template_version VARCHAR(64) NOT NULL,
+  selection_source VARCHAR(32) NOT NULL,
+  selection_reason TEXT NULL,
+  status VARCHAR(32) NOT NULL,
+  idempotency_key VARCHAR(191) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  selected_by VARCHAR(128) NOT NULL,
+  selected_at DATETIME NOT NULL,
+  UNIQUE KEY uq_wechat_template_selection_idempotency (draft_version_id, idempotency_key),
+  INDEX idx_wechat_template_selection_current (draft_version_id, status, selected_at)
+);
+
+CREATE TABLE IF NOT EXISTS wechat_presentation_artifact (
+  id VARCHAR(64) PRIMARY KEY,
+  selection_id VARCHAR(64) NOT NULL,
+  draft_version_id VARCHAR(64) NOT NULL,
+  source_content_hash CHAR(64) NOT NULL,
   input_hash CHAR(64) NOT NULL,
-  selector_version VARCHAR(64) NOT NULL,
-  selection_status VARCHAR(32) NOT NULL,
-  template_id VARCHAR(64) NULL,
-  template_family VARCHAR(32) NULL,
-  selected_score INT NULL,
-  runner_up_score INT NULL,
-  business_reason TEXT NOT NULL,
-  candidate_scores JSON NOT NULL,
-  input_snapshot JSON NOT NULL,
+  template_id VARCHAR(64) NOT NULL,
+  template_version VARCHAR(64) NOT NULL,
   html MEDIUMTEXT NULL,
   html_hash CHAR(64) NULL,
   validation_result JSON NOT NULL,
@@ -28,7 +43,7 @@ CREATE TABLE IF NOT EXISTS wechat_presentation_artifact (
   draft_url TEXT NULL,
   publish_error TEXT NULL,
   published_at DATETIME NULL,
-  UNIQUE KEY uq_wechat_presentation_source (draft_version_id, source_content_hash, selector_version, input_hash),
+  UNIQUE KEY uq_wechat_presentation_input (selection_id, input_hash),
   INDEX idx_wechat_presentation_review (review_status, created_at),
   INDEX idx_wechat_presentation_publish (publish_status, created_at),
   INDEX idx_wechat_presentation_draft (draft_version_id, created_at)

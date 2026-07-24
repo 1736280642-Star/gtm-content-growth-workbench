@@ -1071,6 +1071,99 @@ body {
   border-top: 1px solid #e5e7eb;
 }
 
+.v5-wechat-production-tabs .ant-tabs-content-holder {
+  min-width: 0;
+}
+
+.v5-wechat-template-workspace {
+  display: grid;
+  gap: 18px;
+}
+
+.v5-wechat-template-intro,
+.v5-wechat-template-family-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v5-wechat-template-intro h5,
+.v5-wechat-template-family-heading h5 {
+  margin: 0 0 4px;
+}
+
+.v5-wechat-template-radio-group {
+  display: grid;
+  gap: 22px;
+  width: 100%;
+}
+
+.v5-wechat-template-family {
+  display: grid;
+  gap: 12px;
+}
+
+.v5-wechat-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.v5-wechat-template-choice {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d9dce1;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.v5-wechat-template-choice:hover {
+  border-color: #91caff;
+}
+
+.v5-wechat-template-choice.is-selected {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgb(22 119 255 / 10%);
+}
+
+.v5-wechat-template-choice-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.v5-wechat-template-thumbnail {
+  height: 250px;
+  overflow: hidden;
+  border: 1px solid #eceef1;
+  background: #f5f6f8;
+}
+
+.v5-wechat-template-thumbnail iframe {
+  width: 100%;
+  height: 500px;
+  border: 0;
+  pointer-events: none;
+  transform: scale(.72);
+  transform-origin: top center;
+}
+
+.v5-wechat-template-large-preview {
+  display: block;
+  width: min(100%, 677px);
+  height: 70vh;
+  margin: 0 auto;
+  border: 1px solid #d9dce1;
+  background: #fff;
+}
+
 .v5-wechat-presentation-heading {
   display: flex;
   align-items: flex-start;
@@ -1100,6 +1193,19 @@ body {
   border: 1px solid #d9dce1;
   border-radius: 6px;
   background: #fff;
+}
+
+@media (max-width: 760px) {
+  .v5-wechat-template-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v5-wechat-template-intro,
+  .v5-wechat-template-family-heading,
+  .v5-wechat-template-choice-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .v5-loading-row {

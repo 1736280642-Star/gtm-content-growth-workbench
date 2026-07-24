@@ -6,14 +6,13 @@
 
 ## 1. V5 主流程
 
-V5 只使用自然月作为规划和复盘周期：
-
 ```text
 问题与知识准备
 -> MonthlyPlan 与内容策略包
 -> 月度内容矩阵
 -> Evidence Gate
 -> 批量生成与自动修复
+-> 微信渠道：系统推荐模板 -> 人工选版 -> 图文预览与审核
 -> 人工排程与日期执行
 -> 发布 URL 和渠道指标回传
 -> AI 前台测试与官网审计
@@ -120,7 +119,7 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 | 月度内容矩阵 | `/monthly-matrix` | 查看自然月、内容策略包、预检结果、渠道成品总量和展开后的矩阵任务；批准内容策略包 | 这是 V5 规划主入口；批准后生成中心只能执行，不能反向改变策略字段 |
 | 月度策略工作区 | `/monthly-matrix/strategy` | 选择目标问题、内容类型、渠道、每渠道配额、规则包和知识库，确认版本 | “配额 4 + 两个渠道”表示每个渠道 4 篇，共 8 篇；AI 推荐不会自动保存、批准或绕过证据检查 |
 | 内容类型库 | `/monthly-matrix/content-types` | 从模板创建业务类型、复制、编辑新版本、启用或停用，查看语义匹配建议 | 模板不是不可修改的固定枚举；类型匹配只说明内容适合度，不代表允许生产 |
-| 批量生成中心 | `/monthly-matrix/batch-generation` | 对已批准矩阵任务生成正文、自动检查与修复、技术重试、正文预览和人工排程 | 不能编辑月度目标、渠道或配额；只有缺少主题成立所需关键事实时才产生用户待办；内部评分和技术错误不直接暴露给业务用户 |
+| 批量生成中心 | `/monthly-matrix/batch-generation` | 对已批准矩阵任务生成正文、自动检查与修复、技术重试、正文预览和人工排程；微信正文额外提供“正文草稿 / 排版模板 / 图文预览”三个标签 | 不能编辑月度目标、渠道或配额；公众号排版只对 `channel=wechat` 生效；内部评分和技术错误不直接暴露给业务用户 |
 | 正文深链接 | `/v5/drafts/[id]` | 恢复指定正文的预览上下文 | 不作为独立导航或第二套正文工作区；正文仍归属于矩阵任务和生成运行 |
 
 ### 4.3 执行、发布与回传
@@ -148,7 +147,68 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 | 配置管理 | `/configuration` | 管理模型状态、文章表达预设、发布连接、前台测试连接、版本和调用日志 | 页面只显示配置状态和缺失项，不回显密钥；表达预设是表单化约束，不允许普通用户直接编辑完整 Prompt |
 | 工作台设置 | `/settings` | 设置当前角色、默认知识库、产品表达规则包、渠道、产能和数据来源等长期默认值 | 当前页面包含部分历史默认设置，不能把临时执行配置反写成 MonthlyPlan 真源；角色切换不是企业身份认证 |
 
-## 5. 兼容入口
+## 5. 微信公众号排版与草稿箱交接
+
+公众号排版是正式正文生成后的微信渠道专属节点。系统只推荐模板，不代替人工确认；人工确认后，系统才生成可审核的微信内联 HTML。
+
+```text
+正式 DraftVersion
+-> 服务端校验 content_matrix_item.channel = wechat
+-> 读取平台内容类型、标题类别、受众、正文结构、CTA 和已批准配图角色
+-> 系统推荐 official / natural 家族中的优先模板
+-> 前端展示 8 个真实模板缩略预览
+-> 人工选择并确认模板
+-> 冻结正文 Hash、模板版本、推荐结果和人工选择记录
+-> 服务端生成微信内联 HTML
+-> 安全与结构校验
+-> 人工审核最终图文呈现
+-> approved HTML + 封面引用写入微信公众号草稿箱
+-> 公众号后台完成最终预览与正式发布
+```
+
+### 5.1 渠道门禁与前端节点
+
+- 数据库渠道键必须精确为 `wechat`；`weixin` 只作为发布平台键使用，不能绕过渠道门禁。
+- 非微信正文不显示公众号排版标签，直接保留原正文预览抽屉。
+- 微信正文在批量生成中心显示 `正文草稿`、`排版模板`、`图文预览` 三个标签。
+- 正文变化后旧选择和旧 HTML 工件失效，必须基于新正文重新确认模板并审核。
+
+### 5.2 推荐、人工选择与状态
+
+- 系统根据 `platformContentType`、受众、正文结构、CTA 和配图角色给出推荐模板及业务理由。
+- 系统没有稳定推荐时返回 `recommendation_unavailable`，人工仍可查看全部模板并选择。
+- 人工选择保存为独立审计记录；更换模板后旧记录转为 `superseded`。
+- 未完成人工选择时，生成接口返回 `wechat_template_selection_required`，不会自动采用推荐模板。
+- HTML 通过校验后进入 `pending_review`；只有人工审核为 `approved` 才能写入草稿箱。
+
+### 5.3 API 与数据对象
+
+| 接口 | 职责 |
+| --- | --- |
+| `GET /api/v5/drafts/:id/wechat-presentation/templates` | 返回 8 个模板预览、系统推荐和当前人工选择 |
+| `POST /api/v5/drafts/:id/wechat-presentation/selection` | 幂等保存人工模板选择和选择原因 |
+| `GET /api/v5/drafts/:id/wechat-presentation` | 读取当前选择和最新图文工件状态 |
+| `POST /api/v5/drafts/:id/wechat-presentation` | 使用已确认模板、正式正文和配图输入生成 HTML |
+| `PATCH /api/v5/drafts/:id/wechat-presentation` | 批准或退回最终图文呈现 |
+| `POST /api/v5/drafts/:id/wechat-presentation/publish` | 将已批准 HTML 和封面交给 Wechatsync 草稿箱适配器 |
+
+数据库迁移 `database/migrations/20260724_011_v5_wechat_presentation.sql` 创建：
+
+- `wechat_template_selection`：正文 Hash、系统推荐、人工选择、操作人、原因、幂等键和状态。
+- `wechat_presentation_artifact`：模板版本、HTML、校验结果、审核状态、封面引用和草稿箱写入结果。
+
+### 5.4 配图、封面与发布边界
+
+上游配图节点可向 HTML 生成接口传入：
+
+- `approvedImageRoles`：已批准正文配图角色，用于推荐和图文工件版本计算。
+- `coverImageRef`：`media_id:<id>` 或工作台本地图片路径。
+
+未显式传入封面时，bridge 可使用 `WECHAT_MP_THUMB_MEDIA_ID` 或 `WECHAT_MP_THUMB_IMAGE_PATH`。服务端不直接下载任意远程封面 URL，远程图片必须先进入受控资产服务或转换为公众号永久素材 `media_id`。
+
+发布时使用 `contentFormat=wechat_html` 直传已审核 HTML，不再对 Markdown 二次转换。当前自动化终点是“创建公众号草稿”，不会绕过公众号后台执行正式发布。
+
+## 6. 兼容入口
 
 V5 已把重复入口收敛到正式页面：
 
@@ -162,7 +222,7 @@ V5 已把重复入口收敛到正式页面：
 
 仓库仍保留少量 V4 页面和 API 以支持迁移与回归测试。它们不是 V5 规划或复盘真源，不应在新功能中继续扩展，也不应与 `MonthlyPlan`、`MonthlyReview` 建立第二套并行业务契约。
 
-## 6. 自动化与人工决策边界
+## 7. 自动化与人工决策边界
 
 | 系统可以自动完成 | 必须由人确认 |
 | --- | --- |
@@ -170,6 +230,7 @@ V5 已把重复入口收敛到正式页面：
 | 内容类型语义匹配和待确认建议 | 自定义内容类型版本的启用或停用 |
 | Evidence Preview、证据缺口定位和局部阻断 | 月度内容策略包批准 |
 | 正文生成后的规则检查、最多两轮自动修复和技术重试 | 高风险表达、证据降级和风险例外 |
+| 微信公众号模板推荐、HTML 渲染、安全校验和草稿箱交接 | 单篇排版模板选择、最终图文呈现审核和公众号后台正式发布 |
 | 已批准任务的状态流转和可恢复失败处理 | 正式发布前置确认和人工接管 |
 | 回答陈述映射和候选内容/证据缺口 | 观察缺口的业务去向 |
 | 月度数据聚合和下月 Proposal | 新月份 MonthlyPlan 的最终批准 |
@@ -185,7 +246,7 @@ V5 已把重复入口收敛到正式页面：
 - 不允许 AI 前台测试上传浏览器凭证、完整会话或非目标页面内容。
 - 不根据两次采集直接输出趋势结论；采集条件不一致时必须显示差异警告。
 
-## 7. 角色与权限
+## 8. 角色与权限
 
 | 角色 | 主要职责 | 典型入口 |
 | --- | --- | --- |
@@ -197,7 +258,7 @@ V5 已把重复入口收敛到正式页面：
 
 权限原则：未授权页面不应返回内部业务数据；Prompt 原文、密钥、原始模型 trace 和内部评分默认不在普通业务页面展示。
 
-## 8. 数据与真实状态
+## 9. 数据与真实状态
 
 当前存在三类数据来源：
 
@@ -215,7 +276,7 @@ V5 已把重复入口收敛到正式页面：
 
 默认本地状态文件和 smoke 状态文件已由 `.gitignore` 管理，不应提交到 GitHub。
 
-## 9. 外部能力配置
+## 10. 外部能力配置
 
 真实值只能存放在 `.env.local` 或部署平台 Secret Manager。README、Git、日志、截图和聊天记录中不得出现密钥值。
 
@@ -257,7 +318,16 @@ npm.cmd run capture-runner:start
 
 浏览器伴侣代码位于 `browser-extension/`，本地 Runner 位于 `capture-runner/`。Runner 只绑定本机回环地址；平台登录由用户在浏览器中完成，服务端不保存账号凭证。
 
-## 10. 验证与测试
+### 可选：微信公众号排版与草稿箱
+
+正式启用前需执行迁移并配置 MySQL、V5 服务端身份、Wechatsync bridge、公众号授权和封面素材。README 不列出真实配置值；缺少配置时必须保持 `pending_config` 或明确失败状态。
+
+```powershell
+node scripts/init-v5-monthly-schema.mjs --dry-run
+npm.cmd run test:v5-wechat-presentation
+```
+
+## 11. 验证与测试
 
 ### 基础验证
 
@@ -275,7 +345,7 @@ npm.cmd run test:v5-foundation
 npm.cmd run test:v5-monthly-production
 npm.cmd run test:v5-article-types
 npm.cmd run test:v5-observation
-npm.cmd run test:v5-content-production
+npm.cmd run test:v5-wechat-presentation
 ```
 
 ### 页面与工作流
@@ -298,7 +368,7 @@ npm.cmd run smoke:browser:content:isolated
 
 `smoke:workflow` 本身使用隔离 runner；保留显式 `:isolated` 命令用于脚本契约和定向调用。默认优先使用隔离 smoke。带 `:main` 的脚本会直接连接已有服务或主状态，日常开发不要用它们替代隔离验证。
 
-## 11. 项目结构
+## 12. 项目结构
 
 | 目录 | 职责 |
 | --- | --- |
@@ -315,7 +385,7 @@ npm.cmd run smoke:browser:content:isolated
 | `data/` | 本地状态和测试夹具；生产数据不应依赖此目录 |
 | `docs/` | 使用说明、方案、阶段记录和 V5 设计依据 |
 
-## 12. 部署与安全
+## 13. 部署与安全
 
 生产构建：
 
@@ -334,6 +404,7 @@ npm.cmd run start -- --hostname 0.0.0.0 --port 3047
 4. 外部调用超时、重试上限、幂等键、费用监控和失败告警。
 5. 发布任务的单任务互斥、人工接管和可验证结果。
 6. 原始采集工件的脱敏、保留周期、删除审计和访问授权。
+7. 公众号模板版本、人工选版审计、封面素材生命周期和草稿箱幂等写入。
 
 禁止提交或公开：
 
@@ -342,7 +413,8 @@ npm.cmd run start -- --hostname 0.0.0.0 --port 3047
 - 客户资料、未公开产品事实、原始模型 trace 和私有知识库正文。
 - 运行日志、临时状态、截图中的账号信息和未脱敏导出物。
 
-## 13. 相关文档
+## 14. 相关文档
 
 - `AGENTS.md`：项目最高优先级业务、命名、验证与安全规则。
 - `docs/usage.md`：运行、smoke 和专项链路说明。
+- `docs/wechat-presentation-production.md`：公众号人工选版、HTML 生成、封面输入、状态机和草稿箱交接说明。

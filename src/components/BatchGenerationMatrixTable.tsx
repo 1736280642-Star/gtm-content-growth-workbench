@@ -1,11 +1,13 @@
 "use client";
 
 import { EditOutlined, EyeOutlined, FileAddOutlined } from "@ant-design/icons";
-import { Button, Drawer, Empty, Input, Space, Table, Tag, Typography } from "antd";
+import { Button, Drawer, Empty, Input, Space, Table, Tabs, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ProductionDraftSummary, ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
 import { WechatPresentationPanel } from "@/components/WechatPresentationPanel";
+import { WechatTemplateSelectionPanel } from "@/components/WechatTemplateSelectionPanel";
+import { resolveWechatPlatformKey } from "@/lib/v5/wechat-presentation-contracts";
 
 const statusMeta: Record<ProductionMatrixTask["status"], { label: string; color: string }> = {
   ready_for_generation: { label: "待生成", color: "blue" },
@@ -58,7 +60,7 @@ export function BatchGenerationMatrixTable({
       matchReasonSnapshot: "",
       articleTypePromptConstraintSnapshot: "",
       articleTypePromptConstraintSnapshotHash: "",
-      channel: "",
+      channel: initialDraft.platformKey === "weixin" ? "wechat" : "",
       rulePackageVersionId: "",
       knowledgeBaseIds: [],
       sourceSnapshotHash: "",
@@ -79,6 +81,23 @@ export function BatchGenerationMatrixTable({
     setMarkdown((task.currentDraft || task.lastUsableDraft)?.markdown || "");
     setEditing(false);
   }
+
+  const selectedDraft = selectedTask?.currentDraft || selectedTask?.lastUsableDraft;
+  const isWechatDraft = Boolean(selectedTask && (resolveWechatPlatformKey(selectedTask.channel) === "weixin" || selectedDraft?.platformKey === "weixin"));
+
+  const draftTab = selectedTask ? (
+    <div className="v5-draft-preview">
+      {editing ? <Input.TextArea aria-label="编辑正文" autoSize={{ minRows: 18 }} value={markdown} onChange={(event) => setMarkdown(event.target.value)} /> : <pre>{markdown}</pre>}
+      <section aria-labelledby="content-basis-heading">
+        <Typography.Title level={5} id="content-basis-heading">内容依据</Typography.Title>
+        <ul>{selectedDraft?.basisSummary.map((item) => <li key={item}>{item}</li>)}</ul>
+      </section>
+      <Space wrap>
+        {editing ? <Button type="primary" onClick={async () => { await onSaveDraft?.(selectedTask, markdown); setEditing(false); }}>保存并自动复检</Button> : <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>}
+        {editing ? <Button onClick={() => { setEditing(false); setMarkdown(selectedDraft?.markdown || ""); }}>取消</Button> : null}
+      </Space>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -116,27 +135,24 @@ export function BatchGenerationMatrixTable({
 
       <Drawer
         className="v5-draft-preview-drawer"
-        width={720}
+        width={isWechatDraft ? 1040 : 720}
         open={Boolean(selectedTask)}
         title={selectedTask ? `正文预览：${selectedTask.title}` : "正文预览"}
         onClose={() => setSelectedTask(undefined)}
         extra={selectedTask ? <Tag color="green">{statusMeta[selectedTask.status].label}</Tag> : null}
       >
         {selectedTask ? (
-          <div className="v5-draft-preview">
-            {editing ? <Input.TextArea aria-label="编辑正文" autoSize={{ minRows: 18 }} value={markdown} onChange={(event) => setMarkdown(event.target.value)} /> : <pre>{markdown}</pre>}
-            <section aria-labelledby="content-basis-heading">
-              <Typography.Title level={5} id="content-basis-heading">内容依据</Typography.Title>
-              <ul>{(selectedTask.currentDraft || selectedTask.lastUsableDraft)?.basisSummary.map((item) => <li key={item}>{item}</li>)}</ul>
-            </section>
-            {(selectedTask.currentDraft || selectedTask.lastUsableDraft)?.draftId ? (
-              <WechatPresentationPanel draftVersionId={(selectedTask.currentDraft || selectedTask.lastUsableDraft)!.draftId} />
-            ) : null}
-            <Space wrap>
-              {editing ? <Button type="primary" onClick={async () => { await onSaveDraft?.(selectedTask, markdown); setEditing(false); }}>保存并自动复检</Button> : <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>}
-              {editing ? <Button onClick={() => { setEditing(false); setMarkdown((selectedTask.currentDraft || selectedTask.lastUsableDraft)?.markdown || ""); }}>取消</Button> : null}
-            </Space>
-          </div>
+          isWechatDraft && selectedDraft?.draftId ? (
+            <Tabs
+              className="v5-wechat-production-tabs"
+              destroyInactiveTabPane
+              items={[
+                { key: "draft", label: "正文草稿", children: draftTab },
+                { key: "template", label: "排版模板", children: <WechatTemplateSelectionPanel draftVersionId={selectedDraft.draftId} /> },
+                { key: "preview", label: "图文预览", children: <WechatPresentationPanel draftVersionId={selectedDraft.draftId} /> }
+              ]}
+            />
+          ) : draftTab
         ) : null}
       </Drawer>
     </>
