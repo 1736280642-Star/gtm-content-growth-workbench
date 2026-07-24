@@ -3,7 +3,7 @@ import { getSingleArticleActor, singleArticleErrorResponse } from "@/lib/v5/sing
 import {
   decideWechatPresentation,
   generateWechatPresentation,
-  getWechatPresentation
+  getWechatPresentationState
 } from "@/lib/v5/wechat-presentation-service";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,8 @@ export const runtime = "nodejs";
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
-    const data = await getWechatPresentation(params.id);
-    return NextResponse.json({ ok: true, data: data || null }, { headers: { "cache-control": "no-store" } });
+    const data = await getWechatPresentationState(params.id);
+    return NextResponse.json({ ok: true, data }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return singleArticleErrorResponse(error);
   }
@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const body = await request.json().catch(() => ({})) as { approvedImageRoles?: unknown; coverImageRef?: unknown; auditReason?: unknown };
     const actor = {
       ...getSingleArticleActor(),
-      auditReason: typeof body.auditReason === "string" && body.auditReason.trim() ? body.auditReason.trim().slice(0, 200) : "系统自动选择公众号排版并生成 HTML"
+      auditReason: typeof body.auditReason === "string" && body.auditReason.trim() ? body.auditReason.trim().slice(0, 200) : "基于人工所选模板生成公众号图文预览"
     };
     const data = await generateWechatPresentation({ draftVersionId: params.id, approvedImageRoles: body.approvedImageRoles, coverImageRef: body.coverImageRef, actor });
     return NextResponse.json({ ok: true, data });

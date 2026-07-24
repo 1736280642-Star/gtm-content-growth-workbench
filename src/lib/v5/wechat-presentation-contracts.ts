@@ -12,12 +12,33 @@ export const WECHAT_LAYOUT_TEMPLATE_IDS = [
 export type WechatLayoutTemplateId = typeof WECHAT_LAYOUT_TEMPLATE_IDS[number];
 export type WechatLayoutFamily = "official" | "natural";
 export type WechatPresentationReviewStatus = "pending_review" | "approved" | "rejected" | "stale";
-export type WechatPresentationSelectionStatus = "selected" | "selection_blocked";
+export type WechatTemplateSelectionStatus = "selected" | "superseded" | "stale";
+export type WechatPlatformKey = "weixin";
+
+export function resolveWechatPlatformKey(channel: string | undefined): WechatPlatformKey | undefined {
+  const normalized = String(channel || "").trim().toLowerCase();
+  return normalized === "wechat" ? "weixin" : undefined;
+}
+
+export interface WechatLayoutTemplateDefinition {
+  templateId: WechatLayoutTemplateId;
+  version: string;
+  family: WechatLayoutFamily;
+  name: string;
+  description: string;
+  bestFor: string;
+  active: boolean;
+}
+
+export interface WechatLayoutTemplateOption extends WechatLayoutTemplateDefinition {
+  previewHtml: string;
+}
 
 export interface WechatPresentationInput {
   draftVersionId: string;
   title: string;
   markdown: string;
+  platformKey: WechatPlatformKey;
   platformContentType: string;
   titleCategory: string;
   targetAudience: string;
@@ -34,15 +55,28 @@ export interface WechatLayoutCandidateScore {
   matchedRules: string[];
 }
 
-export interface WechatLayoutSelection {
-  status: WechatPresentationSelectionStatus;
-  selectorVersion: string;
-  selectedTemplateId?: WechatLayoutTemplateId;
+export interface WechatTemplateRecommendation {
+  status: "recommended" | "recommendation_unavailable";
+  recommenderVersion: string;
+  recommendedTemplateId?: WechatLayoutTemplateId;
   family?: WechatLayoutFamily;
-  selectedScore?: number;
-  runnerUpScore?: number;
   businessReason: string;
   candidates: WechatLayoutCandidateScore[];
+}
+
+export interface WechatTemplateSelection {
+  selectionId: string;
+  draftVersionId: string;
+  sourceContentHash: string;
+  platformKey: WechatPlatformKey;
+  recommendedTemplateId?: WechatLayoutTemplateId;
+  selectedTemplateId: WechatLayoutTemplateId;
+  templateVersion: string;
+  selectionSource: "human";
+  selectionReason?: string;
+  status: WechatTemplateSelectionStatus;
+  selectedBy: string;
+  selectedAt: string;
 }
 
 export interface WechatHtmlValidationResult {
@@ -54,15 +88,11 @@ export interface WechatHtmlValidationResult {
 
 export interface WechatPresentationArtifact {
   artifactId: string;
+  selectionId: string;
   draftVersionId: string;
   sourceContentHash: string;
-  selectorVersion: string;
-  selectionStatus: WechatPresentationSelectionStatus;
-  templateId?: WechatLayoutTemplateId;
-  templateFamily?: WechatLayoutFamily;
-  selectedScore?: number;
-  runnerUpScore?: number;
-  businessReason: string;
+  templateId: WechatLayoutTemplateId;
+  templateVersion: string;
   html?: string;
   htmlHash?: string;
   validation: WechatHtmlValidationResult;
@@ -77,4 +107,20 @@ export interface WechatPresentationArtifact {
   draftUrl?: string;
   publishError?: string;
   publishedAt?: string;
+}
+
+export interface WechatTemplateWorkspace {
+  applicable: true;
+  platformKey: WechatPlatformKey;
+  sourceContentHash: string;
+  recommendation: Omit<WechatTemplateRecommendation, "candidates">;
+  templates: WechatLayoutTemplateOption[];
+  selection?: WechatTemplateSelection;
+}
+
+export interface WechatPresentationState {
+  applicable: true;
+  platformKey: WechatPlatformKey;
+  selection?: WechatTemplateSelection;
+  artifact?: WechatPresentationArtifact;
 }

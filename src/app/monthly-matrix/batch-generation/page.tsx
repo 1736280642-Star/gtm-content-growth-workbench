@@ -52,7 +52,7 @@ export default function MonthlyBatchGenerationPage() {
     const controller = new AbortController();
     void fetch(`/api/v5/drafts/${encodeURIComponent(draftId)}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = await response.json() as { ok?: boolean; data?: FormalDraftVersion };
+        const body = await response.json() as { ok?: boolean; data?: FormalDraftVersion & { platformKey?: "weixin" } };
         if (!response.ok || !body.ok || !body.data) return;
         setInitialDraft({
           draftId: body.data.draftVersionId,
@@ -60,7 +60,8 @@ export default function MonthlyBatchGenerationPage() {
           markdown: body.data.markdown,
           status: "available",
           basisSummary: ["正文仅使用已冻结的公开资料", "系统已完成事实、公开范围、禁止表达、结构与渠道适配检查"],
-          updatedAt: body.data.createdAt
+          updatedAt: body.data.createdAt,
+          platformKey: body.data.platformKey
         });
       })
       .catch(() => undefined);
