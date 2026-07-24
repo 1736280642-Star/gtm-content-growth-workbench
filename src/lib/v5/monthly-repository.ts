@@ -10,16 +10,25 @@ import type {
 
 export interface V5MonthlyAuditEvent {
   id: string;
-  event: "monthly_plan_saved";
+  event:
+    | "monthly_plan_saved"
+    | "strategy_preflight_completed"
+    | "strategy_approved"
+    | "batch_generation_requested"
+    | "draft_edit_saved"
+    | "schedule_saved";
   month: string;
   actor: string;
   version: number;
   createdAt: string;
+  auditReason?: string;
+  objectId?: string;
+  summary?: Record<string, unknown>;
 }
 
 export interface V5IdempotencyRecord {
   requestHash: string;
-  response: V5MonthlyPlanRecord;
+  response: unknown;
   createdAt: string;
 }
 

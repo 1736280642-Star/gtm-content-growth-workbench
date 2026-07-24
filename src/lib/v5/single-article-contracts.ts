@@ -19,6 +19,8 @@ export interface HardRuleResult {
   blockers: string[];
   checkedRuleCount: number;
   traceableFactCount: number;
+  technicalRetryCount?: number;
+  automaticRepairCount?: number;
 }
 
 export interface FormalGenerationRun {

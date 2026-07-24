@@ -1,502 +1,232 @@
 "use client";
 
-import { Alert, Button, Card, Checkbox, Descriptions, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
+import { FileTextOutlined, ImportOutlined, InfoCircleOutlined, WarningOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Collapse, Descriptions, Drawer, Form, Input, List, Modal, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
-import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
-import { callJsonApi, formatApiMessage } from "@/lib/client-api";
+import { callJsonApi } from "@/lib/client-api";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
-import type { KnowledgeBase, KnowledgeChunk, KnowledgeEmbeddingStatus, KnowledgeSource, KnowledgeSourceStatus, KnowledgeSourceType } from "@/lib/types";
+import { createV5WritePayload } from "@/lib/v5-client";
+import type { V5KnowledgeBaseDetail, V5KnowledgeUnderstandingItem } from "@/lib/v5/knowledge-workspace-contracts";
 
-const knowledgeTypeLabels: Record<KnowledgeBase["type"], string> = {
-  brand: "品牌事实",
-  product: "产品知识",
-  official_blog: "官网博客",
-  channel_history: "渠道历史",
-  competitor: "竞品参考",
-  custom: "自定义"
+type DetailResponse = { ok: true; data: { knowledgeBase: V5KnowledgeBaseDetail; stateVersion: number } };
+
+const actionTypeLabels = {
+  critical_evidence_missing: "需要补充关键资料",
+  public_scope_uncertain: "确认公开范围",
+  unrecoverable_source_failure: "资料处理失败"
 };
-
-const statusLabels: Record<KnowledgeBase["status"], string> = {
-  enabled: "启用",
-  disabled: "停用"
-};
-
-const sourceTypeLabels: Record<KnowledgeSourceType, string> = {
-  url: "URL",
-  markdown: "Markdown",
-  pdf: "PDF",
-  docx: "Word",
-  manual: "补充文本",
-  auto_crawl: "自动抓取"
-};
-
-const sourceStatusLabels: Record<KnowledgeSourceStatus, string> = {
-  pending: "待处理",
-  fetching: "抓取中",
-  parsed: "已解析",
-  failed: "解析失败"
-};
-
-const sourceStatusColors: Record<KnowledgeSourceStatus, string> = {
-  pending: "gold",
-  fetching: "blue",
-  parsed: "green",
-  failed: "red"
-};
-
-const embeddingStatusLabels: Record<KnowledgeEmbeddingStatus, string> = {
-  not_required: "未启用",
-  pending_config: "待向量化",
-  fallback_hash: "待向量化",
-  real_embedding: "已向量化",
-  failed: "失败"
-};
-
-const embeddingStatusColors: Record<KnowledgeEmbeddingStatus, string> = {
-  not_required: "default",
-  pending_config: "gold",
-  fallback_hash: "gold",
-  real_embedding: "green",
-  failed: "red"
-};
-
-const knowledgeTypeOptions = Object.entries(knowledgeTypeLabels).map(([value, label]) => ({ value, label }));
-const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({ value, label }));
-const sourceTypeOptions = Object.entries(sourceTypeLabels).map(([value, label]) => ({ value, label }));
-const KNOWLEDGE_PREVIEW_DISPLAY_LIMIT = 2400;
-
-const chunkingStrategyOptions = [
-  { value: "rule", label: "规则切片" },
-  { value: "auto", label: "自动切片" },
-  { value: "semantic_llm", label: "AI 语义切片" }
-];
-
-function getSourceTypeLabel(value?: KnowledgeSourceType) {
-  return sourceTypeLabels[value || "manual"] || value || "-";
-}
-
-function getDisplayContentPreview(content?: string) {
-  const normalized = (content || "").trim();
-
-  if (!normalized) {
-    return "暂无内容预览。";
-  }
-
-  if (normalized.length <= KNOWLEDGE_PREVIEW_DISPLAY_LIMIT) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, KNOWLEDGE_PREVIEW_DISPLAY_LIMIT).trim()}\n\n[内容预览仅展示前 ${KNOWLEDGE_PREVIEW_DISPLAY_LIMIT} 字，完整内容已保留在来源资料和切片中。]`;
-}
-
-function getVectorStatus(knowledgeBase: KnowledgeBase) {
-  return (knowledgeBase.vectorizationStatus || "pending_config") as KnowledgeEmbeddingStatus;
-}
-
-function getRulePackageModeLabel(knowledgeBase: KnowledgeBase, allKnowledgeBases: KnowledgeBase[]) {
-  if (!knowledgeBase.productExpressionSource) {
-    return "未作为规则包来源";
-  }
-
-  if (knowledgeBase.productExpressionRulePackageMode === "existing" && knowledgeBase.linkedProductExpressionRulePackageId) {
-    const linkedPackage = allKnowledgeBases.find((item) => item.id === knowledgeBase.linkedProductExpressionRulePackageId);
-    return linkedPackage ? `关联已有：${linkedPackage.name}` : "关联已有：来源已缺失";
-  }
-
-  return "新建规则包来源";
-}
-
-function getSourceTitle(source: KnowledgeSource) {
-  return source.title || source.url || "未命名来源";
-}
-
-function buildUpdateRows(knowledgeBase: KnowledgeBase) {
-  const rows = [
-    {
-      id: `${knowledgeBase.id}-base`,
-      time: knowledgeBase.lastSyncedAt || "-",
-      type: "知识库更新",
-      title: knowledgeBase.name,
-      status: embeddingStatusLabels[getVectorStatus(knowledgeBase)]
-    }
-  ];
-
-  for (const source of knowledgeBase.sources || []) {
-    rows.push({
-      id: source.id,
-      time: source.parsedAt || source.addedAt || "-",
-      type: source.type === "url" ? "URL 解析" : source.type === "manual_text" ? "补充文本" : "历史资料",
-      title: getSourceTitle(source),
-      status: sourceStatusLabels[source.status]
-    });
-  }
-
-  const ruleDraft = knowledgeBase.productExpressionRuleDraft;
-  if (ruleDraft?.generatedAt) {
-    rows.push({
-      id: ruleDraft.id,
-      time: ruleDraft.activatedAt || ruleDraft.generatedAt,
-      type: "产品表达规则包",
-      title: ruleDraft.version,
-      status: ruleDraft.status === "active" ? "已生效" : ruleDraft.status === "draft" ? "草稿" : "已归档"
-    });
-  }
-
-  return rows.sort((left, right) => Date.parse(right.time) - Date.parse(left.time));
-}
 
 export default function KnowledgeDetailPage({ params }: { params: { id: string } }) {
-  const {
-    state: { knowledgeBases },
-    loading,
-    error,
-    refresh
-  } = useWorkbenchSnapshot();
-  const [appendForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const searchParams = useSearchParams();
+  const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
-  const [editOpen, setEditOpen] = useState(false);
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [appending, setAppending] = useState(false);
-  const [vectorizing, setVectorizing] = useState(false);
+  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
+  const [data, setData] = useState<DetailResponse["data"]>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const [importOpen, setImportOpen] = useState(searchParams.get("import") === "1");
+  const [saving, setSaving] = useState(false);
+  const [evidence, setEvidence] = useState<V5KnowledgeUnderstandingItem>();
 
-  const knowledgeBase = knowledgeBases.find((item) => item.id === params.id);
-  const sources = useMemo(() => knowledgeBase?.sources || [], [knowledgeBase?.sources]);
-  const chunks = useMemo(() => knowledgeBase?.chunks || [], [knowledgeBase?.chunks]);
-  const parsedSourceCount = sources.filter((source) => source.status === "parsed").length;
-  const failedSourceCount = sources.filter((source) => source.status === "failed").length;
-  const vectorStatus = knowledgeBase ? getVectorStatus(knowledgeBase) : "pending_config";
-  const updateRows = useMemo(() => (knowledgeBase ? buildUpdateRows(knowledgeBase) : []), [knowledgeBase]);
-  const sourceById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
-  const ruleTerms = knowledgeBase?.productExpressionRuleDraft?.distilledTermSuggestions || [];
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(undefined);
+    try {
+      const result = await callJsonApi<DetailResponse>(`/api/v5/knowledge-bases/${params.id}`, { cache: "no-store" });
+      setData(result.data);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "知识库详情加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [params.id]);
 
-  function openEditModal() {
-    if (!knowledgeBase) return;
+  useEffect(() => { void refresh(); }, [refresh]);
 
-    editForm.setFieldsValue({
-      name: knowledgeBase.name,
-      type: knowledgeBase.type,
-      status: knowledgeBase.status,
-      usageScope: knowledgeBase.usageScope,
-      sourceType: knowledgeBase.sourceType || "manual",
-      sourceUrl: knowledgeBase.sourceUrl,
-      productExpressionSource: Boolean(knowledgeBase.productExpressionSource)
-    });
-    setEditOpen(true);
+  async function addMaterial() {
+    const values = await form.validateFields();
+    if (!data) return;
+    setSaving(true);
+    try {
+      await callJsonApi(`/api/v5/knowledge-bases/${params.id}/materials`, {
+        method: "POST",
+        body: JSON.stringify({
+          ...createV5WritePayload(workspaceSetting.currentRole, data.knowledgeBase.rowVersion, "导入资料并更新知识快照"),
+          title: values.title,
+          kind: values.kind,
+          summary: values.summary,
+          evidenceExcerpt: values.evidenceExcerpt,
+          sourceOwner: values.sourceOwner,
+          visibility: values.visibility,
+          limitation: values.limitation
+        })
+      });
+      setImportOpen(false);
+      form.resetFields();
+      await refresh();
+      messageApi.success("资料已导入，系统理解与知识快照已更新。");
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "导入资料失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function handleSaveEdit() {
-    if (!knowledgeBase) return;
-
-    const values = await editForm.validateFields();
-    setSavingEdit(true);
-
+  async function resolveAction(actionItemId: string, rowVersion: number) {
+    setSaving(true);
     try {
-      const result = await callJsonApi(`/api/knowledge-bases/${knowledgeBase.id}`, {
+      await callJsonApi(`/api/v5/knowledge-action-items/${actionItemId}`, {
         method: "PATCH",
-        body: JSON.stringify(values)
+        body: JSON.stringify({
+          ...createV5WritePayload(workspaceSetting.currentRole, rowVersion, "确认知识库待处理事项已处理"),
+          status: "resolved"
+        })
       });
       await refresh();
-      setEditOpen(false);
-      messageApi.success(formatApiMessage(result, "知识库基础信息已更新。"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "保存基础信息失败");
+      messageApi.success("待处理事项已完成，系统已生成新知识快照。");
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "更新待处理事项失败");
     } finally {
-      setSavingEdit(false);
+      setSaving(false);
     }
   }
 
-  async function handleAppendSources() {
-    if (!knowledgeBase) return;
-
-    const values = await appendForm.validateFields();
-    setAppending(true);
-
-    try {
-      const result = await callJsonApi(`/api/knowledge-bases/${knowledgeBase.id}/sources`, {
-        method: "POST",
-        body: JSON.stringify(values)
-      });
-      await refresh();
-      appendForm.resetFields();
-      messageApi.success(formatApiMessage(result, "资料已追加，知识库已重新切片。"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "追加资料失败");
-    } finally {
-      setAppending(false);
-    }
+  if (!data?.knowledgeBase && !loading && error) {
+    return <><PageHeader title="知识库详情" actions={<Link href="/knowledge"><Button>返回知识库</Button></Link>} /><PageErrorState message={error} onRetry={refresh} /></>;
   }
 
-  async function handleVectorize() {
-    if (!knowledgeBase) return;
+  const knowledgeBase = data?.knowledgeBase;
+  const openActions = knowledgeBase?.actionItems.filter((item) => item.status === "open") || [];
+  const materialsTab = (
+    <Card className="foundation-panel" bordered={false}>
+      <Table
+        rowKey="materialId"
+        loading={loading}
+        dataSource={knowledgeBase?.materials || []}
+        locale={{ emptyText: <ActionEmpty title="尚未导入资料" description="导入 URL、文档或文本后，系统会自动处理并更新理解。" action={<Button type="primary" onClick={() => setImportOpen(true)}>导入资料</Button>} /> }}
+        columns={[
+          { title: "资料", dataIndex: "title", render: (value) => <Space><FileTextOutlined /><strong>{value}</strong></Space> },
+          { title: "类型", dataIndex: "kind", width: 110, render: (value) => ({ url: "URL", document: "文档", text: "文本" }[value as string] || value) },
+          { title: "状态", dataIndex: "status", width: 120, render: (value) => <Tag color={value === "ready" ? "green" : value === "failed" ? "red" : "blue"}>{value === "ready" ? "已完成" : value === "failed" ? "失败" : "处理中"}</Tag> },
+          { title: "更新时间", dataIndex: "updatedAt", width: 190, render: (value) => new Date(value).toLocaleString("zh-CN", { hour12: false }) }
+        ]}
+      />
+    </Card>
+  );
 
-    setVectorizing(true);
+  const understandingTab = (
+    <Card className="foundation-panel" bordered={false}>
+      <Alert showIcon type="info" message="系统目前理解" description="以下是已导入资料能够支撑的自然语言概括；生成内容时系统仍会核对原文和公开范围。" />
+      <List
+        dataSource={knowledgeBase?.understanding || []}
+        locale={{ emptyText: <ActionEmpty title="暂无系统理解" description="导入包含可读内容的资料后自动生成。" /> }}
+        renderItem={(item) => (
+          <List.Item actions={[<Button key="evidence" size="small" onClick={() => setEvidence(item)}>查看依据</Button>]}>
+            <List.Item.Meta avatar={<InfoCircleOutlined />} title={item.summary} description={item.limitation || "当前无额外公开限制"} />
+          </List.Item>
+        )}
+      />
+    </Card>
+  );
 
-    try {
-      const result = await callJsonApi(`/api/knowledge-bases/${knowledgeBase.id}/vectorize`, {
-        method: "POST",
-        body: JSON.stringify({})
-      });
-      await refresh();
-      messageApi.success(formatApiMessage(result, "向量化已完成。"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "向量化失败");
-    } finally {
-      setVectorizing(false);
-    }
-  }
-
-  if (!knowledgeBase && !loading) {
-    return (
-      <>
-        <PageHeader
-          title="知识库详情"
-          subtitle="未找到这条知识库资料。"
-          actions={
-            <Link href="/knowledge">
-              <Button>返回知识库</Button>
-            </Link>
-          }
-        />
-        <ActionEmpty title="资料不存在" description="它可能已经被删除，或者当前本地状态尚未同步。" />
-      </>
-    );
-  }
+  const actionsTab = (
+    <Card className="foundation-panel" bordered={false}>
+      <Alert
+        showIcon
+        type={knowledgeBase?.productionBlockingActionCount ? "warning" : "success"}
+        message={knowledgeBase?.productionStatus === "ready" ? "知识库仍可用于内容生产" : "仅受影响的具体表达被限制"}
+        description="这里只保留缺关键资料、公开范围无法判断和无法自动恢复的资料失败。重复、切片质量和可自动降级事项不会成为用户待办，也不阻断整个知识库。"
+      />
+      <List
+        dataSource={openActions}
+        locale={{ emptyText: <ActionEmpty title="没有需要处理的事项" description="系统已自动完成常规治理。" /> }}
+        renderItem={(item) => (
+          <List.Item actions={[<Button key="resolve" size="small" loading={saving} onClick={() => resolveAction(item.actionItemId, item.rowVersion)}>标记已处理</Button>]}>
+            <List.Item.Meta
+              avatar={<WarningOutlined style={{ color: item.affectsProduction ? "#cf1322" : "#d48806" }} />}
+              title={<Space wrap><strong>{actionTypeLabels[item.type]}</strong>{item.affectsProduction ? <Tag color="red">影响相关表达</Tag> : <Tag color="gold">不阻断生产</Tag>}</Space>}
+              description={<div><Typography.Paragraph style={{ marginBottom: 4 }}>{item.description}</Typography.Paragraph><Typography.Text type="secondary">下一步：{item.recommendedAction}</Typography.Text></div>}
+            />
+          </List.Item>
+        )}
+      />
+    </Card>
+  );
 
   return (
     <>
       {contextHolder}
       <PageHeader
-        title={knowledgeBase ? `编辑详情：${knowledgeBase.name}` : "知识库详情"}
-        subtitle="查看资料内容、追加新资料、执行切片与向量化，并保留来源和更新时间。"
-        actions={
-          <Space>
-            <Link href="/knowledge">
-              <Button>返回知识库</Button>
-            </Link>
-            <Button onClick={openEditModal}>编辑基础信息</Button>
-            <Button type="primary" loading={vectorizing} onClick={handleVectorize}>
-              重新向量化
-            </Button>
-          </Space>
-        }
+        title={knowledgeBase?.name || "知识库详情"}
+        subtitle={knowledgeBase ? `重点：${knowledgeBase.focus}` : "加载中"}
+        titleExtra={knowledgeBase?.dataSource === "demo" ? <Tag>demo</Tag> : undefined}
+        actions={<Space wrap><Link href="/knowledge"><Button>返回列表</Button></Link><Button type="primary" icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入资料</Button></Space>}
       />
-      <PageErrorState message={error} loading={loading} onRetry={refresh} />
-
+      <PageErrorState message={error} loading={loading && !data} onRetry={refresh} />
       {knowledgeBase ? (
         <>
-          <div className="metric-grid">
-            <MetricCard title="来源资料" value={sources.length} suffix="个" />
-            <MetricCard title="已解析来源" value={parsedSourceCount} suffix="个" />
-            <MetricCard title="切片数量" value={chunks.length} suffix="段" />
-            <MetricCard title="向量状态" value={embeddingStatusLabels[vectorStatus]} />
-            <MetricCard title="解析失败" value={failedSourceCount} suffix="个" />
-          </div>
-
-          <Card style={{ marginBottom: 16 }} data-testid="knowledge-detail-source-card">
-            <Descriptions size="small" column={3}>
-              <Descriptions.Item label="资料类型">{knowledgeTypeLabels[knowledgeBase.type]}</Descriptions.Item>
-              <Descriptions.Item label="状态">
-                <Tag color={knowledgeBase.status === "enabled" ? "green" : "default"}>{statusLabels[knowledgeBase.status]}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="导入方式">{getSourceTypeLabel(knowledgeBase.sourceType)}</Descriptions.Item>
-              <Descriptions.Item label="资料用途">{knowledgeBase.usageScope || "未填写"}</Descriptions.Item>
-              <Descriptions.Item label="最近同步">{knowledgeBase.lastSyncedAt || "-"}</Descriptions.Item>
-              <Descriptions.Item label="来源 URL">{knowledgeBase.sourceUrl || "-"}</Descriptions.Item>
-              <Descriptions.Item label="切片策略">{knowledgeBase.chunkingStrategy || "rule"}</Descriptions.Item>
-              <Descriptions.Item label="向量模型">{knowledgeBase.embeddingModel || "未选择"}</Descriptions.Item>
-              <Descriptions.Item label="检索策略">{knowledgeBase.retrievalStrategy || "未选择"}</Descriptions.Item>
-              <Descriptions.Item label="规则包处理">{getRulePackageModeLabel(knowledgeBase, knowledgeBases)}</Descriptions.Item>
-              <Descriptions.Item label="自动导入状态">{knowledgeBase.autoCrawl?.enabled ? knowledgeBase.autoCrawl.status || "idle" : "未启用"}</Descriptions.Item>
-              <Descriptions.Item label="发现文章">{knowledgeBase.autoCrawl?.totalDiscovered ?? "-"}</Descriptions.Item>
-              <Descriptions.Item label="已导入文章">{knowledgeBase.autoCrawl?.importedCount ?? "-"}</Descriptions.Item>
-              <Descriptions.Item label="导入失败">{knowledgeBase.autoCrawl?.failedCount ?? "-"}</Descriptions.Item>
-            </Descriptions>
+          <Card className="foundation-status-band" bordered={false}>
+            <Space wrap size="large">
+              <Tag color={knowledgeBase.productionStatus === "ready" ? "green" : knowledgeBase.productionStatus === "limited" ? "gold" : "default"}>
+                {knowledgeBase.productionStatus === "ready" ? "可用于内容生产" : knowledgeBase.productionStatus === "limited" ? "部分表达受限" : "待导入资料"}
+              </Tag>
+              <Typography.Text>资料 {knowledgeBase.materialCount}</Typography.Text>
+              <Typography.Text>待处理 {knowledgeBase.openActionCount}</Typography.Text>
+              <Typography.Text type="secondary">最近更新 {new Date(knowledgeBase.updatedAt).toLocaleString("zh-CN", { hour12: false })}</Typography.Text>
+            </Space>
           </Card>
-
           <Tabs
-            className="knowledge-detail-tabs"
+            defaultActiveKey="materials"
             items={[
-              {
-                key: "preview",
-                label: "内容预览",
-                children: (
-                  <Card data-testid="knowledge-detail-preview-card">
-                    <Typography.Paragraph className="knowledge-preview-text">
-                      {getDisplayContentPreview(knowledgeBase.contentPreview)}
-                    </Typography.Paragraph>
-                  </Card>
-                )
-              },
-              {
-                key: "append",
-                label: "追加资料",
-                children: (
-                  <Card>
-                    <Alert
-                      showIcon
-                      type="info"
-                      message="追加资料会进入同一个知识库"
-                      description="可以一次追加多个 URL 或一段补充文本；保存后系统会保留来源标题、URL、追加时间，并重新生成切片，状态回到待向量化。"
-                      style={{ marginBottom: 16 }}
-                    />
-                    <Form form={appendForm} layout="vertical" initialValues={{ chunkingStrategy: knowledgeBase.chunkingStrategy || "rule" }}>
-                      <Form.Item label="补充文本标题" name="title">
-                        <Input placeholder="例如：JOTO 产品补充说明" />
-                      </Form.Item>
-                      <Form.Item label="多个 URL" name="urlsText" extra="一行一个 URL。后端按历史缓存、XCrawl、代理抓取、本地兜底的顺序处理，并在来源中保留抓取方式与失败原因。">
-                        <Input.TextArea rows={5} placeholder="https://jotoai.com/..." />
-                      </Form.Item>
-                      <Form.Item label="补充文本" name="manualText">
-                        <Input.TextArea rows={7} placeholder="直接粘贴需要追加进知识库的 Markdown 或纯文本。" />
-                      </Form.Item>
-                      <Form.Item label="切片策略" name="chunkingStrategy">
-                        <Select options={chunkingStrategyOptions} style={{ maxWidth: 260 }} />
-                      </Form.Item>
-                      <Button type="primary" loading={appending} onClick={handleAppendSources}>
-                        保存并重新切片
-                      </Button>
-                    </Form>
-                  </Card>
-                )
-              },
-              {
-                key: "vectorization",
-                label: "切片与向量化记录",
-                children: (
-                  <Card>
-                    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-                      <Alert
-                        showIcon
-                        type={vectorStatus === "real_embedding" ? "success" : vectorStatus === "failed" ? "error" : "warning"}
-                        message={`当前状态：${embeddingStatusLabels[vectorStatus]}`}
-                        description={
-                          vectorStatus === "real_embedding"
-                            ? "当前知识库已经完成向量化。"
-                            : "选择向量模型后，可开始处理知识库内容。"
-                        }
-                      />
-                      <Button type="primary" loading={vectorizing} onClick={handleVectorize}>
-                        确认解析并向量化
-                      </Button>
-                      <Table
-                        rowKey="id"
-                        size="small"
-                        dataSource={chunks}
-                        pagination={{ pageSize: 8, showSizeChanger: false }}
-                        locale={{
-                          emptyText: <ActionEmpty title="暂无切片记录" description="导入或追加资料后，系统会根据正文结构生成切片。" />
-                        }}
-                        columns={[
-                          { title: "切片标题", dataIndex: "chunkTitle", width: 180 },
-                          {
-                            title: "来源",
-                            dataIndex: "sourceId",
-                            width: 180,
-                            render: (value, record: KnowledgeChunk) => sourceById.get(value as string)?.title || record.sourceTitle || "-"
-                          },
-                          { title: "路径", dataIndex: "sectionPath", width: 160 },
-                          { title: "长度", dataIndex: "tokenCount", width: 80 },
-                          {
-                            title: "向量状态",
-                            dataIndex: "embeddingStatus",
-                            width: 130,
-                            render: (value) => {
-                              const status = (value || vectorStatus) as KnowledgeEmbeddingStatus;
-                              return <Tag color={embeddingStatusColors[status]}>{embeddingStatusLabels[status]}</Tag>;
-                            }
-                          },
-                          { title: "内容", dataIndex: "content", render: (value) => <Typography.Text>{value}</Typography.Text> }
-                        ]}
-                      />
-                    </Space>
-                  </Card>
-                )
-              },
-              {
-                key: "distilled-terms",
-                label: "关联蒸馏词",
-                children: (
-                  <Card>
-                    {ruleTerms.length ? (
-                      <Space wrap>
-                        {ruleTerms.map((term) => (
-                          <Tag key={term} color="blue">
-                            {term}
-                          </Tag>
-                        ))}
-                      </Space>
-                    ) : (
-                      <ActionEmpty title="暂无关联蒸馏词" description="后续可以由规则包或 GEO 缺口提取后进入蒸馏词池。" />
-                    )}
-                  </Card>
-                )
-              },
-              {
-                key: "updates",
-                label: "更新记录",
-                children: (
-                  <Card>
-                    <Table
-                      rowKey="id"
-                      size="small"
-                      dataSource={updateRows}
-                      pagination={{ pageSize: 8, showSizeChanger: false }}
-                      columns={[
-                        { title: "时间", dataIndex: "time", width: 190 },
-                        { title: "类型", dataIndex: "type", width: 140 },
-                        { title: "对象", dataIndex: "title" },
-                        { title: "状态", dataIndex: "status", width: 130 }
-                      ]}
-                    />
-                  </Card>
-                )
-              }
+              { key: "materials", label: `资料 ${knowledgeBase.materialCount}`, children: materialsTab },
+              { key: "understanding", label: "系统理解", children: understandingTab },
+              { key: "actions", label: `待处理 ${openActions.length}`, children: actionsTab }
             ]}
           />
-
-          <Modal
-            title="编辑基础信息"
-            open={editOpen}
-            onCancel={() => setEditOpen(false)}
-            onOk={handleSaveEdit}
-            okText="保存"
-            cancelText="取消"
-            confirmLoading={savingEdit}
-            width={720}
-          >
-            <Form form={editForm} layout="vertical">
-              <Form.Item label="知识库名称" name="name" rules={[{ required: true, message: "请填写知识库名称" }]}>
-                <Input />
-              </Form.Item>
-              <Space wrap style={{ width: "100%" }}>
-                <Form.Item label="知识库类型" name="type" style={{ minWidth: 220 }}>
-                  <Select options={knowledgeTypeOptions} />
-                </Form.Item>
-                <Form.Item label="状态" name="status" style={{ minWidth: 160 }}>
-                  <Select options={statusOptions} />
-                </Form.Item>
-                <Form.Item label="导入方式" name="sourceType" style={{ minWidth: 180 }}>
-                  <Select options={sourceTypeOptions} />
-                </Form.Item>
-              </Space>
-              <Form.Item label="资料用途" name="usageScope">
-                <Input.TextArea rows={3} />
-              </Form.Item>
-              <Form.Item label="来源 URL" name="sourceUrl">
-                <Input />
-              </Form.Item>
-              <Form.Item name="productExpressionSource" valuePropName="checked">
-                <Checkbox>作为产品表达规则包来源</Checkbox>
-              </Form.Item>
-            </Form>
-          </Modal>
         </>
       ) : null}
+
+      <Modal title="导入资料" open={importOpen} onCancel={() => setImportOpen(false)} onOk={addMaterial} confirmLoading={saving} okText="导入并更新理解" width={680}>
+        <Form form={form} layout="vertical" initialValues={{ kind: "document", visibility: knowledgeBase?.defaultVisibility || "conditional_public" }}>
+          <Form.Item name="title" label="资料名称" rules={[{ required: true, message: "请填写资料名称" }]}><Input /></Form.Item>
+          <Space wrap style={{ width: "100%" }}>
+            <Form.Item name="kind" label="资料类型"><Select style={{ width: 150 }} options={[{ value: "url", label: "URL" }, { value: "document", label: "文档" }, { value: "text", label: "文本" }]} /></Form.Item>
+            <Form.Item name="visibility" label="公开范围"><Select style={{ width: 220 }} options={[{ value: "internal_only", label: "仅内部使用" }, { value: "conditional_public", label: "公开文章逐条确认" }, { value: "public", label: "允许公开引用" }]} /></Form.Item>
+          </Space>
+          <Form.Item name="summary" label="资料支持的系统理解" extra="可留空；系统处理真实正文后再自动生成。"><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="evidenceExcerpt" label="原文片段（可选）"><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="sourceOwner" label="来源主体（可选）"><Input /></Form.Item>
+          <Form.Item name="limitation" label="公开限制（可选）"><Input.TextArea rows={2} /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Drawer title="内容依据" open={Boolean(evidence)} onClose={() => setEvidence(undefined)} width={560}>
+        {evidence && knowledgeBase ? (
+          <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label="系统理解">{evidence.summary}</Descriptions.Item>
+              <Descriptions.Item label="原文片段">{evidence.evidenceExcerpt}</Descriptions.Item>
+              <Descriptions.Item label="来自资料">{evidence.materialTitle}</Descriptions.Item>
+              <Descriptions.Item label="来源主体">{evidence.sourceOwner}</Descriptions.Item>
+              <Descriptions.Item label="公开范围">{evidence.visibility}</Descriptions.Item>
+              <Descriptions.Item label="限制">{evidence.limitation || "无额外限制"}</Descriptions.Item>
+            </Descriptions>
+            <Collapse
+              ghost
+              items={[{
+                key: "technical",
+                label: "技术信息",
+                children: <Typography.Paragraph copyable>{`sourceSnapshotHash: ${knowledgeBase.sourceSnapshotHash}\nunderstandingId: ${evidence.understandingId}\nmaterialId: ${evidence.materialId}`}</Typography.Paragraph>
+              }]}
+            />
+          </Space>
+        ) : null}
+      </Drawer>
     </>
   );
 }

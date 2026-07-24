@@ -187,7 +187,7 @@ function createSettingsRuleChecks(input: {
           item: "日志接入",
           status: logModeLabels[input.logMode],
           detail: "真实日志模式需要先确认文件路径和导出格式。",
-          action: "先到连接管理页检查访问数据来源。",
+          action: "先到配置管理的连接页检查访问数据来源。",
           nextStep: "configure_real_log"
         }
       : {
@@ -203,7 +203,7 @@ function createSettingsRuleChecks(input: {
 
 function getSettingsRuleEntry(nextStep: SettingsRuleNextStep) {
   if (nextStep === "configure_real_log") {
-    return { type: "link" as const, href: "/real-integration", label: "查看连接" };
+    return { type: "link" as const, href: "/configuration?tab=connections", label: "查看连接" };
   }
 
   if (nextStep === "ready") {

@@ -15,7 +15,7 @@ interface GovernanceEntryProps {
 }
 
 export function GovernanceEntry({
-  label = "看 AI 配置",
+  label = "看配置管理",
   restrictedLabel = "切换角色",
   size = "small",
   type
@@ -23,11 +23,11 @@ export function GovernanceEntry({
   const {
     state: { workspaceSetting }
   } = useWorkbenchSnapshot();
-  const canOpenGovernance = canViewRoute(workspaceSetting.currentRole, "/ai-config");
+  const canOpenGovernance = canViewRoute(workspaceSetting.currentRole, "/configuration");
 
   if (canOpenGovernance) {
     return (
-      <Link href="/ai-config">
+      <Link href="/configuration">
         <Button size={size} type={type}>
           {label}
         </Button>

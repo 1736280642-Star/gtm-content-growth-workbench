@@ -6,14 +6,12 @@ import {
   BookOutlined,
   CalendarOutlined,
   CheckSquareOutlined,
-  CloudSyncOutlined,
   DashboardOutlined,
   FileSearchOutlined,
-  FontSizeOutlined,
   ExperimentOutlined,
+  QuestionCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  RocketOutlined,
   SettingOutlined,
   UploadOutlined
 } from "@ant-design/icons";
@@ -51,17 +49,15 @@ const contentStyle: CSSProperties = {
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
-  { key: "/batch-generation", icon: <RocketOutlined />, label: <Link href="/batch-generation">批量生成中心</Link> },
   { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
   { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },
+  { key: "/questions-keywords", icon: <QuestionCircleOutlined />, label: <Link href="/questions-keywords">问题与关键词池</Link> },
   { key: "/knowledge", icon: <BookOutlined />, label: <Link href="/knowledge">知识库</Link> },
-  { key: "/distilled-terms", icon: <FontSizeOutlined />, label: <Link href="/distilled-terms">蒸馏词池</Link> },
   { key: "/blog-monitor", icon: <FileSearchOutlined />, label: <Link href="/blog-monitor">官网博客监控</Link> },
   { key: "/blog-candidates", icon: <FileSearchOutlined />, label: <Link href="/blog-candidates">博客候选池</Link> },
   { key: "/monthly-review", icon: <BarChartOutlined />, label: <Link href="/monthly-review">月度复盘</Link> },
   { key: "/ai-front-test", icon: <ExperimentOutlined />, label: <Link href="/ai-front-test">AI 前台测试</Link> },
-  { key: "/real-integration", icon: <CloudSyncOutlined />, label: <Link href="/real-integration">连接管理</Link> },
-  { key: "/ai-config", icon: <ApiOutlined />, label: <Link href="/ai-config">AI 配置</Link> },
+  { key: "/configuration", icon: <ApiOutlined />, label: <Link href="/configuration">配置管理</Link> },
   { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">工作台设置</Link> }
 ];
 

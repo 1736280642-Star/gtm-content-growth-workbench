@@ -1,302 +1,162 @@
 "use client";
 
-import { Button, Card, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd";
-import type { TableRowSelection } from "antd/es/table/interface";
+import { BookOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
+import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
-import type { Key } from "react";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
-import { callJsonApi, formatApiMessage } from "@/lib/client-api";
+import { callJsonApi } from "@/lib/client-api";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
-import type { KnowledgeBase, KnowledgeEmbeddingStatus } from "@/lib/types";
+import { createV5WritePayload } from "@/lib/v5-client";
+import type { V5KnowledgeBaseWorkspace, V5KnowledgeVisibility } from "@/lib/v5/knowledge-workspace-contracts";
 
-const knowledgeTypeLabels: Record<KnowledgeBase["type"], string> = {
-  brand: "品牌事实",
-  product: "产品知识",
-  official_blog: "官网博客",
-  channel_history: "渠道历史",
-  competitor: "竞品参考",
-  custom: "用户自定义"
+type KnowledgeResponse = { ok: true; data: { knowledgeBases: V5KnowledgeBaseWorkspace[]; stateVersion: number } };
+
+const visibilityLabels: Record<V5KnowledgeVisibility, string> = {
+  internal_only: "仅内部使用",
+  conditional_public: "公开文章逐条确认",
+  public: "允许公开引用"
 };
-
-const statusLabels: Record<KnowledgeBase["status"], string> = {
-  enabled: "启用",
-  disabled: "停用"
-};
-
-const embeddingStatusLabels: Record<KnowledgeEmbeddingStatus, string> = {
-  not_required: "未启用",
-  pending_config: "待向量化",
-  fallback_hash: "待向量化",
-  real_embedding: "已向量化",
-  failed: "失败"
-};
-
-const embeddingStatusColors: Record<KnowledgeEmbeddingStatus, string> = {
-  not_required: "default",
-  pending_config: "gold",
-  fallback_hash: "gold",
-  real_embedding: "green",
-  failed: "red"
-};
-
-const knowledgeTypeOptions = Object.entries(knowledgeTypeLabels).map(([value, label]) => ({ value, label }));
-const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({ value, label }));
-
-function getKnowledgeTimestamp(value?: string) {
-  if (!value) return 0;
-
-  const timestamp = Date.parse(value.includes("T") ? value : value.replace(" ", "T"));
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function getKnowledgeStatus(record: KnowledgeBase) {
-  if (record.vectorizationStatus === "real_embedding") return "已完成";
-  if (record.chunks?.length) return "待向量化";
-  if (record.sources?.some((source) => source.status === "failed")) return "解析失败";
-  if (record.sources?.length || record.contentPreview) return "待解析";
-  return "待补资料";
-}
 
 export default function KnowledgePage() {
-  const {
-    state: { knowledgeBases },
-    loading,
-    error,
-    refresh
-  } = useWorkbenchSnapshot();
+  const router = useRouter();
+  const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
-  const [typeFilter, setTypeFilter] = useState<KnowledgeBase["type"][]>([]);
-  const [statusFilter, setStatusFilter] = useState<KnowledgeBase["status"][]>([]);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
-  const [deletingId, setDeletingId] = useState<string>();
-  const [batchAction, setBatchAction] = useState<"merge" | "vectorize">();
-  const hasActiveFilter = Boolean(typeFilter.length || statusFilter.length);
-  const selectedIds = selectedRowKeys.map(String);
-  const selectedKnowledgeBases = knowledgeBases.filter((item) => selectedIds.includes(item.id));
-  const canMergeSelected = selectedKnowledgeBases.length >= 2 && selectedKnowledgeBases.every((item) => item.vectorizationStatus !== "real_embedding");
-  const visibleKnowledgeBases = useMemo(
-    () =>
-      knowledgeBases
-        .filter((item) => {
-          const typeMatched = !typeFilter.length || typeFilter.includes(item.type);
-          const statusMatched = !statusFilter.length || statusFilter.includes(item.status);
-          return typeMatched && statusMatched;
-        })
-        .sort((left, right) => getKnowledgeTimestamp(right.lastSyncedAt) - getKnowledgeTimestamp(left.lastSyncedAt)),
-    [knowledgeBases, statusFilter, typeFilter]
-  );
-  const rowSelection: TableRowSelection<KnowledgeBase> | undefined = selectionMode
-    ? {
-        selectedRowKeys,
-        onChange: setSelectedRowKeys,
-        getCheckboxProps: (record) => ({
-          disabled: record.vectorizationStatus === "real_embedding",
-          title: record.vectorizationStatus === "real_embedding" ? "已向量化知识库暂不参与合并" : undefined
-        })
-      }
-    : undefined;
-  const pendingVectorCount = knowledgeBases.filter((item) => item.vectorizationStatus !== "real_embedding").length;
-  const vectorReadyCount = knowledgeBases.filter((item) => item.vectorizationStatus === "real_embedding").length;
-  const sourceCount = knowledgeBases.reduce((sum, item) => sum + (item.sources?.length || 0), 0);
+  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
+  const [data, setData] = useState<KnowledgeResponse["data"]>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | V5KnowledgeBaseWorkspace["productionStatus"]>("all");
 
-  function clearFilters() {
-    setTypeFilter([]);
-    setStatusFilter([]);
-  }
-
-  function toggleSelectionMode() {
-    setSelectionMode((current) => {
-      if (current) setSelectedRowKeys([]);
-      return !current;
-    });
-  }
-
-  async function handleDeleteKnowledgeBase(id: string) {
-    setDeletingId(id);
-
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(undefined);
     try {
-      const result = await callJsonApi(`/api/knowledge-bases/${id}`, { method: "DELETE" });
-      await refresh();
-      setSelectedRowKeys((current) => current.filter((item) => item !== id));
-      messageApi.success(formatApiMessage(result, "知识库已删除。"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "删除知识库失败");
+      const result = await callJsonApi<KnowledgeResponse>("/api/v5/knowledge-bases", { cache: "no-store" });
+      setData(result.data);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "知识库加载失败");
     } finally {
-      setDeletingId(undefined);
+      setLoading(false);
     }
-  }
+  }, []);
 
-  async function handleMergeSelected() {
-    if (!canMergeSelected) {
-      messageApi.warning("请选择至少两个未向量化知识库。");
-      return;
-    }
+  useEffect(() => { void refresh(); }, [refresh]);
 
-    setBatchAction("merge");
+  const visibleItems = useMemo(() => (data?.knowledgeBases || []).filter((item) => statusFilter === "all" || item.productionStatus === statusFilter), [data?.knowledgeBases, statusFilter]);
 
+  async function createKnowledgeBase() {
+    const values = await form.validateFields();
+    if (!data) return;
+    setSaving(true);
     try {
-      const result = await callJsonApi("/api/knowledge-bases/merge", {
+      const result = await callJsonApi<{ data: { knowledgeBase: V5KnowledgeBaseWorkspace } }>("/api/v5/knowledge-bases", {
         method: "POST",
-        body: JSON.stringify({ ids: selectedIds })
+        body: JSON.stringify({
+          ...createV5WritePayload(workspaceSetting.currentRole, data.stateVersion, "创建知识库并准备导入资料"),
+          name: values.name,
+          focus: values.focus,
+          defaultVisibility: values.defaultVisibility
+        })
       });
-      await refresh();
-      setSelectedRowKeys([]);
-      messageApi.success(formatApiMessage(result, "已创建合并知识库。"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "合并知识库失败");
+      setCreateOpen(false);
+      form.resetFields();
+      messageApi.success("知识库已创建，请继续导入资料。");
+      router.push(`/knowledge/${result.data.knowledgeBase.knowledgeBaseId}?import=1`);
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "创建知识库失败");
     } finally {
-      setBatchAction(undefined);
+      setSaving(false);
     }
   }
 
-  async function handleVectorizeSelected() {
-    setBatchAction("vectorize");
-
-    try {
-      const result = await callJsonApi("/api/knowledge-bases/vectorize", {
-        method: "POST",
-        body: JSON.stringify({ ids: selectedIds })
-      });
-      await refresh();
-      messageApi.success(formatApiMessage(result, "已提交向量化。"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "向量化失败");
-    } finally {
-      setBatchAction(undefined);
-    }
-  }
+  const readyCount = data?.knowledgeBases.filter((item) => item.productionStatus === "ready").length || 0;
+  const pendingCount = data?.knowledgeBases.reduce((sum, item) => sum + item.openActionCount, 0) || 0;
+  const materialCount = data?.knowledgeBases.reduce((sum, item) => sum + item.materialCount, 0) || 0;
 
   return (
     <>
       {contextHolder}
       <PageHeader
         title="知识库"
-        subtitle="管理内容资产、导入状态和向量化状态；导入、切片向量化、规则包维护进入独立子页面。"
+        subtitle="用名称和重点限定系统理解方向；资料处理、索引和治理由系统自动完成。"
         actions={
           <Space wrap>
-            <Link href="/knowledge/import">
-              <Button type="primary" data-testid="knowledge-import-button">导入资料</Button>
-            </Link>
-            <Button onClick={toggleSelectionMode}>{selectionMode ? "退出选择" : "批量选择"}</Button>
-            <Button disabled={!selectionMode || !canMergeSelected} loading={batchAction === "merge"} onClick={handleMergeSelected}>
-              合并知识库
-            </Button>
-            <Button disabled={!selectionMode || !selectedIds.length} loading={batchAction === "vectorize"} onClick={handleVectorizeSelected}>
-              批量向量化
-            </Button>
+            <Link href="/knowledge/import"><Button icon={<UploadOutlined />}>导入到已有知识库</Button></Link>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-testid="knowledge-create-button">创建知识库</Button>
           </Space>
         }
       />
-      <PageErrorState message={error} loading={loading} onRetry={refresh} />
-
+      <PageErrorState message={error} loading={loading && !data} onRetry={refresh} />
       <div className="metric-grid">
-        <MetricCard title="知识库资产" value={knowledgeBases.length} suffix="条" />
-        <MetricCard title="待向量化" value={pendingVectorCount} suffix="条" />
-        <MetricCard title="已向量化" value={vectorReadyCount} suffix="条" />
-        <MetricCard title="来源资料" value={sourceCount} suffix="个" />
+        <MetricCard title="知识库" value={data?.knowledgeBases.length || 0} suffix="个" />
+        <MetricCard title="可用于内容生产" value={readyCount} suffix="个" />
+        <MetricCard title="资料" value={materialCount} suffix="份" />
+        <MetricCard title="待处理" value={pendingCount} suffix="项" />
       </div>
-
-      <Card title="知识库列表">
-        <Space wrap style={{ width: "100%", marginBottom: 16 }}>
+      <Card className="foundation-panel" bordered={false}>
+        <Space style={{ marginBottom: 16 }} wrap>
           <Select
-            mode="multiple"
-            allowClear
-            placeholder="按类型筛选"
-            value={typeFilter}
-            onChange={(value) => setTypeFilter(value)}
-            options={knowledgeTypeOptions}
-            style={{ minWidth: 220 }}
-          />
-          <Select
-            mode="multiple"
-            allowClear
-            placeholder="按启用状态筛选"
             value={statusFilter}
-            onChange={(value) => setStatusFilter(value)}
-            options={statusOptions}
-            style={{ minWidth: 180 }}
+            onChange={setStatusFilter}
+            options={[
+              { value: "all", label: "全部状态" },
+              { value: "ready", label: "可用于内容生产" },
+              { value: "limited", label: "部分表达受限" },
+              { value: "empty", label: "待导入资料" }
+            ]}
+            style={{ minWidth: 190 }}
           />
-          <Button onClick={clearFilters} disabled={!hasActiveFilter}>清空筛选</Button>
-          {selectionMode ? <Tag color="blue">已选择 {selectedIds.length} 条</Tag> : null}
+          <Typography.Text type="secondary">非关键事项只限制受影响表达，不阻断整个知识库。</Typography.Text>
         </Space>
         <Table
-          rowKey="id"
+          rowKey="knowledgeBaseId"
           loading={loading}
-          dataSource={visibleKnowledgeBases}
-          rowSelection={rowSelection}
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-          locale={{
-            emptyText: (
-              <ActionEmpty
-                title={hasActiveFilter ? "当前筛选没有知识库" : "还没有知识库"}
-                description={hasActiveFilter ? "清空筛选后再查看。" : "从内容导入页新增 URL 或文档资料。"}
-                action={
-                  hasActiveFilter ? (
-                    <Button type="primary" onClick={clearFilters}>清空筛选</Button>
-                  ) : (
-                    <Link href="/knowledge/import"><Button type="primary">导入资料</Button></Link>
-                  )
-                }
-              />
-            )
-          }}
+          dataSource={visibleItems}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: <ActionEmpty title="还没有知识库" description="创建知识库后导入第一份真实资料。" action={<Button type="primary" onClick={() => setCreateOpen(true)}>创建知识库</Button>} /> }}
           columns={[
             {
-              title: "名称",
-              dataIndex: "name",
-              render: (value, record) => (
-                <Space direction="vertical" size={2}>
-                  <Link href={`/knowledge/${record.id}`}>{value}</Link>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {record.usageScope || "未填写资料用途"}
-                  </Typography.Text>
-                </Space>
+              title: "知识库",
+              width: 360,
+              render: (_, record) => (
+                <div className="foundation-question-cell">
+                  <Space><BookOutlined /><Link href={`/knowledge/${record.knowledgeBaseId}`}><strong>{record.name}</strong></Link>{record.dataSource === "demo" ? <Tag>demo</Tag> : null}</Space>
+                  <span>重点：{record.focus}</span>
+                </div>
               )
             },
-            { title: "类型", dataIndex: "type", width: 120, render: (value) => <Tag>{knowledgeTypeLabels[value as KnowledgeBase["type"]]}</Tag> },
-            { title: "时间", dataIndex: "lastSyncedAt", width: 190, render: (value) => value || "-" },
+            { title: "资料", dataIndex: "materialCount", width: 90, render: (value) => `${value} 份` },
+            { title: "待处理", dataIndex: "openActionCount", width: 100, render: (value, record) => <Tag color={record.productionBlockingActionCount > 0 ? "red" : value > 0 ? "gold" : "green"}>{value} 项</Tag> },
             {
               title: "状态",
-              width: 180,
-              render: (_, record) => {
-                const vectorStatus = (record.vectorizationStatus || "pending_config") as KnowledgeEmbeddingStatus;
-                return (
-                  <Space size={4} wrap>
-                    <Tag color={record.status === "enabled" ? "green" : "default"}>{statusLabels[record.status]}</Tag>
-                    <Tag color={embeddingStatusColors[vectorStatus]}>{getKnowledgeStatus(record)}</Tag>
-                  </Space>
-                );
-              }
+              dataIndex: "productionStatus",
+              width: 170,
+              render: (value) => value === "ready" ? <Tag color="green">可用于内容生产</Tag> : value === "limited" ? <Tag color="gold">部分表达受限</Tag> : <Tag>待导入资料</Tag>
             },
-            {
-              title: "操作",
-              width: 180,
-              render: (_, record) => (
-                <Space>
-                  <Link href={`/knowledge/${record.id}`}>
-                    <Button size="small" data-testid={`knowledge-edit-detail-${record.id}`}>编辑详情</Button>
-                  </Link>
-                  <Popconfirm
-                    title="确认删除这个知识库？"
-                    description="删除后会从知识库列表移除；如只是暂时不用，后续可在详情页停用。"
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => handleDeleteKnowledgeBase(record.id)}
-                  >
-                    <Button size="small" danger loading={deletingId === record.id}>删除</Button>
-                  </Popconfirm>
-                </Space>
-              )
-            }
+            { title: "最近更新", dataIndex: "updatedAt", width: 190, render: (value) => new Date(value).toLocaleString("zh-CN", { hour12: false }) },
+            { title: "操作", width: 90, fixed: "right" as const, render: (_, record) => <Link href={`/knowledge/${record.knowledgeBaseId}`}><Button size="small">查看</Button></Link> }
           ]}
         />
       </Card>
+
+      <Modal title="创建知识库" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={createKnowledgeBase} confirmLoading={saving} okText="创建并导入" width={640}>
+        <Form form={form} layout="vertical" initialValues={{ defaultVisibility: "conditional_public" }}>
+          <Form.Item name="name" label="知识库名称" rules={[{ required: true, message: "请填写知识库名称" }]}><Input maxLength={100} /></Form.Item>
+          <Form.Item name="focus" label="知识库重点" rules={[{ required: true, message: "请说明希望系统重点理解什么" }]} extra="重点只限定理解和检索方向，不会直接成为文章事实。">
+            <Input.TextArea rows={4} maxLength={600} showCount />
+          </Form.Item>
+          <Form.Item name="defaultVisibility" label="默认公开范围">
+            <Select options={Object.entries(visibilityLabels).map(([value, label]) => ({ value, label }))} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 }

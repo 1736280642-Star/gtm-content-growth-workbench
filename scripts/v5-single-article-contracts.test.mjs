@@ -50,11 +50,13 @@ test("formal generation explicitly extracts rules and enforces eight traceable f
   assert.match(files["src/lib/v5/single-article-production-repository.ts"], /copy_allowed, test_only/);
 });
 
-test("formal API, queue action and V4 generation route coexist", () => {
+test("formal API, task-row drawer and V4 generation route coexist", () => {
   assert.match(files["src/app/api/v5/content-tasks/[taskId]/prepare-and-generate/route.ts"], /prepareAndGenerateSingleArticle/);
   assert.match(files["src/app/api/v5/drafts/[id]/route.ts"], /readFormalDraftVersion/);
-  assert.match(files["src/components/BatchGenerationMatrixTable.tsx"], /生成正文/);
-  assert.match(files["src/components/BatchGenerationMatrixTable.tsx"], /查看正文/);
+  assert.match(files["src/components/BatchGenerationMatrixTable.tsx"], /预览正文/);
+  assert.match(files["src/components/BatchGenerationMatrixTable.tsx"], /<Drawer/);
+  assert.match(files["src/components/BatchGenerationMatrixTable.tsx"], /保存并自动复检/);
+  assert.doesNotMatch(files["src/components/BatchGenerationMatrixTable.tsx"], /softQualityScore|hardRuleStatus|claimCount/);
   assert.match(files["src/lib/repositories/local-json.ts"], /resolve\(process\.cwd\(\), process\.env\.WORKBENCH_STATE_PATH/);
   assert.match(files["src/lib/permissions.ts"], /"\/batch-generation"/);
   assert.match(files["src/lib/permissions.ts"], /"\/v5\/drafts"/);

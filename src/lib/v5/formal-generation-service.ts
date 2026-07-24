@@ -188,45 +188,76 @@ export async function generateFormalArticle(input: {
     sourceProblem: task.sourceProblem,
     ctaBoundary: input.context.ctaBoundary
   })}\n\n允许表达：\n${JSON.stringify(allowedExpressions)}\n条件表达：\n${JSON.stringify(conditionalExpressions)}\n禁止表达：\n${JSON.stringify([...blockedExpressions, ...prohibitedPatterns])}\n证据要求：\n${JSON.stringify(evidenceRequirements)}\n格式要求：\n${JSON.stringify(requiredFormat)}\n硬规则：\n${JSON.stringify(promptHardRules)}\n\nFinal EvidencePack：\n${JSON.stringify(evidenceForProvider(input.pack))}\n\n输出要求：markdown 必须以“# ${title}”开头，并至少包含两个二级标题；至少写出 8 个以完整标点结尾的事实句，其中至少 1 句必须说明适用条件、限制或人工边界。每个事实句都必须在 factTraces 中给出原句、evidenceItemId、claimId、sourceRevisionId，且四者必须与提供的证据完全一致。`;
-  const result = await callAiProvider({ provider, systemPrompt, userPrompt, temperature: 0.2 });
-  if (!result.ok || !result.content) {
-    const providerFailure = result.status === "pending_config"
-      ? failure("provider_pending_config", "正式正文 Provider 尚未配置。", "补齐所选 Provider 的 API Key、Model 与 Base URL 后，使用新幂等键重试。")
-      : failure("provider_failed", result.errorMessage || "正式正文 Provider 调用失败。", "检查 Provider 网络、模型状态和服务端日志后，使用新幂等键重试。");
-    await failFormalGenerationRun({ operationId: input.operationId, generationRunId, status: result.status === "pending_config" ? "pending_config" : "failed", failure: providerFailure, actor: input.actor });
-    throw new FormalGenerationError(result.status === "pending_config" ? 503 : 502, providerFailure.code, providerFailure.message, providerFailure.nextAction, result.missingConfig, true);
+  let technicalRetryCount = 0;
+  let automaticRepairCount = 0;
+  let lastBlockers: string[] = [];
+  let lastModel: string | undefined;
+  let repairPrompt = userPrompt;
+  for (let repairRound = 0; repairRound <= 2; repairRound += 1) {
+    let providerContent = "";
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const result = await callAiProvider({ provider, systemPrompt, userPrompt: repairPrompt, temperature: 0.2 });
+      if (result.ok && result.content) {
+        providerContent = result.content;
+        lastModel = result.model;
+        break;
+      }
+      if (result.status === "pending_config") {
+        const providerFailure = failure("provider_pending_config", "正式正文 Provider 尚未配置。", "补齐所选 Provider 的 API Key、Model 与 Base URL 后，系统将自动恢复当前批次。");
+        await failFormalGenerationRun({ operationId: input.operationId, generationRunId, status: "pending_config", failure: providerFailure, actor: input.actor });
+        throw new FormalGenerationError(503, providerFailure.code, providerFailure.message, providerFailure.nextAction, result.missingConfig, true);
+      }
+      technicalRetryCount += 1;
+      lastBlockers = [result.errorMessage || "Provider 调用失败。"];
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** (attempt - 1)));
+    }
+    if (!providerContent) {
+      const providerFailure = failure("provider_failed", "正式正文 Provider 连续失败，系统已记录并等待批次级自动恢复。", "查看批次顶部服务状态；不需要逐条重试。");
+      const recoveryResult: HardRuleResult = { passed: false, blockers: lastBlockers, checkedRuleCount, traceableFactCount: 0, technicalRetryCount, automaticRepairCount };
+      await failFormalGenerationRun({ operationId: input.operationId, generationRunId, status: "failed", failure: providerFailure, hardRuleResult: recoveryResult, actor: input.actor });
+      throw new FormalGenerationError(502, providerFailure.code, providerFailure.message, providerFailure.nextAction, lastBlockers, true);
+    }
+
+    let output: FormalProviderOutput | undefined;
+    try {
+      output = parseFormalProviderOutput(providerContent);
+    } catch (error) {
+      lastBlockers = [error instanceof Error ? error.message : "正文输出格式不正确。"];
+    }
+    const validated = output
+      ? validateFormalProviderOutput({
+          output,
+          title,
+          evidenceItems: input.pack.evidenceItems,
+          blockedRuleTexts: [...blockedExpressions, ...prohibitedPatterns],
+          requiredFormatTexts: requiredFormat,
+          checkedRuleCount
+        })
+      : { passed: false, blockers: lastBlockers, checkedRuleCount, traceableFactCount: 0 };
+    const hardRuleResult: HardRuleResult = { ...validated, technicalRetryCount, automaticRepairCount };
+    if (output && hardRuleResult.passed) {
+      return completeFormalGeneration({
+        operationId: input.operationId,
+        generationRunId,
+        pack: input.pack,
+        context: input.context,
+        title,
+        markdown: output.markdown,
+        factTraces: output.factTraces,
+        hardRuleResult,
+        providerModel: lastModel,
+        actor: input.actor
+      });
+    }
+    lastBlockers = hardRuleResult.blockers;
+    if (repairRound < 2) {
+      automaticRepairCount += 1;
+      repairPrompt = `${userPrompt}\n\n系统自动检查发现以下可修复问题：\n${lastBlockers.join("\n")}\n请在不增加任何新事实、不改变冻结标题和证据绑定的前提下重写完整 JSON。`;
+    }
   }
-  let output: FormalProviderOutput;
-  try {
-    output = parseFormalProviderOutput(result.content);
-  } catch (error) {
-    const parseFailure = failure("provider_contract_invalid", "正文模型返回内容不符合正式 JSON 契约。", "检查 Prompt Group 与 Provider 输出后，使用新幂等键重试。");
-    await failFormalGenerationRun({ operationId: input.operationId, generationRunId, status: "failed", failure: parseFailure, actor: input.actor });
-    throw new FormalGenerationError(502, parseFailure.code, parseFailure.message, parseFailure.nextAction, [error instanceof Error ? error.message : "invalid_json"], true);
-  }
-  const hardRuleResult = validateFormalProviderOutput({
-    output,
-    title,
-    evidenceItems: input.pack.evidenceItems,
-    blockedRuleTexts: [...blockedExpressions, ...prohibitedPatterns],
-    requiredFormatTexts: requiredFormat,
-    checkedRuleCount
-  });
-  if (!hardRuleResult.passed) {
-    const hardRuleFailure = failure("hard_rule_blocked", "正文未通过正式硬规则，未写入 DraftVersion。", "查看硬规则阻断原因，修正规则或证据后使用新幂等键重试。");
-    await failFormalGenerationRun({ operationId: input.operationId, generationRunId, status: "failed", failure: hardRuleFailure, hardRuleResult, actor: input.actor });
-    throw new FormalGenerationError(422, hardRuleFailure.code, hardRuleFailure.message, hardRuleFailure.nextAction, hardRuleResult.blockers, true);
-  }
-  return completeFormalGeneration({
-    operationId: input.operationId,
-    generationRunId,
-    pack: input.pack,
-    context: input.context,
-    title,
-    markdown: output.markdown,
-    factTraces: output.factTraces,
-    hardRuleResult,
-    providerModel: result.model,
-    actor: input.actor
-  });
+
+  const hardRuleFailure = failure("hard_rule_blocked", "正文经两轮自动修复后仍未通过，系统将保留上一份可用正文并记录本次运行。", "不需要逐条重试；系统会在批次恢复时重新处理。");
+  const finalRuleResult: HardRuleResult = { passed: false, blockers: lastBlockers, checkedRuleCount, traceableFactCount: 0, technicalRetryCount, automaticRepairCount };
+  await failFormalGenerationRun({ operationId: input.operationId, generationRunId, status: "failed", failure: hardRuleFailure, hardRuleResult: finalRuleResult, actor: input.actor });
+  throw new FormalGenerationError(422, hardRuleFailure.code, hardRuleFailure.message, hardRuleFailure.nextAction, lastBlockers, true);
 }
