@@ -118,6 +118,7 @@ function addRegexCheck(label, filePath, patterns) {
   "src/app/api/distribution-targets/[id]/send-draft/route.ts",
   "src/app/api/publish-schedules/route.ts",
   "src/app/api/publish-schedules/[id]/run/route.ts",
+  "src/app/api/publish-schedules/[id]/verify/route.ts",
   "src/app/api/direct-publish/route.ts",
   "src/lib/wechatsync-client.ts",
   "src/lib/publish-adapters/index.ts",
@@ -867,7 +868,10 @@ addContentCheck("direct publish data model", "src/lib/types.ts", [
   "published_verified",
   "published_pending_url",
   "manual_takeover_required",
-  "pendingCsvReturn"
+  "pendingCsvReturn",
+  "contentHash",
+  "idempotencyKey",
+  "externalTaskId"
 ]);
 
 addContentCheck("distribution labels and channel mapping", "src/lib/labels.ts", [
@@ -902,10 +906,13 @@ addContentCheck("direct publish store invariant", "src/lib/workbench-store.ts", 
   "normalizePublishAttempts",
   "createPublishSchedules",
   "runPublishSchedule",
+  "verifyPublishSchedule",
   "runDuePublishSchedules",
   "direct_publish_attempt_finished",
   "正式发布排程已创建",
-  "published_pending_url"
+  "published_pending_url",
+  "activePublishIdempotencyKeys",
+  "direct_publish_verification_finished"
 ]);
 
 addContentCheck("direct publish adapter contract", "src/lib/publish-adapters/index.ts", [
@@ -919,7 +926,41 @@ addContentCheck("direct publish adapter contract", "src/lib/publish-adapters/ind
   "verify(",
   "DIRECT_PUBLISH_ENABLED",
   "manual_takeover_required",
-  "pendingCsvReturn"
+  "pendingCsvReturn",
+  "submitFormalPublish",
+  "verifyFormalPublish"
+]);
+
+addContentCheck("formal publish local boundary", "src/lib/formal-publish-client.ts", [
+  "WECHATSYNC_BRIDGE_TOKEN",
+  "WECHATSYNC_BRIDGE_URL",
+  "isLocalBridgeUrl",
+  "/publish",
+  "/publish/verify"
+]);
+
+addContentCheck("formal publish bridge execution", "scripts/wechatsync-bridge.mjs", [
+  "submitAndPollWechatPublish",
+  "publishWeixinArticle",
+  "proxyArcs",
+  "ARCS_RUNNER_URL",
+  "expectedIdempotencyKey"
+]);
+
+addContentCheck("wechat official publish polling", "scripts/lib/wechat-formal-publish.mjs", [
+  "freepublish/submit",
+  "freepublish/get",
+  "publish_id",
+  "pending_verify",
+  "published_verified"
+]);
+
+addContentCheck("arcs runner safety", "arcs-runner/joto_arcs_runner/server.py", [
+  "LOOPBACK_HOSTS",
+  "bearer_token",
+  "expected_idempotency_key",
+  "duplicateProtected",
+  "manual_takeover_required"
 ]);
 
 addContentCheck("direct publish api contract", "scripts/smoke-workflow.mjs", [

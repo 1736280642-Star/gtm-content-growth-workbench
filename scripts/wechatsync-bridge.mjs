@@ -1,8 +1,12 @@
 import http from "node:http";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveWeixinArticleContent } from "./lib/wechatsync-content.mjs";
+import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
+import { submitAndPollWechatPublish, verifyWechatPublish } from "./lib/wechat-formal-publish.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -40,7 +44,37 @@ const bridgeToken = process.env.WECHATSYNC_BRIDGE_TOKEN || "";
 const wechatApiBase = (process.env.WECHAT_MP_API_BASE_URL || "https://api.weixin.qq.com").replace(/\/$/, "");
 const externalPlatformTimeoutMs = Number(process.env.WECHATSYNC_PLATFORM_TIMEOUT_MS || 30_000);
 const implementedPlatforms = ["weixin", "csdn", "juejin", "zhihu"];
+const arcsRunnerUrl = process.env.ARCS_RUNNER_URL || "http://127.0.0.1:9530";
+const publishLedgerPath =
+  process.env.JOTO_PUBLISH_BRIDGE_LEDGER_PATH ||
+  join(process.env.LOCALAPPDATA || join(homedir(), ".joto"), "JotoPublishRunner", "bridge-ledger.json");
+const publishLedger = createPublishIdempotencyLedger(publishLedgerPath);
 let cachedAccessToken;
+
+function isLoopbackUrl(value) {
+  try {
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+if (!["localhost", "127.0.0.1", "::1", "[::1]"].includes(bindHost)) {
+  throw new Error("WECHATSYNC_BRIDGE_HOST must be a loopback host.");
+}
+
+if (!bridgeToken) {
+  throw new Error("WECHATSYNC_BRIDGE_TOKEN is required.");
+}
+
+if (!isLoopbackUrl(arcsRunnerUrl)) {
+  throw new Error("ARCS_RUNNER_URL must point to localhost.");
+}
+
+const ledgerRelativePath = relative(projectRoot, resolve(publishLedgerPath));
+if (!ledgerRelativePath.startsWith("..") && !isAbsolute(ledgerRelativePath)) {
+  throw new Error("JOTO_PUBLISH_BRIDGE_LEDGER_PATH must be outside the repository.");
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -77,8 +111,44 @@ function readJsonBody(request) {
 }
 
 function verifyBridgeToken(request) {
-  if (!bridgeToken) return true;
-  return request.headers.authorization === `Bearer ${bridgeToken}`;
+  return Boolean(bridgeToken) && request.headers.authorization === `Bearer ${bridgeToken}`;
+}
+
+function expectedIdempotencyKey(input) {
+  return createHash("sha256")
+    .update(`${input.scheduleId}:${input.platform === "weixin" ? "wechat" : input.platform}:${input.contentHash}`, "utf8")
+    .digest("hex");
+}
+
+function validateFormalPublishInput(input) {
+  const required = ["scheduleId", "platform", "contentHash", "idempotencyKey", "title", "markdown"];
+  const missing = required.filter((name) => !String(input[name] || "").trim());
+  if (missing.length) {
+    return { ok: false, statusCode: 400, payload: { ok: false, status: "precheck_failed", failureCode: "payload_invalid", failureReason: `缺少正式发布字段：${missing.join(", ")}`, nextAction: "请从 V5 发布排程重新发起，不要直接调用 bridge。" } };
+  }
+  if (input.idempotencyKey !== expectedIdempotencyKey(input)) {
+    return { ok: false, statusCode: 400, payload: { ok: false, status: "precheck_failed", failureCode: "payload_invalid", failureReason: "idempotencyKey 与 scheduleId、platform、contentHash 不匹配。", nextAction: "请重新创建发布排程。" } };
+  }
+  return { ok: true };
+}
+
+async function proxyArcs(path, body) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(5_000, Number(process.env.ARCS_RUNNER_TIMEOUT_MS || 120_000)));
+  try {
+    const response = await fetch(`${arcsRunnerUrl.replace(/\/$/, "")}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${bridgeToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    return { response, payload: await response.json().catch(() => ({})) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function getWeixinMissingConfig(coverImageRef, options = {}) {
@@ -576,6 +646,34 @@ async function checkAuth(platform) {
   };
 }
 
+async function checkFormalPublishAuth(platform) {
+  if (platform === "weixin") {
+    const result = await checkAuth(platform);
+    return {
+      ...result,
+      status: result.authenticated ? "ready" : result.message?.includes("缺少配置") ? "pending_config" : "auth_required"
+    };
+  }
+
+  try {
+    const { response, payload } = await proxyArcs("/auth/check", { platform });
+    return {
+      authenticated: response.ok && payload.authenticated === true,
+      status: payload.status || (response.ok ? "ready" : "auth_required"),
+      message: payload.message || `${platform} Arcs runner 登录态检查失败。`,
+      nextAction: payload.nextAction || "请启动专用浏览器 profile 并完成平台登录。",
+      missingConfig: payload.missingConfig
+    };
+  } catch (error) {
+    return {
+      authenticated: false,
+      status: "failed",
+      message: error instanceof Error ? error.message : "Arcs runner 不可达。",
+      nextAction: "请启动本机 Arcs runner 后重试预检查。"
+    };
+  }
+}
+
 async function syncCsdnArticle(input) {
   const missingConfig = getCsdnMissingConfig();
   if (missingConfig.length) {
@@ -944,6 +1042,106 @@ async function syncWeixinArticle(input) {
   };
 }
 
+async function publishWeixinArticle(input) {
+  const validation = validateFormalPublishInput(input);
+  if (!validation.ok) return validation;
+
+  const existing = publishLedger.get(input.idempotencyKey);
+  if (existing?.result) {
+    return { statusCode: 200, payload: { ...existing.result, duplicateProtected: true } };
+  }
+  if (existing) {
+    return {
+      statusCode: 409,
+      payload: {
+        ok: false,
+        status: "pending_verify",
+        publishStatus: "submitted",
+        failureCode: "duplicate_protected",
+        failureReason: "同一微信公众号发布任务已开始，重复提交已阻止。",
+        nextAction: "请先查询公众号发布任务状态，不要再次提交。",
+        duplicateProtected: true
+      }
+    };
+  }
+
+  publishLedger.begin(input.idempotencyKey, {
+    scheduleId: input.scheduleId,
+    platform: input.platform,
+    contentHash: input.contentHash
+  });
+
+  const draft = await syncWeixinArticle({
+    title: input.title,
+    content: input.markdown,
+    contentFormat: input.contentFormat || "markdown",
+    coverUrl: input.coverMediaId ? `media_id:${input.coverMediaId}` : input.coverUrl
+  });
+  if (!draft.ok) {
+    const result = {
+      ok: false,
+      status: draft.payload.errorCode === "missing_config" ? "pending_config" : "failed",
+      publishStatus: "failed",
+      failureCode: draft.payload.errorCode === "missing_config" ? "pending_config" : "adapter_failed",
+      failureReason: draft.payload.message,
+      nextAction: draft.payload.nextAction || "请修复公众号草稿配置；确认后台没有新增文章后再创建新排程。"
+    };
+    publishLedger.complete(input.idempotencyKey, result);
+    return { statusCode: draft.statusCode, payload: result };
+  }
+
+  const token = await getWeixinAccessToken();
+  if (!token.ok) {
+    const result = { ok: false, status: "pending_config", publishStatus: "failed", failureCode: "pending_config", failureReason: token.message, nextAction: token.nextAction };
+    publishLedger.complete(input.idempotencyKey, result);
+    return { statusCode: 502, payload: result };
+  }
+
+  const result = await submitAndPollWechatPublish({
+    apiBase: wechatApiBase,
+    accessToken: token.accessToken,
+    mediaId: draft.payload.externalDraftId,
+    fetchJson,
+    pollAttempts: Math.max(1, Number(process.env.WECHAT_PUBLISH_POLL_ATTEMPTS || 10)),
+    pollIntervalMs: Math.max(250, Number(process.env.WECHAT_PUBLISH_POLL_INTERVAL_MS || 3_000))
+  });
+  publishLedger.complete(input.idempotencyKey, result);
+  return { statusCode: result.ok ? 200 : result.status === "pending_config" ? 400 : 502, payload: result };
+}
+
+async function publishFormalArticle(input) {
+  if (input.platform === "weixin") return publishWeixinArticle(input);
+  const validation = validateFormalPublishInput(input);
+  if (!validation.ok) return validation;
+  try {
+    const { response, payload } = await proxyArcs("/publish", input);
+    return { statusCode: response.status, payload };
+  } catch (error) {
+    return { statusCode: 502, payload: { ok: false, status: "failed", publishStatus: "failed", failureCode: "adapter_failed", failureReason: error instanceof Error ? error.message : "Arcs runner 调用失败。", nextAction: "不要盲目重试；先检查平台后台是否已生成文章。" } };
+  }
+}
+
+async function verifyFormalArticle(input) {
+  if (input.platform !== "weixin") {
+    try {
+      const { response, payload } = await proxyArcs("/verify", input);
+      return { statusCode: response.status, payload };
+    } catch (error) {
+      return { statusCode: 502, payload: { ok: true, status: "pending_verify", publishStatus: "submitted", failureCode: "verification_failed", failureReason: error instanceof Error ? error.message : "Arcs runner 验证失败。", nextAction: "不要重复发布；恢复 runner 后只执行验证。" } };
+    }
+  }
+
+  const publishId = String(input.externalTaskId || "").trim();
+  if (!publishId) {
+    return { statusCode: 400, payload: { ok: false, status: "pending_verify", failureCode: "verification_failed", failureReason: "缺少微信公众号 publish_id。", nextAction: "请检查 bridge 本机幂等账本或公众号后台。" } };
+  }
+  const token = await getWeixinAccessToken();
+  if (!token.ok) return { statusCode: 502, payload: { ok: false, status: "pending_verify", failureCode: "verification_failed", failureReason: token.message, nextAction: token.nextAction } };
+  const result = await verifyWechatPublish({ apiBase: wechatApiBase, accessToken: token.accessToken, publishId, fetchJson });
+  publishLedger.complete(input.idempotencyKey, result);
+  return { statusCode: result.ok ? 200 : 502, payload: result };
+}
+
 async function handleRequest(request, response) {
   if (!verifyBridgeToken(request)) {
     sendJson(response, 401, { message: "Unauthorized bridge request." });
@@ -965,7 +1163,19 @@ async function handleRequest(request, response) {
 
   if (request.method === "POST" && url.pathname === "/auth/check") {
     const body = await readJsonBody(request);
-    sendJson(response, 200, await checkAuth(body.platform));
+    sendJson(response, 200, body.purpose === "formal_publish" ? await checkFormalPublishAuth(body.platform) : await checkAuth(body.platform));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/publish") {
+    const result = await publishFormalArticle(await readJsonBody(request));
+    sendJson(response, result.statusCode, result.payload);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/publish/verify") {
+    const result = await verifyFormalArticle(await readJsonBody(request));
+    sendJson(response, result.statusCode, result.payload);
     return;
   }
 
