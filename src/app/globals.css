@@ -1064,6 +1064,44 @@ body {
   margin-top: 0;
 }
 
+.v5-wechat-presentation {
+  display: grid;
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.v5-wechat-presentation-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v5-wechat-presentation-heading h5 {
+  margin: 0 0 4px;
+}
+
+.v5-wechat-selection-summary {
+  padding: 12px 14px;
+  background: #f7f8fa;
+  border-left: 3px solid #1677ff;
+}
+
+.v5-wechat-selection-summary .ant-typography {
+  margin-bottom: 8px;
+}
+
+.v5-wechat-mobile-preview {
+  display: block;
+  width: min(100%, 390px);
+  height: 640px;
+  margin: 0 auto;
+  border: 1px solid #d9dce1;
+  border-radius: 6px;
+  background: #fff;
+}
+
 .v5-loading-row {
   display: flex;
   justify-content: center;

@@ -2,6 +2,7 @@ import http from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveWeixinArticleContent } from "./lib/wechatsync-content.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -80,10 +81,10 @@ function verifyBridgeToken(request) {
   return request.headers.authorization === `Bearer ${bridgeToken}`;
 }
 
-function getWeixinMissingConfig() {
+function getWeixinMissingConfig(coverImageRef, options = {}) {
   const missingConfig = ["WECHAT_MP_APP_ID", "WECHAT_MP_APP_SECRET"].filter((name) => !process.env[name]?.trim());
 
-  if (!process.env.WECHAT_MP_THUMB_MEDIA_ID?.trim() && !process.env.WECHAT_MP_THUMB_IMAGE_PATH?.trim()) {
+  if (!options.skipCover && !coverImageRef && !process.env.WECHAT_MP_THUMB_MEDIA_ID?.trim() && !process.env.WECHAT_MP_THUMB_IMAGE_PATH?.trim()) {
     missingConfig.push("WECHAT_MP_THUMB_MEDIA_ID 或 WECHAT_MP_THUMB_IMAGE_PATH");
   }
 
@@ -457,8 +458,16 @@ function resolveProjectPath(filePath) {
   return isAbsolute(filePath) ? filePath : resolve(projectRoot, filePath);
 }
 
-async function getWeixinThumbMediaId(accessToken) {
-  const thumbImagePath = process.env.WECHAT_MP_THUMB_IMAGE_PATH?.trim();
+async function getWeixinThumbMediaId(accessToken, coverImageRef) {
+  const requestedRef = String(coverImageRef || "").trim();
+  if (requestedRef.startsWith("media_id:")) {
+    const mediaId = requestedRef.slice("media_id:".length).trim();
+    return mediaId ? { ok: true, mediaId } : { ok: false, message: "封面 media_id 不能为空。" };
+  }
+  if (/^https?:\/\//i.test(requestedRef)) {
+    return { ok: false, message: "远程封面 URL 不会由 bridge 直接下载；请传 media_id:<id> 或工作台本地图片路径。" };
+  }
+  const thumbImagePath = requestedRef || process.env.WECHAT_MP_THUMB_IMAGE_PATH?.trim();
 
   if (!thumbImagePath) {
     const thumbMediaId = process.env.WECHAT_MP_THUMB_MEDIA_ID?.trim();
@@ -542,7 +551,7 @@ async function checkAuth(platform) {
     };
   }
 
-  const missingConfig = getWeixinMissingConfig();
+  const missingConfig = getWeixinMissingConfig(undefined, { skipCover: true });
   if (missingConfig.length) {
     return {
       authenticated: false,
@@ -831,7 +840,8 @@ async function syncZhihuArticle(input) {
 }
 
 async function syncWeixinArticle(input) {
-  const missingConfig = getWeixinMissingConfig();
+  const coverImageRef = String(input.coverUrl || "").trim();
+  const missingConfig = getWeixinMissingConfig(coverImageRef);
   if (missingConfig.length) {
     return {
       ok: false,
@@ -844,9 +854,10 @@ async function syncWeixinArticle(input) {
   }
 
   const title = String(input.title || "").trim();
-  const markdown = String(input.content || "").trim();
+  const contentFormat = input.contentFormat === "wechat_html" ? "wechat_html" : "markdown";
+  const sourceContent = String(input.content || "").trim();
 
-  if (!title || !markdown) {
+  if (!title || !sourceContent) {
     return {
       ok: false,
       statusCode: 400,
@@ -870,7 +881,7 @@ async function syncWeixinArticle(input) {
     };
   }
 
-  const thumb = await getWeixinThumbMediaId(token.accessToken);
+  const thumb = await getWeixinThumbMediaId(token.accessToken, coverImageRef);
   if (!thumb.ok) {
     return {
       ok: false,
@@ -886,13 +897,13 @@ async function syncWeixinArticle(input) {
   const url = new URL(`${wechatApiBase}/cgi-bin/draft/add`);
   url.searchParams.set("access_token", token.accessToken);
 
-  const content = markdownToWechatHtml(markdown);
+  const content = resolveWeixinArticleContent({ contentFormat, content: sourceContent }, markdownToWechatHtml);
   const draftPayload = {
     articles: [
       {
         title: title.slice(0, 64),
         author: process.env.WECHAT_MP_AUTHOR || "",
-        digest: (process.env.WECHAT_MP_DIGEST || createDigest(markdown)).slice(0, 120),
+        digest: (process.env.WECHAT_MP_DIGEST || createDigest(sourceContent)).slice(0, 120),
         content,
         content_source_url: process.env.WECHAT_MP_CONTENT_SOURCE_URL || "",
         thumb_media_id: thumb.mediaId,

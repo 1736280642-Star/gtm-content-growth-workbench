@@ -5,6 +5,7 @@ import { Button, Drawer, Empty, Input, Space, Table, Tag, Typography } from "ant
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ProductionDraftSummary, ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
+import { WechatPresentationPanel } from "@/components/WechatPresentationPanel";
 
 const statusMeta: Record<ProductionMatrixTask["status"], { label: string; color: string }> = {
   ready_for_generation: { label: "待生成", color: "blue" },
@@ -128,6 +129,9 @@ export function BatchGenerationMatrixTable({
               <Typography.Title level={5} id="content-basis-heading">内容依据</Typography.Title>
               <ul>{(selectedTask.currentDraft || selectedTask.lastUsableDraft)?.basisSummary.map((item) => <li key={item}>{item}</li>)}</ul>
             </section>
+            {(selectedTask.currentDraft || selectedTask.lastUsableDraft)?.draftId ? (
+              <WechatPresentationPanel draftVersionId={(selectedTask.currentDraft || selectedTask.lastUsableDraft)!.draftId} />
+            ) : null}
             <Space wrap>
               {editing ? <Button type="primary" onClick={async () => { await onSaveDraft?.(selectedTask, markdown); setEditing(false); }}>保存并自动复检</Button> : <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>}
               {editing ? <Button onClick={() => { setEditing(false); setMarkdown((selectedTask.currentDraft || selectedTask.lastUsableDraft)?.markdown || ""); }}>取消</Button> : null}

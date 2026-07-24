@@ -35,6 +35,7 @@
     "script:v5-single-article:bootstrap": "node scripts/v5-single-article-bootstrap.mjs",
     "test:v5-single-article:contracts": "node --test scripts/v5-single-article-contracts.test.mjs",
     "test:v5-single-article": "node scripts/v5-single-article-acceptance.mjs",
+    "test:v5-wechat-presentation": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-wechat-presentation.test.mjs",
     "capture-runner:start": "node capture-runner/src/server.mjs",
     "test:v5-observation": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-observation-review.test.mjs",
     "test:v5-monthly-production": "node --test scripts/v5-monthly-production.test.mjs",
