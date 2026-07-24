@@ -323,10 +323,3 @@ npm.cmd run start -- --hostname 0.0.0.0 --port 3047
 
 - `AGENTS.md`：项目最高优先级业务、命名、验证与安全规则。
 - `docs/usage.md`：运行、smoke 和专项链路说明。
-- `docs/方案与规划/分支一-知识问题与配置管理开发文档.md`：问题、知识和配置管理设计。
-- `docs/方案与规划/分支二-月度策略与批量生产开发文档.md`：月度策略、内容类型和批量生产设计。
-- `docs/方案与规划/分支三-AI前台测试复盘与官网审计开发文档.md`：前台采集、月度复盘和官网审计设计。
-- `docs/方案与规划/2026-07-16-v5-real-rag-knowledge-production-integration-plan.md`：真实 RAG 与知识生产集成计划。
-- `docs/方案与规划/2026-07-17-v5-single-article-integration-implementation.md`：单篇正式正文链路。
-
-README 描述的是当前 V5 用户入口和能力边界。更细的状态机、数据模型和验收条件以上述代码与方案文档为准。
