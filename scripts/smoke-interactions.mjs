@@ -523,6 +523,8 @@ const contracts = [
       "PlatformPublishPayload",
       "PublishSchedule",
       "PublishAttempt",
+      "contentHash",
+      "idempotencyKey",
       "published_verified",
       "published_pending_url",
       "manual_takeover_required"
@@ -536,6 +538,7 @@ const contracts = [
       "publishAttempts: PublishAttempt[]",
       "createPublishSchedules",
       "runPublishSchedule",
+      "verifyPublishSchedule",
       "runDuePublishSchedules",
       "direct_publish_attempt_finished",
       "正式发布排程已创建"

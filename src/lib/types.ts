@@ -525,6 +525,9 @@ export interface DistributionTarget {
 }
 
 export interface PlatformPublishPayload {
+  scheduleId: string;
+  contentHash: string;
+  idempotencyKey: string;
   title: string;
   markdown: string;
   summary?: string;
@@ -546,10 +549,13 @@ export interface PublishSchedule {
   draftId: string;
   publishRecordId?: string;
   matrixItemId?: string;
+  contentHash: string;
+  idempotencyKey: string;
   attemptIds: string[];
   latestAttemptId?: string;
   publishedAt?: string;
   platformArticleId?: string;
+  externalTaskId?: string;
   publicUrl?: string;
   pendingCsvReturn?: boolean;
   failureCode?: PublishFailureCode;
@@ -565,6 +571,8 @@ export interface PublishAttempt {
   id: string;
   scheduleId: string;
   platform: DirectPublishPlatformKey;
+  contentHash: string;
+  idempotencyKey: string;
   status: PublishAttemptStatus;
   startedAt: string;
   finishedAt?: string;
@@ -574,6 +582,7 @@ export interface PublishAttempt {
   publishStatus?: "submitted" | "confirmed" | "pending_review" | "failed";
   verifyStatus?: "verified" | "pending" | "failed" | "not_started";
   platformArticleId?: string;
+  externalTaskId?: string;
   publicUrl?: string;
   pendingCsvReturn?: boolean;
   failureCode?: PublishFailureCode;
