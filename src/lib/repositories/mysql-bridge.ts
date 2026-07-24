@@ -4,6 +4,7 @@ import type { WorkbenchState } from "../workbench-store";
 import type { WorkbenchRepository } from "./types";
 
 const bridgeTimeoutMs = Number(process.env.MYSQL_BRIDGE_TIMEOUT_MS || 15000);
+const bridgeMaxBufferBytes = Number(process.env.MYSQL_BRIDGE_MAX_BUFFER_BYTES || 16 * 1024 * 1024);
 
 interface BridgeResponse<T> {
   ok: boolean;
@@ -19,6 +20,7 @@ function callBridge<T>(action: "read" | "write", payload?: unknown): BridgeRespo
     input: payload === undefined ? undefined : `${JSON.stringify(payload)}\n`,
     encoding: "utf8",
     env: process.env,
+    maxBuffer: bridgeMaxBufferBytes,
     timeout: bridgeTimeoutMs
   });
 

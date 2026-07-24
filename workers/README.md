@@ -18,7 +18,7 @@ npm.cmd run worker:schedule-pipeline -- --base-url http://127.0.0.1:3000 --inter
 1. `sync-blog.mjs`: 调用 `/api/blog-articles/sync`，支持 `sourceUrl`、`sourcePath`、`csv`、`json`、`text`。
 2. `import-demo-log.mjs`: 调用 `/api/log-imports`，支持 `sourceType`、`filePath`、`sourcePath`、`csv`、`raw-log`。
 3. `import-channel-metrics.mjs`: 调用 `/api/channel-metrics/import`，支持 `filePath`、`sourcePath`、`csv`。
-4. `run-pipeline.mjs`: 串联博客同步、日志导入、渠道数据导入和月度复盘读取，支持 `skip-*` 参数跳过外部依赖步骤。
+4. `run-pipeline.mjs`: 串联博客同步、日志导入、渠道数据导入和周报读取，支持 `skip-*` 参数跳过外部依赖步骤。
 5. `schedule-pipeline.mjs`: 按固定间隔重复调用 `/api/pipeline/run`，默认只执行一次；传 `--repeat` 才会循环。
 
-当外部数据源缺失时，pipeline 会返回 `partial`，并标记对应步骤；这表示依赖尚未满足，不代表其他导入步骤失败。
+当外部模型配置缺失时，pipeline 会返回 `partial`，并把对应步骤标记为 `pending_config`；这表示配置依赖尚未满足，不代表日志或渠道导入失败。

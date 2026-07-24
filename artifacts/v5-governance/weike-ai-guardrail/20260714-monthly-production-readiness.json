@@ -1,0 +1,43 @@
+{
+  "productId": "weike-ai-guardrail",
+  "rulePackageVersionId": "weike-guardrail-pilot-20260714-rule-v0.1.0",
+  "rulePackageStatus": "draft_pending_product_confirmation",
+  "sourceSnapshotHash": "657d56f37af2ad24d9363f87331e6a1acfd15f7427dcb8988f300ed3ecb1d331",
+  "monthlyProductionReady": false,
+  "status": "blocked",
+  "reasonCodes": [
+    "no_active_rule_package",
+    "approved_claim_missing",
+    "required_approvals_pending",
+    "product_identity_incomplete",
+    "blocking_evidence_gaps"
+  ],
+  "allowedContentTypes": [],
+  "conditionalContentTypes": [
+    "risk_education",
+    "concept_explainer"
+  ],
+  "blockedContentTypes": [
+    "performance_benchmark",
+    "customer_case",
+    "compliance_claim",
+    "deployment_guarantee",
+    "product_comparison"
+  ],
+  "allowedChannels": [],
+  "maxMonthlyQuota": null,
+  "pendingRoles": [
+    "product_owner",
+    "technical_owner",
+    "security_owner",
+    "privacy_owner",
+    "legal_owner",
+    "delivery_owner"
+  ],
+  "evidenceGapCount": 8,
+  "candidateClaimCount": 9,
+  "approvedClaimCount": 0,
+  "activationAttempted": false,
+  "evaluatedAt": "2026-07-14",
+  "evaluatorVersion": "v5-monthly-readiness-2026.07.14.1"
+}

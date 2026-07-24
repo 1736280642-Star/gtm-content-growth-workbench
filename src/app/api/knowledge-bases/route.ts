@@ -15,6 +15,6 @@ export function GET() {
 
 export async function POST(request: Request) {
   const payload = await readRequestPayload(request);
-  const result = createKnowledgeBase(payload);
+  const result = await createKnowledgeBase(payload);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }

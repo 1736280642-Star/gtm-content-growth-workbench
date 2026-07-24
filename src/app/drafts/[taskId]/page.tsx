@@ -1,26 +1,20 @@
 "use client";
 
-import { Alert, Button, Card, Col, Descriptions, Input, Popconfirm, Row, Space, Tag, message } from "antd";
+import { Alert, Button, Card, Input, Modal, Select, Space, Tag, message } from "antd";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { PageErrorState } from "@/components/PageErrorState";
-import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
-import { channelLabels, contentTypeLabels, productLabels, statusLabels } from "@/lib/labels";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
-import type { PublishRecord } from "@/lib/types";
-import { useEffect, useState } from "react";
-
-const draftStatusLabels = {
-  draft: "草稿",
-  final: "终稿",
-  discarded: "已废弃"
-} as const;
+import { useWorkbenchSnapshot } from "@/lib/client-state";
+import { channelLabels, contentTypeLabels, productLabels, statusLabels } from "@/lib/labels";
+import type { DraftRiskKeepReasonCategory } from "@/lib/types";
 
 const generationModeLabels = {
-  local_rule: "本地规则引擎",
-  ai_provider: "AI Provider"
+  local_rule: "本地规则稿",
+  ai_provider: "AI 生成"
 } as const;
 
 const generationStatusLabels = {
@@ -29,172 +23,87 @@ const generationStatusLabels = {
   failed: "失败"
 } as const;
 
-type DraftReviewNextStep = "configure_generation" | "regenerate_draft" | "fix_qa" | "join_publish_queue" | "publish" | "fill_url" | "record_metrics" | "fix_publish" | "retrospect";
-type DraftPublishHandoff = "none" | "queued" | "published" | "url_filled" | "measured" | "failed";
-
-const draftReviewNextStepLabels: Record<DraftReviewNextStep, string> = {
-  configure_generation: "检查配置",
-  regenerate_draft: "重新生成",
-  fix_qa: "处理阻断",
-  join_publish_queue: "加入发布队列",
-  publish: "人工发布",
-  fill_url: "回填 URL",
-  record_metrics: "录入指标",
-  fix_publish: "排查发布",
-  retrospect: "进入复盘"
+const keepReasonCategoryLabels: Record<DraftRiskKeepReasonCategory, string> = {
+  false_positive: "质检误报",
+  evidence_added: "已补证据",
+  business_exception: "业务例外",
+  source_quote: "原文引用",
+  uncategorized: "未分类"
 };
 
-const draftReviewNextStepColors: Record<DraftReviewNextStep, string> = {
-  configure_generation: "gold",
-  regenerate_draft: "blue",
-  fix_qa: "red",
-  join_publish_queue: "purple",
-  publish: "gold",
-  fill_url: "blue",
-  record_metrics: "purple",
-  fix_publish: "red",
-  retrospect: "green"
+const keepReasonCategoryOptions = Object.entries(keepReasonCategoryLabels).map(([value, label]) => ({
+  value,
+  label
+}));
+
+type PendingDraftEditAction = {
+  type: "delete_risk_segment" | "ai_rewrite_segment";
+  source: "user" | "local_rule";
+  segment: string;
+  originalText: string;
+  rewrittenText?: string;
+  reason?: string;
 };
 
-const draftPublishHandoffLabels: Record<DraftPublishHandoff, string> = {
-  none: "未入队",
-  queued: "待发布",
-  published: "待回填 URL",
-  url_filled: "待录指标",
-  measured: "可复盘",
-  failed: "发布失败"
-};
+function buildSegmentRewrite(segment: string) {
+  const rewritten = segment
+    .split("最强")
+    .join("更有竞争力")
+    .split("绝对领先")
+    .join("具备一定优势")
+    .split("永久免费")
+    .join("具体费用以官方政策为准")
+    .split("100%")
+    .join("尽量");
 
-const draftPublishHandoffColors: Record<DraftPublishHandoff, string> = {
-  none: "default",
-  queued: "gold",
-  published: "blue",
-  url_filled: "purple",
-  measured: "green",
-  failed: "red"
-};
-
-function getDraftPublishHandoff(record?: PublishRecord): DraftPublishHandoff {
-  if (!record) {
-    return "none";
-  }
-
-  if (record.publishStatus === "failed") {
-    return "failed";
-  }
-
-  if (record.channelMetrics) {
-    return "measured";
-  }
-
-  if (record.publishStatus === "url_filled") {
-    return "url_filled";
-  }
-
-  if (record.publishStatus === "published") {
-    return "published";
-  }
-
-  return "queued";
+  return rewritten === segment ? `${segment}（需补充证据后再表达）` : rewritten;
 }
 
-function getDraftReviewNextStep(
-  generationStatus: keyof typeof generationStatusLabels,
-  qaPassed: boolean,
-  publishRecord?: PublishRecord
-): DraftReviewNextStep {
-  const publishHandoff = getDraftPublishHandoff(publishRecord);
+function inferKeepReasonCategory(reason: string): DraftRiskKeepReasonCategory {
+  const text = reason.toLowerCase();
 
-  if (publishHandoff === "failed") {
-    return "fix_publish";
+  if (text.includes("引用") || text.includes("原文") || text.includes("客户原话") || text.includes("访谈")) {
+    return "source_quote";
   }
 
-  if (publishHandoff === "queued") {
-    return "publish";
+  if (text.includes("误报") || text.includes("不是风险") || text.includes("可接受") || text.includes("上下文")) {
+    return "false_positive";
   }
 
-  if (publishHandoff === "published") {
-    return "fill_url";
+  if (text.includes("证据") || text.includes("官网") || text.includes("链接") || text.includes("案例") || text.includes("资料") || text.includes("已补")) {
+    return "evidence_added";
   }
 
-  if (publishHandoff === "url_filled") {
-    return "record_metrics";
+  if (text.includes("业务") || text.includes("必须") || text.includes("特殊") || text.includes("渠道") || text.includes("活动") || text.includes("合规")) {
+    return "business_exception";
   }
 
-  if (publishHandoff === "measured") {
-    return "retrospect";
-  }
-
-  if (generationStatus === "pending_config") {
-    return "configure_generation";
-  }
-
-  if (generationStatus === "failed") {
-    return "regenerate_draft";
-  }
-
-  if (!qaPassed) {
-    return "fix_qa";
-  }
-
-  return "join_publish_queue";
-}
-
-function getDraftReviewActionText(nextStep: DraftReviewNextStep, hasWarnings: boolean) {
-  if (nextStep === "configure_generation") {
-    return "生成能力待配置，先去 AI 配置页确认 Provider，再决定是否重新生成。";
-  }
-
-  if (nextStep === "regenerate_draft") {
-    return "上次生成失败或当前内容需要刷新，建议重新生成并重新质检。";
-  }
-
-  if (nextStep === "fix_qa") {
-    return "先处理阻断项，再保存草稿或重新生成，质检通过后再加入发布队列。";
-  }
-
-  if (nextStep === "join_publish_queue") {
-    return hasWarnings
-      ? "阻断项已清除，但仍有警告项，人工复核后再加入发布队列。"
-      : "当前稿件已具备入队条件，确认无误后可加入发布队列。";
-  }
-
-  if (nextStep === "publish") {
-    return "终稿已经进入发布队列，下一步去发布页完成人工发布。";
-  }
-
-  if (nextStep === "fill_url") {
-    return "内容已发布但还没回填链接，先补 URL，后续才能稳定复盘。";
-  }
-
-  if (nextStep === "record_metrics") {
-    return "发布链路已完成，补录渠道表现数据后再进入月度复盘。";
-  }
-
-  if (nextStep === "fix_publish") {
-    return "发布记录出现失败，先去发布队列排查，再决定是否回到终稿继续调整。";
-  }
-
-  return "终稿、发布和指标都已闭环，可以直接进入月度复盘。";
+  return "uncategorized";
 }
 
 export default function DraftReviewPage({ params }: { params: { taskId: string } }) {
   const {
-    state: { drafts, tasks, publishRecords },
+    state: { drafts, tasks },
     loading,
     error,
     refresh
   } = useWorkbenchSnapshot();
-  const router = useRouter();
   const [messageApi, contextHolder] = message.useMessage();
   const [saving, setSaving] = useState(false);
-  const [approving, setApproving] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [content, setContent] = useState("");
-  const task = tasks.find((item) => item.id === params.taskId) || tasks[0];
-  const draft = task ? drafts.find((item) => item.taskId === task.id) || drafts[0] : drafts[0];
+  const [keptSegments, setKeptSegments] = useState<string[]>([]);
+  const [keepReasons, setKeepReasons] = useState<Record<string, string>>({});
+  const [keepReasonCategories, setKeepReasonCategories] = useState<Record<string, DraftRiskKeepReasonCategory>>({});
+  const [pendingKeepSegment, setPendingKeepSegment] = useState<string>();
+  const [pendingKeepReason, setPendingKeepReason] = useState("");
+  const [pendingKeepReasonCategory, setPendingKeepReasonCategory] = useState<DraftRiskKeepReasonCategory>("uncategorized");
+  const [pendingKeepReasonCategoryTouched, setPendingKeepReasonCategoryTouched] = useState(false);
+  const [pendingEditActions, setPendingEditActions] = useState<PendingDraftEditAction[]>([]);
+  const task = tasks.find((item) => item.id === params.taskId);
+  const draft = task ? drafts.find((item) => item.taskId === task.id) : undefined;
 
   useEffect(() => {
     if (!draft) {
@@ -206,76 +115,291 @@ export default function DraftReviewPage({ params }: { params: { taskId: string }
     setContent(draft.content);
   }, [draft]);
 
-  async function handleSaveDraft() {
+  useEffect(() => {
+    setKeptSegments([]);
+    setKeepReasons({});
+    setKeepReasonCategories({});
+    setPendingKeepSegment(undefined);
+    setPendingKeepReason("");
+    setPendingKeepReasonCategory("uncategorized");
+    setPendingKeepReasonCategoryTouched(false);
+    setPendingEditActions([]);
+  }, [draft?.id, draft?.version]);
+
+  const failedSegments = useMemo(() => draft?.qaResult.failedSegments || [], [draft]);
+  const visibleFailedSegments = useMemo(
+    () => Array.from(new Set(failedSegments.filter((segment) => segment && content.includes(segment)))),
+    [content, failedSegments]
+  );
+  const issues = draft?.qaResult.issues || [];
+  const isDirty = Boolean(draft && (title !== draft.title || summary !== draft.summary || content !== draft.content));
+  const copyAllowed = Boolean(draft?.qaResult.passed && draft.qaResult.copyAllowed !== false && !isDirty);
+  const generationMode = draft?.generationSource?.mode ?? "local_rule";
+  const generationStatus = draft?.generationSource?.status ?? "success";
+  const editActions = draft?.qaResult.editActions || [];
+  const showInlineRiskPreview = Boolean(visibleFailedSegments.length);
+  const showRiskRail = Boolean(editActions.length);
+
+  function getEditActionLabel(type: string) {
+    if (type === "delete_risk_segment") return "已删除";
+    if (type === "ai_rewrite_segment") return "AI改写";
+    if (type === "keep_risk_segment") return "保留";
+    if (type === "run_qa") return "质检";
+    return "人工修改";
+  }
+
+  function getRiskProblem(segment: string) {
+    const issue = issues.find((item) => item.failedText === segment || Boolean(item.failedText && segment.includes(item.failedText)));
+
+    if (issue) {
+      return `${issue.rule}：${issue.suggestedAction}`;
+    }
+
+    return draft?.qaResult.blockers[0] || "存在高风险表达，需处理后重新质检。";
+  }
+
+  function renderAnnotatedMarkdown() {
+    if (!content.trim()) {
+      return <span className="muted">暂无正文。</span>;
+    }
+
+    if (!visibleFailedSegments.length) {
+      return <span>{content}</span>;
+    }
+
+    const matches = visibleFailedSegments
+      .map((segment) => ({ segment, index: content.indexOf(segment) }))
+      .filter((item) => item.index >= 0)
+      .sort((a, b) => a.index - b.index);
+    const nodes: ReactNode[] = [];
+    let cursor = 0;
+
+    matches.forEach(({ segment, index }, matchIndex) => {
+      if (index < cursor) {
+        return;
+      }
+
+      if (index > cursor) {
+        nodes.push(<span key={`text-${matchIndex}`}>{content.slice(cursor, index)}</span>);
+      }
+
+      nodes.push(
+        <span className="draft-risk-segment" key={`${segment}-${matchIndex}`}>
+          <span className="draft-risk-text">{segment}</span>
+          <span className="draft-risk-callout">
+            <strong>高风险！问题：{getRiskProblem(segment)}</strong>
+            {keptSegments.includes(segment) ? (
+              <Tag color="orange">
+                已保留：{keepReasonCategoryLabels[keepReasonCategories[segment] || inferKeepReasonCategory(keepReasons[segment] || "")]}
+              </Tag>
+            ) : null}
+            <Space size={6} wrap className="draft-risk-actions">
+              <Button size="small" danger onClick={() => handleDeleteFailedSegment(segment)}>
+                删除
+              </Button>
+              <Button size="small" onClick={() => handleRewriteFailedSegment(segment)}>
+                AI改写
+              </Button>
+              <Button size="small" onClick={() => handleKeepFailedSegment(segment)}>
+                保留
+              </Button>
+            </Space>
+          </span>
+        </span>
+      );
+      cursor = index + segment.length;
+    });
+
+    if (cursor < content.length) {
+      nodes.push(<span key="text-end">{content.slice(cursor)}</span>);
+    }
+
+    return nodes;
+  }
+
+  async function handleSaveAndQa() {
+    if (!draft) {
+      return;
+    }
+
     setSaving(true);
 
     try {
       const result = await callJsonApi(`/api/article-drafts/${draft.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ title, summary, content })
+        body: JSON.stringify({
+          title,
+          summary,
+          content,
+          editNote: isDirty ? "人工修改后运行 AI 二次质检。" : "手动触发 AI 二次质检。",
+          keptRiskSegments: keptSegments.map((segment) => ({
+            segment,
+            reason: keepReasons[segment],
+            keepReasonCategory: keepReasonCategories[segment] || inferKeepReasonCategory(keepReasons[segment] || "")
+          })),
+          editActions: pendingEditActions
+        })
       });
       await refresh();
-      messageApi.success(formatApiMessage(result, "草稿已保存"));
+      setPendingEditActions([]);
+      messageApi.success(formatApiMessage(result, "AI 二次质检已完成"));
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "保存草稿失败");
+      messageApi.error(error instanceof Error ? error.message : "AI 二次质检失败");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleApproveDraft() {
-    setApproving(true);
-
-    try {
-      const result = await callJsonApi(`/api/article-drafts/${draft.id}/approve`, { method: "POST" });
-      await refresh();
-      messageApi.success(formatApiMessage(result, "已加入发布队列"));
-      router.push("/publish");
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "加入发布队列失败");
-    } finally {
-      setApproving(false);
-    }
-  }
-
-  async function handleRegenerateDraft() {
-    if (!task) {
+  function handleRestorePrevious() {
+    if (!draft) {
       return;
     }
 
-    setRegenerating(true);
+    setTitle(draft.title);
+    setSummary(draft.summary);
+    setContent(draft.content);
+    setKeptSegments([]);
+    setKeepReasons({});
+    setKeepReasonCategories({});
+    setPendingEditActions([]);
+    messageApi.info("已返回到上一次保存后的草稿内容。");
+  }
+
+  function handleDeleteFailedSegment(segment: string) {
+    const nextContent = content
+      .split(segment)
+      .join("")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    setContent(nextContent);
+    setPendingEditActions((current) => [
+      ...current,
+      {
+        type: "delete_risk_segment",
+        source: "user",
+        segment,
+        originalText: segment,
+        reason: getRiskProblem(segment)
+      }
+    ]);
+    setKeptSegments((current) => current.filter((item) => item !== segment));
+    setKeepReasons((current) => {
+      const next = { ...current };
+      delete next[segment];
+      return next;
+    });
+    setKeepReasonCategories((current) => {
+      const next = { ...current };
+      delete next[segment];
+      return next;
+    });
+    messageApi.info("已删除高风险片段，请重新运行 AI 二次质检。");
+  }
+
+  function handleRewriteFailedSegment(segment: string) {
+    const rewritten = buildSegmentRewrite(segment);
+    setContent(content.split(segment).join(rewritten));
+    setPendingEditActions((current) => [
+      ...current,
+      {
+        type: "ai_rewrite_segment",
+        source: "local_rule",
+        segment,
+        originalText: segment,
+        rewrittenText: rewritten,
+        reason: getRiskProblem(segment)
+      }
+    ]);
+    setKeptSegments((current) => current.filter((item) => item !== segment));
+    setKeepReasons((current) => {
+      const next = { ...current };
+      delete next[segment];
+      return next;
+    });
+    setKeepReasonCategories((current) => {
+      const next = { ...current };
+      delete next[segment];
+      return next;
+    });
+    messageApi.info("已按本地规则生成改写建议，请重新运行 AI 二次质检。");
+  }
+
+  function handleKeepFailedSegment(segment: string) {
+    const existingReason = keepReasons[segment] || "";
+    setPendingKeepSegment(segment);
+    setPendingKeepReason(existingReason);
+    setPendingKeepReasonCategory(keepReasonCategories[segment] || inferKeepReasonCategory(existingReason));
+    setPendingKeepReasonCategoryTouched(Boolean(keepReasonCategories[segment]));
+  }
+
+  function handlePendingKeepReasonChange(value: string) {
+    setPendingKeepReason(value);
+
+    if (!pendingKeepReasonCategoryTouched) {
+      setPendingKeepReasonCategory(inferKeepReasonCategory(value));
+    }
+  }
+
+  function confirmKeepFailedSegment() {
+    if (!pendingKeepSegment) {
+      return;
+    }
+
+    if (!pendingKeepReason.trim()) {
+      messageApi.warning("请填写保留原因。");
+      return;
+    }
+
+    const segment = pendingKeepSegment;
+    const reason = pendingKeepReason.trim();
+    const keepReasonCategory = pendingKeepReasonCategory || inferKeepReasonCategory(reason);
+    setKeptSegments((current) => (current.includes(segment) ? current : [...current, segment]));
+    setKeepReasons((current) => ({
+      ...current,
+      [segment]: reason
+    }));
+    setKeepReasonCategories((current) => ({
+      ...current,
+      [segment]: keepReasonCategory
+    }));
+    setPendingKeepSegment(undefined);
+    setPendingKeepReason("");
+    setPendingKeepReasonCategory("uncategorized");
+    setPendingKeepReasonCategoryTouched(false);
+    messageApi.warning("已记录保留原因。保留高风险片段后，仍需保存并重新质检。");
+  }
+
+  async function handleCopyFullText() {
+    if (!copyAllowed) {
+      messageApi.warning(isDirty ? "请先保存并运行 AI 二次质检，通过后再复制全文。" : "质检未通过，暂不能复制全文。");
+      return;
+    }
+
+    setCopying(true);
 
     try {
-      const result = await callJsonApi(`/api/content-tasks/${task.id}/generate`, { method: "POST" });
-      const snapshot = await refresh();
-      const nextDraft = snapshot?.state.drafts.find((item) => item.taskId === task.id);
-
-      if (nextDraft) {
-        setTitle(nextDraft.title);
-        setSummary(nextDraft.summary);
-        setContent(nextDraft.content);
-      }
-
-      messageApi.success(formatApiMessage(result, "稿件已重新生成"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "重新生成失败");
+      await navigator.clipboard.writeText([title, summary, content].filter(Boolean).join("\n\n"));
+      messageApi.success("全文已复制，可以到外部渠道人工发布。发布完成后回今日发布页确认并回填 URL。");
+    } catch {
+      messageApi.error("复制失败，请检查浏览器剪贴板权限。");
     } finally {
-      setRegenerating(false);
+      setCopying(false);
     }
   }
 
   if (!task || !draft) {
     return (
       <>
-        <PageHeader title="内容终稿确认" subtitle="当前任务还没有生成稿件。" />
+        <PageHeader title="草稿 AI 二次质检" subtitle="当前任务还没有生成稿件。" />
         <PageErrorState message={error} loading={loading} onRetry={refresh} />
         <Card>
           <ActionEmpty
-            title="当前任务还没有生成稿件"
-            description="请先在今日任务页生成稿件，再进入终稿确认。"
+            title="当前任务还没有草稿"
+            description="请先在今日发布页勾选任务并批量生成正文。"
             action={
               <Link href="/today">
-                <Button type="primary">去今日任务</Button>
+                <Button type="primary">去今日发布</Button>
               </Link>
             }
           />
@@ -284,229 +408,175 @@ export default function DraftReviewPage({ params }: { params: { taskId: string }
     );
   }
 
-  const hasBlockers = Boolean(draft.qaResult.blockers.length);
-  const hasWarnings = Boolean(draft.qaResult.warnings.length);
-  const canApproveDraft = Boolean(draft.qaResult.passed);
-  const generationMode = draft.generationSource?.mode ?? "local_rule";
-  const generationStatus = draft.generationSource?.status ?? "success";
-  const publishRecord = publishRecords.find((item) => item.draftId === draft.id);
-  const publishHandoff = getDraftPublishHandoff(publishRecord);
-  const draftReviewNextStep = getDraftReviewNextStep(generationStatus, canApproveDraft, publishRecord);
-  const draftReviewActionText = getDraftReviewActionText(draftReviewNextStep, hasWarnings);
-
-  function renderDraftReviewEntry() {
-    if (draftReviewNextStep === "configure_generation") {
-      return (
-        <Link href="/ai-config">
-          <Button size="small">看 AI 配置</Button>
-        </Link>
-      );
-    }
-
-    if (draftReviewNextStep === "regenerate_draft") {
-      return (
-        <Popconfirm
-          title="确认重新生成稿件？"
-          description="当前编辑区内容会被新的生成结果覆盖。"
-          okText="重新生成"
-          cancelText="取消"
-          onConfirm={handleRegenerateDraft}
-        >
-          <Button size="small" loading={regenerating}>
-            重新生成
-          </Button>
-        </Popconfirm>
-      );
-    }
-
-    if (draftReviewNextStep === "fix_qa") {
-      return (
-        <Button size="small" loading={saving} onClick={handleSaveDraft}>
-          保存草稿
-        </Button>
-      );
-    }
-
-    if (draftReviewNextStep === "join_publish_queue") {
-      return (
-        <Popconfirm
-          title="确认加入发布队列？"
-          description="终稿确认后会创建或更新发布记录。"
-          okText="入队"
-          cancelText="取消"
-          onConfirm={handleApproveDraft}
-        >
-          <Button size="small" type="primary" loading={approving} disabled={!draft.qaResult.passed}>
-            加入发布队列
-          </Button>
-        </Popconfirm>
-      );
-    }
-
-    if (draftReviewNextStep === "publish" || draftReviewNextStep === "fill_url" || draftReviewNextStep === "record_metrics" || draftReviewNextStep === "fix_publish") {
-      return (
-        <Link href="/publish">
-          <Button size="small">{draftReviewNextStepLabels[draftReviewNextStep]}</Button>
-        </Link>
-      );
-    }
-
-    return (
-      <Link href="/monthly-review">
-        <Button size="small">去月度复盘</Button>
-      </Link>
-    );
-  }
+  const qaType = !draft.qaResult.passed ? "error" : isDirty ? "warning" : draft.qaResult.warnings.length ? "warning" : "success";
+  const qaTitle = !draft.qaResult.passed ? "AI 二次质检未通过" : isDirty ? "存在未质检修改" : draft.qaResult.warnings.length ? "质检通过，有提醒" : "质检通过";
+  const contextItems = [
+    `发布日期：${task.publishDate}`,
+    `渠道：${channelLabels[task.channel]}`,
+    `产品：${productLabels[task.product]}`,
+    `内容类型：${contentTypeLabels[task.contentType]}`,
+    `任务状态：${statusLabels[task.status]}`,
+    `主蒸馏词：${task.primaryDistilledTerm || "-"}`,
+    `官网链接：${task.officialLinkTarget || "https://jotoai.com"}`,
+    `版本：v${draft.version}`,
+    `生成模式：${generationModeLabels[generationMode]}`,
+    `生成状态：${generationStatusLabels[generationStatus]}`
+  ];
 
   return (
     <>
       {contextHolder}
-      <PageHeader title="内容终稿确认" subtitle="左侧编辑正文，右侧确认任务上下文、稿件来源和入队风险。" />
+      <PageHeader
+        title="草稿 AI 二次质检"
+        subtitle="正文是页面主视角；人工修改后必须运行 AI 二次质检，通过后才能复制全文并到外部渠道发布。"
+        actions={
+          <div className="draft-header-actions">
+            <div className={`draft-qa-status-card draft-qa-status-${qaType}`}>
+              <div className="draft-qa-status-main">
+                <span>{qaTitle}</span>
+                <Tag color={draft.qaResult.passed && !isDirty ? "green" : "red"}>{copyAllowed ? "可复制" : "不可复制"}</Tag>
+              </div>
+              <div className="draft-qa-status-meta">
+                阻断 {draft.qaResult.blockers.length} / 提醒 {draft.qaResult.warnings.length} / 高风险 {visibleFailedSegments.length}
+              </div>
+            </div>
+            <Link href="/today">
+              <Button>返回今日发布</Button>
+            </Link>
+            <Button loading={saving} onClick={handleSaveAndQa}>
+              保存并运行 AI 二次质检
+            </Button>
+            <Button type="primary" loading={copying} disabled={!copyAllowed} onClick={handleCopyFullText}>
+              复制全文
+            </Button>
+          </div>
+        }
+      />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
-      <Row gutter={16}>
-        <Col span={15}>
-          <Card title="正文编辑区">
-            <Space direction="vertical" style={{ width: "100%" }}>
-              <Alert
-                showIcon
-                type={hasBlockers ? "error" : hasWarnings ? "warning" : "success"}
-                message={canApproveDraft ? (hasWarnings ? "终稿可入队，但有警告项" : "终稿可入队") : "存在阻断项，暂不建议入队"}
-                description={
-                  canApproveDraft
-                    ? "自动质检已通过，确认内容无误后可以加入发布队列。"
-                    : "请先处理右侧阻断项，保存或重新生成稿件后再确认。"
-                }
-              />
-              <Input value={title} onChange={(event) => setTitle(event.target.value)} />
-              <Input value={summary} onChange={(event) => setSummary(event.target.value)} />
-              <Input.TextArea rows={14} value={content} onChange={(event) => setContent(event.target.value)} />
-              <Space>
-                <Button loading={saving} onClick={handleSaveDraft}>
-                  保存草稿
-                </Button>
-                <Popconfirm
-                  title="确认重新生成稿件？"
-                  description="当前编辑区内容会被新的生成结果覆盖。"
-                  okText="重新生成"
-                  cancelText="取消"
-                  onConfirm={handleRegenerateDraft}
-                >
-                  <Button loading={regenerating}>
-                    重新生成
-                  </Button>
-                </Popconfirm>
-                <Popconfirm
-                  title="确认加入发布队列？"
-                  description="终稿确认后会创建或更新发布记录。"
-                  okText="入队"
-                  cancelText="取消"
-                  onConfirm={handleApproveDraft}
-                >
-                  <Button type="primary" loading={approving} disabled={!draft.qaResult.passed}>
-                    加入发布队列
-                  </Button>
-                </Popconfirm>
-              </Space>
-            </Space>
-          </Card>
-        </Col>
-        <Col span={9}>
-          <Space direction="vertical" size={16} style={{ width: "100%" }}>
-            <Card title="任务上下文">
-              <Descriptions
-                size="small"
-                column={1}
-                items={[
-                  { key: "publishDate", label: "发布日期", children: task.publishDate },
-                  { key: "channel", label: "渠道", children: channelLabels[task.channel] },
-                  { key: "product", label: "产品", children: productLabels[task.product] },
-                  { key: "contentType", label: "内容类型", children: contentTypeLabels[task.contentType] },
-                  { key: "status", label: "任务状态", children: statusLabels[task.status] },
-                  {
-                    key: "keywords",
-                    label: "目标关键词",
-                    children: task.targetKeywords.length ? (
+
+      <section className="draft-review-layout">
+        <div className="draft-context-strip">
+          {contextItems.map((item) => (
+            <span className="draft-context-item" key={item}>
+              {item}
+            </span>
+          ))}
+        </div>
+
+        <Card title="正文 Markdown 编辑" className="draft-editor-panel">
+          <Space direction="vertical" size={14} style={{ width: "100%" }}>
+            <Alert
+              showIcon
+              type={qaType}
+              message={qaTitle}
+              description={
+                isDirty
+                  ? "当前编辑区内容和上一次质检结果不一致，请先保存并运行 AI 二次质检。"
+                  : draft.qaResult.summary || "通过后复制全文，外部发布完成再回今日发布页确认。"
+              }
+            />
+
+            <div className="draft-title-fields">
+              <Input addonBefore="标题" value={title} onChange={(event) => setTitle(event.target.value)} />
+              <Input addonBefore="摘要" value={summary} onChange={(event) => setSummary(event.target.value)} />
+            </div>
+
+            <div className={`draft-editor-stage ${showRiskRail ? "" : "draft-editor-stage-full"}`}>
+              <div className="draft-editor-main">
+                <div className="draft-editor-label">正文编辑区</div>
+                {showInlineRiskPreview ? (
+                  <div className="draft-inline-risk-panel">
+                    <div className="draft-markdown-shell-title">正文风险定位</div>
+                    <div className="draft-markdown-risk-preview draft-inline-risk-preview">{renderAnnotatedMarkdown()}</div>
+                  </div>
+                ) : null}
+                <Input.TextArea
+                  className="draft-markdown-editor"
+                  rows={34}
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  placeholder="在这里编辑 Markdown 正文。"
+                />
+              </div>
+              {showRiskRail ? (
+                <aside className="draft-risk-rail">
+                  {editActions.length ? (
+                    <div className="draft-action-log">
+                      <div className="draft-markdown-shell-title">处理记录</div>
                       <Space wrap>
-                        {task.targetKeywords.map((keyword) => (
-                          <Tag key={keyword}>{keyword}</Tag>
+                        {editActions.slice(-6).map((action) => (
+                          <Tag key={action.id} color={action.type === "keep_risk_segment" ? "orange" : action.type === "ai_rewrite_segment" ? "blue" : "default"}>
+                            {`${getEditActionLabel(action.type)}${action.segment ? `：${action.segment}` : ""}`}
+                          </Tag>
                         ))}
                       </Space>
-                    ) : (
-                      <span className="muted">未设置</span>
-                    )
-                  }
-                ]}
-              />
-            </Card>
-            <Card title="稿件来源">
-              <Descriptions
-                size="small"
-                column={1}
-                items={[
-                  { key: "draftStatus", label: "稿件状态", children: draftStatusLabels[draft.status] },
-                  { key: "version", label: "版本", children: `v${draft.version}` },
-                  { key: "generationMode", label: "生成模式", children: generationModeLabels[generationMode] },
-                  { key: "generationStatus", label: "生成状态", children: generationStatusLabels[generationStatus] },
-                  { key: "provider", label: "Provider", children: draft.generationSource?.provider || "-" },
-                  { key: "model", label: "模型", children: draft.generationSource?.model || "-" },
-                  { key: "generatedAt", label: "生成时间", children: draft.generationSource?.generatedAt || "-" },
-                  { key: "updatedAt", label: "更新时间", children: draft.updatedAt || "-" }
-                ]}
-              />
-            </Card>
-            <Card title="下一步判断">
-              <Alert
-                showIcon
-                type={draftReviewNextStep === "fix_qa" || draftReviewNextStep === "configure_generation" || draftReviewNextStep === "fix_publish" ? "warning" : draftReviewNextStep === "retrospect" ? "success" : "info"}
-                message={`当前优先：${draftReviewNextStepLabels[draftReviewNextStep]}`}
-                description={draftReviewActionText}
-                style={{ marginBottom: 12 }}
-              />
-              <Descriptions
-                size="small"
-                column={1}
-                items={[
-                  {
-                    key: "publishHandoff",
-                    label: "发布承接",
-                    children: <Tag color={draftPublishHandoffColors[publishHandoff]}>{draftPublishHandoffLabels[publishHandoff]}</Tag>
-                  },
-                  {
-                    key: "nextStep",
-                    label: "下一步",
-                    children: <Tag color={draftReviewNextStepColors[draftReviewNextStep]}>{draftReviewNextStepLabels[draftReviewNextStep]}</Tag>
-                  },
-                  {
-                    key: "action",
-                    label: "处理动作",
-                    children: draftReviewActionText
-                  },
-                  {
-                    key: "entry",
-                    label: "可执行入口",
-                    children: renderDraftReviewEntry()
-                  }
-                ]}
-              />
-            </Card>
-            <Card title="质检面板">
-              {draft.qaResult.passed ? <Alert type="success" message="自动质检通过" /> : <Alert type="error" message="存在阻断项" />}
-              <h3>阻断项</h3>
-              {draft.qaResult.blockers.length ? draft.qaResult.blockers.map((item) => <Tag color="red" key={item}>{item}</Tag>) : <p className="muted">无</p>}
-              <h3>警告项</h3>
-              {draft.qaResult.warnings.length ? (
-                <Space wrap>
-                  {draft.qaResult.warnings.map((item) => (
-                    <Tag color="gold" key={item}>{item}</Tag>
-                  ))}
-                </Space>
-              ) : (
-                <p className="muted">无</p>
-              )}
-            </Card>
+                    </div>
+                  ) : null}
+                </aside>
+              ) : null}
+            </div>
+
+            <div className="draft-footer-actions">
+              <Space wrap>
+                <Button loading={saving} onClick={handleSaveAndQa}>
+                  保存并运行 AI 二次质检
+                </Button>
+                <Button onClick={handleRestorePrevious} disabled={!isDirty}>
+                  返回修改前
+                </Button>
+                <Button type="primary" loading={copying} disabled={!copyAllowed} onClick={handleCopyFullText}>
+                  复制全文
+                </Button>
+              </Space>
+              <Space wrap>
+                {draft.qaResult.blockers.map((item) => (
+                  <Tag color="red" key={item}>
+                    {item}
+                  </Tag>
+                ))}
+                {draft.qaResult.warnings.map((item) => (
+                  <Tag color="gold" key={item}>
+                    {item}
+                  </Tag>
+                ))}
+              </Space>
+            </div>
           </Space>
-        </Col>
-      </Row>
+        </Card>
+      </section>
+      <Modal
+        title="保留高风险片段"
+        open={Boolean(pendingKeepSegment)}
+        okText="确认保留"
+        cancelText="取消"
+        onOk={confirmKeepFailedSegment}
+        onCancel={() => {
+          setPendingKeepSegment(undefined);
+          setPendingKeepReason("");
+          setPendingKeepReasonCategory("uncategorized");
+          setPendingKeepReasonCategoryTouched(false);
+        }}
+      >
+        <Alert showIcon type="warning" message="保留高风险内容必须填写原因，后续会进入人工处理记录。" style={{ marginBottom: 12 }} />
+        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+          <Select
+            value={pendingKeepReasonCategory}
+            options={keepReasonCategoryOptions}
+            onChange={(value: DraftRiskKeepReasonCategory) => {
+              setPendingKeepReasonCategory(value);
+              setPendingKeepReasonCategoryTouched(true);
+            }}
+            style={{ width: "100%" }}
+            aria-label="保留原因分类"
+          />
+          <Input.TextArea
+            rows={4}
+            value={pendingKeepReason}
+            onChange={(event) => handlePendingKeepReasonChange(event.target.value)}
+            placeholder="例如：该片段为引用原文、质检误报、业务必须保留但已补充上下文。"
+          />
+        </Space>
+      </Modal>
     </>
   );
 }

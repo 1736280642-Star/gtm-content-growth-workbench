@@ -2,11 +2,24 @@
 node_modules/
 dist/
 coverage/
+.obsidian/
+.tmp/
 .env
 .env.local
 data/workbench-state.json
+data/workbench-smoke-state.json
+data/workbench-*-state.json
+data/workbench-state.before-*.json
+artifacts/v5-generation/
 *.log
 *.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# docs: only upload the project usage doc and change-plan docs.
+docs/**
+!docs/
+!docs/usage.md
+!docs/方案与规划/
+!docs/方案与规划/*.md

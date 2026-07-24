@@ -1,18 +1,21 @@
 "use client";
 
-import { Alert, Button, Card, Input, Popconfirm, Select, Space, Table, Tag, Upload, message } from "antd";
+import { Alert, Button, Card, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Upload, message } from "antd";
 import type { UploadFile } from "antd";
 import Link from "next/link";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { DataConfidenceTag } from "@/components/DataConfidenceTag";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
+import { MetricCard } from "@/components/MetricCard";
+import { SiteAuditPanel } from "@/components/SiteAuditPanel";
 import { DEFAULT_BLOG_SOURCE_URLS } from "@/lib/blog-source";
 import { confidenceLabels } from "@/lib/labels";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
 import type { BlogArticle, DataConfidence } from "@/lib/types";
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 const indexedStatusLabels: Record<BlogArticle["indexedStatus"], string> = {
   indexed: "已收录",
@@ -41,6 +44,13 @@ const geoResultColors: Record<BlogArticle["geoResult"], string> = {
 type BlogCandidateStatusView = NonNullable<BlogArticle["candidateStatus"]>;
 type BlogPriority = "high" | "medium" | "low";
 type BlogNextStep = "diagnose" | "add_candidate" | "candidate_pool" | "planned" | "observe" | "dismissed";
+type BlogAuditIndicator = {
+  key: string;
+  label: string;
+  passed: boolean;
+  severity: BlogPriority;
+  action: string;
+};
 
 const candidateStatusLabels: Record<BlogCandidateStatusView, string> = {
   none: "未入池",
@@ -100,6 +110,89 @@ function getBlogPriority(article: BlogArticle): BlogPriority {
   }
 
   return "low";
+}
+
+function getBlogGeoHealthScore(article: BlogArticle) {
+  let score = 100;
+
+  if (article.indexedStatus === "not_indexed") score -= 24;
+  if (article.indexedStatus === "unknown") score -= 12;
+  score -= Math.min(article.seoIssueCount * 9, 36);
+  if (article.geoResult === "miss") score -= 26;
+  if (article.geoResult === "partial") score -= 12;
+  if (!article.title.trim() || article.title.startsWith("http")) score -= 10;
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function getBlogAuditIndicators(article: BlogArticle): BlogAuditIndicator[] {
+  const titleReady = Boolean(article.title.trim()) && !/^https?:\/\//i.test(article.title);
+  const crawlerReady = article.indexedStatus !== "not_indexed";
+  const structuredReady = article.seoIssueCount <= 1;
+  const faqSchemaReady = article.seoIssueCount === 0 || article.geoResult === "hit";
+  const clearConclusionReady = article.geoResult !== "miss";
+  const officialFactReady = article.url.includes("jotoai.com") && article.geoResult !== "miss";
+  const chunkReady = titleReady && structuredReady && article.geoResult !== "miss";
+
+  return [
+    {
+      key: "crawler",
+      label: "AI 可读取性",
+      passed: crawlerReady,
+      severity: crawlerReady ? "low" : "high",
+      action: "检查 robots、CDN 或页面访问状态。"
+    },
+    {
+      key: "extractable",
+      label: "标题与正文可提取性",
+      passed: titleReady,
+      severity: titleReady ? "low" : "medium",
+      action: "保证标题可解析，URL 放详情里。"
+    },
+    {
+      key: "structure",
+      label: "结构化内容完整度",
+      passed: structuredReady,
+      severity: structuredReady ? "low" : "medium",
+      action: "补清晰小节、FAQ 或 How-to 段落。"
+    },
+    {
+      key: "schema",
+      label: "问答结构完整度",
+      passed: faqSchemaReady,
+      severity: faqSchemaReady ? "low" : "medium",
+      action: "补 FAQ、How-to 或结构化问答。"
+    },
+    {
+      key: "conclusion",
+      label: "结论明确度",
+      passed: clearConclusionReady,
+      severity: clearConclusionReady ? "low" : "high",
+      action: "开头和结尾补明确判断，不只解释概念。"
+    },
+    {
+      key: "official_fact",
+      label: "官方事实与产品指向",
+      passed: officialFactReady,
+      severity: officialFactReady ? "low" : "high",
+      action: "补 JOTO / 唯客 / jotoai.com 的事实链路。"
+    },
+    {
+      key: "chunk",
+      label: "引用片段准备度",
+      passed: chunkReady,
+      severity: chunkReady ? "low" : "medium",
+      action: "补可独立引用的小段结论和上下文。"
+    }
+  ];
+}
+
+function getArticleTitle(article: BlogArticle) {
+  if (!article.title.trim() || /^https?:\/\//i.test(article.title)) {
+    return "";
+  }
+
+  return article.title;
 }
 
 function getBlogNextStep(article: BlogArticle): BlogNextStep {
@@ -180,9 +273,24 @@ function getBlogActionText(article: BlogArticle): string {
   return "当前没有明显处置动作，先继续观察后续 GEO 命中和 AI Bot 访问变化。";
 }
 
+function BlogMonitorTabs({ activeKey }: { activeKey: "articles" | "diagnosis" | "site-audit" }) {
+  return (
+    <Tabs
+      className="blog-monitor-section-tabs"
+      activeKey={activeKey}
+      items={[
+        { key: "articles", label: <Link href="/blog-monitor">文章监控</Link> },
+        { key: "diagnosis", label: <Link href="/blog-monitor#content-diagnosis">内容诊断</Link> },
+        { key: "site-audit", label: <Link href="/blog-monitor?tab=site-audit">官网审计 P1</Link> }
+      ]}
+    />
+  );
+}
+
 export default function BlogMonitorPage() {
+  const searchParams = useSearchParams();
   const {
-    state: { blogArticles, botVisits },
+    state: { blogArticles, botVisits, workspaceSetting },
     loading,
     error,
     refresh
@@ -190,6 +298,8 @@ export default function BlogMonitorPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [syncing, setSyncing] = useState(false);
   const [importingLog, setImportingLog] = useState(false);
+  const [blogImportOpen, setBlogImportOpen] = useState(false);
+  const [logImportOpen, setLogImportOpen] = useState(false);
   const [diagnosingId, setDiagnosingId] = useState<string>();
   const [addingCandidateId, setAddingCandidateId] = useState<string>();
   const [blogSourceUrls, setBlogSourceUrls] = useState(DEFAULT_BLOG_SOURCE_URLS.join("\n"));
@@ -202,6 +312,17 @@ export default function BlogMonitorPage() {
   const [indexedStatusFilter, setIndexedStatusFilter] = useState<BlogArticle["indexedStatus"][]>([]);
   const [geoResultFilter, setGeoResultFilter] = useState<BlogArticle["geoResult"][]>([]);
   const [dataConfidenceFilter, setDataConfidenceFilter] = useState<DataConfidence[]>([]);
+  const siteAuditActive = searchParams.get("tab") === "site-audit";
+
+  if (siteAuditActive) {
+    return (
+      <>
+        <PageHeader title="官网博客监控" subtitle="在同一工作区查看文章表现与 P1 官网审计；两套对象、状态和指标保持独立。" />
+        <BlogMonitorTabs activeKey="site-audit" />
+        <SiteAuditPanel role={workspaceSetting.currentRole} />
+      </>
+    );
+  }
   const botConfidence = botVisits.some((item) => item.dataConfidence === "real")
     ? "real"
     : botVisits.some((item) => item.dataConfidence === "imported")
@@ -224,6 +345,48 @@ export default function BlogMonitorPage() {
   const visiblePlannedCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "planned").length;
   const visibleObserveCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "observe").length;
   const visibleDismissedCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "dismissed").length;
+  const auditRows = blogArticles.map((article) => ({
+    article,
+    indicators: getBlogAuditIndicators(article),
+    healthScore: getBlogGeoHealthScore(article)
+  }));
+  const auditFailures = auditRows.flatMap((row) => row.indicators.filter((indicator) => !indicator.passed).map((indicator) => ({ ...indicator, article: row.article })));
+  const issueDistribution = Object.values(
+    auditFailures.reduce<Record<string, { key: string; label: string; count: number; high: number; action: string }>>((groups, issue) => {
+      const current = groups[issue.key] || {
+        key: issue.key,
+        label: issue.label,
+        count: 0,
+        high: 0,
+        action: issue.action
+      };
+      groups[issue.key] = {
+        ...current,
+        count: current.count + 1,
+        high: current.high + (issue.severity === "high" ? 1 : 0)
+      };
+      return groups;
+    }, {})
+  ).sort((left, right) => right.high - left.high || right.count - left.count);
+  const citationWeakCount = auditRows.filter((row) => row.indicators.some((item) => !item.passed && (item.key === "conclusion" || item.key === "official_fact" || item.key === "schema"))).length;
+  const chunkWeakCount = auditRows.filter((row) => row.indicators.some((item) => !item.passed && item.key === "chunk")).length;
+  const healthScore = blogArticles.length ? Math.round(auditRows.reduce((sum, row) => sum + row.healthScore, 0) / blogArticles.length) : 0;
+  const priorityActions = [...blogArticles]
+    .map((article) => {
+      const indicators = getBlogAuditIndicators(article).filter((indicator) => !indicator.passed);
+      const highCount = indicators.filter((indicator) => indicator.severity === "high").length;
+
+      return {
+        article,
+        healthScore: getBlogGeoHealthScore(article),
+        indicators,
+        highCount,
+        nextStep: getBlogNextStep(article)
+      };
+    })
+    .filter((item) => item.indicators.length || item.nextStep === "add_candidate" || item.nextStep === "diagnose")
+    .sort((left, right) => right.highCount - left.highCount || left.healthScore - right.healthScore)
+    .slice(0, 5);
 
   function clearFilters() {
     setIndexedStatusFilter([]);
@@ -256,6 +419,7 @@ export default function BlogMonitorPage() {
       });
       await refresh();
       messageApi.success(formatApiMessage(result, "博客同步完成"));
+      setBlogImportOpen(false);
     } catch (error) {
       messageApi.warning(error instanceof Error ? error.message : "博客同步缺少配置");
     } finally {
@@ -314,6 +478,7 @@ export default function BlogMonitorPage() {
       await refresh();
       messageApi.success(formatApiMessage(result, "日志导入完成"));
       setLogFiles([]);
+      setLogImportOpen(false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "日志导入失败");
     } finally {
@@ -404,97 +569,109 @@ export default function BlogMonitorPage() {
       {contextHolder}
       <PageHeader
         title="官网博客监控"
-        subtitle="XCrawl 负责内容抓取和 SEO 诊断；AI Bot 指标当前为 Demo CSV，占位未来真实日志接入。"
+        subtitle="集中查看内容收录、SEO 问题、AI 访问趋势和优先优化建议。"
         actions={
-          <Popconfirm
-            title="确认同步博客内容？"
-            description="会根据当前输入或配置源写入博客监控数据，并刷新候选池判断。"
-            okText="同步"
-            cancelText="取消"
-            onConfirm={handleSync}
-          >
-            <Button type="primary" loading={syncing}>
-              同步博客内容
-            </Button>
-          </Popconfirm>
-        }
-      />
-      <PageErrorState message={error} loading={loading} onRetry={refresh} />
-      <div className="metric-grid">
-        <Card size="small">总文章：{blogArticles.length}</Card>
-        <Card size="small">SEO 问题：{blogArticles.reduce((sum, item) => sum + item.seoIssueCount, 0)}</Card>
-        <Card size="small">GEO 未命中：{blogArticles.filter((item) => item.geoResult === "miss").length}</Card>
-        <Card size="small">
-          AI Bot PV：{botVisits.reduce((sum, item) => sum + item.pv, 0)} <DataConfidenceTag value={botConfidence} />
-        </Card>
-      </div>
-      <div className="two-column">
-        <Card title="博客数据导入">
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Input.TextArea
-              rows={3}
-              placeholder="sourceUrls，一行一个 sitemap / JSON 源"
-              value={blogSourceUrls}
-              onChange={(event) => setBlogSourceUrls(event.target.value)}
-            />
-            <Input placeholder="sourcePath，仅允许 data/、imports/ 或配置目录" value={blogSourcePath} onChange={(event) => setBlogSourcePath(event.target.value)} />
-            <Input.TextArea
-              rows={5}
-              placeholder="JSON / CSV / sitemap XML 文本"
-              value={blogText}
-              onChange={(event) => setBlogText(event.target.value)}
-            />
+          <Space wrap>
             <Popconfirm
-              title="确认导入博客数据？"
-              description="会写入或更新本地博客监控数据，用于后续 SEO/GEO 诊断。"
-              okText="导入"
+              title="确认同步博客内容？"
+              description="会根据当前输入或配置源写入博客监控数据，并刷新候选池判断。"
+              okText="同步"
               cancelText="取消"
               onConfirm={handleSync}
             >
               <Button type="primary" loading={syncing}>
-                导入博客数据
+                同步博客内容
               </Button>
             </Popconfirm>
+            <Button onClick={() => setBlogImportOpen(true)}>博客数据导入</Button>
+            <Button onClick={() => setLogImportOpen(true)}>AI 访问日志导入</Button>
           </Space>
+        }
+      />
+      <BlogMonitorTabs activeKey="articles" />
+      <PageErrorState message={error} loading={loading} onRetry={refresh} />
+      <div className="metric-grid metric-grid-five">
+        <MetricCard title="监控文章" value={blogArticles.length} suffix="篇" />
+        <MetricCard title="待处理问题" value={auditFailures.length} suffix="个" />
+        <MetricCard title="GEO 健康分" value={healthScore} />
+        <MetricCard title="引用准备不足" value={citationWeakCount} suffix="篇" />
+        <MetricCard title="引用片段不足" value={chunkWeakCount} suffix="篇" />
+      </div>
+      <div className="two-column" style={{ marginBottom: 16 }}>
+        <Card title="问题分布">
+          <Alert
+            showIcon
+            type={auditFailures.length ? "warning" : "success"}
+            message={`当前发现 ${auditFailures.length} 个 AI 可见度问题，AI 访问量 ${botVisits.reduce((sum, item) => sum + item.pv, 0)}`}
+            description={<DataConfidenceTag value={botConfidence} />}
+            style={{ marginBottom: 16 }}
+          />
+          <Table
+            rowKey="key"
+            size="small"
+            pagination={false}
+            dataSource={issueDistribution}
+            locale={{ emptyText: "当前没有明显页面审计问题。" }}
+            columns={[
+              { title: "问题类型", dataIndex: "label" },
+              { title: "数量", dataIndex: "count", render: (value) => <Tag>{value}</Tag> },
+              { title: "高优先级", dataIndex: "high", render: (value) => <Tag color={value ? "red" : "green"}>{value}</Tag> },
+              { title: "建议动作", dataIndex: "action" }
+            ]}
+          />
         </Card>
-        <Card title="AI Bot 日志导入">
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Select
-              value={logSourceType}
-              onChange={setLogSourceType}
-              options={[
-                { value: "csv_import", label: "CSV 导入" },
-                { value: "demo_csv", label: "Demo CSV" },
-                { value: "nginx_log", label: "Nginx 日志" },
-                { value: "cdn_log", label: "CDN 日志" }
-              ]}
-            />
-            <Upload
-              multiple
-              accept=".csv,.txt,.log,.gz"
-              beforeUpload={() => false}
-              fileList={logFiles}
-              onChange={({ fileList }) => setLogFiles(fileList)}
-            >
-              <Button>选择日志文件</Button>
-            </Upload>
-            <Input placeholder="filePath，仅允许 data/、imports/ 或配置目录；人工导入优先用上方选择文件" value={logFilePath} onChange={(event) => setLogFilePath(event.target.value)} />
-            <Input.TextArea rows={5} placeholder="CSV 或 Nginx-like 原始日志文本" value={logText} onChange={(event) => setLogText(event.target.value)} />
-            <Popconfirm
-              title="确认导入 AI Bot 日志？"
-              description="会更新 AI Bot PV、来源可信度和博客访问汇总。"
-              okText="导入"
-              cancelText="取消"
-              onConfirm={handleImportLog}
-            >
-              <Button loading={importingLog}>
-                导入日志
-              </Button>
-            </Popconfirm>
-          </Space>
+        <Card title="官网信源状态">
+          <Table
+            rowKey="label"
+            size="small"
+            pagination={false}
+            dataSource={[
+              { label: "可作为信源", value: auditRows.filter((row) => row.healthScore >= 80).length, color: "green" },
+              { label: "部分可用", value: auditRows.filter((row) => row.healthScore >= 60 && row.healthScore < 80).length, color: "gold" },
+              { label: "不建议引用", value: auditRows.filter((row) => row.healthScore < 60).length, color: "red" },
+              { label: "AI 访问量", value: botVisits.reduce((sum, item) => sum + item.pv, 0), color: "blue" }
+            ]}
+            columns={[
+              { title: "状态", dataIndex: "label" },
+              { title: "数量", render: (_, record) => <Tag color={record.color}>{record.value}</Tag> }
+            ]}
+          />
+          <p className="muted" style={{ marginTop: 12 }}>
+            这里是基于现有收录、SEO、GEO 和日志导入状态的页面可引用性判断，不替代真实服务器日志。
+          </p>
         </Card>
       </div>
-      <Card title="博客列表">
+      <Card title="优先处理问题" style={{ marginBottom: 16 }}>
+        <Table
+          rowKey={(record) => record.article.id}
+          size="small"
+          pagination={false}
+          dataSource={priorityActions}
+          locale={{ emptyText: "当前没有需要优先处理的博客问题。" }}
+          columns={[
+            { title: "标题", render: (_, record) => getArticleTitle(record.article) || <span className="muted">空标题</span> },
+            { title: "GEO 健康分", dataIndex: "healthScore", render: (value) => <Tag color={value >= 80 ? "green" : value >= 60 ? "gold" : "red"}>{value}</Tag> },
+            {
+              title: "主要问题",
+              render: (_, record) => (
+                <Space wrap size={[4, 4]}>
+                  {record.indicators.slice(0, 3).map((indicator) => (
+                    <Tag key={indicator.key} color={blogPriorityColors[indicator.severity]}>
+                      {indicator.label}
+                    </Tag>
+                  ))}
+                </Space>
+              )
+            },
+            { title: "建议动作", render: (_, record) => record.indicators[0]?.action || getBlogActionText(record.article) },
+            {
+              title: "入口",
+              render: (_, record) => renderBlogEntry(record.article)
+            }
+          ]}
+        />
+      </Card>
+      <Card title="博客明细">
         <Alert
           showIcon
           type={visibleActionNeededCount ? "info" : "success"}
@@ -566,8 +743,32 @@ export default function BlogMonitorPage() {
             )
           }}
           columns={[
-            { title: "标题", dataIndex: "title" },
-            { title: "URL", dataIndex: "url", render: (value) => <span className="mono">{value}</span> },
+            { title: "标题", render: (_, record) => getArticleTitle(record) || <span className="muted">空标题</span> },
+            {
+              title: "GEO 健康分",
+              render: (_, record) => {
+                const score = getBlogGeoHealthScore(record);
+
+                return <Tag color={score >= 80 ? "green" : score >= 60 ? "gold" : "red"}>{score}</Tag>;
+              }
+            },
+            {
+              title: "引用准备度",
+              render: (_, record) => {
+                const ready = getBlogAuditIndicators(record).every((item) => item.passed || !["schema", "conclusion", "official_fact"].includes(item.key));
+
+                return <Tag color={ready ? "green" : "gold"}>{ready ? "可用" : "不足"}</Tag>;
+              }
+            },
+            {
+              title: "引用片段准备度",
+              render: (_, record) => {
+                const ready = getBlogAuditIndicators(record).find((item) => item.key === "chunk")?.passed;
+
+                return <Tag color={ready ? "green" : "gold"}>{ready ? "可引用" : "不足"}</Tag>;
+              }
+            },
+            { title: "URL 详情", dataIndex: "url", render: (value) => <span className="mono">{value}</span> },
             { title: "收录", dataIndex: "indexedStatus", render: (value) => <Tag color={indexedStatusColors[value as BlogArticle["indexedStatus"]]}>{indexedStatusLabels[value as BlogArticle["indexedStatus"]]}</Tag> },
             { title: "SEO 问题", dataIndex: "seoIssueCount" },
             { title: "GEO 结果", dataIndex: "geoResult", render: (value) => <Tag color={geoResultColors[value as BlogArticle["geoResult"]]}>{geoResultLabels[value as BlogArticle["geoResult"]]}</Tag> },
@@ -605,6 +806,66 @@ export default function BlogMonitorPage() {
           ]}
         />
       </Card>
+      <Modal
+        title="博客数据导入"
+        open={blogImportOpen}
+        okText="导入博客数据"
+        cancelText="关闭"
+        confirmLoading={syncing}
+        onOk={handleSync}
+        onCancel={() => setBlogImportOpen(false)}
+        width={760}
+      >
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Input.TextArea
+            rows={3}
+            placeholder="sourceUrls，一行一个 sitemap / JSON 源"
+            value={blogSourceUrls}
+            onChange={(event) => setBlogSourceUrls(event.target.value)}
+          />
+          <Input placeholder="sourcePath，仅允许 data/、imports/ 或配置目录" value={blogSourcePath} onChange={(event) => setBlogSourcePath(event.target.value)} />
+          <Input.TextArea
+            rows={6}
+            placeholder="JSON / CSV / sitemap XML 文本"
+            value={blogText}
+            onChange={(event) => setBlogText(event.target.value)}
+          />
+        </Space>
+      </Modal>
+      <Modal
+        title="AI 访问日志导入"
+        open={logImportOpen}
+        okText="导入日志"
+        cancelText="关闭"
+        confirmLoading={importingLog}
+        onOk={handleImportLog}
+        onCancel={() => setLogImportOpen(false)}
+        width={760}
+      >
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Select
+            value={logSourceType}
+            onChange={setLogSourceType}
+            options={[
+              { value: "csv_import", label: "CSV 导入" },
+              { value: "demo_csv", label: "样例数据" },
+              { value: "nginx_log", label: "Nginx 日志" },
+              { value: "cdn_log", label: "CDN 日志" }
+            ]}
+          />
+          <Upload
+            multiple
+            accept=".csv,.txt,.log,.gz"
+            beforeUpload={() => false}
+            fileList={logFiles}
+            onChange={({ fileList }) => setLogFiles(fileList)}
+          >
+            <Button>选择日志文件</Button>
+          </Upload>
+          <Input placeholder="filePath，仅允许 data/、imports/ 或配置目录；人工导入优先用上方选择文件" value={logFilePath} onChange={(event) => setLogFilePath(event.target.value)} />
+          <Input.TextArea rows={6} placeholder="CSV 或 Nginx-like 原始日志文本" value={logText} onChange={(event) => setLogText(event.target.value)} />
+        </Space>
+      </Modal>
     </>
   );
 }

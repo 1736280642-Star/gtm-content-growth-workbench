@@ -1,0 +1,80 @@
+[
+  {
+    "templateId": "selection-comparison",
+    "name": "选型与比较",
+    "semanticDescription": "帮助读者比较方案、产品或服务商，并形成有依据的选择。",
+    "suitableQuestionDescription": "适合涉及选型标准、能力边界、方案差异和采购决策的问题。",
+    "targetAudience": ["企业决策者", "项目负责人"],
+    "contentGoal": "支持比较与决策",
+    "structureModules": ["决策背景", "比较维度", "方案差异", "适用边界", "选择建议"],
+    "cta": "联系 JOTO 评估当前选型条件",
+    "lengthRange": { "min": 1800, "max": 2600, "unit": "字" },
+    "styleTraits": ["专业", "克制", "可比较"],
+    "evidencePreferences": ["产品文档", "限制说明", "公开方案资料"]
+  },
+  {
+    "templateId": "implementation-guide",
+    "name": "实施指南",
+    "semanticDescription": "帮助执行团队理解实施路径、前置条件和验收方法。",
+    "suitableQuestionDescription": "适合部署、集成、迁移、实施与验收类问题。",
+    "targetAudience": ["项目负责人", "技术负责人"],
+    "contentGoal": "指导实施与验收",
+    "structureModules": ["前置条件", "实施步骤", "关键配置", "风险点", "验收清单"],
+    "cta": "联系 JOTO 评估实施条件",
+    "lengthRange": { "min": 1800, "max": 2800, "unit": "字" },
+    "styleTraits": ["具体", "步骤清晰", "少宣传"],
+    "evidencePreferences": ["实施文档", "配置说明", "限制说明"]
+  },
+  {
+    "templateId": "scenario-solution",
+    "name": "场景解决方案",
+    "semanticDescription": "围绕具体业务场景解释问题、约束与可落地方案。",
+    "suitableQuestionDescription": "适合带有明确业务场景、角色和结果目标的问题。",
+    "targetAudience": ["业务负责人", "解决方案负责人"],
+    "contentGoal": "把业务问题映射为可执行方案",
+    "structureModules": ["场景现状", "核心问题", "方案路径", "实施边界", "下一步"],
+    "cta": "联系 JOTO 梳理场景约束",
+    "lengthRange": { "min": 1600, "max": 2400, "unit": "字" },
+    "styleTraits": ["场景化", "务实", "边界清楚"],
+    "evidencePreferences": ["场景资料", "产品文档", "实施条件"]
+  },
+  {
+    "templateId": "case-evidence",
+    "name": "案例与证据",
+    "semanticDescription": "使用已验证案例和证据说明方案适用条件与实际结果。",
+    "suitableQuestionDescription": "仅适合知识库中存在真实可公开案例和结果证据的问题。",
+    "targetAudience": ["企业决策者", "项目负责人"],
+    "contentGoal": "用可验证证据支持判断",
+    "structureModules": ["案例背景", "实施条件", "执行过程", "结果证据", "适用边界"],
+    "cta": "联系 JOTO 核验案例适用条件",
+    "lengthRange": { "min": 1600, "max": 2400, "unit": "字" },
+    "styleTraits": ["事实优先", "可核验", "不夸大"],
+    "evidencePreferences": ["真实案例", "公开数据", "客户授权资料"]
+  },
+  {
+    "templateId": "faq",
+    "name": "FAQ",
+    "semanticDescription": "集中回答读者在决策或执行中反复提出的具体问题。",
+    "suitableQuestionDescription": "适合多个边界清晰、可直接回答的高频问题。",
+    "targetAudience": ["通用业务读者"],
+    "contentGoal": "降低理解与沟通成本",
+    "structureModules": ["问题列表", "简明回答", "条件说明", "进一步行动"],
+    "cta": "联系 JOTO 获取针对当前场景的说明",
+    "lengthRange": { "min": 1200, "max": 2000, "unit": "字" },
+    "styleTraits": ["直接", "易理解", "条件明确"],
+    "evidencePreferences": ["FAQ", "产品文档", "限制说明"]
+  },
+  {
+    "templateId": "technical-practice",
+    "name": "技术实践",
+    "semanticDescription": "面向技术团队说明可复现的实现方法、配置与排查路径。",
+    "suitableQuestionDescription": "适合开发、集成、配置、性能和故障排查问题。",
+    "targetAudience": ["开发者", "技术负责人"],
+    "contentGoal": "提供可复现的技术实践",
+    "structureModules": ["目标与环境", "实现步骤", "配置示例", "验证方法", "常见问题"],
+    "cta": "联系 JOTO 评估集成与交付条件",
+    "lengthRange": { "min": 1800, "max": 3000, "unit": "字" },
+    "styleTraits": ["技术准确", "可复现", "少概念堆砌"],
+    "evidencePreferences": ["技术文档", "代码示例", "版本说明"]
+  }
+]

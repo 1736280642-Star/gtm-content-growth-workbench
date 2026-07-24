@@ -41,11 +41,27 @@ const providerEnvMap: Record<AiProviderKey, { baseUrl: string; apiKey: string; m
   }
 };
 
-const defaultProviderTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 60000);
+const defaultProviderTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 120000);
 
 function getMissingConfig(provider: AiProviderKey) {
   const status = getRuntimeConfigStatus();
   return status.capabilities.find((item) => item.key === provider)?.missingEnv || [];
+}
+
+function formatAiProviderError(error: unknown, timeoutMs: number) {
+  if (error instanceof Error && error.name === "AbortError") {
+    return `模型服务调用超时，超过 ${timeoutMs}ms 未返回。`;
+  }
+
+  const message = error instanceof Error ? error.message : String(error || "");
+  const cause = error instanceof Error && "cause" in error ? String(error.cause || "") : "";
+  const combined = `${message} ${cause}`;
+
+  if (/fetch failed|econnreset|enotfound|etimedout|econnrefused|network|und_err/i.test(combined)) {
+    return "模型服务网络连接失败，请检查该 Provider 的 base URL、出口网络或服务可用性。";
+  }
+
+  return message || "未知模型服务错误。";
 }
 
 export async function callAiProvider(request: AiProviderRequest): Promise<AiProviderResult> {
@@ -109,18 +125,12 @@ export async function callAiProvider(request: AiProviderRequest): Promise<AiProv
       raw
     };
   } catch (error) {
-    const isTimeout = error instanceof Error && error.name === "AbortError";
-
     return {
       ok: false,
       status: "failed",
       provider: request.provider,
       model,
-      errorMessage: isTimeout
-        ? `AI provider request timed out after ${defaultProviderTimeoutMs}ms.`
-        : error instanceof Error
-          ? error.message
-          : "Unknown AI provider error"
+      errorMessage: formatAiProviderError(error, defaultProviderTimeoutMs)
     };
   } finally {
     clearTimeout(timeout);

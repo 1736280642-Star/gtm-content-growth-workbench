@@ -1,4 +1,4 @@
-import { botVisits, publishRecords, tasks, monthlyPlan } from "./demo-data";
+import { botVisits, publishRecords, tasks, weeklyPlan } from "./demo-data";
 
 export function getDashboardSummary() {
   const generated = tasks.filter((task) =>
@@ -9,9 +9,9 @@ export function getDashboardSummary() {
   const pendingUrl = publishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
 
   return {
-    monthlyPlan,
+    weeklyPlan,
     metrics: {
-      targetTotal: monthlyPlan.targetTotalCount,
+      targetTotal: weeklyPlan.targetTotalCount,
       generated,
       approved,
       published,
@@ -20,3 +20,4 @@ export function getDashboardSummary() {
     }
   };
 }
+
