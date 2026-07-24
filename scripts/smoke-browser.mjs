@@ -1727,6 +1727,8 @@ async function main() {
         pathName: "/monthly-matrix/batch-generation",
         expectedText: "内容",
         beforeAudit: async (currentPage) => {
+          const expandedBeforeSearch = await currentPage.evaluate("document.querySelectorAll('.v5-grouped-task-list .ant-collapse-content-active').length");
+          if (expandedBeforeSearch !== 0) throw new Error(`expected collapsed groups, found ${expandedBeforeSearch} expanded`);
           await waitFor(() => currentPage.containsText("已批准策略还没有可执行内容任务"), 30000);
         }
       }));
@@ -1758,10 +1760,30 @@ async function main() {
         pathName: "/daily-execution",
         expectedText: "发布执行视图"
       }));
+      await runStep("v5_ai_front_test_desktop", () => assertDesktopLayout(page, {
+        name: "v5_ai_front_test_desktop",
+        pathName: "/ai-front-test",
+        expectedText: "回答与引用证据"
+      }));
+      await runStep("v5_ai_front_test_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_ai_front_test_mobile",
+        pathName: "/ai-front-test",
+        expectedText: "任务对比"
+      }));
+      await runStep("v5_capture_environment_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_capture_environment_mobile",
+        pathName: "/ai-front-test/environment",
+        expectedText: "Computer Use 不参与常规采集"
+      }));
       await runStep("v5_monthly_review_mobile", () => assertResponsiveLayout(page, {
         name: "v5_monthly_review_mobile",
         pathName: "/monthly-review",
-        expectedText: "下月候选调整"
+        expectedText: "问题级视图"
+      }));
+      await runStep("v5_site_audit_mobile", () => assertResponsiveLayout(page, {
+        name: "v5_site_audit_mobile",
+        pathName: "/blog-monitor?tab=site-audit",
+        expectedText: "官网审计"
       }));
       await runStep("v5_questions_keywords_desktop", () => assertDesktopLayout(page, {
         name: "v5_questions_keywords_desktop",

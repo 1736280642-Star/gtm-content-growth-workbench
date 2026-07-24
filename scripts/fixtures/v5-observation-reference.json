@@ -1,0 +1,29 @@
+{
+  "questions": [
+    {
+      "questionVersionId": "question-version-adp-001",
+      "questionKey": "question-adp-provider-selection",
+      "text": "企业应该如何选择腾讯云 ADP 服务商？",
+      "targetEntity": "JOTO",
+      "sourceSnapshotHash": "snapshot-fixture-adp-001"
+    }
+  ],
+  "monthlyPlans": [
+    {
+      "monthlyPlanId": "monthly-plan-fixture-2026-07",
+      "month": "2026-07",
+      "questionKeys": ["question-adp-provider-selection"],
+      "plannedContentCount": 2
+    }
+  ],
+  "publishedContent": [
+    {
+      "contentId": "published-fixture-001",
+      "questionKey": "question-adp-provider-selection",
+      "title": "ADP 服务商选型需要核对哪些交付证据",
+      "channel": "官网",
+      "publishedAt": "2026-07-12T08:00:00.000Z",
+      "metricSummary": "fixture：访问数据已回传"
+    }
+  ]
+}

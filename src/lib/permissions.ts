@@ -21,6 +21,7 @@ export const workspaceRouteLabels: Record<string, string> = {
   "/publish-schedule/daily-execution": "当日执行",
   "/daily-execution": "当日执行",
   "/monthly-review": "月度复盘",
+  "/ai-front-test": "AI 前台测试",
   "/v5/drafts": "正式 Markdown 正文",
   "/weekly-plan": "周计划",
   "/today": "今日发布",
@@ -39,13 +40,14 @@ export const workspaceRouteLabels: Record<string, string> = {
 
 const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   content_publisher: ["/", "/today", "/publish", "/weekly-plan", "/weekly-report", "/settings"],
-  content_growth: ["/", "/weekly-plan", "/weekly-report", "/questions-keywords", "/blog-monitor", "/blog-candidates", "/settings"],
+  content_growth: ["/", "/monthly-review", "/ai-front-test", "/weekly-plan", "/weekly-report", "/questions-keywords", "/blog-monitor", "/blog-candidates", "/settings"],
   workbench_operator: [
     "/",
     "/monthly-matrix",
     "/batch-generation",
     "/daily-execution",
     "/monthly-review",
+    "/ai-front-test",
     "/v5/drafts",
     "/weekly-plan",
     "/today",
@@ -65,6 +67,7 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
     "/batch-generation",
     "/daily-execution",
     "/monthly-review",
+    "/ai-front-test",
     "/v5/drafts",
     "/weekly-plan",
     "/today",

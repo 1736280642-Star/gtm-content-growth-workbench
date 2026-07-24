@@ -1,73 +1,69 @@
 "use client";
 
-import { Alert, Button, Card, Progress, Space, Table, Tag } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Empty, Result, Select, Tag, message } from "antd";
+import { useState } from "react";
+import { MonthlyQuestionReviewDrawer } from "@/components/MonthlyQuestionReviewDrawer";
+import { MonthlyQuestionReviewTable } from "@/components/MonthlyQuestionReviewTable";
 import { PageHeader } from "@/components/PageHeader";
 import { V5StatusRail } from "@/components/V5StatusRail";
-import { monthlyTermReviews, nextMonthCandidates } from "@/lib/v5-ui-mock-data";
-import type { MonthlyTermReview, NextMonthCandidate } from "@/lib/v5-ui-mock-data";
+import { useWorkbenchSnapshot } from "@/lib/client-state";
+import type { MonthlyQuestionReview } from "@/lib/v5/monthly-review-contracts";
+import { useMonthlyObservationReview } from "@/lib/v5/use-monthly-observation-review";
 
-const candidateStatusLabels: Record<NextMonthCandidate["status"], string> = {
-  pending_review: "待人工确认",
-  confirmed: "已确认",
-  hold: "Hold"
-};
+function currentMonth() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit" }).format(new Date());
+}
 
 export default function MonthlyReviewPage() {
-  const plannedCount = monthlyTermReviews.reduce((total, item) => total + item.planned, 0);
-  const publishedCount = monthlyTermReviews.reduce((total, item) => total + item.published, 0);
+  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
+  const [month, setMonth] = useState(currentMonth);
+  const { review, loading, error, refresh, createProposal } = useMonthlyObservationReview(month, workspaceSetting.currentRole);
+  const [selected, setSelected] = useState<MonthlyQuestionReview>();
+  const [creating, setCreating] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
+
+  if (error && !review) return <Result status="error" title="月度复盘读取失败" subTitle={error} extra={<Button onClick={() => refresh()}>重试</Button>} />;
 
   return (
     <>
+      {contextHolder}
       <PageHeader
         title="月度复盘"
-        titleExtra={<Tag color="blue">2026-08</Tag>}
-        subtitle="以蒸馏词和产品为观察单位，回看发布完成度、证据问题和下月候选调整。"
-        actions={<Button type="primary" disabled>生成下月候选草稿</Button>}
+        titleExtra={<Tag color="blue">问题级视图</Tag>}
+        subtitle="按目标问题关联 MonthlyPlan、已发布内容、指标与 AI 前台测试；建议只生成待审批 Proposal。"
+        actions={<><Select value={month} onChange={setMonth} style={{ width: 132 }} options={[{ value: month, label: month }]} /><Button icon={<ReloadOutlined />} loading={loading} onClick={() => refresh()}>刷新数据</Button></>}
       />
-      <Alert
-        showIcon
-        type="info"
-        message="下月建议需人工确认"
-        description="系统会根据本月表现生成调整建议；确认前不会改变下月内容策略。"
-        style={{ marginBottom: 16 }}
-      />
-      <V5StatusRail
-        items={[
-          { label: "矩阵完成率", value: `${publishedCount}/${plannedCount}`, helper: "按主蒸馏词汇总" },
-          { label: "本月已发布", value: publishedCount, helper: "按主蒸馏词汇总" },
-          { label: "证据类问题", value: 2, helper: "回流知识库资料治理" }
-        ]}
-      />
-      <Card title="主蒸馏词月度结果" size="small">
-        <Table
-          rowKey="id"
-          size="small"
-          pagination={false}
-          dataSource={monthlyTermReviews}
-          columns={[
-            { title: "蒸馏词与产品", key: "term", render: (_, record: MonthlyTermReview) => <div className="v5-table-stack"><strong>{record.term}</strong><span>{record.product}</span></div> },
-            { title: "计划与发布", key: "completion", render: (_, record: MonthlyTermReview) => <div className="v5-review-progress"><Progress percent={Math.round((record.published / record.planned) * 100)} size="small" /><span>{record.published} / {record.planned} 篇</span></div> },
-            { title: "缺口判断", dataIndex: "gapConclusion" },
-            { title: "问题来源", dataIndex: "issueSource", render: (value) => <Tag color={value === "无主要阻断" ? "green" : "orange"}>{value}</Tag> }
-          ]}
-        />
+      {review?.source === "pending_config" ? <Alert showIcon type="warning" message="正式月度关联数据待同步" description={review.message} style={{ marginBottom: 16 }} /> : null}
+      <V5StatusRail items={[
+        { label: "计划成品", value: review?.metrics.plannedContent || 0, helper: "来自 MonthlyPlan 只读适配器" },
+        { label: "已发布", value: review?.metrics.publishedContent || 0, helper: "按目标问题关联" },
+        { label: "有效回传", value: review?.metrics.effectiveMetricReturns || 0, helper: "已有可用指标" },
+        { label: "AI 测试", value: review?.metrics.captureTasks || 0, helper: "本月单次采集任务" },
+        { label: "待确认缺口", value: review?.metrics.pendingGaps || 0, helper: "仍由人工判断去向" }
+      ]} />
+      <Card title="问题表现" size="small" loading={!review && loading} extra={<Tag>计划 · 发布 · 指标 · AI 回答</Tag>}>
+        {review?.questions.length ? <MonthlyQuestionReviewTable rows={review.questions} onOpen={setSelected} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前月份没有可关联的问题级数据；接入正式问题和 MonthlyPlan 后会自动聚合。" />}
       </Card>
-      <Card title="下月候选调整" size="small" style={{ marginTop: 16 }} extra={<Tag>系统建议 · 人工确认</Tag>}>
-        <Table
-          rowKey="id"
-          size="small"
-          pagination={false}
-          dataSource={nextMonthCandidates}
-          columns={[
-            { title: "蒸馏词", dataIndex: "term", render: (value, record: NextMonthCandidate) => <div className="v5-table-stack"><strong>{value}</strong><span>{record.product}</span></div> },
-            { title: "来源", dataIndex: "source" },
-            { title: "形成原因", dataIndex: "reason" },
-            { title: "建议动作", dataIndex: "proposedAction" },
-            { title: "状态", dataIndex: "status", render: (value: NextMonthCandidate["status"]) => <Tag color={value === "hold" ? "default" : "blue"}>{candidateStatusLabels[value]}</Tag> },
-            { title: "人工判断", key: "action", render: () => <Space size={4}><Button size="small" disabled>确认</Button><Button size="small" disabled>退回</Button></Space> }
-          ]}
-        />
-      </Card>
+      {review?.proposals.length ? <Card title="下月 Proposal" size="small" style={{ marginTop: 16 }}><div className="monthly-proposal-list">{review.proposals.map((item) => <div key={item.id}><div><strong>{item.recommendation}</strong><Tag color="blue">{item.status}</Tag></div><span>{item.targetMonth} · 未创建月度任务 · 未修改配额</span><p>{item.rationale}</p></div>)}</div></Card> : null}
+      <MonthlyQuestionReviewDrawer
+        row={selected}
+        proposals={review?.proposals || []}
+        open={Boolean(selected)}
+        creating={creating}
+        onClose={() => setSelected(undefined)}
+        onCreateProposal={async (row) => {
+          setCreating(true);
+          try {
+            await createProposal(row.id, row.recommendation, `基于 ${row.month} 的发布、指标、AI 测试和已确认缺口形成。`);
+            messageApi.success("下月 Proposal 已生成；未创建生产任务或修改配额");
+          } catch (requestError) {
+            messageApi.error(requestError instanceof Error ? requestError.message : "Proposal 创建失败");
+          } finally {
+            setCreating(false);
+          }
+        }}
+      />
     </>
   );
 }

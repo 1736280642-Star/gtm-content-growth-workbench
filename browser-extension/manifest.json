@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "JOTO AI Front Test Companion",
+  "version": "1.0.0",
+  "description": "Runs user-initiated, single AI frontend captures through a local Runner.",
+  "permissions": ["activeTab", "alarms", "tabs"],
+  "host_permissions": [
+    "http://127.0.0.1:17321/*",
+    "https://chatgpt.com/*"
+  ],
+  "background": {
+    "service_worker": "src/service-worker.js"
+  },
+  "action": {
+    "default_title": "JOTO AI Front Test Companion"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["src/adapters/chatgpt.js", "src/content/chatgpt.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
