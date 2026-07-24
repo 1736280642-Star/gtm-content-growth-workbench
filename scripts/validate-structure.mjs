@@ -1999,13 +1999,14 @@ addContentCheck("weekly plan platform expression display", "src/app/weekly-plan/
 ].forEach((filePath) => addFileCheck(`v5 foundation required file: ${filePath}`, filePath));
 
 addContentCheck("v5 foundation question automation", "src/lib/v5/question-service.ts", [
-  "AVAILABLE_CONFIDENCE = 0.75",
-  "decisionConflictTypes",
-  '"subject", "relationship", "safety"',
+  "EFFECTIVE_KEYWORD_RECALL_SCORE = 0.75",
+  "knowledgeReadiness.hasProductExpressionRulePackage && knowledgeReadiness.hasFactSourceMapping",
+  '"semantic", "business"',
   "automatic_signal_ingestion",
   "questionVersionId: question.currentVersionId",
   "semantic_keyword_excluded"
 ]);
+addAbsentCheck("v5 foundation question status has no confidence threshold", "src/lib/v5/question-service.ts", ["AVAILABLE_CONFIDENCE"]);
 addAbsentCheck("v5 foundation keyword has no approval state", "src/lib/v5/question-contracts.ts", ["pending_approval", "roleAssignment", "manual_enable"]);
 addContentCheck("v5 foundation question page", "src/app/questions-keywords/page.tsx", [
   "问题与关键词池",

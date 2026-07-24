@@ -15,8 +15,11 @@ import {
 } from "./foundation-service";
 import type {
   V5MonthlyQuestionLock,
+  V5QuestionConflictAssessment,
   V5QuestionConflictType,
   V5QuestionDecisionException,
+  V5QuestionKnowledgeReadiness,
+  V5QuestionSet,
   V5QuestionSignalInput,
   V5QuestionStatus,
   V5QuestionVersion,
@@ -27,10 +30,60 @@ import type {
 export const V5_QUESTION_ALGORITHM_VERSION = "question-normalizer.v1.0.0";
 export const V5_QUESTION_BOUNDARY_VERSION = "question-boundary.v1.0.0";
 export const V5_KEYWORD_ALGORITHM_VERSION = "semantic-keyword.v1.0.0";
-const AVAILABLE_CONFIDENCE = 0.75;
-const decisionConflictTypes = new Set<V5QuestionConflictType>(["subject", "relationship", "safety"]);
+const EFFECTIVE_KEYWORD_RECALL_SCORE = 0.75;
+const decisionConflictTypes = new Set<V5QuestionConflictType>(["semantic", "business"]);
 const questionWriterRoles = ["content_growth", "workbench_operator", "knowledge_manager", "developer_admin"] as const;
 const decisionRoles = ["workbench_operator", "knowledge_manager", "developer_admin"] as const;
+
+function normalizeConflictCategory(value: unknown): V5QuestionConflictType | undefined {
+  if (value === "semantic" || value === "historical_merge" || value === "user_correction") return "semantic";
+  if (value === "business" || value === "subject" || value === "relationship" || value === "safety") return "business";
+  return undefined;
+}
+
+function normalizeKnowledgeReadiness(input?: Partial<V5QuestionKnowledgeReadiness>): V5QuestionKnowledgeReadiness {
+  const subjectKnowledgeBaseId = input?.subjectKnowledgeBaseId?.trim() || undefined;
+  const productExpressionRulePackageId = input?.productExpressionRulePackageId?.trim() || undefined;
+  const factSourceMappingId = input?.factSourceMappingId?.trim() || undefined;
+  return {
+    subjectKnowledgeBaseId,
+    productExpressionRulePackageId,
+    factSourceMappingId,
+    hasProductExpressionRulePackage: Boolean(subjectKnowledgeBaseId && productExpressionRulePackageId),
+    hasFactSourceMapping: Boolean(subjectKnowledgeBaseId && factSourceMappingId)
+  };
+}
+
+function deriveQuestionStatus(
+  knowledgeReadiness: V5QuestionKnowledgeReadiness,
+  conflictAssessment: V5QuestionConflictAssessment,
+  currentStatus?: V5QuestionStatus
+): V5QuestionStatus {
+  if (currentStatus === "archived") return "archived";
+  if (conflictAssessment.hasConflict) return "decision_required";
+  return knowledgeReadiness.hasProductExpressionRulePackage && knowledgeReadiness.hasFactSourceMapping
+    ? "available"
+    : "observing";
+}
+
+function normalizeStoredQuestion(question: V5QuestionSet) {
+  const legacy = question as V5QuestionSet & {
+    knowledgeReadiness?: Partial<V5QuestionKnowledgeReadiness>;
+    conflictAssessment?: Partial<V5QuestionConflictAssessment>;
+  };
+  const knowledgeReadiness = normalizeKnowledgeReadiness(legacy.knowledgeReadiness);
+  const categories = (legacy.conflictAssessment?.categories || []).flatMap((item) => normalizeConflictCategory(item) || []);
+  const hasLegacyConflict = question.status === "decision_required";
+  const conflictAssessment: V5QuestionConflictAssessment = {
+    hasConflict: Boolean(legacy.conflictAssessment?.hasConflict || categories.length || hasLegacyConflict),
+    categories: categories.length ? categories : hasLegacyConflict ? ["business"] : [],
+    conflictingQuestionIds: Array.from(new Set(legacy.conflictAssessment?.conflictingQuestionIds || []))
+  };
+  question.knowledgeReadiness = knowledgeReadiness;
+  question.conflictAssessment = conflictAssessment;
+  question.status = deriveQuestionStatus(knowledgeReadiness, conflictAssessment, question.status);
+  return question;
+}
 
 function normalizeText(value: string) {
   return value
@@ -59,6 +112,16 @@ function semanticSimilarity(left: string, right: string) {
   return intersection / Math.max(1, new Set([...a, ...b]).size);
 }
 
+function hasBusinessRelationshipConflict(left?: string, right?: string) {
+  if (!left || !right) return false;
+  const normalizedLeft = normalizeText(left);
+  const normalizedRight = normalizeText(right);
+  return ["提供", "属于", "负责", "支持"].some((verb) => {
+    if (!normalizedLeft.includes(verb) || !normalizedRight.includes(verb)) return false;
+    return normalizedLeft.includes(`不${verb}`) !== normalizedRight.includes(`不${verb}`);
+  });
+}
+
 function currentVersion(state: V5FoundationState, questionId: string) {
   const question = state.questions.find((item) => item.questionId === questionId);
   return question ? state.questionVersions.find((item) => item.questionVersionId === question.currentVersionId) : undefined;
@@ -67,6 +130,7 @@ function currentVersion(state: V5FoundationState, questionId: string) {
 function buildQuestionViews(state: V5FoundationState): V5QuestionView[] {
   const keywordById = new Map(state.keywords.map((item) => [item.keywordId, item]));
   return state.questions.flatMap((question) => {
+    normalizeStoredQuestion(question);
     const version = state.questionVersions.find((item) => item.questionVersionId === question.currentVersionId);
     if (!version) return [];
     return [{
@@ -78,12 +142,17 @@ function buildQuestionViews(state: V5FoundationState): V5QuestionView[] {
   });
 }
 
+function getSignalSourceConfidence(signal: V5QuestionSignalInput) {
+  return signal.sourceConfidence ?? signal.confidence ?? 1;
+}
+
 function validateSignal(signal: V5QuestionSignalInput) {
   assertV5FoundationText(signal.text, "问题文本", 300);
   assertV5FoundationText(signal.source, "信号来源", 60);
   assertV5FoundationText(signal.sourceId, "sourceId", 160);
-  if (!Number.isFinite(signal.confidence) || signal.confidence < 0 || signal.confidence > 1) {
-    throw new V5FoundationServiceError("invalid_contract", "confidence 必须在 0 到 1 之间。", 400);
+  const sourceConfidence = getSignalSourceConfidence(signal);
+  if (!Number.isFinite(sourceConfidence) || sourceConfidence < 0 || sourceConfidence > 1) {
+    throw new V5FoundationServiceError("invalid_contract", "sourceConfidence 必须在 0 到 1 之间。", 400);
   }
 }
 
@@ -109,7 +178,7 @@ function upsertKeyword(state: V5FoundationState, input: {
   const normalizedText = normalizeText(input.text);
   let keyword = state.keywords.find((item) => item.normalizedText === normalizedText);
   if (keyword) {
-    if (keyword.status !== "excluded") keyword.status = input.confidence >= AVAILABLE_CONFIDENCE ? "effective" : "observing";
+    if (keyword.status !== "excluded") keyword.status = input.confidence >= EFFECTIVE_KEYWORD_RECALL_SCORE ? "effective" : "observing";
     keyword.relatedQuestionIds = Array.from(new Set([...keyword.relatedQuestionIds, input.questionId]));
     keyword.relatedEntities = Array.from(new Set([...keyword.relatedEntities, ...input.entities]));
     keyword.recallScore = Math.max(keyword.recallScore, input.confidence);
@@ -128,7 +197,7 @@ function upsertKeyword(state: V5FoundationState, input: {
     keywordId: createV5FoundationId("keyword"),
     text: input.text,
     normalizedText,
-    status: input.confidence >= AVAILABLE_CONFIDENCE ? "effective" : "observing",
+    status: input.confidence >= EFFECTIVE_KEYWORD_RECALL_SCORE ? "effective" : "observing",
     relatedQuestionIds: [input.questionId],
     relatedEntities: input.entities,
     recallScore: input.confidence,
@@ -155,14 +224,13 @@ function createDecisionException(
     (item) => item.questionId === input.questionId && item.type === input.conflict && item.status === "open"
   );
   if (existing) return;
-  const labels: Record<"subject" | "relationship" | "safety", string> = {
-    subject: "主体或产品归属需要确认",
-    relationship: "合作关系或公开边界需要确认",
-    safety: "敏感或禁止表达无法自动改写"
+  const labels: Record<V5QuestionConflictType, string> = {
+    semantic: "问题语义与现有问题存在冲突",
+    business: "产品归属或服务边界与现有问题冲突"
   };
-  const suggestion = input.conflict === "safety"
-    ? "改写为不包含夸大、敏感或禁止承诺的中性问题。"
-    : "采用明确主体、关系和服务范围的中性问题表述。";
+  const suggestion = input.conflict === "semantic"
+    ? "合并重复表达，并保留与现有事实口径一致的问题表述。"
+    : "采用明确产品主体、服务归属和业务关系的中性问题表述。";
   state.decisionExceptions.push({
     exceptionId: createV5FoundationId("decision"),
     questionId: input.questionId,
@@ -176,7 +244,7 @@ function createDecisionException(
       source: input.signal.source,
       sourceIds: [input.signal.sourceId],
       algorithmVersion: V5_QUESTION_BOUNDARY_VERSION,
-      confidence: input.signal.confidence,
+      confidence: getSignalSourceConfidence(input.signal),
       recordedAt: input.now
     },
     rowVersion: 1,
@@ -184,8 +252,35 @@ function createDecisionException(
   });
 }
 
+function buildConflictAssessment(
+  state: V5FoundationState,
+  signal: V5QuestionSignalInput,
+  matched?: { question: V5QuestionSet; version: V5QuestionVersion }
+): V5QuestionConflictAssessment {
+  const categories = new Set((signal.conflicts || []).flatMap((item) => normalizeConflictCategory(item) || []));
+  const conflictingQuestionIds = new Set((signal.conflictingQuestionIds || []).filter((id) => state.questions.some((item) => item.questionId === id)));
+  if (matched) {
+    normalizeStoredQuestion(matched.question);
+    for (const category of matched.question.conflictAssessment.categories) categories.add(category);
+    for (const questionId of matched.question.conflictAssessment.conflictingQuestionIds) conflictingQuestionIds.add(questionId);
+  }
+  const hasProductConflict = Boolean(matched?.version.product && signal.product && normalizeText(matched.version.product) !== normalizeText(signal.product));
+  const hasRelationshipConflict = hasBusinessRelationshipConflict(matched?.version.relationship, signal.relationship);
+  if (matched && (hasProductConflict || hasRelationshipConflict)) {
+    categories.add("business");
+    conflictingQuestionIds.add(matched.question.questionId);
+  }
+  if (matched && categories.size > 0) conflictingQuestionIds.add(matched.question.questionId);
+  return {
+    hasConflict: categories.size > 0,
+    categories: Array.from(categories),
+    conflictingQuestionIds: Array.from(conflictingQuestionIds)
+  };
+}
+
 function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now: string) {
   validateSignal(signal);
+  const sourceConfidence = getSignalSourceConfidence(signal);
   const normalizedText = normalizeText(signal.text);
   const candidates = state.questions.map((question) => ({ question, version: currentVersion(state, question.questionId) }))
     .filter((item): item is { question: V5FoundationState["questions"][number]; version: V5QuestionVersion } => Boolean(item.version));
@@ -193,14 +288,14 @@ function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now:
     .map((item) => ({ ...item, similarity: semanticSimilarity(normalizedText, item.version.normalizedText) }))
     .filter((item) => item.similarity >= 0.78)
     .sort((left, right) => right.similarity - left.similarity)[0];
-  const boundaryConflicts = (signal.conflicts || []).filter((item) => decisionConflictTypes.has(item));
-  const nextStatus: V5QuestionStatus = boundaryConflicts.length
-    ? "decision_required"
-    : signal.confidence >= AVAILABLE_CONFIDENCE ? "available" : "observing";
+  const previousReadiness = matched ? normalizeStoredQuestion(matched.question).knowledgeReadiness : undefined;
+  const knowledgeReadiness = normalizeKnowledgeReadiness(signal.knowledgeReadiness || previousReadiness);
+  const conflictAssessment = buildConflictAssessment(state, signal, matched);
+  const nextStatus = deriveQuestionStatus(knowledgeReadiness, conflictAssessment);
   let questionId: string;
   let version: V5QuestionVersion;
 
-  if (matched) {
+  if (matched && !conflictAssessment.hasConflict) {
     questionId = matched.question.questionId;
     const semanticChanged = matched.version.normalizedText !== normalizedText
       || matched.version.product !== signal.product
@@ -219,7 +314,7 @@ function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now:
         audience: signal.audience || matched.version.audience,
         suggestedArticleTypes: signal.suggestedArticleTypes || matched.version.suggestedArticleTypes,
         sourceSummary: mergeSourceSummary(matched.version.sourceSummary, signal.source),
-        trace: { source: signal.source, sourceIds: [signal.sourceId], algorithmVersion: V5_QUESTION_ALGORITHM_VERSION, confidence: signal.confidence, recordedAt: now },
+        trace: { source: signal.source, sourceIds: [signal.sourceId], algorithmVersion: V5_QUESTION_ALGORITHM_VERSION, confidence: sourceConfidence, recordedAt: now },
         createdAt: now
       };
       state.questionVersions.push(version);
@@ -231,13 +326,14 @@ function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now:
         source: "automatic_signal_ingestion",
         sourceIds: Array.from(new Set([...version.trace.sourceIds, signal.sourceId])),
         algorithmVersion: V5_QUESTION_ALGORITHM_VERSION,
-        confidence: Math.max(version.trace.confidence, signal.confidence),
+        confidence: Math.max(version.trace.confidence, sourceConfidence),
         recordedAt: now
       };
     }
     matched.question.status = nextStatus;
+    matched.question.knowledgeReadiness = knowledgeReadiness;
+    matched.question.conflictAssessment = conflictAssessment;
     matched.question.evidenceGap = matched.question.evidenceGap || Boolean(signal.evidenceGap);
-    matched.question.confidence = Math.max(matched.question.confidence, signal.confidence);
     matched.question.rowVersion += 1;
     matched.question.updatedAt = now;
   } else {
@@ -254,7 +350,7 @@ function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now:
       audience: signal.audience,
       suggestedArticleTypes: signal.suggestedArticleTypes || ["问题解答"],
       sourceSummary: { [signal.source]: 1 },
-      trace: { source: signal.source, sourceIds: [signal.sourceId], algorithmVersion: V5_QUESTION_ALGORITHM_VERSION, confidence: signal.confidence, recordedAt: now },
+      trace: { source: signal.source, sourceIds: [signal.sourceId], algorithmVersion: V5_QUESTION_ALGORITHM_VERSION, confidence: sourceConfidence, recordedAt: now },
       createdAt: now
     };
     state.questionVersions.push(version);
@@ -264,7 +360,8 @@ function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now:
       status: nextStatus,
       keywordIds: [],
       evidenceGap: Boolean(signal.evidenceGap),
-      confidence: signal.confidence,
+      knowledgeReadiness,
+      conflictAssessment,
       rowVersion: 1,
       createdAt: now,
       updatedAt: now
@@ -277,11 +374,11 @@ function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now:
     questionId,
     entities: signal.entities || [],
     sourceId: signal.sourceId,
-    confidence: signal.confidence,
+    confidence: sourceConfidence,
     now
   }).keywordId);
   question.keywordIds = Array.from(new Set([...question.keywordIds, ...keywordIds]));
-  for (const conflict of boundaryConflicts) createDecisionException(state, { questionId, versionId: version.questionVersionId, conflict, signal, now });
+  for (const conflict of conflictAssessment.categories) createDecisionException(state, { questionId, versionId: version.questionVersionId, conflict, signal, now });
   return questionId;
 }
 
@@ -317,7 +414,6 @@ export function updateV5Question(input: V5WriteEnvelope & {
   relationship?: string;
   audience?: string;
   suggestedArticleTypes?: string[];
-  status?: "available" | "observing";
 }) {
   assertV5FoundationEnvelope(input, [...questionWriterRoles]);
   assertV5FoundationText(input.text, "问题文本", 300);
@@ -331,12 +427,12 @@ export function updateV5Question(input: V5WriteEnvelope & {
       entities: input.entities,
       relationship: input.relationship,
       audience: input.audience,
-      suggestedArticleTypes: input.suggestedArticleTypes,
-      status: input.status
+      suggestedArticleTypes: input.suggestedArticleTypes
     }),
     mutate(state) {
       const question = state.questions.find((item) => item.questionId === input.questionId);
       if (!question) throw new V5FoundationServiceError("not_found", "问题不存在。", 404);
+      normalizeStoredQuestion(question);
       assertV5ExpectedVersion(question.rowVersion, input.expectedVersion);
       const previous = currentVersion(state, input.questionId)!;
       const now = new Date().toISOString();
@@ -362,8 +458,7 @@ export function updateV5Question(input: V5WriteEnvelope & {
       };
       state.questionVersions.push(version);
       question.currentVersionId = version.questionVersionId;
-      question.status = input.status || "available";
-      question.confidence = 1;
+      question.status = deriveQuestionStatus(question.knowledgeReadiness, question.conflictAssessment, question.status);
       question.rowVersion += 1;
       question.updatedAt = now;
       appendV5FoundationAudit(state, {
@@ -429,8 +524,9 @@ export function selectV5MonthlyQuestions(input: V5WriteEnvelope & { month: strin
       for (const questionId of input.questionIds) {
         const question = state.questions.find((item) => item.questionId === questionId);
         if (!question) throw new V5FoundationServiceError("not_found", "选择的问题不存在。", 404);
+        normalizeStoredQuestion(question);
         if (question.status === "decision_required") {
-          throw new V5FoundationServiceError("decision_required", "待决策问题不能进入月度计划。", 409, "先解决主体、关系或安全边界冲突。", { questionId });
+          throw new V5FoundationServiceError("decision_required", "待决策问题不能进入月度计划。", 409, "先解决与现有问题池的语义或业务冲突。", { questionId });
         }
         const existing = state.monthlyQuestionLocks.find((item) => item.month === input.month && item.questionId === questionId);
         if (existing) {
@@ -480,6 +576,7 @@ export function resolveV5QuestionDecisions(input: V5WriteEnvelope & {
         assertV5ExpectedVersion(exception.rowVersion, resolution.expectedVersion ?? input.expectedVersion);
         if (exception.status !== "open") continue;
         const question = state.questions.find((item) => item.questionId === exception.questionId)!;
+        normalizeStoredQuestion(question);
         const previous = currentVersion(state, question.questionId)!;
         if (resolution.action !== "ignore") {
           const nextText = resolution.action === "correct" ? resolution.correctedText : exception.suggestion;
@@ -495,18 +592,20 @@ export function resolveV5QuestionDecisions(input: V5WriteEnvelope & {
           };
           state.questionVersions.push(nextVersion);
           question.currentVersionId = nextVersion.questionVersionId;
-          question.status = "available";
-          question.rowVersion += 1;
-          question.updatedAt = now;
-        } else {
-          question.status = "observing";
-          question.rowVersion += 1;
-          question.updatedAt = now;
         }
         exception.status = resolution.action === "adopt_suggestion" ? "resolved_by_suggestion" : resolution.action === "correct" ? "corrected" : "ignored";
         exception.resolutionReason = input.actor.auditReason;
         exception.resolvedAt = now;
         exception.rowVersion += 1;
+        const remainingConflicts = state.decisionExceptions.filter((item) => item.questionId === question.questionId && item.status === "open");
+        question.conflictAssessment = {
+          hasConflict: remainingConflicts.length > 0,
+          categories: Array.from(new Set(remainingConflicts.flatMap((item) => normalizeConflictCategory(item.type) || []))),
+          conflictingQuestionIds: remainingConflicts.length > 0 ? question.conflictAssessment.conflictingQuestionIds : []
+        };
+        question.status = deriveQuestionStatus(question.knowledgeReadiness, question.conflictAssessment, question.status);
+        question.rowVersion += 1;
+        question.updatedAt = now;
       }
       appendV5FoundationAudit(state, {
         action: "question_decisions_resolved",
@@ -602,7 +701,7 @@ export function restoreV5Keyword(input: V5WriteEnvelope & { keywordId: string; r
       const keyword = state.keywords.find((item) => item.keywordId === input.keywordId);
       if (!keyword) throw new V5FoundationServiceError("not_found", "关键词不存在。", 404);
       assertV5ExpectedVersion(keyword.rowVersion, input.expectedVersion);
-      keyword.status = keyword.recallScore >= AVAILABLE_CONFIDENCE ? "effective" : "observing";
+      keyword.status = keyword.recallScore >= EFFECTIVE_KEYWORD_RECALL_SCORE ? "effective" : "observing";
       keyword.exclusionReason = undefined;
       keyword.excludedAt = undefined;
       keyword.rowVersion += 1;

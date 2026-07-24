@@ -17,7 +17,6 @@ export function GET(_request: Request, { params }: { params: { id: string } }) {
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
     const payload = await readV5GovernancePayload(request);
-    const status = readString(payload.status);
     return NextResponse.json(updateV5Question({
       ...readV5WriteEnvelope(payload),
       questionId: params.id,
@@ -26,8 +25,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       entities: Array.isArray(payload.entities) ? payload.entities.filter((item): item is string => typeof item === "string") : undefined,
       relationship: readString(payload.relationship),
       audience: readString(payload.audience),
-      suggestedArticleTypes: Array.isArray(payload.suggestedArticleTypes) ? payload.suggestedArticleTypes.filter((item): item is string => typeof item === "string") : undefined,
-      status: status === "observing" ? "observing" : status === "available" ? "available" : undefined
+      suggestedArticleTypes: Array.isArray(payload.suggestedArticleTypes) ? payload.suggestedArticleTypes.filter((item): item is string => typeof item === "string") : undefined
     }));
   } catch (error) {
     return v5FoundationErrorResponse(error);

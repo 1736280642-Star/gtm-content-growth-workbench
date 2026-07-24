@@ -8,7 +8,14 @@
       "status": "available",
       "keywordIds": ["keyword-adp-provider", "keyword-adp-delivery"],
       "evidenceGap": false,
-      "confidence": 0.94,
+      "knowledgeReadiness": {
+        "subjectKnowledgeBaseId": "kb-adp-service",
+        "productExpressionRulePackageId": "demo-rule-package-adp-v1",
+        "factSourceMappingId": "demo-snapshot-adp-v1",
+        "hasProductExpressionRulePackage": true,
+        "hasFactSourceMapping": true
+      },
+      "conflictAssessment": {"hasConflict": false, "categories": [], "conflictingQuestionIds": []},
       "rowVersion": 1,
       "createdAt": "2026-07-22T01:00:00.000Z",
       "updatedAt": "2026-07-22T01:00:00.000Z"
@@ -19,7 +26,11 @@
       "status": "observing",
       "keywordIds": ["keyword-enterprise-search"],
       "evidenceGap": true,
-      "confidence": 0.61,
+      "knowledgeReadiness": {
+        "hasProductExpressionRulePackage": false,
+        "hasFactSourceMapping": false
+      },
+      "conflictAssessment": {"hasConflict": false, "categories": [], "conflictingQuestionIds": []},
       "rowVersion": 1,
       "createdAt": "2026-07-22T01:00:00.000Z",
       "updatedAt": "2026-07-22T01:00:00.000Z"
@@ -30,7 +41,14 @@
       "status": "decision_required",
       "keywordIds": [],
       "evidenceGap": false,
-      "confidence": 0.86,
+      "knowledgeReadiness": {
+        "subjectKnowledgeBaseId": "kb-adp-service",
+        "productExpressionRulePackageId": "demo-rule-package-adp-v1",
+        "factSourceMappingId": "demo-snapshot-adp-v1",
+        "hasProductExpressionRulePackage": true,
+        "hasFactSourceMapping": true
+      },
+      "conflictAssessment": {"hasConflict": true, "categories": ["business"], "conflictingQuestionIds": ["question-adp-provider"]},
       "rowVersion": 1,
       "createdAt": "2026-07-22T01:00:00.000Z",
       "updatedAt": "2026-07-22T01:00:00.000Z"
@@ -126,7 +144,7 @@
       "exceptionId": "decision-adp-ownership",
       "questionId": "question-adp-ownership",
       "questionVersionId": "question-version-adp-ownership-v1",
-      "type": "subject",
+      "type": "business",
       "title": "“JOTO ADP 产品能力”可能混淆产品归属",
       "explanation": "系统无法确认 ADP 能力属于 JOTO 自有产品还是腾讯云产品服务。",
       "suggestion": "改为“JOTO 的腾讯云 ADP 实施服务能力”。",

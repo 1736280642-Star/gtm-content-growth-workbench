@@ -82,6 +82,18 @@ function currentMonth() {
   return new Date().toISOString().slice(0, 7);
 }
 
+function questionStateReason(question: V5QuestionView) {
+  if (question.conflictAssessment.hasConflict) {
+    const labels = question.conflictAssessment.categories.map((item) => item === "semantic" ? "语义冲突" : "业务冲突");
+    return `与现有问题池存在${labels.join("、") || "冲突"}`;
+  }
+  const reasons = [
+    question.knowledgeReadiness.hasProductExpressionRulePackage ? "表达规则已匹配" : "缺少产品表达规则包",
+    question.knowledgeReadiness.hasFactSourceMapping ? "事实来源已映射" : "缺少事实来源映射"
+  ];
+  return reasons.join(" · ");
+}
+
 export default function QuestionsKeywordsPage() {
   const {
     state: { workspaceSetting }
@@ -140,15 +152,14 @@ export default function QuestionsKeywordsPage() {
           product: values.product,
           audience: values.audience,
           suggestedArticleTypes: values.articleTypes || [],
-          keywords: values.keywords || [],
-          confidence: 1
+          keywords: values.keywords || []
         })
       });
       setAddOpen(false);
       setEditingQuestion(undefined);
       form.resetFields();
       await refresh();
-      messageApi.success(editingQuestion ? "系统理解已纠正，并创建了新的问题版本。" : "问题已自动规范化并进入可用池。");
+      messageApi.success(editingQuestion ? "系统理解已纠正，并创建了新的问题版本。" : "问题已归纳，系统将按知识对象和冲突检查自动确定状态。");
     } catch (requestError) {
       messageApi.error(requestError instanceof Error ? requestError.message : "补充问题失败");
     } finally {
@@ -277,7 +288,7 @@ export default function QuestionsKeywordsPage() {
           getCheckboxProps: (record) => ({ disabled: record.status === "decision_required" || lockedQuestionIds.has(record.questionId) })
         }}
         locale={{ emptyText: <ActionEmpty title="尚未识别到问题" description="接入业务信号，或补充一个真实业务问题。" /> }}
-        scroll={{ x: 980 }}
+        scroll={{ x: 1090 }}
         columns={[
           {
             title: "问题",
@@ -299,11 +310,11 @@ export default function QuestionsKeywordsPage() {
           },
           {
             title: "状态",
-            width: 140,
+            width: 250,
             render: (_, record) => (
               <Space direction="vertical" size={3}>
                 <Tag color={statusColors[record.status]}>{statusLabels[record.status]}</Tag>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>{Math.round(record.confidence * 100)}% 置信度</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>{questionStateReason(record)}</Typography.Text>
               </Space>
             )
           },
@@ -321,7 +332,7 @@ export default function QuestionsKeywordsPage() {
         ]}
       />
       <div className="foundation-selection-bar">
-        <Typography.Text>已选择 {selectedQuestionIds.length} 项；观察问题也可直接选择，待决策问题需先解决边界冲突。</Typography.Text>
+        <Typography.Text>已选择 {selectedQuestionIds.length} 项；观察问题可保留为月度目标，正式生产仍需通过 Evidence Gate；待决策问题需先解决冲突。</Typography.Text>
         <Button type="primary" disabled={!selectedQuestionIds.length} loading={saving} onClick={selectMonthlyQuestions}>选择为本月目标问题</Button>
       </div>
     </Card>
@@ -415,6 +426,7 @@ export default function QuestionsKeywordsPage() {
               <Descriptions.Item label="业务关系">{detailQuestion.currentVersion.relationship || "待识别"}</Descriptions.Item>
               <Descriptions.Item label="适用对象">{detailQuestion.currentVersion.audience || "待识别"}</Descriptions.Item>
               <Descriptions.Item label="系统建议文章类型">{detailQuestion.currentVersion.suggestedArticleTypes.join("、")}</Descriptions.Item>
+              <Descriptions.Item label="状态依据">{questionStateReason(detailQuestion)}</Descriptions.Item>
             </Descriptions>
             <Alert
               showIcon
@@ -448,7 +460,7 @@ export default function QuestionsKeywordsPage() {
           <Button key="selected" type="primary" disabled={!selectedDecisionIds.length} loading={saving} onClick={() => resolveDecisions(selectedDecisionIds.map(String))}>批量采用建议</Button>
         ]}
       >
-        <Alert showIcon type="warning" message="这里只处理主体、关系或安全边界冲突" description="低置信度和证据暂不足会自动进入观察，不会制造人工审核队列。" />
+        <Alert showIcon type="warning" message="这里只处理与现有问题池的语义或业务冲突" description="缺少产品表达规则包或事实来源映射的问题会自动进入观察，不会制造人工审核队列。" />
         <List
           rowKey="exceptionId"
           dataSource={openDecisions}

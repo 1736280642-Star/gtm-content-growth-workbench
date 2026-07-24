@@ -11,17 +11,31 @@ const files = Object.fromEntries(await Promise.all([
   "src/lib/v5/article-expression-service.ts",
   "src/lib/v5/foundation-repository.ts",
   "src/lib/v5/monthly-contracts.ts",
+  "data/v5-foundation-state.json",
   "src/app/questions-keywords/page.tsx",
   "src/app/knowledge/[id]/page.tsx",
   "src/app/configuration/page.tsx"
 ].map(async (path) => [path, await readFile(path, "utf8")])));
 
-test("question automation separates confidence from boundary decisions", () => {
+test("question availability uses only knowledge readiness and question-pool conflicts", () => {
   const service = files["src/lib/v5/question-service.ts"];
-  assert.match(service, /AVAILABLE_CONFIDENCE = 0\.75/);
-  assert.match(service, /decisionConflictTypes = new Set<V5QuestionConflictType>\(\["subject", "relationship", "safety"\]\)/);
-  assert.match(service, /signal\.confidence >= AVAILABLE_CONFIDENCE \? "available" : "observing"/);
+  const contracts = files["src/lib/v5/question-contracts.ts"];
+  assert.match(service, /knowledgeReadiness\.hasProductExpressionRulePackage && knowledgeReadiness\.hasFactSourceMapping/);
+  assert.match(service, /if \(conflictAssessment\.hasConflict\) return "decision_required"/);
+  assert.match(service, /decisionConflictTypes = new Set<V5QuestionConflictType>\(\["semantic", "business"\]\)/);
+  assert.doesNotMatch(service, /AVAILABLE_CONFIDENCE|signal\.confidence\s*[><=]+.*available/);
+  assert.match(contracts, /knowledgeReadiness: V5QuestionKnowledgeReadiness/);
+  assert.match(contracts, /conflictAssessment: V5QuestionConflictAssessment/);
   assert.doesNotMatch(files["src/lib/v5/question-contracts.ts"], /pending_approval|manual_enable|roleAssignment/);
+});
+
+test("question fixture covers ready, missing-knowledge and conflicting states without a question confidence field", () => {
+  const fixture = JSON.parse(files["data/v5-foundation-state.json"]);
+  const byId = new Map(fixture.questions.map((item) => [item.questionId, item]));
+  assert.equal(byId.get("question-adp-provider").status, "available");
+  assert.equal(byId.get("question-workbuddy-scenes").status, "observing");
+  assert.equal(byId.get("question-adp-ownership").status, "decision_required");
+  for (const question of fixture.questions) assert.equal(Object.hasOwn(question, "confidence"), false);
 });
 
 test("automatic writes retain source, algorithm, confidence and audit", () => {
