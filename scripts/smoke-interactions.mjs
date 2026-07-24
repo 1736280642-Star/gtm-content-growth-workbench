@@ -107,14 +107,14 @@ const contracts = [
   {
     name: "v5_foundation_question_pool_contract",
     file: "src/app/questions-keywords/page.tsx",
-    includes: ["问题与关键词池", "问题库", "关键词库", "内容覆盖", "待决策", "选择为本月目标问题", "/api/v5/questions/select-monthly", "/api/v5/question-decision-exceptions/batch-resolve"],
-    excludes: ["子意图", "内容角色"]
+    includes: ["问题与关键词池", "问题库", "关键词库", "内容覆盖", "待决策", "选择为本月目标问题", "表达规则已匹配", "事实来源已映射", "/api/v5/questions/select-monthly", "/api/v5/question-decision-exceptions/batch-resolve"],
+    excludes: ["子意图", "内容角色", "% 置信度"]
   },
   {
     name: "v5_foundation_question_service_contract",
     file: "src/lib/v5/question-service.ts",
-    includes: ["AVAILABLE_CONFIDENCE = 0.75", "decisionConflictTypes", '"subject", "relationship", "safety"', "questionVersionId: question.currentVersionId", "monthlyQuestionLocks", "V5_KEYWORD_ALGORITHM_VERSION"],
-    excludes: ["pending_approval"]
+    includes: ["EFFECTIVE_KEYWORD_RECALL_SCORE = 0.75", "knowledgeReadiness.hasProductExpressionRulePackage && knowledgeReadiness.hasFactSourceMapping", '"semantic", "business"', "questionVersionId: question.currentVersionId", "monthlyQuestionLocks", "V5_KEYWORD_ALGORITHM_VERSION"],
+    excludes: ["pending_approval", "AVAILABLE_CONFIDENCE"]
   },
   {
     name: "v5_foundation_knowledge_workspace_contract",

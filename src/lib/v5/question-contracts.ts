@@ -1,7 +1,21 @@
 export type V5QuestionStatus = "available" | "observing" | "decision_required" | "archived";
 export type V5KeywordStatus = "effective" | "observing" | "excluded";
-export type V5QuestionConflictType = "subject" | "relationship" | "safety" | "historical_merge" | "user_correction";
+export type V5QuestionConflictType = "semantic" | "business";
 export type V5QuestionDecisionStatus = "open" | "resolved_by_suggestion" | "corrected" | "ignored";
+
+export interface V5QuestionKnowledgeReadiness {
+  subjectKnowledgeBaseId?: string;
+  productExpressionRulePackageId?: string;
+  factSourceMappingId?: string;
+  hasProductExpressionRulePackage: boolean;
+  hasFactSourceMapping: boolean;
+}
+
+export interface V5QuestionConflictAssessment {
+  hasConflict: boolean;
+  categories: V5QuestionConflictType[];
+  conflictingQuestionIds: string[];
+}
 
 export interface V5AutomationTrace {
   source: string;
@@ -45,7 +59,8 @@ export interface V5QuestionSet {
   status: V5QuestionStatus;
   keywordIds: string[];
   evidenceGap: boolean;
-  confidence: number;
+  knowledgeReadiness: V5QuestionKnowledgeReadiness;
+  conflictAssessment: V5QuestionConflictAssessment;
   rowVersion: number;
   createdAt: string;
   updatedAt: string;
@@ -92,14 +107,19 @@ export interface V5QuestionSignalInput {
   text: string;
   source: "site_search" | "sales_question" | "ai_observation" | "published_content" | "manual";
   sourceId: string;
-  confidence: number;
+  /** Source quality is retained for traceability only and never determines question status. */
+  sourceConfidence?: number;
+  /** @deprecated Use sourceConfidence. Retained for existing signal producers. */
+  confidence?: number;
   product?: string;
   entities?: string[];
   relationship?: string;
   audience?: string;
   suggestedArticleTypes?: string[];
   keywords?: string[];
+  knowledgeReadiness?: Partial<V5QuestionKnowledgeReadiness>;
   conflicts?: V5QuestionConflictType[];
+  conflictingQuestionIds?: string[];
   evidenceGap?: boolean;
 }
 
