@@ -1,51 +1,54 @@
 # JOTO GTM Content Workbench
 
-本目录用于沉淀 JOTO GTM 内容工作台的产品规划、需求文档、流程设计、开发说明和后续复盘。
+JOTO GTM 内容工作台服务真实的月度内容生产、发布记录和效果复盘。唯一业务主链路是：
 
-## 1. Project Positioning
+`MonthlyPlan -> 日期执行 -> 发布与指标 -> MonthlyReview -> 下月方案`
 
-JOTO GTM 内容工作台不是单纯的 AI 写作工具，也不是继续做深一个通用 GEO 系统。
+WorkBuddy 和腾讯云 ADP 是当前主要推广对象，其他 JOTO 产品也可以通过产品规则、知识证据和动态推广配置接入；领域代码不写死任何产品名、身份句、CTA 文案或 URL。
 
-它的 MVP 目标是服务 JOTO 当前真实的市场内容工作：
+## 1. V5 内容生产目标链路
 
-1. 自动化生成渠道文章选题与内容。
-2. 支持人工确认终稿后进入发布队列。
-3. 对官网博客进行 SEO、GEO、AI Bot 等监控与诊断。
-4. 将渠道数据与官网博客诊断结果反哺下一个月选题。
-5. 为后续接入官网博客创作模块预留入口。
+`知识治理 -> 月度任务冻结 -> FinalEvidencePack -> 生产合同编译 -> 生成前门禁 -> 模型生成与内部自检 -> 确定性机器校验 -> 最多一次自动修复 -> 可用正文 -> 发布确认`
 
-## 2. Current MVP Scope
+正文事实只能来自知识库检索形成的冻结 `FinalEvidencePack`。内容类型决定文章如何回答问题，渠道规则决定平台格式，动态推广配置决定在给定产品、渠道和 CTA 意图下使用哪个已批准推广资产。
 
-MVP 阶段聚焦两个对象：
+CTA 不由模型自由选择。系统会根据冻结任务依次匹配目标产品、渠道、CTA 意图、内容类型、标题类别、推广目标、有效期和优先级，并把唯一结果写入 `CTAPlan`。同业务优先级存在多个候选时直接阻断；必需 CTA 无匹配时阻断；非必需 CTA 无匹配时生成无 CTA 正文。
 
-1. JOTO 官方品牌传播。
-2. 唯客 AI 护栏单一产品内容自动化。
+## 2. 当前分支已实现
 
-当前阶段不把官网博客创作作为主流程。官网博客只做监控、分析判断和优化建议；后续可从博客候选池进入“博客创作任务”模块。
+- 产品无关的内容任务、证据包、产品规则、内容类型、渠道规则和推广配置契约。
+- 动态推广/CTA 确定性解析，包含审批、有效期、公开 HTTPS URL、Claim、渠道呈现和冲突门禁。
+- 不可变 `ProductionContractSnapshot` 编译及稳定哈希。
+- 字数、结构、事实追踪、边界、CTA、URL、敏感信息、重复和跨渠道相似度校验。
+- Provider 技术失败最多三次尝试；业务规则失败最多一次自动修复。
+- 13 项领域测试，覆盖多产品多渠道 CTA、缺配置、冲突、EvidencePack 门禁、输出校验和重试状态。
 
-## 3. Document Index
+实现位于 `src/lib/v5/`，详细设计见 `docs/V5-07-20/内容生产规则链路与动态推广确定性解析方案.md`。
 
-| 文档 | 用途 |
-|---|---|
-| `MVP-PRD1.md` | MVP 方向版 PRD，说明项目背景、目标、范围、流程、迁移资产和成功指标 |
-| `PRD2.md` | 工程开发前 PRD，说明页面、数据结构、接口、字段、开发边界和验收标准 |
-| `design/low-fi-prototype.md` | MVP 低保真原型，说明页面线框、主流程、状态和关键交互 |
-| `docs/development-plan.md` | 开发计划说明，包含技术审查、选型清单、开发阶段和阶段验收标准 |
-| `docs/development-task-list.md` | 开发任务清单，按 Phase 0~7 拆解具体任务、交付物和验收标准 |
-| `docs/development.md` | 本地开发说明，包含启动、环境变量、数据库和 Worker 说明 |
-| `docs/usage.md` | 本地试运行使用说明，包含启动、主流程、Pipeline、诊断和验证命令 |
-| `docs/phase7-runbook.md` | Phase 7 试运行、真实接入任务和缺配置清单 |
-| `docs/phase-status.md` | Phase 0~6 当前完成状态与真实接入缺口 |
-| `docs/phase0-6-verification.md` | Phase 0~6 结构验收记录，包含验证命令、通过结果和生产级接入缺口 |
+## 3. 当前能力边界
 
-## 4. Directory Usage Rules
+当前代码完成的是可独立测试的 V5 领域核心，不等于页面端已经具备完整真实内容生产链路。
 
-后续建议按以下方式扩展：
+尚未接通：
 
-1. `prd/`: 存放不同版本 PRD。
-2. `design/`: 存放信息架构、页面流程、原型说明。
-3. `docs/`: 存放开发说明、部署说明、配置说明。
-4. `workflow/`: 存放自动化内容生产流程、SOP、Prompt、检查清单。
-5. `review/`: 存放阶段复盘、问题记录、迭代建议。
+- MySQL `PromotionProfileVersion` 仓库、版本审批和管理 UI。
+- 本分支知识库页面到正式 Claim、SourceRevision、产品规则包和 `FinalEvidencePack` 的真实治理链路。
+- OpenSearch 检索及真实 WorkBuddy、ADP 和其他产品证据入库。
+- 批量生成 API/UI 到 `ProductionContractSnapshot`、真实模型 Provider 和校验结果的接线。
+- 可用正文到排程、真实平台发布及发布回执的自动桥接。
 
-当前先保持最小结构，避免在 MVP 方向尚未完全验证前过度设计。
+因此，当前可以证明“规则如何确定性执行”，不能宣称用户已经能在页面上完成从知识检索到公开发布的端到端生产。旧流程中的人工终稿确认仍存在；当新链路接入后，人工职责应收敛为规则审批、关键判断和发布确认，不再承担逐段机器质检。
+
+## 4. Verification
+
+```powershell
+npm.cmd run typecheck
+npm.cmd run validate:structure
+npm.cmd run test:v5-content-production
+```
+
+## 5. Documents
+
+- `docs/V5-07-20/内容生产规则链路与动态推广确定性解析方案.md`: 规则分层、动态推广、确定性解析、状态机、测试和执行计划。
+- `docs/usage.md`: 当前工作台试运行、Pipeline、诊断和验证命令。
+- `design/low-fi-prototype.md`: 现有页面与主流程原型基线。

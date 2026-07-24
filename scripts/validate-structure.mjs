@@ -38,17 +38,10 @@ function addRegexCheck(label, filePath, patterns) {
 }
 
 const requiredDocs = [
-  "docs/MVP-PRD1.md",
-  "docs/MVP-PRD2.md",
   "README.md",
   "design/low-fi-prototype.md",
-  "docs/development-plan.md",
-  "docs/development-task-list.md",
-  "docs/development.md",
   "docs/usage.md",
-  "docs/phase7-runbook.md",
-  "docs/phase-status.md",
-  "docs/phase0-asset-audit.md"
+  "docs/V5-07-20/内容生产规则链路与动态推广确定性解析方案.md"
 ];
 
 const requiredConfig = [
@@ -59,6 +52,7 @@ const requiredConfig = [
   "scripts/smoke-interactions.mjs",
   "scripts/smoke-browser.mjs",
   "scripts/smoke-workflow.mjs",
+  "scripts/v5-content-production-rules.test.mjs",
   "scripts/check-mysql-connection.mjs",
   "scripts/init-mysql-schema.mjs",
   "scripts/mysql-state-store.mjs",
@@ -69,7 +63,12 @@ const requiredConfig = [
   "src/lib/blog-sync-adapter.ts",
   "src/lib/log-import-adapter.ts",
   "src/lib/channel-metrics-adapter.ts",
-  "src/lib/repositories/mysql-bridge.ts"
+  "src/lib/repositories/mysql-bridge.ts",
+  "src/lib/v5/content-production-contracts.ts",
+  "src/lib/v5/promotion-resolver.ts",
+  "src/lib/v5/production-contract-compiler.ts",
+  "src/lib/v5/production-output-validator.ts",
+  "src/lib/v5/content-production-service.ts"
 ];
 
 const requiredPages = [
@@ -172,7 +171,8 @@ const requiredWorkers = [
   "workers/import-channel-metrics.mjs",
   "workers/run-pipeline.mjs",
   "workers/schedule-pipeline.mjs",
-  "workers/worker-utils.mjs"
+  "workers/worker-utils.mjs",
+  "workers/typescript-loader.mjs"
 ];
 
 const schemaTables = [
@@ -212,6 +212,7 @@ addContentCheck("package scripts", "package.json", [
   "\"build\"",
   "\"typecheck\"",
   "\"validate:structure\"",
+  "\"test:v5-content-production\"",
   "\"smoke:pages\"",
   "\"smoke:interactions\"",
   "\"smoke:browser\"",
@@ -233,6 +234,46 @@ addContentCheck("usage doc", "docs/usage.md", [
   "真实接入还需要什么"
 ]);
 addContentCheck("readme usage index", "README.md", ["docs/usage.md"]);
+addContentCheck("V5 production capability boundary", "README.md", [
+  "ProductionContractSnapshot",
+  "CTAPlan",
+  "当前能力边界",
+  "不能宣称用户已经能在页面上完成从知识检索到公开发布的端到端生产"
+]);
+addContentCheck("V5 content production design", "docs/V5-07-20/内容生产规则链路与动态推广确定性解析方案.md", [
+  "FinalEvidencePack",
+  "动态推广配置",
+  "确定性解析",
+  "生成后机器校验",
+  "完成定义"
+]);
+addContentCheck("V5 deterministic promotion resolver", "src/lib/v5/promotion-resolver.ts", [
+  "resolvePromotionPlan",
+  "promotion_conflict",
+  "promotion_required_missing",
+  "promotion_claim_missing"
+]);
+addContentCheck("V5 production contract compiler", "src/lib/v5/production-contract-compiler.ts", [
+  "compileProductionContract",
+  "FinalEvidencePackSnapshot",
+  "contractHash"
+]);
+addContentCheck("V5 production output validator", "src/lib/v5/production-output-validator.ts", [
+  "validateProductionOutput",
+  "fact_trace_invalid",
+  "cross_channel_similarity",
+  "sensitive_output"
+]);
+addContentCheck("V5 one-repair orchestration", "src/lib/v5/content-production-service.ts", [
+  "callWithTechnicalRetries",
+  "repairCount",
+  "system_recovering"
+]);
+addContentCheck("V5 production rule tests", "scripts/v5-content-production-rules.test.mjs", [
+  "多产品任务按产品、渠道和意图确定性选择 CTA",
+  "同业务优先级 CTA 冲突时 fail closed",
+  "Provider 技术失败最多重试三次"
+]);
 addContentCheck("publish record channel metrics", "database/schema.sql", ["channel_metrics JSON"]);
 addContentCheck("worker api execution", "workers/worker-utils.mjs", ["postJson", "getJson", "WORKBENCH_BASE_URL"]);
 addContentCheck("pipeline worker", "workers/run-pipeline.mjs", ["sync_blog", "import_log", "import_channel_metrics"]);
