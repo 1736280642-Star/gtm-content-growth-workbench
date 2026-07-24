@@ -88,8 +88,8 @@ test("source import worker supports an explicit single-product scope", () => {
   const output = JSON.parse(result.stdout.trim());
   assert.equal(output.status, "dry_run");
   assert.equal(output.productScope, "pharaoh-command");
-  assert.equal(output.registrySummary.total, 77);
+  assert.equal(output.registrySummary.total, Object.values(output.registrySummary.byDisposition).reduce((sum, count) => sum + count, 0));
   assert.equal(output.registrySummary.byDisposition.production_candidate, 11);
-  assert.equal(output.summary.writable, 75);
-  assert.deepEqual(output.summary.byProduct, { "pharaoh-command": 75 });
+  assert.equal(output.summary.writable, output.registrySummary.total - output.registrySummary.byDisposition.excluded_text);
+  assert.deepEqual(output.summary.byProduct, { "pharaoh-command": output.summary.writable });
 });

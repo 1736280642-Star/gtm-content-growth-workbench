@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "validate:structure": "node scripts/validate-structure.mjs",
+    "test:v5-content-production": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-content-production-rules.test.mjs",
     "test:v5-workflow": "node --test scripts/v5-knowledge-workflow-policy.test.mjs",
     "test:v5-foundation": "node --test scripts/v5-foundation-contracts.test.mjs",
     "prompt:wechat-images": "node scripts/wechat-image-prompt-library.mjs",

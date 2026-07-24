@@ -43,12 +43,6 @@ const providerEnvMap: Record<AiProviderKey, { baseUrl: string; apiKey: string; m
 
 const defaultProviderTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 120000);
 
-export function getProviderKeyForPlatform(platform: string): AiProviderKey {
-  if (platform === "DeepSeek") return "deepseek";
-  if (platform === "豆包") return "doubao";
-  return "qwen";
-}
-
 function getMissingConfig(provider: AiProviderKey) {
   const status = getRuntimeConfigStatus();
   return status.capabilities.find((item) => item.key === provider)?.missingEnv || [];

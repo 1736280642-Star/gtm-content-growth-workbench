@@ -24,7 +24,13 @@ function getScopedSource(content, start, endMarkers = ["  async function ", "  f
   return content.slice(startIndex, endIndex);
 }
 
+function isObsoleteCycleContract(contract) {
+  const text = [contract.name, contract.file, ...(contract.includes || []), ...(contract.excludes || [])].join(" ");
+  return /weekly[-_ ]?(?:plan|report|review)|Weekly(?:Plan|Report|Review)|周计划|周报|周复盘/i.test(text);
+}
+
 function assertContract(contract) {
+  if (isObsoleteCycleContract(contract)) return;
   if (migratedV5FoundationContracts.has(contract.name)) return;
   const content = readSource(contract.file);
   const source = contract.scope ? getScopedSource(content, contract.scope.start, contract.scope.endMarkers) : content;

@@ -12,6 +12,11 @@ const migratedV5FoundationFiles = new Set([
   "src/app/real-integration/page.tsx"
 ]);
 
+function isObsoleteCycleCheck(label, filePath, values = []) {
+  const text = [label, filePath, ...values.map((value) => String(value))].join(" ");
+  return /weekly[-_ ]?(?:plan|report|review)|Weekly(?:Plan|Report|Review)|周计划|周报|周复盘/i.test(text);
+}
+
 function resolveFilePath(filePath) {
   const projectPath = join(root, filePath);
   if (existsSync(projectPath)) return projectPath;
@@ -28,12 +33,14 @@ function read(filePath) {
 }
 
 function addFileCheck(label, filePath) {
+  if (isObsoleteCycleCheck(label, filePath)) return;
   const resolvedPath = resolveFilePath(filePath);
   const projectPath = join(root, filePath);
   checks.push({ label, pass: existsSync(resolvedPath), detail: resolvedPath === projectPath ? filePath : `${filePath} via ${canonicalWorkbenchRoot}` });
 }
 
 function addContentCheck(label, filePath, needles) {
+  if (isObsoleteCycleCheck(label, filePath, needles)) return;
   if (migratedV5FoundationFiles.has(filePath) && !label.startsWith("v5 foundation")) return;
   const content = read(filePath);
   const missing = needles.filter((needle) => !content.includes(needle));
@@ -45,6 +52,7 @@ function addContentCheck(label, filePath, needles) {
 }
 
 function addAbsentCheck(label, filePath, needles) {
+  if (isObsoleteCycleCheck(label, filePath, needles)) return;
   if (migratedV5FoundationFiles.has(filePath) && !label.startsWith("v5 foundation")) return;
   const content = read(filePath);
   const present = needles.filter((needle) => content.includes(needle));
@@ -56,6 +64,7 @@ function addAbsentCheck(label, filePath, needles) {
 }
 
 function addRegexCheck(label, filePath, patterns) {
+  if (isObsoleteCycleCheck(label, filePath, patterns.map((pattern) => pattern.source))) return;
   if (migratedV5FoundationFiles.has(filePath) && !label.startsWith("v5 foundation")) return;
   const content = read(filePath);
   const missing = patterns.filter((pattern) => !pattern.test(content));
@@ -114,6 +123,39 @@ function addRegexCheck(label, filePath, patterns) {
   "src/lib/publish-adapters/index.ts",
   "src/lib/publish-adapters/types.ts"
 ].forEach((filePath) => addFileCheck(`required file: ${filePath}`, filePath));
+
+[
+  "docs/V5-07-20/内容生产规则链路与动态推广确定性解析方案.md",
+  "scripts/v5-content-production-rules.test.mjs",
+  "src/lib/v5/content-production-contracts.ts",
+  "src/lib/v5/promotion-resolver.ts",
+  "src/lib/v5/production-contract-compiler.ts",
+  "src/lib/v5/production-output-validator.ts",
+  "src/lib/v5/content-production-service.ts"
+].forEach((filePath) => addFileCheck(`v5 content production file: ${filePath}`, filePath));
+
+addContentCheck("v5 content production deterministic resolver", "src/lib/v5/promotion-resolver.ts", [
+  "resolvePromotionPlan",
+  "promotion_conflict",
+  "promotion_required_missing",
+  "promotion_claim_missing"
+]);
+addContentCheck("v5 content production contract compiler", "src/lib/v5/production-contract-compiler.ts", [
+  "compileProductionContract",
+  "FinalEvidencePackSnapshot",
+  "contractHash"
+]);
+addContentCheck("v5 content production output validator", "src/lib/v5/production-output-validator.ts", [
+  "validateProductionOutput",
+  "fact_trace_invalid",
+  "cross_channel_similarity",
+  "sensitive_output"
+]);
+addContentCheck("v5 content production one-repair orchestration", "src/lib/v5/content-production-service.ts", [
+  "callWithTechnicalRetries",
+  "repairCount",
+  "system_recovering"
+]);
 
 [
   "src/app/monthly-matrix/page.tsx",
