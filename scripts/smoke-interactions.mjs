@@ -176,7 +176,7 @@ const contracts = [
     name: "v5_batch_production_console_contract",
     file: "src/app/monthly-matrix/batch-generation/page.tsx",
     includes: [
-      "生成可用内容",
+      "系统自动领取任务",
       "系统自动检查、修复和恢复",
       "待补资料",
       "可用正文直接进入待排程",

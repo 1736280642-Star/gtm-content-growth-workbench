@@ -449,7 +449,10 @@ export async function readCompletedSingleArticleResult(operation: SingleArticleO
   const pool = getV5GovernancePool();
   const [generationRows] = await pool.query<RowDataPacket[]>("SELECT * FROM generation_run WHERE id = ? AND test_only = FALSE LIMIT 1", [operation.generationRunId]);
   const [draftRows] = await pool.query<RowDataPacket[]>("SELECT * FROM draft_version WHERE id = ? AND test_only = FALSE LIMIT 1", [operation.draftVersionId]);
-  if (!generationRows[0] || !draftRows[0]) return undefined;
+  const [packRows] = await pool.query<RowDataPacket[]>("SELECT decision, invalidated_at FROM final_evidence_pack WHERE id = ? LIMIT 1", [operation.finalEvidencePackId]);
+  if (!generationRows[0] || !draftRows[0] || !packRows[0] || packRows[0].invalidated_at) return undefined;
+  const evidenceDecision = String(packRows[0].decision);
+  if (!(["generatable", "generatable_with_downgrade"] as string[]).includes(evidenceDecision)) return undefined;
   return {
     operationId: operation.operationId,
     correlationId: operation.correlationId,
@@ -457,7 +460,7 @@ export async function readCompletedSingleArticleResult(operation: SingleArticleO
     retrievalRunId: operation.retrievalRunId,
     ...(operation.evidencePreviewId ? { evidencePreviewId: operation.evidencePreviewId } : {}),
     finalEvidencePackId: operation.finalEvidencePackId,
-    evidenceDecision: "generatable",
+    evidenceDecision: evidenceDecision as SingleArticleResult["evidenceDecision"],
     generationRun: mapGenerationRun(generationRows[0]),
     draftVersion: mapDraft(draftRows[0])
   };
@@ -494,8 +497,8 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
     const evidencePreview: BatchQueueItem["evidencePreview"] = ["ready", "ready_with_auto_downgrade", "needs_material", "needs_review", "blocked", "pending_config"].includes(rawEvidencePreview)
       ? rawEvidencePreview as BatchQueueItem["evidencePreview"]
       : "pending_config";
-    const finalEvidenceGate: BatchQueueItem["finalEvidenceGate"] = decision === "generatable" ? "ready"
-      : decision === "needs_review" || decision === "generatable_with_downgrade" ? "needs_review"
+    const finalEvidenceGate: BatchQueueItem["finalEvidenceGate"] = ["generatable", "generatable_with_downgrade"].includes(decision) ? "ready"
+      : decision === "needs_review" ? "needs_review"
       : decision === "blocked" || decision === "needs_material" ? "blocked"
       : "not_created";
     const queueGenerationStatus: BatchQueueItem["generationStatus"] = generationStatus === "running" ? "generating"
@@ -519,4 +522,23 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
       nextAction: row.next_action ? String(row.next_action) : undefined
     };
   });
+}
+
+export async function readReadyAutomaticGenerationTasks(limit = 20) {
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT i.id, i.version
+     FROM content_matrix_item i
+     JOIN monthly_plan p ON p.id = i.monthly_plan_id
+     WHERE i.status = 'ready_for_generation'
+       AND p.status IN ('approved', 'in_execution')
+       AND NOT EXISTS (
+         SELECT 1 FROM single_article_operation o
+         WHERE o.task_id = i.id AND o.task_version = i.version AND o.status = 'running'
+       )
+     ORDER BY i.publish_date, i.updated_at
+     LIMIT ?`,
+    [safeLimit]
+  );
+  return rows.map((row) => ({ taskId: String(row.id), taskVersion: Number(row.version) }));
 }

@@ -18,25 +18,29 @@ export async function leaseNextRagJob(workerId: string, leaseSeconds = 60, jobTy
   return withV5GovernanceTransaction(async (connection) => {
     const typeFilter = jobTypes?.length ? " AND job_type IN (?)" : "";
     const [rows] = await connection.query<RowDataPacket[]>(
-      `SELECT * FROM rag_index_job WHERE status IN ('queued','partial_failed','failed') AND available_at <= NOW()
+      `SELECT * FROM rag_index_job WHERE status IN ('queued','pending_config','partial_failed','failed') AND available_at <= NOW()
        AND (lease_expires_at IS NULL OR lease_expires_at < NOW()) AND attempt < max_attempts${typeFilter}
        ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`,
       jobTypes?.length ? [jobTypes] : []
     );
     const row = rows[0]; if (!row) return undefined;
-    await connection.query("UPDATE rag_index_job SET status = 'running', attempt = attempt + 1, lease_owner = ?, lease_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND), started_at = COALESCE(started_at, NOW()), row_version = row_version + 1 WHERE id = ?", [workerId, leaseSeconds, String(row.id)]);
-    return { jobId: String(row.id), jobType: String(row.job_type), indexSnapshotId: row.index_snapshot_id ? String(row.index_snapshot_id) : undefined, productId: row.product_id ? String(row.product_id) : undefined, status: "running", payload: parseV5Json(row.payload, {}), attempt: Number(row.attempt) + 1, maxAttempts: Number(row.max_attempts) };
+    const nextAttempt = Number(row.attempt) + (String(row.status) === "pending_config" ? 0 : 1);
+    await connection.query("UPDATE rag_index_job SET status = 'running', attempt = ?, lease_owner = ?, lease_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND), started_at = COALESCE(started_at, NOW()), row_version = row_version + 1 WHERE id = ?", [nextAttempt, workerId, leaseSeconds, String(row.id)]);
+    return { jobId: String(row.id), jobType: String(row.job_type), indexSnapshotId: row.index_snapshot_id ? String(row.index_snapshot_id) : undefined, productId: row.product_id ? String(row.product_id) : undefined, status: "running", payload: parseV5Json(row.payload, {}), attempt: nextAttempt, maxAttempts: Number(row.max_attempts) };
   });
 }
 
 export async function finishRagJob(input: { jobId: string; workerId: string; status: Extract<RagJobStatus, "completed" | "partial_failed" | "failed" | "pending_config" | "awaiting_validation">; failureCode?: string; failureMessage?: string }) {
   const result = await getV5GovernancePool().query(
     `UPDATE rag_index_job SET status = ?, failure_code = ?, failure_message = ?,
+     attempt = IF(? = 'pending_config', 0, attempt),
      completed_at = IF(? IN ('completed','failed','pending_config'), NOW(), completed_at),
-     available_at = IF(? IN ('failed','partial_failed'), DATE_ADD(NOW(), INTERVAL 30 SECOND), available_at),
+     available_at = CASE WHEN ? = 'pending_config' THEN DATE_ADD(NOW(), INTERVAL 5 MINUTE)
+                         WHEN ? IN ('failed','partial_failed') THEN DATE_ADD(NOW(), INTERVAL 30 SECOND)
+                         ELSE available_at END,
      lease_owner = NULL, lease_expires_at = NULL, row_version = row_version + 1
      WHERE id = ? AND lease_owner = ? AND status = 'running'`,
-    [input.status, input.failureCode || null, input.failureMessage || null, input.status, input.status, input.jobId, input.workerId]
+    [input.status, input.failureCode || null, input.failureMessage || null, input.status, input.status, input.status, input.status, input.jobId, input.workerId]
   );
   return result;
 }

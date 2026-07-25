@@ -3,11 +3,11 @@ import type { RagSourceImportCandidate, RagSourceDisposition } from "./source-re
 
 export const RAG_SOURCE_IMPORT_VERSION = "rag-source-import@1";
 
-export type RagSourceImportWriteStatus = "review_required" | "isolated";
+export type RagSourceImportWriteStatus = "approved_for_claim_extraction" | "review_required" | "isolated";
 
 export interface RagSourceImportPreparedCandidate extends RagSourceImportCandidate {
   writeStatus: RagSourceImportWriteStatus;
-  safetyStatus: "pending" | "isolated";
+  safetyStatus: "passed" | "pending" | "isolated";
   qualityFlags: string[];
   isolatedReason?: string;
 }
@@ -30,15 +30,16 @@ export interface RagSourceImportExecutionPlan {
 function normalizeCandidate(candidate: RagSourceImportCandidate): RagSourceImportPreparedCandidate | undefined {
   if (candidate.disposition === "excluded_text") return undefined;
   const isolated = candidate.disposition !== "production_candidate";
+  const automaticallyApproved = !isolated && candidate.governanceMode === "automatic_policy";
   return {
     ...candidate,
-    writeStatus: isolated ? "isolated" : "review_required",
-    safetyStatus: isolated ? "isolated" : "pending",
+    writeStatus: isolated ? "isolated" : automaticallyApproved ? "approved_for_claim_extraction" : "review_required",
+    safetyStatus: isolated ? "isolated" : automaticallyApproved ? "passed" : "pending",
     qualityFlags: [
       `registry:${candidate.registryId}`,
       `namespace:${candidate.namespace}`,
       `disposition:${candidate.disposition}`,
-      "human_governance_required"
+      automaticallyApproved ? "automatic_policy_governed" : "human_governance_required"
     ],
     isolatedReason: isolated ? candidate.reason : undefined
   };

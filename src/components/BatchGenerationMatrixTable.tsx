@@ -18,12 +18,10 @@ const statusMeta: Record<ProductionMatrixTask["status"], { label: string; color:
 export function BatchGenerationMatrixTable({
   items,
   initialDraft,
-  onGenerate,
   onSaveDraft
 }: {
   items: ProductionMatrixTask[];
   initialDraft?: ProductionDraftSummary;
-  onGenerate?: (task: ProductionMatrixTask) => void;
   onSaveDraft?: (task: ProductionMatrixTask, markdown: string) => Promise<void>;
 }) {
   const [selectedTask, setSelectedTask] = useState<ProductionMatrixTask>();
@@ -102,7 +100,7 @@ export function BatchGenerationMatrixTable({
                     render: (_: unknown, task) => {
                       if (task.currentDraft || task.lastUsableDraft) return <Button size="small" icon={<EyeOutlined />} onClick={() => openPreview(task)}>预览正文</Button>;
                       if (task.status === "awaiting_material") return <Link href={`/knowledge?todo=${encodeURIComponent(task.knowledgeTodoId || task.taskId)}`}><Button size="small" icon={<FileAddOutlined />}>补充资料</Button></Link>;
-                      return <Button size="small" type="primary" disabled={!onGenerate || task.status !== "ready_for_generation"} onClick={() => onGenerate?.(task)}>生成</Button>;
+                      return <Typography.Text type="secondary">系统自动处理</Typography.Text>;
                     }
                   }
                 ]}

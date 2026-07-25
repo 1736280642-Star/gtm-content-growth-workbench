@@ -187,7 +187,7 @@ export const V5_KNOWLEDGE_WORKFLOW_RULES = [
     title: "Final Evidence Gate 决定生成资格",
     targets: ["batch_generation", "publish_schedule"],
     principle: "EvidencePreview 不授予正文生成权限，批量生成必须读取 Final EvidencePack。",
-    userImpact: "只有有最终证据或明确降级批准的矩阵项会消耗模型并产出正文。",
+    userImpact: "只有有最终证据的矩阵项会消耗模型；条件事实由系统强制连同限制写入正文。",
     sourceDocs: [`${foundationRoot}/03-再设计RAG优化策略/04-EvidencePack与证据充分性判断.md`]
   },
   {
@@ -401,10 +401,10 @@ function evaluateRule(
       if (evidence.gateStatus === "generatable") {
         return passed(rule, "Final Evidence Gate 允许生成。");
       }
-      if (evidence.gateStatus === "generatable_with_downgrade" && evidence.downgradeApproved === true) {
-        return passed(rule, "降级范围已经人工批准，可以生成。");
+      if (evidence.gateStatus === "generatable_with_downgrade") {
+        return passed(rule, "Final EvidencePack 包含条件事实，系统将强制携带全部条件与限制生成。");
       }
-      return failed(rule, "failed", `Final Evidence Gate 当前为 ${evidence.gateStatus || "unknown"}。`, "补资料、完成人工复核或批准明确降级范围；不得使用 EvidencePreview 替代。");
+      return failed(rule, "failed", `Final Evidence Gate 当前为 ${evidence.gateStatus || "unknown"}。`, "系统将在资料更新后自动重检索；不得使用 EvidencePreview 替代。");
     }
 
     case "V5-KB-010":

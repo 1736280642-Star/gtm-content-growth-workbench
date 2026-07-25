@@ -63,7 +63,7 @@ try {
         auditReason: process.env.RAG_IMPORT_AUDIT_REASON.trim()
       }
     });
-    console.log(JSON.stringify({ status: "awaiting_human_governance", result }));
+    console.log(JSON.stringify({ status: result.reviewRequired ? "awaiting_human_governance" : "automatic_governance_completed", result }));
   }
 } catch (error) {
   const pending = error?.code === "pending_config";

@@ -14,7 +14,7 @@ const indexTransitions: Record<RagIndexSnapshotStatus, RagIndexSnapshotStatus[]>
 const jobTransitions: Record<RagJobStatus, RagJobStatus[]> = {
   queued: ["running", "cancelled"],
   running: ["completed", "partial_failed", "failed", "pending_config", "awaiting_validation", "cancelled"],
-  pending_config: ["queued", "cancelled"],
+  pending_config: ["queued", "running", "cancelled"],
   awaiting_validation: ["completed", "failed", "cancelled"],
   completed: [],
   partial_failed: ["queued", "cancelled"],

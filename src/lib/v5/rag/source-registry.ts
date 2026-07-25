@@ -9,7 +9,7 @@ export type RagSourceDisposition = "production_candidate" | "governance_preview"
 export interface RagSourceRegistryEntry {
   registryId: string;
   rootPath: string;
-  productId: "pharaoh-command" | "noteflow" | "weike-ai-guardrail";
+  productId: string;
   productName: string;
   knowledgeBaseId: string;
   manifestRelativePath?: string;
@@ -25,6 +25,7 @@ export interface RagSourceClassification {
   visibility: V5Visibility;
   allowedEvidenceRoles: string[];
   forbiddenUsage: string[];
+  governanceMode: "automatic_policy" | "manual_review";
   reason: string;
 }
 
@@ -40,6 +41,7 @@ export interface RagSourceImportCandidate extends RagSourceClassification {
   canonicalUrl?: string;
   contentHash: string;
   contentLength: number;
+  sourceUpdatedAt: string;
   normalizedTextRef: string;
   rawAssetRef?: string;
 }
@@ -48,14 +50,16 @@ export const RAG_SOURCE_ROOT_ENV = {
   command: "RAG_SOURCE_ROOT_PHARAOH_COMMAND",
   noteflow: "RAG_SOURCE_ROOT_NOTEFLOW",
   weike: "RAG_SOURCE_ROOT_WEIKE_GUARDRAIL",
-  wechat: "RAG_SOURCE_ROOT_PHARAOH_WECHAT"
+  wechat: "RAG_SOURCE_ROOT_PHARAOH_WECHAT",
+  jotoAdp: "RAG_SOURCE_ROOT_JOTO_ADP"
 } as const;
 
 const roots = {
   command: process.env[RAG_SOURCE_ROOT_ENV.command]?.trim() || "D:/GTM/工作台/保存/command.jotoai.com-2026-07-07-xcrawl",
   noteflow: process.env[RAG_SOURCE_ROOT_ENV.noteflow]?.trim() || "D:/GTM/工作台/保存/note.jotoai.com-2026-07-09-xcrawl",
   weike: process.env[RAG_SOURCE_ROOT_ENV.weike]?.trim() || "D:/GTM/工作台/保存/sec.jotoai.com-2026-07-07-xcrawl",
-  wechat: process.env[RAG_SOURCE_ROOT_ENV.wechat]?.trim() || "D:/GTM/工作台/保存/wechat-joto-pharaoh-command-2026-07-09"
+  wechat: process.env[RAG_SOURCE_ROOT_ENV.wechat]?.trim() || "D:/GTM/工作台/保存/wechat-joto-pharaoh-command-2026-07-09",
+  jotoAdp: process.env[RAG_SOURCE_ROOT_ENV.jotoAdp]?.trim() || "D:/GTM/工作台/保存/JOTO x ADP"
 } as const;
 
 const backgroundOnly = ["industry_background", "scenario", "faq", "change_history"];
@@ -71,6 +75,7 @@ function baseClassification(overrides: Partial<RagSourceClassification>): RagSou
     visibility: "internal",
     allowedEvidenceRoles: [],
     forbiddenUsage: ["production_retrieval"],
+    governanceMode: "manual_review",
     reason: "仅保留原始资产与审计关系。",
     ...overrides
   };
@@ -181,6 +186,52 @@ export const ragSourceRegistry: RagSourceRegistryEntry[] = [
       });
       return baseClassification({ reason: "媒体、海报、索引与抓取 Manifest 只保留资产关系。" });
     }
+  },
+  {
+    registryId: "joto-workbuddy-official-20260724",
+    rootPath: roots.jotoAdp,
+    productId: "joto-workbuddy",
+    productName: "WorkBuddy × JOTO",
+    knowledgeBaseId: "kb-joto-workbuddy-official",
+    classify(relativePath) {
+      const file = normalizeRelative(relativePath);
+      if (/(?:^|\/)structured\/01-workbuddy-structured\.md$/.test(file)) return baseClassification({
+        disposition: "production_candidate", namespace: "production_public", documentType: "official_structured_snapshot",
+        authorityLevel: "A2", lifecycleStatus: "current", visibility: "public",
+        allowedEvidenceRoles: ["product_definition", "product_capability", "scenario", "pricing", "limitation", "official_citation"],
+        forbiddenUsage: ["unqualified_price", "unqualified_performance", "customer_result"],
+        governanceMode: "automatic_policy",
+        reason: "2026-07-24 JOTO 官网 WorkBuddy 结构化快照；代码注册来源由系统策略自动治理。"
+      });
+      return baseClassification({ disposition: "excluded_text", reason: "该注册项只接收 WorkBuddy 官网结构化快照，重复抓取与原始响应不重复索引。" });
+    }
+  },
+  {
+    registryId: "joto-tencent-adp-official-20260724",
+    rootPath: roots.jotoAdp,
+    productId: "tencent-adp-joto",
+    productName: "腾讯云 ADP × JOTO",
+    knowledgeBaseId: "kb-joto-tencent-adp-official",
+    classify(relativePath) {
+      const file = normalizeRelative(relativePath);
+      if (/(?:^|\/)structured\/02-tencent-adp-structured\.md$/.test(file)) return baseClassification({
+        disposition: "production_candidate", namespace: "production_public", documentType: "official_structured_snapshot",
+        authorityLevel: "A2", lifecycleStatus: "current", visibility: "public",
+        allowedEvidenceRoles: ["product_definition", "product_capability", "scenario", "deployment", "limitation", "official_citation"],
+        forbiddenUsage: ["adp_official_partner_claim", "unqualified_deployment", "unqualified_performance", "customer_result"],
+        governanceMode: "automatic_policy",
+        reason: "2026-07-24 JOTO 官网腾讯云 ADP 页面结构化快照；明确限制合作伙伴表述。"
+      });
+      if (file === "腾讯云adp × joto 联合解决方案.md") return baseClassification({
+        disposition: "production_candidate", namespace: "production_public", documentType: "historical_solution_document",
+        authorityLevel: "B1", lifecycleStatus: "unknown", visibility: "public",
+        allowedEvidenceRoles: ["historical_context", "scenario"],
+        forbiddenUsage: ["current_product_capability", "adp_official_partner_claim", "unqualified_performance"],
+        governanceMode: "automatic_policy",
+        reason: "历史联合方案仅参与版本与冲突治理；与新版官网冲突时不得覆盖官网边界。"
+      });
+      return baseClassification({ disposition: "excluded_text", reason: "该注册项只接收 ADP 官网结构化快照与指定历史方案，重复抓取不重复索引。" });
+    }
   }
 ];
 
@@ -253,6 +304,7 @@ export async function buildRagSourceImportPlan(options: { includeAuditAssets?: b
         canonicalUrl: urlMap.get(normalizeRelative(relativePath)),
         contentHash: createHash("sha256").update(isMarkdown ? content.replace(/\r\n/g, "\n") : `${fileStat.size}:${fileStat.mtimeMs}`).digest("hex"),
         contentLength: isMarkdown ? content.length : fileStat.size,
+        sourceUpdatedAt: content.match(/^crawledAt:\s*["']?([^"'\r\n]+)["']?$/m)?.[1]?.trim() || fileStat.mtime.toISOString(),
         normalizedTextRef: isMarkdown ? absolutePath : "",
         rawAssetRef: classification.disposition === "audit_only" ? absolutePath : undefined
       });

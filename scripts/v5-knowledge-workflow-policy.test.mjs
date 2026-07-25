@@ -144,7 +144,7 @@ test("approved matrix with final evidence can enter batch generation", () => {
   assert.equal(decision.failures.length, 0);
 });
 
-test("downgraded evidence cannot generate without explicit approval", () => {
+test("conditional evidence generates automatically with mandatory limitations", () => {
   const decision = evaluateV5KnowledgeWorkflow("batch_generation", {
     governance: readyGovernance,
     monthly: readyMonthly,
@@ -157,8 +157,8 @@ test("downgraded evidence cannot generate without explicit approval", () => {
     operation: baseOperation
   });
 
-  assert.equal(decision.status, "failed");
-  assert.equal(findFailure(decision, "V5-KB-009")?.passed, false);
+  assert.equal(decision.status, "success");
+  assert.equal(decision.ok, true);
 });
 
 test("local preview cannot enter publish schedule", () => {

@@ -17,12 +17,17 @@ export class RagServiceError extends Error {
 function required(value: string, field: string) { if (!value.trim()) throw new RagServiceError(400, "invalid_contract", `缺少 ${field}。`, `补充 ${field} 后重试。`); }
 function actor(actor: V5GovernanceActor) { required(actor.actorId, "actorId"); required(actor.actorRole, "actorRole"); required(actor.auditReason, "auditReason"); }
 function human(actor: V5GovernanceActor) { actor && actor.actorType === "human" || (() => { throw new RagServiceError(403, "human_approval_required", "该操作必须由人工角色完成。", "由治理负责人执行并填写审计原因。") })(); }
+function humanOrAutomaticPolicy(actorInput: V5GovernanceActor) {
+  if (actorInput.actorType === "human") return;
+  if (actorInput.actorType === "system" && actorInput.actorRole === "knowledge_production_worker") return;
+  throw new RagServiceError(403, "trusted_automation_required", "该操作只允许人工角色或可信知识生产 worker 执行。");
+}
 function hash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 
 export async function createRagManifest(input: Omit<RagIngestionManifest, "manifestId" | "manifestHash" | "generatedAt"> & { actor: V5GovernanceActor }) {
-  actor(input.actor); human(input.actor);
-  if (input.status === "approved" && (!input.approvedBy || !input.approvedAt)) throw new RagServiceError(409, "approval_required", "approved Manifest 必须包含人工批准记录。");
-  if (input.status === "approved" && input.approvedBy !== input.actor.actorId) throw new RagServiceError(409, "approval_actor_mismatch", "approvedBy 必须与当前人工操作者一致。" );
+  actor(input.actor); humanOrAutomaticPolicy(input.actor);
+  if (input.status === "approved" && (!input.approvedBy || !input.approvedAt)) throw new RagServiceError(409, "approval_required", "approved Manifest 必须包含策略执行身份与时间。");
+  if (input.status === "approved" && input.approvedBy !== input.actor.actorId) throw new RagServiceError(409, "approval_actor_mismatch", "approvedBy 必须与当前执行身份一致。" );
   if (input.status === "approved" && input.unresolvedConflictIds.length) throw new RagServiceError(409, "unresolved_conflicts", "存在未裁决冲突的 Manifest 不能批准。", "先完成冲突裁决，或将相关 Claim 放入 blockedClaimIds。" );
   if (!input.approvedSourceRevisionIds.length || !input.approvedClaimIds.length) throw new RagServiceError(422, "manifest_empty", "Manifest 缺少已批准 SourceRevision 或 Claim。", "先完成第二阶段知识治理与人工确认。" );
   if (!input.knowledgeBaseIds.length) throw new RagServiceError(422, "manifest_empty", "Manifest 缺少已确认知识库。", "先绑定产品知识库并完成人工确认。" );
@@ -52,7 +57,7 @@ export async function validateRagIndexSnapshot(id: string, summary: RagEvaluatio
 }
 
 export async function activateRagIndexSnapshot(id: string, actorInput: V5GovernanceActor, previousActiveId?: string) {
-  actor(actorInput); human(actorInput); const snapshot = await readRagIndexSnapshotRecord(id); if (!snapshot) throw new RagServiceError(404, "index_not_found", "IndexSnapshot 不存在。");
+  actor(actorInput); humanOrAutomaticPolicy(actorInput); const snapshot = await readRagIndexSnapshotRecord(id); if (!snapshot) throw new RagServiceError(404, "index_not_found", "IndexSnapshot 不存在。");
   if (!snapshot.validationSummary?.passed) throw new RagServiceError(409, "evaluation_failed", "评测未达标的 IndexSnapshot 不能激活。", "修复阻断指标并重新验证。", snapshot.validationSummary?.blockers);
   assertRagIndexTransition(snapshot.status, "active");
   const previous = await readActiveRagIndexSnapshotRecord({ productId: snapshot.productId, namespace: snapshot.namespace, language: snapshot.language });
@@ -153,7 +158,7 @@ export async function createEvidencePreview(input: { retrievalRunId: string; act
 }
 
 export async function createFinalEvidencePack(input: { retrievalRunId: string; actor: V5GovernanceActor }) {
-  actor(input.actor); human(input.actor);
+  actor(input.actor); humanOrAutomaticPolicy(input.actor);
   const stored = await readRagRetrievalRunRecord(input.retrievalRunId);
   if (!stored) throw new RagServiceError(404, "retrieval_run_not_found", "RetrievalRun 不存在。" );
   const matrix = await readRagMatrixItemContextRecord(stored.request.matrixItemId);
