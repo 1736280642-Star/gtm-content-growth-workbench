@@ -1,4 +1,4 @@
-﻿import { getBaseUrl, parseArgs, postJson, printJson, readStdinText, shouldTreatAsFatal } from "./worker-utils.mjs";
+import { getBaseUrl, parseArgs, postJson, printJson, readStdinText, shouldTreatAsFatal } from "./worker-utils.mjs";
 
 const args = parseArgs();
 const baseUrl = getBaseUrl(args);

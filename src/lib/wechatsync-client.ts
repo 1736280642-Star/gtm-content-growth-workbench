@@ -18,12 +18,16 @@ export interface WechatsyncAuthResult {
   nextAction: string;
 }
 
-export interface WechatsyncSendDraftInput {
+interface WechatsyncSendDraftBaseInput {
   platform: DistributionPlatformKey;
   title: string;
-  markdown: string;
   coverUrl?: string;
 }
+
+export type WechatsyncSendDraftInput = WechatsyncSendDraftBaseInput & (
+  | { contentFormat?: "markdown"; markdown: string; html?: never }
+  | { contentFormat: "wechat_html"; html: string; markdown?: never }
+);
 
 export interface WechatsyncSendDraftResult {
   status: "draft_created" | "failed";
@@ -239,6 +243,15 @@ export async function checkWechatsyncAuth(platform: DistributionPlatformKey): Pr
 export async function sendWechatsyncDraft(input: WechatsyncSendDraftInput): Promise<WechatsyncSendDraftResult> {
   const runtime = await getWechatsyncRuntimeStatus();
 
+  if (input.contentFormat === "wechat_html" && input.platform !== "weixin") {
+    return {
+      status: "failed",
+      mode: runtime.mode === "real" ? "real" : "mock",
+      errorCode: "platform_not_supported",
+      message: "wechat_html 仅允许发送到微信公众号。"
+    };
+  }
+
   if (!supportedPlatforms.includes(input.platform)) {
     return {
       status: "failed",
@@ -297,7 +310,8 @@ export async function sendWechatsyncDraft(input: WechatsyncSendDraftInput): Prom
       body: JSON.stringify({
         platforms: [input.platform],
         title: input.title,
-        content: input.markdown,
+        contentFormat: input.contentFormat || "markdown",
+        content: input.contentFormat === "wechat_html" ? input.html : input.markdown,
         coverUrl: input.coverUrl
       })
     });

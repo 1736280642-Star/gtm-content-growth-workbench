@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSingleArticleActor, singleArticleErrorResponse } from "@/lib/v5/single-article-api";
 import { createEditedFormalDraftVersion, readFormalDraftVersion } from "@/lib/v5/single-article-production-repository";
+import { readWechatPresentationDraftContext } from "@/lib/v5/wechat-presentation-repository";
+import { resolveWechatPlatformKey } from "@/lib/v5/wechat-presentation-contracts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,7 +16,11 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
         { status: 404 }
       );
     }
-    return NextResponse.json({ ok: true, data }, { headers: { "cache-control": "no-store" } });
+    const presentationContext = await readWechatPresentationDraftContext(params.id);
+    return NextResponse.json({
+      ok: true,
+      data: { ...data, platformKey: resolveWechatPlatformKey(presentationContext.channel) }
+    }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return singleArticleErrorResponse(error);
   }

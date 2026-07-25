@@ -245,13 +245,3 @@ export function getMissingEnvFor(keys: string[]) {
 
   return Array.from(new Set(selected.flatMap((item) => item.missingEnv)));
 }
-
-export function getProviderMissingEnv(platforms: string[]) {
-  const providerKeys = platforms.map((platform) => {
-    if (platform === "DeepSeek") return "deepseek";
-    if (platform === "豆包") return "doubao";
-    return "qwen";
-  });
-
-  return getMissingEnvFor(providerKeys);
-}

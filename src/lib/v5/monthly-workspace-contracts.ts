@@ -116,6 +116,7 @@ export interface ProductionDraftSummary {
   status: "checking" | "available";
   basisSummary: string[];
   updatedAt: string;
+  platformKey?: "weixin";
 }
 
 export interface ProductionMatrixTask {

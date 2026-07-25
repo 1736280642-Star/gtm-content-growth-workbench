@@ -21,7 +21,9 @@ export interface PublishResult {
   mode: "mock" | "dry_run" | "real";
   publishStatus?: "submitted" | "confirmed" | "pending_review" | "failed";
   platformArticleId?: string;
+  externalTaskId?: string;
   publicUrl?: string;
+  idempotencyKey?: string;
   pendingCsvReturn?: boolean;
   failureCode?: PublishFailureCode;
   failureReason?: string;
@@ -34,6 +36,7 @@ export interface VerifyResult {
   status: PublishAttemptStatus;
   verifyStatus: "verified" | "pending" | "failed";
   platformArticleId?: string;
+  externalTaskId?: string;
   publicUrl?: string;
   pendingCsvReturn?: boolean;
   failureCode?: PublishFailureCode;
