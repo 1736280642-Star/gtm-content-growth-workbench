@@ -66,6 +66,25 @@ test("rollback route is explicit and production writes fail closed", () => {
   assert.match(repository, /superseded\.affectedRows !== 1/);
 });
 
+test("automatic knowledge refresh closes governance, evaluation and task release without UI actions", () => {
+  const refreshWorker = fs.readFileSync(path.join(root, "workers/knowledge-refresh-worker.mjs"), "utf8");
+  const indexWorker = fs.readFileSync(path.join(root, "workers/rag-index-worker.mjs"), "utf8");
+  const refreshRepository = fs.readFileSync(path.join(root, "src/lib/v5/rag/knowledge-refresh-repository.ts"), "utf8");
+  const evaluation = fs.readFileSync(path.join(root, "src/lib/v5/rag/automatic-index-evaluation-service.ts"), "utf8");
+  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  assert.match(refreshWorker, /leaseNextRagJob\(workerId, 300, \["knowledge_refresh"\]\)/);
+  assert.match(refreshRepository, /INSERT INTO source_snapshot/);
+  assert.match(refreshRepository, /INSERT INTO rule_package_version/);
+  assert.match(refreshRepository, /INSERT INTO monthly_production_readiness/);
+  assert.match(refreshRepository, /status = 'ready_for_generation'/);
+  assert.match(evaluation, /keywordSearch\(snapshot\.indexName, request, 10\)/);
+  assert.match(evaluation, /evaluateRagMetrics\(metrics\)/);
+  assert.match(indexWorker, /validateRagIndexSnapshot/);
+  assert.match(indexWorker, /activateRagIndexSnapshot/);
+  assert.match(indexWorker, /releaseAutomaticKnowledgeTasksRecord/);
+  assert.equal(typeof packageJson.scripts["worker:v5-rag:knowledge-refresh"], "string");
+});
+
 test("Claim-aware chunk ids are deterministic within an immutable snapshot", async () => {
   const { buildClaimAwareChunks } = await loadTs("src/lib/v5/rag/chunking-service.ts");
   const input = {

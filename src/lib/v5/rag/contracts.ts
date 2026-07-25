@@ -221,6 +221,7 @@ export interface RagEvidenceItem {
   sourceRevisionId: string;
   sourceLocator: V5SourceLocator;
   title: string;
+  normalizedClaim: string;
   summary: string;
   originalQuote: string;
   canonicalUrl?: string;

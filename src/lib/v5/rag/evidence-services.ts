@@ -26,6 +26,7 @@ function evidenceItem(chunk: RagKnowledgeChunk, selectionReason: string[], evide
     sourceRevisionId: chunk.sourceRevisionId,
     sourceLocator: chunk.sourceLocator,
     title: chunk.chunkTitle,
+    normalizedClaim: chunk.summary,
     summary: chunk.summary,
     originalQuote: chunk.originalQuote,
     canonicalUrl: chunk.canonicalUrl,

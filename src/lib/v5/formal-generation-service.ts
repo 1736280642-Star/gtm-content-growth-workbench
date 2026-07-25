@@ -65,7 +65,13 @@ export function parseFormalProviderOutput(content: string): FormalProviderOutput
         const evidenceItemId = typeof value.evidenceItemId === "string" ? value.evidenceItemId.trim() : "";
         const claimId = typeof value.claimId === "string" ? value.claimId.trim() : "";
         const sourceRevisionId = typeof value.sourceRevisionId === "string" ? value.sourceRevisionId.trim() : "";
-        return sentence && evidenceItemId && claimId && sourceRevisionId ? [{ sentence, evidenceItemId, claimId, sourceRevisionId }] : [];
+        const originalQuote = typeof value.originalQuote === "string" ? value.originalQuote.trim() : undefined;
+        const sourceLocator = value.sourceLocator && typeof value.sourceLocator === "object"
+          ? value.sourceLocator as FactTrace["sourceLocator"]
+          : undefined;
+        return sentence && evidenceItemId && claimId && sourceRevisionId
+          ? [{ sentence, evidenceItemId, claimId, sourceRevisionId, originalQuote, sourceLocator }]
+          : [];
       })
     : [];
   return { markdown, factTraces };
@@ -74,7 +80,47 @@ export function parseFormalProviderOutput(content: string): FormalProviderOutput
 function traceMatchesEvidence(trace: FactTrace, item: RagEvidenceItem) {
   return trace.sourceRevisionId === item.sourceRevisionId
     && Boolean(item.originalQuote.trim())
+    && trace.originalQuote === item.originalQuote
+    && JSON.stringify(trace.sourceLocator) === JSON.stringify(item.sourceLocator)
     && (trace.claimId === item.primaryClaimId || item.claimIds.includes(trace.claimId));
+}
+
+function normalizeAssertion(value: string) {
+  return value.replace(/[`*_>#|\[\]（）()“”‘’'"：:，,。.!！?？；;、\s-]+/g, "").toLocaleLowerCase();
+}
+
+function sentenceMatchesEvidence(sentence: string, item: RagEvidenceItem) {
+  const candidate = normalizeAssertion(sentence);
+  const claim = normalizeAssertion(item.normalizedClaim || item.summary);
+  const quote = normalizeAssertion(item.originalQuote);
+  return candidate.length >= 4 && (candidate === claim || quote.includes(candidate) || candidate.includes(claim));
+}
+
+function factualLines(markdown: string) {
+  return markdown.split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[-*+]\s+/, "").replace(/^\d+[.)、]\s*/, ""))
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith(">") && isFactSentence(line));
+}
+
+export function removeUnsupportedFormalPassages(output: FormalProviderOutput, evidenceItems: RagEvidenceItem[]) {
+  const evidenceById = new Map(evidenceItems.map((item) => [item.evidenceItemId, item]));
+  const acceptedTraces = output.factTraces.filter((trace) => {
+    const item = evidenceById.get(trace.evidenceItemId);
+    return Boolean(item && traceMatchesEvidence(trace, item) && sentenceMatchesEvidence(trace.sentence, item));
+  });
+  const acceptedSentences = new Set(acceptedTraces.map((trace) => trace.sentence));
+  const rejectedSentences = new Set(output.factTraces.filter((trace) => !acceptedSentences.has(trace.sentence)).map((trace) => trace.sentence));
+  const lines = output.markdown.split(/\r?\n/);
+  const keptLines = lines.filter((line) => {
+    if ([...rejectedSentences].some((sentence) => line.includes(sentence))) return false;
+    const normalized = line.trim().replace(/^[-*+]\s+/, "").replace(/^\d+[.)、]\s*/, "");
+    if (!normalized || normalized.startsWith("#") || normalized.startsWith(">") || !isFactSentence(normalized)) return true;
+    return [...acceptedSentences].some((sentence) => normalized.includes(sentence));
+  });
+  return {
+    output: { markdown: keptLines.join("\n").replace(/\n{3,}/g, "\n\n").trim(), factTraces: acceptedTraces },
+    removedCount: lines.length - keptLines.length + output.factTraces.length - acceptedTraces.length
+  };
 }
 
 function isFactSentence(sentence: string) {
@@ -100,11 +146,18 @@ export function validateFormalProviderOutput(input: {
   const evidenceById = new Map(input.evidenceItems.map((item) => [item.evidenceItemId, item]));
   const validTraces = input.output.factTraces.filter((trace) => {
     const item = evidenceById.get(trace.evidenceItemId);
-    return Boolean(item && isFactSentence(trace.sentence) && markdown.includes(trace.sentence) && traceMatchesEvidence(trace, item));
+    return Boolean(item
+      && isFactSentence(trace.sentence)
+      && markdown.includes(trace.sentence)
+      && markdown.includes(item.originalQuote)
+      && traceMatchesEvidence(trace, item)
+      && sentenceMatchesEvidence(trace.sentence, item));
   });
   const uniqueFacts = new Set(validTraces.map((trace) => trace.sentence));
   if (validTraces.length !== input.output.factTraces.length) blockers.push("factTraces 包含无法匹配正文或 EvidenceItem 的记录。");
   if (uniqueFacts.size < 8) blockers.push(`可追溯事实句不足 8 条，当前为 ${uniqueFacts.size} 条。`);
+  const untracedFacts = factualLines(markdown).filter((sentence) => ![...uniqueFacts].some((fact) => sentence.includes(fact)));
+  if (untracedFacts.length) blockers.push(`正文包含 ${untracedFacts.length} 条没有 Claim 追溯的事实句。`);
   const boundaryEvidenceIds = new Set(input.evidenceItems
     .filter((item) => item.allowedUsage.includes("human_boundary") || item.conditions.length || item.limitations.length)
     .map((item) => item.evidenceItemId));
@@ -112,6 +165,11 @@ export function validateFormalProviderOutput(input: {
     blockers.push("Final EvidencePack 缺少限制或人工边界证据。");
   } else if (!validTraces.some((trace) => boundaryEvidenceIds.has(trace.evidenceItemId))) {
     blockers.push("正文缺少可追溯到限制或人工边界证据的事实句。");
+  }
+  for (const trace of validTraces) {
+    const item = evidenceById.get(trace.evidenceItemId)!;
+    const missingBoundaries = [...item.conditions, ...item.limitations].filter((boundary) => !markdown.includes(boundary));
+    if (missingBoundaries.length) blockers.push(`条件事实 ${trace.claimId} 缺少适用条件或限制：${missingBoundaries.join("；")}`);
   }
   for (const text of input.blockedRuleTexts) {
     if (text.length >= 4 && markdown.toLocaleLowerCase().includes(text.toLocaleLowerCase())) {
@@ -137,6 +195,7 @@ function evidenceForProvider(pack: RagFinalEvidencePack) {
     title: item.title,
     summary: item.summary,
     originalQuote: item.originalQuote,
+    normalizedClaim: item.normalizedClaim,
     conditions: item.conditions,
     limitations: item.limitations,
     allowedUsage: item.allowedUsage,
@@ -155,8 +214,8 @@ export async function generateFormalArticle(input: {
   context: FormalGenerationContext;
   actor: SingleArticleActor;
 }) {
-  if (input.pack.decision !== "generatable") {
-    throw new FormalGenerationError(422, "evidence_not_generatable", "Final EvidencePack 未达到 generatable，禁止调用正文模型。", "按 EvidencePack 缺口补充证据并重新冻结。");
+  if (!["generatable", "generatable_with_downgrade"].includes(input.pack.decision)) {
+    throw new FormalGenerationError(422, "evidence_not_generatable", "Final EvidencePack 未达到可生成状态，禁止调用正文模型。", "系统将在资料更新后自动重新检索。");
   }
   const provider = resolveProvider();
   const generationRunId = await beginFormalGenerationRun({
@@ -177,7 +236,7 @@ export async function generateFormalArticle(input: {
   const requiredFormat = extractRuleTexts(input.context.channelRequiredFormat);
   const prohibitedPatterns = extractRuleTexts(input.context.channelProhibitedPatterns);
   const checkedRuleCount = promptHardRules.length + blockedExpressions.length + prohibitedPatterns.length + requiredFormat.length;
-  const systemPrompt = `${input.context.systemPrompt}\n\n你正在执行正式生产，必须只使用提供的 Final EvidencePack。不得补充常识、猜测、外部资料或未给出的能力。输出必须是单个 JSON 对象，字段仅包含 markdown 和 factTraces。`;
+  const systemPrompt = `${input.context.systemPrompt}\n\n你正在执行正式生产，必须只使用提供的 Final EvidencePack。不得补充常识、猜测、外部资料或未给出的能力。每个事实必须附上 EvidenceItem 中逐字一致的 originalQuote 与 sourceLocator；条件事实必须同时写出全部 conditions 和 limitations。输出必须是单个 JSON 对象，字段仅包含 markdown 和 factTraces。`;
   const userPrompt = `${input.context.userPromptTemplate}\n\n冻结任务：\n${JSON.stringify({
     title,
     productName: task.productName,
@@ -187,7 +246,7 @@ export async function generateFormalArticle(input: {
     targetAudience: task.targetAudience,
     sourceProblem: task.sourceProblem,
     ctaBoundary: input.context.ctaBoundary
-  })}\n\n允许表达：\n${JSON.stringify(allowedExpressions)}\n条件表达：\n${JSON.stringify(conditionalExpressions)}\n禁止表达：\n${JSON.stringify([...blockedExpressions, ...prohibitedPatterns])}\n证据要求：\n${JSON.stringify(evidenceRequirements)}\n格式要求：\n${JSON.stringify(requiredFormat)}\n硬规则：\n${JSON.stringify(promptHardRules)}\n\nFinal EvidencePack：\n${JSON.stringify(evidenceForProvider(input.pack))}\n\n输出要求：markdown 必须以“# ${title}”开头，并至少包含两个二级标题；至少写出 8 个以完整标点结尾的事实句，其中至少 1 句必须说明适用条件、限制或人工边界。每个事实句都必须在 factTraces 中给出原句、evidenceItemId、claimId、sourceRevisionId，且四者必须与提供的证据完全一致。`;
+  })}\n\n允许表达：\n${JSON.stringify(allowedExpressions)}\n条件表达：\n${JSON.stringify(conditionalExpressions)}\n禁止表达：\n${JSON.stringify([...blockedExpressions, ...prohibitedPatterns])}\n证据要求：\n${JSON.stringify(evidenceRequirements)}\n格式要求：\n${JSON.stringify(requiredFormat)}\n硬规则：\n${JSON.stringify(promptHardRules)}\n\nFinal EvidencePack：\n${JSON.stringify(evidenceForProvider(input.pack))}\n\n输出要求：markdown 必须以“# ${title}”开头，并至少包含两个二级标题；至少写出 8 个以完整标点结尾的事实句，其中至少 1 句必须说明适用条件或限制。每个事实句都必须在 factTraces 中给出原句、evidenceItemId、claimId、sourceRevisionId、逐字一致的 originalQuote 与 sourceLocator。正文必须展示对应 originalQuote；有 conditions 或 limitations 时必须逐项写入正文。`;
   let technicalRetryCount = 0;
   let automaticRepairCount = 0;
   let lastBlockers: string[] = [];
@@ -224,6 +283,9 @@ export async function generateFormalArticle(input: {
     } catch (error) {
       lastBlockers = [error instanceof Error ? error.message : "正文输出格式不正确。"];
     }
+    const repaired = output ? removeUnsupportedFormalPassages(output, input.pack.evidenceItems) : undefined;
+    if (repaired?.removedCount) automaticRepairCount += 1;
+    output = repaired?.output;
     const validated = output
       ? validateFormalProviderOutput({
           output,

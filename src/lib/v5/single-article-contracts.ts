@@ -2,8 +2,8 @@ export type SingleArticleOperationStatus = "running" | "completed" | "blocked" |
 
 export interface SingleArticleActor {
   actorId: string;
-  actorRole: "workbench_operator" | "developer_admin";
-  actorType: "human";
+  actorRole: "workbench_operator" | "developer_admin" | "knowledge_production_worker";
+  actorType: "human" | "system" | "scheduler";
   auditReason: string;
 }
 
@@ -12,6 +12,14 @@ export interface FactTrace {
   evidenceItemId: string;
   claimId: string;
   sourceRevisionId: string;
+  originalQuote?: string;
+  sourceLocator?: {
+    headingPath: string[];
+    pageNumber?: number;
+    paragraphIndex?: number;
+    characterRange?: [number, number];
+    tableCell?: string;
+  };
 }
 
 export interface HardRuleResult {
@@ -68,7 +76,7 @@ export interface SingleArticleResult {
   retrievalRunId: string;
   evidencePreviewId?: string;
   finalEvidencePackId: string;
-  evidenceDecision: "generatable";
+  evidenceDecision: "generatable" | "generatable_with_downgrade";
   generationRun: FormalGenerationRun;
   draftVersion: FormalDraftVersion;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Alert, Button, message, Space, Spin, Tabs, Tag } from "antd";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -24,7 +24,6 @@ export default function MonthlyBatchGenerationPage() {
   const generating = tasks.filter((item) => item.status === "generating" || item.status === "system_recovering").length;
   const available = tasks.filter((item) => item.status === "available" || item.status === "scheduled").length;
   const awaitingMaterial = tasks.filter((item) => item.status === "awaiting_material").length;
-  const canRunFormalGeneration = workspace?.source.productionQueue === "v5_mysql" && ready > 0;
   const calendarMonth = workspace?.month || new Date().toISOString().slice(0, 7);
   const schedules: ScheduleDraftItem[] = tasks
     .filter((item) => item.status === "available" || item.status === "scheduled")
@@ -107,8 +106,8 @@ export default function MonthlyBatchGenerationPage() {
       <PageHeader
         title="批量生成中心"
         titleExtra={<Space size={6}><Tag color="blue">{workspace?.month || "读取中"}</Tag>{workspace?.strategyPackage ? <Tag>{`策略 v${workspace.strategyPackage.version}`}</Tag> : null}</Space>}
-        subtitle="只执行已批准策略；系统自动检查、修复和恢复，可用正文直接进入待排程。"
-        actions={<Space wrap><Link href="/monthly-matrix"><Button icon={<ArrowLeftOutlined />}>返回月度内容矩阵</Button></Link><Button type="primary" icon={<ThunderboltOutlined />} disabled={!canRunFormalGeneration}>生成可用内容 {ready || ""}</Button></Space>}
+        subtitle="只执行已批准策略；系统自动领取任务并自动检查、修复和恢复，可用正文直接进入待排程。"
+        actions={<Link href="/monthly-matrix"><Button icon={<ArrowLeftOutlined />}>返回月度内容矩阵</Button></Link>}
       />
 
       {error ? <Alert showIcon type="error" message="生产工作区读取失败" description={error} action={<Button size="small" onClick={() => void refresh().catch(() => undefined)}>重新读取</Button>} /> : null}

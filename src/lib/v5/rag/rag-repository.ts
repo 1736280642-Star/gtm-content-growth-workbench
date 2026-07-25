@@ -203,8 +203,9 @@ export async function createRagIndexSnapshotRecord(snapshot: RagIndexSnapshot, a
     }
 
     let indexBuildJob: { replayed: boolean; jobId: string; status: string } | undefined;
-    if (stored.status === "building") {
+    if (["building", "pending_config"].includes(stored.status)) {
       const idempotencyKey = `rag-index-build:${stored.indexSnapshotId}:${stored.manifestHash}`;
+      const desiredJobStatus = stored.status === "building" ? "queued" : "pending_config";
       const [jobRows] = await connection.query<RowDataPacket[]>(
         "SELECT id, status FROM rag_index_job WHERE idempotency_key = ? FOR UPDATE",
         [idempotencyKey]
@@ -227,10 +228,10 @@ export async function createRagIndexSnapshotRecord(snapshot: RagIndexSnapshot, a
         await connection.query(
           `INSERT INTO rag_index_job
            (id, job_type, index_snapshot_id, product_id, status, idempotency_key, payload, max_attempts, available_at, created_by)
-           VALUES (?, 'index_build', ?, ?, 'queued', ?, ?, 3, NOW(), ?)`,
-          [jobId, stored.indexSnapshotId, stored.productId, idempotencyKey, stringifyV5Json({ manifestId: stored.manifestId, indexName: stored.indexName }), actor.actorId]
+           VALUES (?, 'index_build', ?, ?, ?, ?, ?, 3, ?, ?)`,
+          [jobId, stored.indexSnapshotId, stored.productId, desiredJobStatus, idempotencyKey, stringifyV5Json({ manifestId: stored.manifestId, indexName: stored.indexName }), stored.status === "building" ? new Date() : new Date(Date.now() + 5 * 60_000), actor.actorId]
         );
-        indexBuildJob = { replayed: false, jobId, status: "queued" };
+        indexBuildJob = { replayed: false, jobId, status: desiredJobStatus };
       }
     }
     await writeV5GovernanceAudit(connection, {
@@ -363,6 +364,7 @@ export async function readRagMatrixItemContextRecord(matrixItemId: string) {
     promptGroupId: String(row.prompt_group_id || ""),
     promptGroupVersionId: String(row.prompt_group_version_id || ""),
     channelRuleVersionId: String(row.channel_rule_version_id || ""),
+    finalEvidencePackId: row.final_evidence_pack_id ? String(row.final_evidence_pack_id) : undefined,
     platformExpressionSnapshot: parseV5Json<Record<string, unknown>>(row.platform_expression_snapshot, {}),
     itemStatus: String(row.status),
     matrixStatus: String(row.matrix_status),
@@ -439,6 +441,18 @@ export async function writeFinalEvidencePackRecord(pack: RagFinalEvidencePack, a
 }
 
 export async function readFinalEvidencePackRecord(id: string) {
-  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>("SELECT immutable_snapshot FROM final_evidence_pack_version WHERE final_evidence_pack_id = ? ORDER BY pack_version DESC LIMIT 1", [id]);
-  return rows[0] ? parseV5Json<RagFinalEvidencePack>(rows[0].immutable_snapshot, {} as RagFinalEvidencePack) : undefined;
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT v.immutable_snapshot, p.invalidated_at, p.invalidation_reason
+     FROM final_evidence_pack_version v
+     JOIN final_evidence_pack p ON p.id = v.final_evidence_pack_id
+     WHERE v.final_evidence_pack_id = ? ORDER BY v.pack_version DESC LIMIT 1`,
+    [id]
+  );
+  if (!rows[0]) return undefined;
+  const pack = parseV5Json<RagFinalEvidencePack>(rows[0].immutable_snapshot, {} as RagFinalEvidencePack);
+  return {
+    ...pack,
+    invalidatedAt: date(rows[0].invalidated_at),
+    invalidationReason: rows[0].invalidation_reason ? String(rows[0].invalidation_reason) : undefined
+  };
 }

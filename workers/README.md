@@ -1,5 +1,26 @@
 # Workers
 
+## V5 automatic content production
+
+`npm.cmd run worker:v5-content-production` claims `ready_for_generation` tasks in the background. It performs retrieval, freezes a new EvidencePack, generates the article, removes unsupported factual passages, and stores only drafts that pass the hard fact gate. The business UI has no generation button.
+
+The worker fails closed when MySQL, the active RAG snapshot, Embedding, or the formal article provider is not configured.
+
+## V5 automatic knowledge refresh
+
+Run these workers from the deployment scheduler. No business-page action is required:
+
+```powershell
+npm.cmd run worker:v5-rag:source-import -- --write
+npm.cmd run worker:v5-rag:knowledge-refresh
+npm.cmd run worker:v5-rag:index
+npm.cmd run worker:v5-content-production
+```
+
+The refresh worker freezes the latest governed SourceSnapshot, activates the automatic rule package and monthly readiness, creates an approved Manifest, and queues an immutable index. The index worker uses the configured Embedding and OpenSearch services, replays approved and blocked Claims, activates the alias only when all hard metrics pass, then releases affected tasks to `ready_for_generation`.
+
+Missing infrastructure stays `pending_config` and is retried without consuming the failure-attempt budget.
+
 MVP 阶段使用 Node Worker 脚本承接耗时任务。
 
 当前 Worker 已不再只是占位输出，会直接调用本地 API。启动应用后，可以通过 `WORKBENCH_BASE_URL` 或 `--base-url` 指向工作台服务。

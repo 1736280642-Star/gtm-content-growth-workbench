@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 import { generateFormalArticle, FormalGenerationError } from "./formal-generation-service";
 import type { RagPlatformContentType, RagRetrievalRequest } from "./rag/contracts";
-import { readActiveRagIndexSnapshotRecord, readRagMatrixItemContextRecord } from "./rag/rag-repository";
+import { readActiveRagIndexSnapshotRecord, readFinalEvidencePackRecord, readRagMatrixItemContextRecord } from "./rag/rag-repository";
 import { createFinalEvidencePack, RagServiceError, retrieveRag } from "./rag/rag-service";
+import { assertFinalEvidencePackUsable } from "./rag/evidence-services";
 import type { SingleArticleActor, SingleArticleFailure, SingleArticleResult } from "./single-article-contracts";
 import {
   claimSingleArticleOperation,
@@ -70,7 +71,7 @@ export async function prepareAndGenerateSingleArticle(input: {
     const matrix = await readRagMatrixItemContextRecord(input.taskId);
     if (!matrix) throw new SingleArticleProductionError(404, "formal_task_not_found", "正式单篇矩阵项不存在。", "运行 Bootstrap 并确认正式任务已写入 MySQL。");
     const snapshot = await readActiveRagIndexSnapshotRecord({ productId: matrix.productId, namespace: "production_public", language: "zh-CN" });
-    if (!snapshot) throw new SingleArticleProductionError(409, "active_snapshot_missing", "Pharaoh Command 没有 active production_public IndexSnapshot。", "完成 RAG 索引构建、评测与人工激活后重试。");
+    if (!snapshot) throw new SingleArticleProductionError(409, "active_snapshot_missing", `${matrix.productName} 没有 active production_public IndexSnapshot。`, "系统将在索引构建与评测通过后自动恢复该任务。");
     const request: RagRetrievalRequest = {
       retrievalRequestId: `request-${randomUUID()}`,
       matrixItemId: matrix.matrixItemId,
@@ -92,11 +93,26 @@ export async function prepareAndGenerateSingleArticle(input: {
       lifecycleStatuses: ["current", "unknown"],
       requestedAt: new Date().toISOString()
     };
-    const retrievalRun = await retrieveRag({ request, indexSnapshotId: snapshot.indexSnapshotId, actor: input.actor });
-    const pack = await createFinalEvidencePack({ retrievalRunId: retrievalRun.retrievalRunId, actor: input.actor });
-    await recordSingleArticleEvidence({ operationId: claimed.operation.operationId, retrievalRunId: retrievalRun.retrievalRunId, finalEvidencePackId: pack.evidencePackId, actor: input.actor });
-    if (pack.decision !== "generatable") {
-      throw new SingleArticleProductionError(422, "evidence_not_generatable", `Final EvidencePack 决策为 ${pack.decision}，未调用正文模型。`, "按 EvidencePack 缺口补资料或完成复核后，使用新幂等键重试。", [...pack.gaps, ...pack.conflicts, ...pack.outdatedEvidence, ...pack.unverifiedClaims]);
+    const existingPack = matrix.finalEvidencePackId ? await readFinalEvidencePackRecord(matrix.finalEvidencePackId) : undefined;
+    let retrievalRunId: string;
+    let pack;
+    if (existingPack) {
+      assertFinalEvidencePackUsable(existingPack, {
+        taskId: matrix.matrixItemId,
+        taskVersion: matrix.currentTaskVersion,
+        rulePackageVersionId: matrix.rulePackageVersionId,
+        activeIndexSnapshotIds: [snapshot.indexSnapshotId]
+      });
+      pack = existingPack;
+      retrievalRunId = existingPack.retrievalRunId;
+    } else {
+      const retrievalRun = await retrieveRag({ request, indexSnapshotId: snapshot.indexSnapshotId, actor: input.actor });
+      pack = await createFinalEvidencePack({ retrievalRunId: retrievalRun.retrievalRunId, actor: input.actor });
+      retrievalRunId = retrievalRun.retrievalRunId;
+    }
+    await recordSingleArticleEvidence({ operationId: claimed.operation.operationId, retrievalRunId, finalEvidencePackId: pack.evidencePackId, actor: input.actor });
+    if (!["generatable", "generatable_with_downgrade"].includes(pack.decision)) {
+      throw new SingleArticleProductionError(422, "evidence_not_generatable", `Final EvidencePack 决策为 ${pack.decision}，未调用正文模型。`, "系统会在资料或索引更新后自动重新检索；无法裁决的冲突结论保持不生成。", [...pack.gaps, ...pack.conflicts, ...pack.outdatedEvidence, ...pack.unverifiedClaims]);
     }
     const context = await readFormalGenerationContext(input.taskId);
     const packTask = pack.taskSnapshot;
@@ -124,9 +140,9 @@ export async function prepareAndGenerateSingleArticle(input: {
       operationId: claimed.operation.operationId,
       correlationId: claimed.operation.correlationId,
       replayed: false,
-      retrievalRunId: retrievalRun.retrievalRunId,
+      retrievalRunId,
       finalEvidencePackId: pack.evidencePackId,
-      evidenceDecision: "generatable",
+      evidenceDecision: pack.decision as "generatable" | "generatable_with_downgrade",
       ...result
     };
   } catch (error) {

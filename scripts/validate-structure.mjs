@@ -485,7 +485,7 @@ addAbsentCheck("v4 ai config unchanged by v5 ui", "src/app/ai-config/page.tsx", 
 
 addContentCheck("v5 batch page shell", "src/app/monthly-matrix/batch-generation/page.tsx", [
   "批量生成中心",
-  "生成可用内容",
+  "系统自动领取任务",
   "自动检查、修复和恢复",
   "待补资料",
   "Tabs",
