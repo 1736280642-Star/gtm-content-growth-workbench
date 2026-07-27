@@ -15,6 +15,9 @@ export const workspaceRouteLabels: Record<string, string> = {
   "/monthly-matrix/strategy": "月度策略工作区",
   "/monthly-matrix/content-types": "内容类型库",
   "/monthly-matrix/batch-generation": "批量生成中心",
+  "/free-production": "自由内容生产",
+  "/free-production/content-types": "自由内容表达类型",
+  "/free-production/tasks": "自由生产任务与发布",
   "/batch-generation": "批量生成中心",
   "/exceptions": "异常拦截（已并入批量生成中心）",
   "/publish-schedule": "人工排程（已并入批量生成中心）",
@@ -40,10 +43,11 @@ export const workspaceRouteLabels: Record<string, string> = {
 
 const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   content_publisher: ["/", "/today", "/publish", "/weekly-plan", "/weekly-report", "/settings"],
-  content_growth: ["/", "/monthly-review", "/ai-front-test", "/weekly-plan", "/weekly-report", "/questions-keywords", "/blog-monitor", "/blog-candidates", "/settings"],
+  content_growth: ["/", "/free-production", "/monthly-review", "/ai-front-test", "/weekly-plan", "/weekly-report", "/questions-keywords", "/blog-monitor", "/blog-candidates", "/settings"],
   workbench_operator: [
     "/",
     "/monthly-matrix",
+    "/free-production",
     "/batch-generation",
     "/daily-execution",
     "/monthly-review",
@@ -64,6 +68,7 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
   developer_admin: [
     "/",
     "/monthly-matrix",
+    "/free-production",
     "/batch-generation",
     "/daily-execution",
     "/monthly-review",

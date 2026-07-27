@@ -2150,6 +2150,81 @@ addContentCheck("new task review api", "src/app/api/content-tasks/[id]/review/ro
 addContentCheck("single generate evidence guard api", "src/app/api/content-tasks/[id]/generate/route.ts", ["generateDraftForTask", "result.status === \"pending_input\" ? 400 : 404"]);
 addContentCheck("batch generate accepts selected ids", "src/app/api/content-tasks/batch-generate/route.ts", ["readRequestPayload", "batchGenerateDrafts(payload)"]);
 
+[
+  "data/v5-free-expression-presets.json",
+  "src/app/free-production/page.tsx",
+  "src/app/free-production/tasks/page.tsx",
+  "src/app/free-production/content-types/page.tsx",
+  "src/components/free-production/ExpressionPresetList.tsx",
+  "src/components/free-production/CreateExpressionDrawer.tsx",
+  "src/components/free-production/GenerationResultWorkspace.tsx",
+  "src/components/free-production/WechatArticlePreview.tsx",
+  "src/components/free-production/RiskAndGapPanel.tsx",
+  "src/components/free-production/ConfirmAutoPublishButton.tsx",
+  "src/lib/v5/free-production-contracts.ts",
+  "src/lib/v5/free-production-compiler.ts",
+  "src/lib/v5/free-production-expression-plan.ts",
+  "src/lib/v5/free-production-output-validator.ts",
+  "src/lib/v5/free-production-repository.ts",
+  "src/lib/v5/free-production-service.ts",
+  "src/lib/v5/free-content-expression-type-repository.ts",
+  "src/lib/v5/free-content-expression-type-service.ts",
+  "src/app/api/v5/free-production/batches/from-expression/route.ts",
+  "src/app/api/v5/free-production/batches/[id]/supplements/route.ts",
+  "src/app/api/v5/free-production/batches/[id]/recheck/route.ts",
+  "src/app/api/v5/free-production/batches/[id]/confirm-and-publish/route.ts",
+  "src/app/api/v5/free-production/batches/[id]/retry-failures/route.ts",
+  "database/migrations/20260727_012_v5_free_content_production.sql",
+  "scripts/v5-free-production.test.mjs",
+  "docs/方案与规划/V5自由内容生产实现记录.md"
+].forEach((filePath) => addFileCheck(`v5 free production file: ${filePath}`, filePath));
+
+addContentCheck("v5 free production expression contracts", "src/lib/v5/free-production-contracts.ts", [
+  "FREE_EXPRESSION_PRESET_KEYS",
+  "ExpressionPlan",
+  "ContentDraftArtifact",
+  "RiskAndGapItem",
+  "automatic_after_confirmation",
+  "freeContentExpressionTypeVersionId",
+  "monthlyPlanId"
+]);
+addContentCheck("v5 free production preset entry", "src/app/free-production/page.tsx", [
+  "表达预设",
+  "新建表达",
+  "batches/from-expression",
+  "GenerationResultWorkspace",
+  "confirm-and-publish"
+]);
+addAbsentCheck("v5 free production has no legacy configuration form", "src/app/free-production/page.tsx", [
+  "FreeProductionForm",
+  "ChannelQuantityEditor",
+  "FreeProductionCalendar",
+  "totalQuantity",
+  "scheduleMode"
+]);
+addContentCheck("v5 free production safety orchestration", "src/lib/v5/free-production-service.ts", [
+  "MAXIMUM_FREE_PRODUCTION_REPAIR_COUNT = 1",
+  "mergeRegeneratedSections",
+  "FREE_PRODUCTION_CONTENT_DIGEST_MISMATCH",
+  "FREE_PRODUCTION_PUBLISH_BLOCKED",
+  "assertPublishPayloadSanitized",
+  "planningSource: \"free_production\""
+]);
+addContentCheck("v5 free production migration constraints", "database/migrations/20260727_012_v5_free_content_production.sql", [
+  "free_content_expression_type_version",
+  "free_production_expression_plan",
+  "free_production_draft_artifact",
+  "free_production_risk_gap",
+  "uq_free_production_idempotency",
+  "uq_free_draft_digest"
+]);
+addAbsentCheck("v5 free production does not introduce weekly planning", "src/lib/v5/free-production-contracts.ts", [
+  "weeklyPlanId",
+  "WeeklyPlan",
+  "weekly-review",
+  "weekly-report"
+]);
+
 const failed = checks.filter((check) => !check.pass);
 
 for (const check of checks) {
