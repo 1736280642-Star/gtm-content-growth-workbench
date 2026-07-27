@@ -9,6 +9,7 @@ import {
   DashboardOutlined,
   FileSearchOutlined,
   ExperimentOutlined,
+  FormOutlined,
   QuestionCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -49,6 +50,7 @@ const contentStyle: CSSProperties = {
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
+  { key: "/free-production", icon: <FormOutlined />, label: <Link href="/free-production">自由内容生产</Link> },
   { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
   { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },
   { key: "/questions-keywords", icon: <QuestionCircleOutlined />, label: <Link href="/questions-keywords">问题与关键词池</Link> },

@@ -122,6 +122,9 @@ export interface ProductionDraftSummary {
 export interface ProductionMatrixTask {
   taskId: string;
   monthlyPlanId: string;
+  planningSource?: "geo_strategy" | "free_production";
+  freeProductionBatchId?: string;
+  freeContentExpressionTypeVersionId?: string;
   strategyPackageId: string;
   quotaRuleId: string;
   questionVersionId: string;
