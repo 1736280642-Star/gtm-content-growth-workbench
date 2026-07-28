@@ -21,7 +21,6 @@ import type {
   V5KnowledgeVisibility
 } from "./knowledge-workspace-contracts";
 
-const knowledgeRoles = ["workbench_operator", "knowledge_manager", "developer_admin"] as const;
 export const V5_KNOWLEDGE_UNDERSTANDING_VERSION = "knowledge-understanding.v1.0.0";
 
 function buildDetail(state: V5FoundationState, knowledgeBaseId: string): V5KnowledgeBaseDetail | undefined {
@@ -77,7 +76,7 @@ export function createV5KnowledgeBase(input: V5WriteEnvelope & {
   focus: string;
   defaultVisibility?: V5KnowledgeVisibility;
 }) {
-  assertV5FoundationEnvelope(input, [...knowledgeRoles]);
+  assertV5FoundationEnvelope(input);
   assertV5FoundationText(input.name, "知识库名称", 100);
   assertV5FoundationText(input.focus, "知识库重点", 600);
   const stored = mutateV5FoundationState({
@@ -135,7 +134,7 @@ export function addV5KnowledgeMaterial(input: V5WriteEnvelope & {
   limitation?: string;
   failureReason?: string;
 }) {
-  assertV5FoundationEnvelope(input, [...knowledgeRoles]);
+  assertV5FoundationEnvelope(input);
   assertV5FoundationText(input.title, "资料名称", 180);
   const stored = mutateV5FoundationState({
     operation: "add_knowledge_material",
@@ -220,7 +219,7 @@ export function updateV5KnowledgeActionItem(input: V5WriteEnvelope & {
   actionItemId: string;
   status: V5KnowledgeActionStatus;
 }) {
-  assertV5FoundationEnvelope(input, [...knowledgeRoles]);
+  assertV5FoundationEnvelope(input);
   const stored = mutateV5FoundationState({
     operation: "update_knowledge_action_item",
     idempotencyKey: input.idempotencyKey,

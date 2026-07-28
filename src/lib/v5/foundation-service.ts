@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import type { WorkspaceRole } from "../types";
 import { V5FoundationRepositoryError } from "./foundation-repository";
 import type { V5GovernanceActor } from "./knowledge-governance-repository";
 import type { V5WriteEnvelope } from "./knowledge-governance-service";
@@ -26,24 +25,16 @@ export function assertV5FoundationText(value: unknown, field: string, maxLength 
   }
 }
 
-export function assertV5FoundationActor(actor: V5GovernanceActor, allowedRoles: WorkspaceRole[]) {
+export function assertV5FoundationActor(actor: V5GovernanceActor) {
   if (!actor || typeof actor !== "object") {
     throw new V5FoundationServiceError("invalid_contract", "缺少操作人信息。", 400, "刷新页面后重试。");
   }
   assertV5FoundationText(actor.actorId, "actorId", 120);
   assertV5FoundationText(actor.actorRole, "actorRole", 80);
   assertV5FoundationText(actor.auditReason, "auditReason", 300);
-  if (!allowedRoles.includes(actor.actorRole as WorkspaceRole)) {
-    throw new V5FoundationServiceError(
-      "permission_denied",
-      "当前角色没有执行此操作的权限。",
-      403,
-      "切换到具备对应对象管理权限的角色后重试。"
-    );
-  }
 }
 
-export function assertV5FoundationEnvelope(input: V5WriteEnvelope, allowedRoles: WorkspaceRole[]) {
+export function assertV5FoundationEnvelope(input: V5WriteEnvelope) {
   assertV5FoundationText(input.idempotencyKey, "idempotencyKey", 160);
   if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) {
     throw new V5FoundationServiceError(
@@ -53,7 +44,7 @@ export function assertV5FoundationEnvelope(input: V5WriteEnvelope, allowedRoles:
       "刷新页面读取最新版本后重试。"
     );
   }
-  assertV5FoundationActor(input.actor, allowedRoles);
+  assertV5FoundationActor(input.actor);
 }
 
 export function assertV5ExpectedVersion(actual: number, expected: number) {

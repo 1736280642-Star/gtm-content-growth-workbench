@@ -16,7 +16,6 @@ import type {
   ObservationGapDestination,
   ObservationReview,
   ReviewObservationRequest,
-  V5MutationActor,
   V5MutationContext
 } from "./observation-contracts";
 import {
@@ -32,7 +31,6 @@ import { readObservationReferenceSnapshot } from "./observation-reference-adapte
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const SUPPORTED_PLATFORMS = new Set(["chatgpt"]);
-const HUMAN_WRITE_ROLES = new Set(["content_growth", "workbench_operator", "knowledge_manager", "developer_admin"]);
 const TRANSIENT_TASK_STATES = new Set<FrontendCaptureTaskStatus>([
   "draft",
   "environment_checking",
@@ -107,8 +105,10 @@ function assertText(value: unknown, label: string, maxLength = 500) {
 
 export function assertObservationMutationContext(input: V5MutationContext, runnerAllowed = false) {
   const actor = input?.actor;
-  if (!actor || !assertActorRole(actor, runnerAllowed)) {
-    throw new ObservationServiceError(403, "MUTATION_FORBIDDEN", "当前角色无权执行此操作，请切换到内容增长、工作台运营或开发管理员。");
+  const actorTypeAllowed = actor?.actorType === "human"
+    || (runnerAllowed && actor?.actorRole === "capture_runner" && actor.actorType === "runner");
+  if (!actor || !actorTypeAllowed) {
+    throw new ObservationServiceError(403, "MUTATION_FORBIDDEN", "该操作需要由工作台用户执行；采集 Runner 仅能执行已授权的采集步骤。");
   }
   assertText(actor.actorId, "操作人", 120);
   assertText(input.reason, "操作原因", 500);
@@ -117,11 +117,6 @@ export function assertObservationMutationContext(input: V5MutationContext, runne
   if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) {
     throw new ObservationServiceError(400, "INVALID_EXPECTED_VERSION", "expectedVersion 必须是大于等于 0 的整数。");
   }
-}
-
-function assertActorRole(actor: V5MutationActor, runnerAllowed: boolean) {
-  if (runnerAllowed && actor.actorRole === "capture_runner" && actor.actorType === "runner") return true;
-  return actor.actorType === "human" && HUMAN_WRITE_ROLES.has(actor.actorRole);
 }
 
 function hasSensitiveKeys(value: unknown, path: string[] = []): string[] {

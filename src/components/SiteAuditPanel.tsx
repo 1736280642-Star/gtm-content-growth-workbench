@@ -3,14 +3,13 @@
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Empty, Form, Input, Modal, Segmented, Space, Table, Tag, message } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { WorkspaceRole } from "@/lib/types";
+import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
 import type { SiteAuditFinding, SiteAuditWorkspace } from "@/lib/v5/site-audit-contracts";
 import type { V5ObservationApiEnvelope } from "@/lib/v5/observation-contracts";
 import { SiteAuditFindingDrawer } from "./SiteAuditFindingDrawer";
 
-function mutationContext(role: WorkspaceRole, expectedVersion: number, reason: string) {
-  const actorRole = role === "content_growth" || role === "workbench_operator" || role === "knowledge_manager" || role === "developer_admin" ? role : "workbench_operator";
-  return { actor: { actorId: `local-${actorRole}`, actorRole, actorType: "human" }, reason, expectedVersion, idempotencyKey: `site-audit-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+function mutationContext(expectedVersion: number, reason: string) {
+  return { actor: WORKSPACE_ACTOR, reason, expectedVersion, idempotencyKey: `site-audit-${Date.now()}-${Math.random().toString(36).slice(2)}` };
 }
 
 async function request<T>(path: string, options?: RequestInit) {
@@ -20,7 +19,7 @@ async function request<T>(path: string, options?: RequestInit) {
   return body.data;
 }
 
-export function SiteAuditPanel({ role }: { role: WorkspaceRole }) {
+export function SiteAuditPanel() {
   const [workspace, setWorkspace] = useState<SiteAuditWorkspace>();
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -44,7 +43,7 @@ export function SiteAuditPanel({ role }: { role: WorkspaceRole }) {
     const value = await form.validateFields();
     setBusy(true);
     try {
-      await request("/api/v5/site-audits", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...value, ...mutationContext(role, 0, "人工创建官网审计批次") }) });
+      await request("/api/v5/site-audits", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...value, ...mutationContext(0, "人工创建官网审计批次") }) });
       setCreateOpen(false); form.resetFields(); await refresh(); messageApi.success("审计范围已保存；Runner 未配置时不会生成假问题");
     } catch (error) { messageApi.error(error instanceof Error ? error.message : "审计批次创建失败"); }
     finally { setBusy(false); }
@@ -55,7 +54,7 @@ export function SiteAuditPanel({ role }: { role: WorkspaceRole }) {
     setBusy(true);
     try {
       const path = action === "remediation" ? `/api/v5/site-audit-findings/${finding.id}/remediation` : `/api/v5/site-audit-findings/${finding.id}/review`;
-      const payload = action === "remediation" ? { note, ...mutationContext(role, finding.version, "人工创建官网整改任务") } : { decision: action, note, ...mutationContext(role, finding.version, "人工复审官网审计问题") };
+      const payload = action === "remediation" ? { note, ...mutationContext(finding.version, "人工创建官网整改任务") } : { decision: action, note, ...mutationContext(finding.version, "人工复审官网审计问题") };
       await request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       setSelected(undefined); await refresh(); messageApi.success(action === "remediation" ? "整改任务已创建" : "复审结果已保存");
     } catch (error) { messageApi.error(error instanceof Error ? error.message : "操作失败"); }

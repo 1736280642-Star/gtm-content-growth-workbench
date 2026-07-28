@@ -3,7 +3,8 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { channelLabels, productLabels } from "@/lib/labels";
 import { createInitialWorkbenchState, normalizeWorkbenchState } from "@/lib/workbench-store";
-import type { ProductPlanConfig, WorkspaceRole } from "@/lib/types";
+import type { ProductPlanConfig } from "@/lib/types";
+import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
 import type {
   BatchGenerationSummary,
   ContentQuotaRule,
@@ -38,7 +39,6 @@ export { calculateExpandedDeliverableCount, evaluateStrategyPreflight, expandApp
 type WorkbenchState = ReturnType<typeof createInitialWorkbenchState>;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-const WRITE_ROLES = new Set<WorkspaceRole>(["content_growth", "workbench_operator", "developer_admin"]);
 
 export class V5ServiceError extends Error {
   constructor(
@@ -374,12 +374,6 @@ function validateMonthlyPlan(
   };
 }
 
-function assertWritableRole(role: WorkspaceRole) {
-  if (!WRITE_ROLES.has(role)) {
-    throw new V5ServiceError(403, "MONTHLY_PLAN_FORBIDDEN", "当前角色无权修改月度计划，请切换到内容增长、工作台运营或开发管理员。");
-  }
-}
-
 function assertIdempotencyKey(value: string | null) {
   const key = value?.trim() || "";
   if (key.length < 8 || key.length > 200) {
@@ -400,8 +394,7 @@ export async function saveV5MonthlyPlan(
   }
 
   const reference = await readV4Reference();
-  const role = reference.state.workspaceSetting.currentRole;
-  assertWritableRole(role);
+  const actor = WORKSPACE_ACTOR.actorId;
   const candidateRulePackages = buildRulePackages(reference.state, reference.source);
   const governance = await loadMonthlyWorkspaceGovernance(month, candidateRulePackages, `monthly-plan-${month}`);
   if (governance.source !== "v5_mysql" && reference.source !== "v4_runtime") {
@@ -471,9 +464,9 @@ export async function saveV5MonthlyPlan(
       status: current?.status || "draft",
       config,
       createdAt: current?.createdAt || now,
-      createdBy: current?.createdBy || role,
+      createdBy: current?.createdBy || actor,
       updatedAt: now,
-      updatedBy: role,
+      updatedBy: actor,
       strategyPackage,
       matrixTasks: []
     };
@@ -483,7 +476,7 @@ export async function saveV5MonthlyPlan(
       id: randomUUID(),
       event: "monthly_plan_saved",
       month,
-      actor: role,
+      actor,
       version: record.version,
       createdAt: now
     });
@@ -503,9 +496,7 @@ function assertStrategyMutationRequest(request: StrategyMutationRequest) {
 }
 
 async function getWritableActor() {
-  const reference = await readV4Reference();
-  assertWritableRole(reference.state.workspaceSetting.currentRole);
-  return reference.state.workspaceSetting.currentRole;
+  return WORKSPACE_ACTOR.actorId;
 }
 
 export async function preflightV5Strategy(month: string, request: StrategyMutationRequest) {

@@ -32,8 +32,6 @@ export const V5_QUESTION_BOUNDARY_VERSION = "question-boundary.v1.0.0";
 export const V5_KEYWORD_ALGORITHM_VERSION = "semantic-keyword.v1.0.0";
 const EFFECTIVE_KEYWORD_RECALL_SCORE = 0.75;
 const decisionConflictTypes = new Set<V5QuestionConflictType>(["semantic", "business"]);
-const questionWriterRoles = ["content_growth", "workbench_operator", "knowledge_manager", "developer_admin"] as const;
-const decisionRoles = ["workbench_operator", "knowledge_manager", "developer_admin"] as const;
 
 function normalizeConflictCategory(value: unknown): V5QuestionConflictType | undefined {
   if (value === "semantic" || value === "historical_merge" || value === "user_correction") return "semantic";
@@ -415,7 +413,7 @@ export function updateV5Question(input: V5WriteEnvelope & {
   audience?: string;
   suggestedArticleTypes?: string[];
 }) {
-  assertV5FoundationEnvelope(input, [...questionWriterRoles]);
+  assertV5FoundationEnvelope(input);
   assertV5FoundationText(input.text, "问题文本", 300);
   const stored = mutateV5FoundationState({
     operation: "correct_question_understanding",
@@ -477,7 +475,7 @@ export function updateV5Question(input: V5WriteEnvelope & {
 }
 
 export function ingestV5QuestionSignals(input: V5WriteEnvelope & { signals: V5QuestionSignalInput[] }) {
-  assertV5FoundationEnvelope(input, [...questionWriterRoles]);
+  assertV5FoundationEnvelope(input);
   if (!Array.isArray(input.signals) || input.signals.length < 1 || input.signals.length > 100) {
     throw new V5FoundationServiceError("invalid_contract", "signals 必须包含 1-100 条业务信号。", 400);
   }
@@ -506,7 +504,7 @@ export function ingestV5QuestionSignals(input: V5WriteEnvelope & { signals: V5Qu
 }
 
 export function selectV5MonthlyQuestions(input: V5WriteEnvelope & { month: string; questionIds: string[] }) {
-  assertV5FoundationEnvelope(input, [...questionWriterRoles]);
+  assertV5FoundationEnvelope(input);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.month)) {
     throw new V5FoundationServiceError("invalid_contract", "月份格式必须为 YYYY-MM。", 400);
   }
@@ -562,7 +560,7 @@ export function selectV5MonthlyQuestions(input: V5WriteEnvelope & { month: strin
 export function resolveV5QuestionDecisions(input: V5WriteEnvelope & {
   resolutions: Array<{ exceptionId: string; action: "adopt_suggestion" | "correct" | "ignore"; correctedText?: string; expectedVersion?: number }>;
 }) {
-  assertV5FoundationEnvelope(input, [...decisionRoles]);
+  assertV5FoundationEnvelope(input);
   if (!input.resolutions.length) throw new V5FoundationServiceError("invalid_contract", "至少选择一条待决策事项。", 400);
   const stored = mutateV5FoundationState({
     operation: "resolve_question_decisions",
@@ -623,7 +621,7 @@ export function resolveV5QuestionDecisions(input: V5WriteEnvelope & {
 }
 
 export function excludeV5Keyword(input: V5WriteEnvelope & { keywordId: string; reason: string }) {
-  assertV5FoundationEnvelope(input, [...questionWriterRoles]);
+  assertV5FoundationEnvelope(input);
   assertV5FoundationText(input.reason, "排除原因", 200);
   const stored = mutateV5FoundationState({
     operation: "exclude_semantic_keyword",
@@ -654,7 +652,7 @@ export function excludeV5Keyword(input: V5WriteEnvelope & { keywordId: string; r
 }
 
 export function correctV5KeywordLink(input: V5WriteEnvelope & { keywordId: string; questionIds: string[]; reason: string }) {
-  assertV5FoundationEnvelope(input, [...questionWriterRoles]);
+  assertV5FoundationEnvelope(input);
   assertV5FoundationText(input.reason, "纠正原因", 200);
   const stored = mutateV5FoundationState({
     operation: "correct_semantic_keyword_link",
@@ -691,7 +689,7 @@ export function correctV5KeywordLink(input: V5WriteEnvelope & { keywordId: strin
 }
 
 export function restoreV5Keyword(input: V5WriteEnvelope & { keywordId: string; reason: string }) {
-  assertV5FoundationEnvelope(input, [...questionWriterRoles]);
+  assertV5FoundationEnvelope(input);
   assertV5FoundationText(input.reason, "恢复原因", 200);
   const stored = mutateV5FoundationState({
     operation: "restore_semantic_keyword",

@@ -12,7 +12,6 @@ process.env.V5_ARTICLE_TYPE_STATE_PATH = articleTypeStatePath;
 
 const { createInitialWorkbenchState } = await import("../src/lib/workbench-store.ts");
 const workbenchState = createInitialWorkbenchState();
-workbenchState.workspaceSetting.currentRole = "workbench_operator";
 await writeFile(workbenchStatePath, JSON.stringify(workbenchState), "utf8");
 
 const service = await import("../src/lib/v5/article-type-service.ts");

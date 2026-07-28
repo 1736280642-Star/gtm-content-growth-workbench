@@ -1,4 +1,3 @@
-import { canViewAiGovernance } from "@/lib/permissions";
 import { readWorkbenchState } from "@/lib/workbench-store";
 import { NextResponse } from "next/server";
 
@@ -148,7 +147,6 @@ function buildCallLogs(state: ReturnType<typeof readWorkbenchState>) {
 
 export function GET() {
   const state = readWorkbenchState();
-  const canViewFullGovernance = canViewAiGovernance(state.workspaceSetting.currentRole);
   const taskById = new Map(state.tasks.map((task) => [task.id, task]));
   const publishRecordByDraftId = new Map(state.publishRecords.map((record) => [record.draftId, record]));
   const draftSources = state.drafts.map((draft) => {
@@ -266,16 +264,11 @@ export function GET() {
   return NextResponse.json({
     ok: true,
     data: {
-      promptTemplates: canViewFullGovernance ? state.promptVersions : [],
-      auditLog: canViewFullGovernance ? state.auditLog : [],
-      pipelineRuns: canViewFullGovernance ? state.pipelineRuns : [],
-      draftSources: canViewFullGovernance ? draftSources : [],
-      callLogs: canViewFullGovernance ? buildCallLogs(state) : [],
-      access: {
-        role: state.workspaceSetting.currentRole,
-        canViewFullGovernance,
-        message: canViewFullGovernance ? "当前角色可查看 AI 治理摘要。" : "当前角色只显示受限入口；模型配置、调用记录和规则版本由工作台运营或开发管理员维护。"
-      }
+      promptTemplates: state.promptVersions,
+      auditLog: state.auditLog,
+      pipelineRuns: state.pipelineRuns,
+      draftSources,
+      callLogs: buildCallLogs(state)
     }
   });
 }

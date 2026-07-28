@@ -9,7 +9,6 @@ import { ActionEmpty } from "@/components/ActionEmpty";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type { V5KnowledgeBaseDetail, V5KnowledgeUnderstandingItem } from "@/lib/v5/knowledge-workspace-contracts";
 
@@ -25,7 +24,6 @@ export default function KnowledgeDetailPage({ params }: { params: { id: string }
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
-  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
   const [data, setData] = useState<DetailResponse["data"]>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -56,7 +54,7 @@ export default function KnowledgeDetailPage({ params }: { params: { id: string }
       await callJsonApi(`/api/v5/knowledge-bases/${params.id}/materials`, {
         method: "POST",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, data.knowledgeBase.rowVersion, "导入资料并更新知识快照"),
+          ...createV5WritePayload(data.knowledgeBase.rowVersion, "导入资料并更新知识快照"),
           title: values.title,
           kind: values.kind,
           summary: values.summary,
@@ -83,7 +81,7 @@ export default function KnowledgeDetailPage({ params }: { params: { id: string }
       await callJsonApi(`/api/v5/knowledge-action-items/${actionItemId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, rowVersion, "确认知识库待处理事项已处理"),
+          ...createV5WritePayload(rowVersion, "确认知识库待处理事项已处理"),
           status: "resolved"
         })
       });

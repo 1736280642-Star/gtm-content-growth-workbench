@@ -10,7 +10,6 @@ import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type { V5KnowledgeBaseWorkspace, V5KnowledgeVisibility } from "@/lib/v5/knowledge-workspace-contracts";
 
@@ -26,7 +25,6 @@ export default function KnowledgePage() {
   const router = useRouter();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
-  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
   const [data, setData] = useState<KnowledgeResponse["data"]>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -59,7 +57,7 @@ export default function KnowledgePage() {
       const result = await callJsonApi<{ data: { knowledgeBase: V5KnowledgeBaseWorkspace } }>("/api/v5/knowledge-bases", {
         method: "POST",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, data.stateVersion, "创建知识库并准备导入资料"),
+          ...createV5WritePayload(data.stateVersion, "创建知识库并准备导入资料"),
           name: values.name,
           focus: values.focus,
           defaultVisibility: values.defaultVisibility

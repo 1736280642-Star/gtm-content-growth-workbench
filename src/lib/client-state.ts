@@ -32,7 +32,6 @@ const initialState: WorkbenchState = {
     enabledChannels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
     enabledProducts: ["joto_brand", "weike_guardrails"],
     productPlans: weeklyPlan.productPlans,
-    currentRole: "content_publisher",
     finalReviewMode: "default_final",
     logMode: "demo_csv"
   },

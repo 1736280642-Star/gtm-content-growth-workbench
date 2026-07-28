@@ -9,13 +9,11 @@ import { CaptureComparisonWorkspace } from "@/components/CaptureComparisonWorksp
 import { FrontendCaptureTaskTable } from "@/components/FrontendCaptureTaskTable";
 import { NewCaptureTaskDialog } from "@/components/NewCaptureTaskDialog";
 import { PageHeader } from "@/components/PageHeader";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import type { CaptureComparison, CapturedAnswer, ObservationGapDestination } from "@/lib/v5/observation-contracts";
 import { useFrontendCapture } from "@/lib/v5/use-frontend-capture";
 
 export default function AiFrontTestPage() {
-  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
-  const { workspace, loading, error, refresh, createTasks, analyzeGaps, reviewAnswer, compareTasks } = useFrontendCapture(workspaceSetting.currentRole);
+  const { workspace, loading, error, refresh, createTasks, analyzeGaps, reviewAnswer, compareTasks } = useFrontendCapture();
   const [messageApi, contextHolder] = message.useMessage();
   const [activeTab, setActiveTab] = useState("tasks");
   const [dialogOpen, setDialogOpen] = useState(false);

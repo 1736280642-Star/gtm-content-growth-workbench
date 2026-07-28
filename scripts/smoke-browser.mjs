@@ -21,14 +21,14 @@ const failures = [];
 if (args.help || args.h) {
   printJson({
     script: "smoke-browser",
-    usage: "node scripts/smoke-browser.mjs [--scope full|roles|content|responsive|publish|v5] [--base-url http://127.0.0.1:3047] [--debug-port 9223]"
+    usage: "node scripts/smoke-browser.mjs [--scope full|content|responsive|publish|v5] [--base-url http://127.0.0.1:3047] [--debug-port 9223]"
   });
   process.exit(0);
 }
 
 function normalizeScope(scope) {
   const value = typeof scope === "string" ? scope : "full";
-  const allowedScopes = new Set(["full", "roles", "content", "responsive", "publish", "v5"]);
+  const allowedScopes = new Set(["full", "content", "responsive", "publish", "v5"]);
 
   if (!allowedScopes.has(value)) {
     throw new Error(`Unsupported smoke browser scope: ${value}`);
@@ -182,30 +182,6 @@ async function createCdpPageTarget(timeoutMs = 15000) {
     }, timeoutMs);
   } catch (error) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}; last CDP probe: ${lastCdpTargetProbe}`);
-  }
-}
-
-async function resolveCurrentRole() {
-  const response = await requestJson(`${baseUrl}/api/workbench-state`);
-
-  return response.body.state?.workspaceSetting?.currentRole;
-}
-
-async function setCurrentRole(currentRole) {
-  if (!currentRole) return;
-
-  const response = await requestJson(`${baseUrl}/api/workspace-settings`, {
-    method: "PATCH",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ currentRole })
-  });
-
-  const savedRole = response.body.data?.workspaceSetting?.currentRole;
-
-  if (!response.ok || savedRole !== currentRole) {
-    throw new Error(response.body.message || `Failed to switch role to ${currentRole}`);
   }
 }
 
@@ -940,10 +916,7 @@ async function prepareConfirmedBriefTask() {
 }
 
 async function prepareActivatedRulePackageForBrief() {
-  await setCurrentRole("knowledge_manager");
-
-  try {
-    const stamp = Date.now();
+  const stamp = Date.now();
     const knowledgeName = `JOTO Dify Rule ${stamp}`;
     const created = await requestJson(`${baseUrl}/api/knowledge-bases`, {
       method: "POST",
@@ -981,10 +954,7 @@ async function prepareActivatedRulePackageForBrief() {
       throw new Error(activated.body.message || "Failed to activate product expression rule package");
     }
 
-    return { knowledgeBase: activeKnowledgeBase, ruleDraft };
-  } finally {
-    await setCurrentRole("workbench_operator");
-  }
+  return { knowledgeBase: activeKnowledgeBase, ruleDraft };
 }
 
 async function prepareConfirmedBriefTaskForRulePackage(rulePackageContext) {
@@ -1048,53 +1018,6 @@ async function prepareDraftRiskReviewTask() {
   }
 
   return { task, draft: patchedDraft.body.data?.draft || draft };
-}
-
-const restrictedAiConfigRoleExpectations = [
-  { testName: "ai_config_restricted_content_publisher", role: "content_publisher", roleLabel: "内容发布人员", actionLabel: "去今日发布" },
-  { testName: "ai_config_restricted_content_growth", role: "content_growth", roleLabel: "内容增长 / GEO 人员", actionLabel: "去周度复盘" },
-  { testName: "ai_config_restricted_knowledge_manager", role: "knowledge_manager", roleLabel: "知识库 / 产品表达维护", actionLabel: "去知识库" }
-];
-
-async function assertAiConfigRestrictedRole(page, expectation) {
-  await setCurrentRole(expectation.role);
-  await page.navigate(`/ai-config?role-smoke=${expectation.role}-${Date.now()}`);
-  await waitFor(async () => {
-    const text = await page.evaluate("document.body.innerText");
-
-    return (
-      text.includes("当前角色无权进入此页面") &&
-      text.includes(`当前角色：${expectation.roleLabel}`) &&
-      text.includes(expectation.actionLabel)
-    );
-  }, 30000);
-
-  const bodyText = await page.evaluate("document.body.innerText");
-  const requiredText = [
-    "当前角色无权进入此页面",
-    "为了避免普通业务流程看到内部治理配置和排查信息",
-    `当前角色：${expectation.roleLabel}`,
-    expectation.actionLabel,
-    "切换角色"
-  ];
-  const forbiddenText = [
-    "Provider",
-    "Prompt 版本",
-    "调用日志",
-    "运行全部诊断",
-    "复制 .env.local 模板",
-    "管理模型、API、Prompt",
-    "Prompt、模型日志、规则包",
-    "效果摘要"
-  ];
-  const missing = requiredText.filter((item) => !bodyText.includes(item));
-  const leaked = forbiddenText.filter((item) => bodyText.includes(item));
-
-  if (missing.length || leaked.length) {
-    throw new Error(`missing=${missing.join(",") || "-"} leaked=${leaked.join(",") || "-"}`);
-  }
-
-  record(expectation.testName, true, expectation.actionLabel);
 }
 
 async function clickButtonByText(page, text) {
@@ -1407,58 +1330,6 @@ async function generateWeeklyPlanFromDistilledTerm(term) {
   return { generatedPlan, task };
 }
 
-const businessPageForbiddenText = [
-  "Provider",
-  "AI Provider",
-  "Prompt",
-  "Prompt 版本",
-  "模型 trace",
-  "trace",
-  "rawAnswer",
-  "rawCitationUrl",
-  "citationRank",
-  "embeddingSimilarity",
-  "ruleHit",
-  "issueCode",
-  "confidence",
-  "置信度",
-  "知识库 Chunk",
-  "证据 Chunk"
-];
-
-const businessPageBoundaryExpectations = [
-  { testName: "business_boundary_content_publisher_weekly_plan", role: "content_publisher", roleLabel: "内容发布人员", pathName: "/weekly-plan", expectedText: "周计划生成预览" },
-  { testName: "business_boundary_content_publisher_today", role: "content_publisher", roleLabel: "内容发布人员", pathName: "/today", expectedText: "今日发布" },
-  { testName: "business_boundary_content_publisher_publish", role: "content_publisher", roleLabel: "内容发布人员", pathName: "/publish", expectedText: "数据回传" },
-  { testName: "business_boundary_content_growth_weekly_report", role: "content_growth", roleLabel: "内容增长 / GEO 人员", pathName: "/weekly-report", expectedText: "周度复盘" },
-  { testName: "business_boundary_content_growth_distilled_terms", role: "content_growth", roleLabel: "内容增长 / GEO 人员", pathName: "/distilled-terms", expectedText: "蒸馏词池" },
-  { testName: "business_boundary_knowledge_manager_knowledge", role: "knowledge_manager", roleLabel: "知识库 / 产品表达维护", pathName: "/knowledge", expectedText: "知识库" },
-  { testName: "business_boundary_knowledge_manager_weekly_report", role: "knowledge_manager", roleLabel: "知识库 / 产品表达维护", pathName: "/weekly-report", expectedText: "周度复盘" }
-];
-
-async function assertBusinessPageBoundary(page, expectation) {
-  await setCurrentRole(expectation.role);
-  const separator = expectation.pathName.includes("?") ? "&" : "?";
-  await page.navigate(`${expectation.pathName}${separator}boundary-smoke=${expectation.role}-${Date.now()}`);
-  await waitFor(async () => {
-    const text = await page.evaluate("document.body.innerText");
-    return text.includes(expectation.expectedText) && text.includes(expectation.roleLabel);
-  }, 30000);
-
-  if (expectation.beforeAssert) {
-    await expectation.beforeAssert(page);
-  }
-
-  const bodyText = await page.evaluate("document.body.innerText");
-  const leaked = businessPageForbiddenText.filter((item) => bodyText.includes(item));
-
-  if (leaked.length) {
-    throw new Error(`business page leaked internal wording: ${leaked.join(", ")}`);
-  }
-
-  record(expectation.testName, true, `${expectation.roleLabel} ${expectation.pathName}`);
-}
-
 function buildResponsiveAuditExpression() {
   return `
     (() => {
@@ -1611,9 +1482,7 @@ async function assertDesktopLayout(page, { name, pathName, expectedText, beforeA
 async function main() {
   let browser;
   let page;
-  let previousRole;
   const runFullScope = smokeScope === "full";
-  const shouldRunRoles = runFullScope || smokeScope === "roles";
   const shouldRunContent = runFullScope || smokeScope === "content";
   const shouldRunResponsive = runFullScope || smokeScope === "responsive";
   const shouldRunPublish = runFullScope || smokeScope === "publish";
@@ -1621,76 +1490,10 @@ async function main() {
   const shouldRunOperatorPage = shouldRunContent || shouldRunResponsive || shouldRunPublish || shouldRunV5;
 
   try {
-    previousRole = await runStep("prepare_workspace_role_read", () => resolveCurrentRole());
     browser = await runStep("start_browser", () => startBrowser());
-
-    if (shouldRunRoles) {
-      for (const expectation of restrictedAiConfigRoleExpectations) {
-        let restrictedPage;
-
-        await runStep(expectation.testName, async () => {
-          restrictedPage = await openPage();
-
-          try {
-            await assertAiConfigRestrictedRole(restrictedPage, expectation);
-          } finally {
-            restrictedPage.close();
-          }
-        });
-      }
-
-      await runStep("business_page_boundary_dom", async () => {
-        const boundaryPage = await openPage();
-
-        try {
-          const knowledgeBaseId = await resolveKnowledgeBaseWithRuleDraftId();
-          const dynamicBusinessPageBoundaryExpectations = [
-            ...businessPageBoundaryExpectations,
-            {
-              testName: "business_boundary_content_growth_weekly_report_publish_drawer",
-              role: "content_growth",
-              roleLabel: "内容增长 / GEO 人员",
-              pathName: "/weekly-report",
-              expectedText: "周度复盘",
-              beforeAssert: async (currentPage) => {
-                await clickButtonByText(currentPage, "查看发布明细");
-                await waitFor(() => currentPage.containsText("发布与渠道明细"), 15000);
-              }
-            },
-            {
-              testName: "business_boundary_knowledge_manager_knowledge_detail",
-              role: "knowledge_manager",
-              roleLabel: "知识库 / 产品表达维护",
-              pathName: `/knowledge/${knowledgeBaseId}`,
-              expectedText: "知识库详情"
-            },
-            {
-              testName: "business_boundary_knowledge_manager_rule_version_drawer",
-              role: "knowledge_manager",
-              roleLabel: "知识库 / 产品表达维护",
-              pathName: `/knowledge/${knowledgeBaseId}`,
-              expectedText: "知识库详情",
-              beforeAssert: async (currentPage) => {
-                await clickElementByText(currentPage, ".ant-tabs-tab, .ant-tabs-tab-btn, [role='tab']", "产品表达规则包");
-                await waitFor(() => currentPage.containsText("规则包草稿"), 15000);
-                await clickButtonByText(currentPage, "查看版本差异");
-                await waitFor(() => currentPage.containsText("产品表达规则包版本差异"), 15000);
-              }
-            }
-          ];
-
-          for (const expectation of dynamicBusinessPageBoundaryExpectations) {
-            await assertBusinessPageBoundary(boundaryPage, expectation);
-          }
-        } finally {
-          boundaryPage.close();
-        }
-      });
-    }
 
     if (shouldRunOperatorPage) {
       page = await runStep("open_cdp_page", () => openPage());
-      await runStep("prepare_workspace_role_operator", () => setCurrentRole("workbench_operator"));
       if (!shouldRunV5) {
         await runStep("prepare_weekly_publish_matrix", () => prepareValidPublishMatrix());
       }
@@ -1856,7 +1659,6 @@ async function main() {
 
     if (shouldRunContent || shouldRunResponsive) {
       await runStep("navigate_weekly_plan", () => page.navigate("/weekly-plan"));
-      await runStep("wait_workspace_role_loaded", () => waitFor(() => page.containsText("工作台运营 / 质量评估"), 20000));
       await runStep("click_weekly_plan_generate", () => page.click("[data-testid='weekly-plan-generate-button']"));
       await runStep("click_weekly_plan_confirm", () => page.click("[data-testid='weekly-plan-generate-confirm']"));
       const planState = await runStep("wait_weekly_plan_state", () => waitFor(async () => {
@@ -1916,7 +1718,6 @@ async function main() {
 
       const briefTask = await runStep("prepare_today_brief_task", () => prepareConfirmedBriefTask());
       await runStep("today_brief_drawer_evidence_guard", async () => {
-        await setCurrentRole("content_publisher");
         await page.navigate(`/today?content-smoke=brief-${briefTask.id}-${Date.now()}`);
         await waitFor(() => page.containsText("今日发布"), 20000);
         const briefButtonSelector = `[data-testid='today-brief-${briefTask.id}']`;
@@ -1944,7 +1745,6 @@ async function main() {
       const rulePackageContext = await runStep("prepare_activated_rule_package_for_brief", () => prepareActivatedRulePackageForBrief());
       const ruleBriefTask = await runStep("prepare_rule_package_brief_task", () => prepareConfirmedBriefTaskForRulePackage(rulePackageContext));
       await runStep("knowledge_rule_package_today_brief_inheritance", async () => {
-        await setCurrentRole("content_publisher");
         await page.navigate(`/today?content-smoke=rule-brief-${ruleBriefTask.id}-${Date.now()}`);
         await waitFor(() => page.containsText("今日发布"), 20000);
         const ruleBriefButtonSelector = `[data-testid='today-brief-${ruleBriefTask.id}']`;
@@ -2017,7 +1817,6 @@ async function main() {
           );
         }
 
-        await setCurrentRole("workbench_operator");
         const governance = await requestJson(`${baseUrl}/api/ai-governance`);
         const callLogs = governance.body.callLogs || governance.body.data?.callLogs || [];
         const draftSources = governance.body.draftSources || governance.body.data?.draftSources || [];
@@ -2039,9 +1838,7 @@ async function main() {
         const highQuestion = `企业想接入 Dify，但不知道如何判断 Dify 企业版服务商是否具备长期交付能力 ${stamp}`;
         const lowQuestion = `nonsensical frobnicate ${stamp}`;
 
-        await setCurrentRole("content_growth");
-
-        try {
+        {
           await page.navigate(`/distilled-terms?content-smoke=distilled-${stamp}`);
           await waitFor(() => page.containsText("蒸馏词池"), 20000);
           await page.fill("[data-testid='distilled-question-input']", highQuestion);
@@ -2104,8 +1901,6 @@ async function main() {
           }
 
           record("distilled_term_weekly_plan_inheritance", true, `${task.id} uses ${pooledTerm.term}`);
-        } finally {
-          await setCurrentRole("workbench_operator");
         }
       });
 
@@ -2395,13 +2190,6 @@ async function main() {
     }
   } catch (error) {
     record("smoke_browser_runtime", false, error instanceof Error ? error.message : String(error));
-  } finally {
-    try {
-      await setCurrentRole(previousRole);
-    } catch (error) {
-      record("restore_workspace_role", false, error instanceof Error ? error.message : String(error));
-    }
-
   }
 
   await printJson({

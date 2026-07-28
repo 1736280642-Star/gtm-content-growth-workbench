@@ -5,12 +5,10 @@ import { Alert, Button, Card, Result } from "antd";
 import Link from "next/link";
 import { CaptureEnvironmentStatus } from "@/components/CaptureEnvironmentStatus";
 import { PageHeader } from "@/components/PageHeader";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { useFrontendCapture } from "@/lib/v5/use-frontend-capture";
 
 export default function CaptureEnvironmentPage() {
-  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
-  const { workspace, loading, error, refresh } = useFrontendCapture(workspaceSetting.currentRole);
+  const { workspace, loading, error, refresh } = useFrontendCapture();
 
   if (error && !workspace) return <Result status="error" title="采集环境读取失败" subTitle={error} extra={<Button onClick={() => refresh()}>重试</Button>} />;
 

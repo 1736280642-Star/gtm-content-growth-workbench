@@ -19,8 +19,6 @@
     "smoke:interactions": "node scripts/smoke-interactions.mjs",
     "smoke:browser": "node scripts/smoke-browser-isolated.mjs --scope=full --port 3058 --state-path data/workbench-browser-smoke-state.json",
     "smoke:browser:main": "node scripts/smoke-browser.mjs",
-    "smoke:browser:roles": "node scripts/smoke-browser-isolated.mjs --scope=roles --port 3065 --state-path data/workbench-browser-roles-state.json",
-    "smoke:browser:roles:main": "node scripts/smoke-browser.mjs --scope=roles",
     "smoke:browser:content": "node scripts/smoke-browser-isolated.mjs --scope=content --port 3058 --state-path data/workbench-browser-smoke-state.json",
     "smoke:browser:content:isolated": "node scripts/smoke-browser-isolated.mjs --scope=content",
     "smoke:browser:responsive": "node scripts/smoke-browser-isolated.mjs --scope=responsive --port 3067 --state-path data/workbench-browser-responsive-state.json",

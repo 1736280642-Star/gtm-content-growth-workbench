@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { WorkspaceRole } from "@/lib/types";
+import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
 import type { MonthlyReview, NextMonthProposal } from "./monthly-review-contracts";
 import type { V5ObservationApiEnvelope } from "./observation-contracts";
 
@@ -9,11 +9,10 @@ function key(scope: string) {
   return `${scope}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Date.now()}`;
 }
 
-export function useMonthlyObservationReview(month: string, role: WorkspaceRole) {
+export function useMonthlyObservationReview(month: string) {
   const [review, setReview] = useState<MonthlyReview>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const actorRole = role === "content_growth" || role === "workbench_operator" || role === "knowledge_manager" || role === "developer_admin" ? role : "workbench_operator";
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -43,7 +42,7 @@ export function useMonthlyObservationReview(month: string, role: WorkspaceRole) 
         questionReviewId,
         recommendation,
         rationale,
-        actor: { actorId: `local-${actorRole}`, actorRole, actorType: "human" },
+        actor: WORKSPACE_ACTOR,
         reason: "人工确认问题级月度复盘的下月建议",
         idempotencyKey: key("next-month-proposal"),
         expectedVersion: 0
@@ -53,7 +52,7 @@ export function useMonthlyObservationReview(month: string, role: WorkspaceRole) 
     if (!response.ok || !body.ok) throw new Error(body.ok ? `创建失败（HTTP ${response.status}）` : body.error.message);
     await refresh();
     return body.data;
-  }, [actorRole, month, refresh]);
+  }, [month, refresh]);
 
   return { review, loading, error, refresh, createProposal };
 }

@@ -183,7 +183,7 @@ const contracts = [
     file: "src/app/monthly-matrix/batch-generation/page.tsx",
     includes: [
       "系统自动领取任务",
-      "系统自动检查、修复和恢复",
+      "系统自动领取任务并自动检查、修复和恢复",
       "待补资料",
       "可用正文直接进入待排程",
       "BatchGenerationMatrixTable",
@@ -209,12 +209,11 @@ const contracts = [
     excludes: ["workbench-state.json", "apiKey", "secretKey"]
   },
   {
-    name: "v5_monthly_service_guard_contract",
+    name: "v5_monthly_service_write_guard_contract",
     file: "src/lib/v5/monthly-service.ts",
     includes: [
       "WORKBENCH_STATE_PATH",
-      "WRITE_ROLES",
-      "assertWritableRole",
+      "WORKSPACE_ACTOR",
       "validateMonthlyPlan",
       "expectedVersion",
       "idempotencyHeader",
@@ -715,8 +714,8 @@ const contracts = [
   {
     name: "knowledge_product_expression_api_contract",
     file: "src/app/api/knowledge-bases/[id]/product-expression/route.ts",
-    includes: ["canManageProductExpressionRules", "readWorkbenchState", "403", "activateProductExpressionRuleDraft", "regenerateProductExpressionRuleDraft", "rollbackProductExpressionRuleDraft", "discardProductExpressionRuleDraft", "action === \"discard\""],
-    excludes: ["TODO"]
+    includes: ["activateProductExpressionRuleDraft", "regenerateProductExpressionRuleDraft", "rollbackProductExpressionRuleDraft", "discardProductExpressionRuleDraft", "action === \"discard\""],
+    excludes: ["TODO", "canManageProductExpressionRules", "currentRole", "status: 403"]
   },
   {
     name: "distilled_terms_contract",
@@ -795,12 +794,6 @@ const contracts = [
       "进入周计划生成预览",
       "内容增长视角",
       "工作台运营视角",
-      "canViewAiGovernance",
-      "canManageWeeklyReportSuggestions",
-      "canViewOpsReport",
-      "canDecideWeeklySuggestions",
-      "showOpsView",
-      "workspaceSetting.currentRole",
       "targetTotalCount",
       "reportTargetTotalCount",
       "本周基础 KPI",
@@ -946,18 +939,6 @@ const contracts = [
       "/api/prompt-versions/${id}",
       "handleViewPromptVersion",
       "handleRollbackPromptVersion",
-      "const canViewFullGovernance = governanceData.access?.canViewFullGovernance === true",
-      "if (!canViewFullGovernance)",
-      "setCapabilities([])",
-      "setDiagnostics({})",
-      "renderRestrictedGovernance",
-      "const pageHeaderTitle = canViewFullGovernance ? \"AI 配置\" : \"治理权限说明\"",
-      "当前角色只看到业务引导；发布、复盘和知识库维护在对应页面继续处理。",
-      "当前角色不显示模型与规则治理详情",
-      "getDefaultRouteForRole",
-      "getRouteLabel",
-      "去{getRouteLabel(defaultRoute)}",
-      "内容发布人员继续处理今日发布、草稿质检和数据回填。",
       "Prompt 原文",
       "调用日志详情",
       "申请回滚",
@@ -968,43 +949,31 @@ const contracts = [
   {
     name: "ai_governance_api_contract",
     file: "src/app/api/ai-governance/route.ts",
-    includes: ["canViewAiGovernance", "state.promptVersions", "auditLog", "pipelineRuns", "draftSources", "callLogs", "moduleLabel", "inputSummary", "outputStatus", "fallbackTriggered", "failureReasons", "editReasonCategoryLabels", "keepRiskReasonCategoryLabels", "getEditReasonCategory", "editActionCount", "manualEditActionCount", "rewriteActionCount", "deleteRiskSegmentCount", "keepRiskSegmentCount", "qaAcceptedActionCount", "qaPartialAcceptedActionCount", "qaIgnoredActionCount", "qaSuspectedFalsePositiveCount", "qaSuspectedMissCount", "qaIssueRuleSummary", "editReasonSummary", "editReasonCategorySummary", "keepRiskReasonCategorySummary", "totalChangedCharacterCount", "manualEditChangedCharacterCount", "rewriteChangedCharacterCount", "maxChangedRatio", "averageChangedRatio", "manualEditAverageChangedRatio", "heavyEditCount", "productExpressionRuleVersion", "productExpressionRuleSource", "taskById", "publishRecordByDraftId", "taskId", "channel", "product", "contentType", "primaryDistilledTerm", "qaPassed", "qaBlockerCount", "qaWarningCount", "publishStatus", "dataReturned", "canViewFullGovernance", "当前角色只显示受限入口；模型配置、调用记录和规则版本由工作台运营或开发管理员维护。"],
-    excludes: ["process.env", "API_KEY"]
+    includes: ["state.promptVersions", "auditLog", "pipelineRuns", "draftSources", "callLogs", "moduleLabel", "inputSummary", "outputStatus", "fallbackTriggered", "failureReasons", "editReasonCategoryLabels", "keepRiskReasonCategoryLabels", "getEditReasonCategory", "editActionCount", "manualEditActionCount", "rewriteActionCount", "deleteRiskSegmentCount", "keepRiskSegmentCount", "qaAcceptedActionCount", "qaPartialAcceptedActionCount", "qaIgnoredActionCount", "qaSuspectedFalsePositiveCount", "qaSuspectedMissCount", "qaIssueRuleSummary", "editReasonSummary", "editReasonCategorySummary", "keepRiskReasonCategorySummary", "totalChangedCharacterCount", "manualEditChangedCharacterCount", "rewriteChangedCharacterCount", "maxChangedRatio", "averageChangedRatio", "manualEditAverageChangedRatio", "heavyEditCount", "productExpressionRuleVersion", "productExpressionRuleSource", "taskById", "publishRecordByDraftId", "taskId", "channel", "product", "contentType", "primaryDistilledTerm", "qaPassed", "qaBlockerCount", "qaWarningCount", "publishStatus", "dataReturned"],
+    excludes: ["process.env", "API_KEY", "canViewAiGovernance", "currentRole", "canViewFullGovernance"]
   },
   {
     name: "prompt_version_api_contract",
     file: "src/app/api/prompt-versions/[id]/route.ts",
-    includes: ["canViewAiGovernance", "canManagePromptVersions", "status: \"failed\"", "403", "getPromptVersionDetail", "rollbackPromptVersion", "action === \"rollback\"", "当前角色无权查看模型规则版本详情。", "当前角色无权回滚模型规则版本。", "不支持的模型规则版本动作"],
-    excludes: ["process.env", "API_KEY", "TODO"]
+    includes: ["getPromptVersionDetail", "rollbackPromptVersion", "action === \"rollback\"", "不支持的模型规则版本动作"],
+    excludes: ["process.env", "API_KEY", "TODO", "canViewAiGovernance", "canManagePromptVersions", "currentRole", "status: 403"]
   },
   {
-    name: "weekly_report_api_role_filter_contract",
-    file: "src/app/api/weekly-reports/[week]/route.ts",
-    includes: ["getWeeklyReportForRole", "readWorkbenchState", "state.workspaceSetting.currentRole", "force-dynamic", "GET"],
-    excludes: ["getWeeklyReport(params.week)", "TODO"]
-  },
-  {
-    name: "weekly_report_suggestion_api_contract",
-    file: "src/app/api/weekly-reports/[week]/suggestions/[id]/route.ts",
-    includes: ["canManageWeeklyReportSuggestions", "403", "decideWeeklyReportSuggestion", "filterWeeklyReportForRole", "readWorkbenchState", "state.workspaceSetting.currentRole", "PATCH"],
-    excludes: ["TODO"]
-  },
-  {
-    name: "role_navigation_contract",
+    name: "unrestricted_navigation_contract",
     file: "src/components/AppShell.tsx",
-    includes: ["getVisibleRoutesForRole", "canViewRoute", "getDefaultRouteForRole", "visibleNavItems", "当前角色无权进入此页面", "内部治理配置和排查信息", "不会渲染"],
-    excludes: ["Prompt、模型日志、规则包", "Tooltip", "Popover"]
+    includes: ["items={navItems}", "<Content style={contentStyle}>{children}</Content>"],
+    excludes: ["currentRole", "getVisibleRoutesForRole", "canViewRoute", "当前角色无权进入此页面", "切换角色", "Tooltip", "Popover"]
   },
   {
     name: "governance_entry_contract",
     file: "src/components/GovernanceEntry.tsx",
-    includes: ["canViewRoute", "切换角色", "/configuration", "/settings"],
-    excludes: ["Tooltip", "Popover", "workspaceRoleLabels", "联系工作台运营"]
+    includes: ["/configuration"],
+    excludes: ["canViewRoute", "切换角色", "/settings", "Tooltip", "Popover", "workspaceRoleLabels", "联系工作台运营"]
   },
   {
-    name: "role_settings_contract",
+    name: "settings_without_roles_contract",
     file: "src/app/settings/page.tsx",
-    includes: ["当前使用角色", "workspaceRoleLabels", "getVisibleRoutesForRole", "角色与可见范围", "currentRole"]
+    excludes: ["当前使用角色", "workspaceRoleLabels", "getVisibleRoutesForRole", "角色与可见范围", "currentRole"]
   },
   {
     name: "smoke_browser_responsive_contract",
@@ -1012,7 +981,7 @@ const contracts = [
     includes: [
       "setViewport",
       "normalizeScope",
-      "full\", \"roles\", \"content\", \"responsive\", \"publish\", \"v5",
+      "full\", \"content\", \"responsive\", \"publish\", \"v5",
       "scope: smokeScope",
       "shouldRunRoles",
       "shouldRunContent",
@@ -1134,13 +1103,11 @@ const contracts = [
     name: "package_split_browser_smoke_scripts",
     file: "package.json",
     includes: [
-      "smoke:browser:roles",
       "smoke:browser:content",
       "smoke:browser:content:isolated",
       "smoke:browser:responsive",
       "smoke:browser:publish",
       "smoke:browser:v5",
-      "--scope=roles",
       "--scope=content",
       "--scope=responsive",
       "--scope=publish",
@@ -1148,9 +1115,9 @@ const contracts = [
     ]
   },
   {
-    name: "permissions_contract",
-    file: "src/lib/permissions.ts",
-    includes: ["content_publisher", "content_growth", "workbench_operator", "knowledge_manager", "developer_admin", "getDefaultRouteForRole", "workspaceRouteLabels", "canViewAiGovernance", "canManagePromptVersions", "canManageProductExpressionRules", "canManageWeeklyReportSuggestions"]
+    name: "workspace_actor_contract",
+    file: "src/lib/workspace-actor.ts",
+    includes: ["local-workspace-user", "workspace_user", "actorType: \"human\""]
   },
   {
     name: "prompt_templates_contract",

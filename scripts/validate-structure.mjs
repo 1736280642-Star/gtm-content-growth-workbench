@@ -277,22 +277,7 @@ addAbsentCheck("v5 replaced v4 routes not primary navigation", "src/components/A
 ]);
 
 addAbsentCheck("agent foundation removed from navigation", "src/components/AppShell.tsx", ["/agent-foundation", "Agent 底座"]);
-addAbsentCheck("agent foundation removed from route labels", "src/lib/permissions.ts", ["/agent-foundation", "Agent 底座"]);
 addAbsentCheck("agent foundation removed from page smoke", "scripts/smoke-pages.mjs", ["/agent-foundation", "agent_foundation_page"]);
-
-addContentCheck("v5 route labels", "src/lib/permissions.ts", [
-  "/monthly-strategy",
-  "/monthly-matrix",
-  "/monthly-matrix/strategy",
-  "/monthly-matrix/content-types",
-  "/monthly-matrix/batch-generation",
-  "/batch-generation",
-  "/exceptions",
-  "/publish-schedule",
-  "/publish-schedule/daily-execution",
-  "/daily-execution",
-  "/monthly-review"
-]);
 
 addContentCheck("v5 monthly matrix page shell", "src/app/monthly-matrix/page.tsx", [
   "月度内容矩阵",
@@ -356,8 +341,8 @@ addContentCheck("v5 article type repository boundary", "src/lib/v5/article-type-
   "auditLog"
 ]);
 
-addContentCheck("v5 article type service guards", "src/lib/v5/article-type-service.ts", [
-  "WRITE_ROLES",
+addContentCheck("v5 article type service write guards", "src/lib/v5/article-type-service.ts", [
+  "WORKSPACE_ACTOR",
   "requireIdempotencyKey",
   "expectedVersion",
   "ARTICLE_TYPE_VERSION_CONFLICT",
@@ -412,11 +397,10 @@ addContentCheck("v5 monthly repository boundary", "src/lib/v5/monthly-repository
   "auditLog"
 ]);
 
-addContentCheck("v5 monthly service guards", "src/lib/v5/monthly-service.ts", [
+addContentCheck("v5 monthly service write guards", "src/lib/v5/monthly-service.ts", [
   "WORKBENCH_STATE_PATH",
   "seed_fallback",
-  "WRITE_ROLES",
-  "assertWritableRole",
+  "WORKSPACE_ACTOR",
   "validateMonthlyPlan",
   "expectedVersion",
   "IDEMPOTENCY_KEY_REUSED",
@@ -1171,15 +1155,18 @@ addContentCheck("knowledge rule packages page", "src/app/knowledge/rule-packages
   "回滚上一版本"
 ]);
 
-addContentCheck("knowledge product expression api role guard", "src/app/api/knowledge-bases/[id]/product-expression/route.ts", [
-  "canManageProductExpressionRules",
-  "readWorkbenchState",
-  "403",
+addContentCheck("knowledge product expression api actions", "src/app/api/knowledge-bases/[id]/product-expression/route.ts", [
   "activateProductExpressionRuleDraft",
   "regenerateProductExpressionRuleDraft",
   "rollbackProductExpressionRuleDraft",
   "discardProductExpressionRuleDraft",
   "action === \"discard\""
+]);
+addAbsentCheck("knowledge product expression api has no workspace role guard", "src/app/api/knowledge-bases/[id]/product-expression/route.ts", [
+  "canManageProductExpressionRules",
+  "readWorkbenchState",
+  "currentRole",
+  "status: 403"
 ]);
 
 addContentCheck("distilled terms v4 pool and actions", "src/app/distilled-terms/page.tsx", [
@@ -1320,38 +1307,6 @@ addContentCheck("smoke workflow distribution draft lifecycle", "scripts/smoke-wo
   "publishStatus === \"queued\""
 ]);
 
-addContentCheck("weekly report v4 matrix", "src/app/weekly-report/page.tsx", [
-  "进入周计划生成预览",
-  "内容增长视角",
-  "工作台运营视角",
-  "canViewAiGovernance",
-  "canManageWeeklyReportSuggestions",
-  "canViewOpsReport",
-  "canDecideWeeklySuggestions",
-  "showOpsView",
-  "workspaceSetting.currentRole",
-  "targetTotalCount",
-  "reportTargetTotalCount",
-  "const reportPromptTemplates = canViewOpsReport ? activeReport?.promptTemplates || [] : []",
-  "本周基础 KPI",
-  "发布完成率",
-  "数据回传率",
-  "AI 复盘结论",
-  "下周建议",
-  "带入周计划草稿",
-  "handleCreateNextPlan",
-  "/api/weekly-reports/${activeReport.week}/next-plan",
-  "建议失败原因 Top 5",
-  "decisionReasons",
-  "填写原因",
-  "模块执行情况",
-  "计划质量反馈详情",
-  "planQualityFeedback",
-  "recommendationOutcomes",
-  "内部学习样本",
-  "进入配置管理"
-]);
-
 addContentCheck("weekly report current week fallback filters", "src/app/weekly-report/page.tsx", [
   "filterPublishRecordsForReport",
   "filterBlogDiagnosticsForReport",
@@ -1389,84 +1344,49 @@ addAbsentCheck("weekly report no raw technical main modules", "src/app/weekly-re
   "AI Provider",
 ]);
 
-addContentCheck("weekly report api role filter", "src/app/api/weekly-reports/[week]/route.ts", [
-  "getWeeklyReportForRole",
-  "readWorkbenchState",
-  "state.workspaceSetting.currentRole",
-  "force-dynamic"
-]);
-
-addContentCheck("weekly report suggestion api role filter", "src/app/api/weekly-reports/[week]/suggestions/[id]/route.ts", [
-  "canManageWeeklyReportSuggestions",
-  "403",
-  "decideWeeklyReportSuggestion",
-  "filterWeeklyReportForRole",
-  "readWorkbenchState",
-  "state.workspaceSetting.currentRole"
-]);
-
-addContentCheck("role aware governance entry", "src/components/GovernanceEntry.tsx", [
-  "canViewRoute",
-  "切换角色",
-  "/configuration",
-  "/settings"
-]);
+addContentCheck("direct governance entry", "src/components/GovernanceEntry.tsx", ["/configuration"]);
+addAbsentCheck("governance entry has no workspace role guard", "src/components/GovernanceEntry.tsx", ["canViewRoute", "切换角色", "/settings"]);
 addAbsentCheck("global no prompt bubbles", "src/components/AppShell.tsx", ["Tooltip", "Popover"]);
 addAbsentCheck("governance entry no prompt bubbles", "src/components/GovernanceEntry.tsx", ["Tooltip", "Popover"]);
 
-addContentCheck("role route boundary business wording", "src/components/AppShell.tsx", [
+addAbsentCheck("global navigation has no workspace role boundary", "src/components/AppShell.tsx", [
+  "currentRole",
+  "canViewRoute",
+  "getVisibleRoutesForRole",
   "当前角色无权进入此页面",
-  "内部治理配置和排查信息",
-  "不会渲染"
-]);
-addAbsentCheck("role route boundary no prompt wording", "src/components/AppShell.tsx", [
-  "Prompt、模型日志、规则包"
+  "切换角色"
 ]);
 
-addContentCheck("client fallback least privilege", "src/lib/client-state.ts", [
+addContentCheck("client fallback state", "src/lib/client-state.ts", [
   "initialSnapshot",
   "usingFallback",
-  "currentRole: \"content_publisher\"",
   "promptVersions: []"
 ]);
 addAbsentCheck("client fallback no governance seed", "src/lib/client-state.ts", [
   "import { promptTemplates }",
-  "currentRole: \"workbench_operator\"",
+  "currentRole",
   "promptTemplates.map"
 ]);
 
-addContentCheck("smoke pages role preparation", "scripts/smoke-pages.mjs", [
-  "resolveCurrentRole",
-  "setCurrentRole(\"workbench_operator\")",
-  "setCurrentRole(previousRole)",
-  "/api/workspace-settings",
+addContentCheck("smoke pages generic access", "scripts/smoke-pages.mjs", [
   "target.path.startsWith(\"/api/\")",
   "hasHtmlShell"
 ]);
+addAbsentCheck("smoke pages has no role preparation", "scripts/smoke-pages.mjs", ["currentRole", "setCurrentRole", "resolveCurrentRole"]);
 
-addContentCheck("smoke browser role preparation", "scripts/smoke-browser.mjs", [
-  "resolveCurrentRole",
-  "setCurrentRole(\"workbench_operator\")",
-  "setCurrentRole(previousRole)",
+addContentCheck("smoke browser runtime preparation", "scripts/smoke-browser.mjs", [
   "prepareValidPublishMatrix",
   "prepare_weekly_publish_matrix",
-  "assertAiConfigRestrictedRole",
-  "ai_config_restricted_content_publisher",
-  "当前角色无权进入此页面",
-  "Prompt、模型日志、规则包",
-  "wait_workspace_role_loaded",
-  "工作台运营 / 质量评估",
   "child.kill()",
   "45000",
-  "Unable to find clickable",
-  "/api/workspace-settings"
+  "Unable to find clickable"
 ]);
+addAbsentCheck("smoke browser has no role preparation", "scripts/smoke-browser.mjs", ["currentRole", "setCurrentRole", "resolveCurrentRole", "shouldRunRoles"]);
 
 addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-browser.mjs", [
   "normalizeScope",
-  "full\", \"roles\", \"content\", \"responsive\", \"publish",
+  "full\", \"content\", \"responsive\", \"publish",
   "scope: smokeScope",
-  "shouldRunRoles",
   "shouldRunContent",
   "shouldRunResponsive",
   "shouldRunPublish",
@@ -1574,12 +1494,10 @@ addContentCheck("smoke browser responsive high-density pages", "scripts/smoke-br
 ]);
 
 addContentCheck("package split browser smoke scripts", "package.json", [
-  "smoke:browser:roles",
   "smoke:browser:content",
   "smoke:browser:content:isolated",
   "smoke:browser:responsive",
   "smoke:browser:publish",
-  "--scope=roles",
   "--scope=content",
   "--scope=responsive",
   "--scope=publish"
@@ -1641,14 +1559,7 @@ addContentCheck("package article type test script", "package.json", ["test:v5-ar
 addContentCheck("usage isolated browser smoke docs", "docs/usage.md", ["smoke:browser:content:isolated", "data/workbench-browser-smoke-state.json"]);
 addContentCheck("readme isolated browser smoke command", "README.md", ["smoke:browser:content:isolated"]);
 
-addContentCheck("permissions role helpers", "src/lib/permissions.ts", [
-  "workspaceRouteLabels",
-  "getDefaultRouteForRole",
-  "canViewAiGovernance",
-  "canManagePromptVersions",
-  "canManageProductExpressionRules",
-  "canManageWeeklyReportSuggestions"
-]);
+addContentCheck("workspace audit actor", "src/lib/workspace-actor.ts", ["local-workspace-user", "workspace_user", "actorType: \"human\""]);
 
 addContentCheck("mysql bridge large state buffer", "src/lib/repositories/mysql-bridge.ts", [
   "MYSQL_BRIDGE_MAX_BUFFER_BYTES",
@@ -1798,32 +1709,10 @@ addAbsentCheck("ai governance no legacy provider bot summary", "src/app/api/ai-g
   "fallback 到本地规则"
 ]);
 
-addContentCheck("ai config page level governance guard", "src/app/ai-config/page.tsx", [
-  "const canViewFullGovernance = governanceData.access?.canViewFullGovernance === true",
-  "if (!canViewFullGovernance)",
-  "setCapabilities([])",
-  "setDiagnostics({})",
-  "actions={",
-  "canViewFullGovernance ? (",
-  "renderRestrictedGovernance()",
-  "const pageHeaderTitle = canViewFullGovernance ? \"AI 配置\" : \"治理权限说明\"",
-  "当前角色只看到业务引导；发布、复盘和知识库维护在对应页面继续处理。",
-  "当前角色不显示模型与规则治理详情",
-  "getDefaultRouteForRole",
-  "getRouteLabel",
-  "去{getRouteLabel(defaultRoute)}",
-  "内容发布人员继续处理今日发布、草稿质检和数据回填。"
-]);
-
-addContentCheck("ai governance restricted business message", "src/app/api/ai-governance/route.ts", [
-  "当前角色只显示受限入口；模型配置、调用记录和规则版本由工作台运营或开发管理员维护。"
-]);
-
-addContentCheck("prompt version api restricted business message", "src/app/api/prompt-versions/[id]/route.ts", [
-  "当前角色无权查看模型规则版本详情。",
-  "当前角色无权回滚模型规则版本。",
-  "不支持的模型规则版本动作"
-]);
+addContentCheck("ai config compatibility redirect", "src/app/ai-config/page.tsx", ["redirect(\"/configuration\")"]);
+addAbsentCheck("ai governance has no workspace role filtering", "src/app/api/ai-governance/route.ts", ["canViewAiGovernance", "currentRole", "canViewFullGovernance"]);
+addContentCheck("prompt version api actions", "src/app/api/prompt-versions/[id]/route.ts", ["getPromptVersionDetail", "rollbackPromptVersion", "action === \"rollback\"", "不支持的模型规则版本动作"]);
+addAbsentCheck("prompt version api has no workspace role guard", "src/app/api/prompt-versions/[id]/route.ts", ["canViewAiGovernance", "canManagePromptVersions", "currentRole", "status: 403"]);
 
 addAbsentCheck("ai config no local prompt fallback", "src/app/ai-config/page.tsx", [
   "import { promptTemplates",
@@ -1867,8 +1756,7 @@ addContentCheck("ai governance api task dimensions", "src/app/api/ai-governance/
   "qaWarningCount",
   "publishStatus",
   "dataReturned",
-  "draftSources",
-  "canViewFullGovernance"
+  "draftSources"
 ]);
 
 addContentCheck("types v4 structures", "src/lib/types.ts", [

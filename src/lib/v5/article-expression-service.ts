@@ -21,7 +21,6 @@ import {
 } from "./foundation-service";
 import type { V5WriteEnvelope } from "./knowledge-governance-service";
 
-const expressionRoles = ["workbench_operator", "developer_admin"] as const;
 export const V5_ARTICLE_EXPRESSION_SYSTEM_RULE_VERSION = "article-expression-system.v1.0.0";
 export const V5_ARTICLE_EXPRESSION_SYSTEM_FORBIDDEN_STYLES = ["绝对排名", "泛化承诺", "无证据数据"];
 const evidencePromisePattern = /合作伙伴|客户案例|成功率|提升\s*\d|降低\s*\d|唯一|第一|保证|承诺/;
@@ -159,7 +158,7 @@ export function createV5ArticleExpressionProfile(input: V5WriteEnvelope & {
   applicableChannels: string[];
   version: ProfileVersionInput;
 }) {
-  assertV5FoundationEnvelope(input, [...expressionRoles]);
+  assertV5FoundationEnvelope(input);
   assertV5FoundationText(input.name, "预设名称", 80);
   const stored = mutateV5FoundationState({
     operation: "create_article_expression_profile",
@@ -205,7 +204,7 @@ export function updateV5ArticleExpressionProfile(input: V5WriteEnvelope & {
   applicableChannels?: string[];
   version: ProfileVersionInput;
 }) {
-  assertV5FoundationEnvelope(input, [...expressionRoles]);
+  assertV5FoundationEnvelope(input);
   const stored = mutateV5FoundationState({
     operation: "update_article_expression_profile",
     idempotencyKey: input.idempotencyKey,
@@ -239,7 +238,7 @@ export function updateV5ArticleExpressionProfile(input: V5WriteEnvelope & {
 }
 
 export function publishV5ArticleExpressionProfile(input: V5WriteEnvelope & { profileId: string; profileVersionId: string }) {
-  assertV5FoundationEnvelope(input, [...expressionRoles]);
+  assertV5FoundationEnvelope(input);
   if (input.actor.actorType !== "human") {
     throw new V5FoundationServiceError("permission_denied", "文章表达预设只能由人工发布。", 403);
   }

@@ -7,7 +7,6 @@ import { MonthlyQuestionReviewDrawer } from "@/components/MonthlyQuestionReviewD
 import { MonthlyQuestionReviewTable } from "@/components/MonthlyQuestionReviewTable";
 import { PageHeader } from "@/components/PageHeader";
 import { V5StatusRail } from "@/components/V5StatusRail";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import type { MonthlyQuestionReview } from "@/lib/v5/monthly-review-contracts";
 import { useMonthlyObservationReview } from "@/lib/v5/use-monthly-observation-review";
 
@@ -16,9 +15,8 @@ function currentMonth() {
 }
 
 export default function MonthlyReviewPage() {
-  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
   const [month, setMonth] = useState(currentMonth);
-  const { review, loading, error, refresh, createProposal } = useMonthlyObservationReview(month, workspaceSetting.currentRole);
+  const { review, loading, error, refresh, createProposal } = useMonthlyObservationReview(month);
   const [selected, setSelected] = useState<MonthlyQuestionReview>();
   const [creating, setCreating] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();

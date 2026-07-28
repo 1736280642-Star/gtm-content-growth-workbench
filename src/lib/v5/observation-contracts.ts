@@ -35,7 +35,7 @@ export type ObservationGapDestination = "blog_candidate" | "knowledge_issue" | "
 
 export interface V5MutationActor {
   actorId: string;
-  actorRole: "content_growth" | "workbench_operator" | "knowledge_manager" | "developer_admin" | "capture_runner";
+  actorRole: "workspace_user" | "capture_runner";
   actorType: "human" | "system" | "runner";
 }
 

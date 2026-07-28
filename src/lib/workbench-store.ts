@@ -15,7 +15,6 @@ import { addDateDays, getCurrentWorkbenchWeek, getWeekdayLabel, isDateInWeek } f
 import { callEmbeddingProvider } from "./embedding-provider";
 import { channelDistributionTargets, channelLabels, distributionPlatformLabels, productLabels } from "./labels";
 import { parseBotLogInput } from "./log-import-adapter";
-import { canViewAiGovernance } from "./permissions";
 import { buildPublishIdempotencyKey, hashDirectPublishContent } from "./publish-idempotency";
 import { coerceDirectPublishPlatform, getPublishAdapter } from "./publish-adapters";
 import { getPromptTemplate, promptTemplates } from "./prompt-templates";
@@ -72,7 +71,6 @@ import type {
   PublishScheduleStatus,
   TaskStatus,
   WeeklyPublishMatrixDay,
-  WorkspaceRole,
   WorkspaceSetting,
   WeeklyPlan,
   WeeklyPlanGenerationSignal,
@@ -176,7 +174,6 @@ interface SaveWorkspaceSettingInput {
   enabledChannels?: ChannelKey[];
   enabledProducts?: ProductKey[];
   productPlans?: Array<Partial<ProductPlanConfig>>;
-  currentRole?: WorkspaceRole;
   finalReviewMode?: WorkspaceSetting["finalReviewMode"];
   logMode?: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
@@ -213,7 +210,6 @@ interface WorkflowResult<T> {
 }
 
 const statePath = process.env.WORKBENCH_STATE_PATH || "data/workbench-state.json";
-const workspaceRoles: WorkspaceRole[] = ["content_publisher", "content_growth", "workbench_operator", "knowledge_manager", "developer_admin"];
 const defaultDistilledTerms: DistilledTerm[] = [
   {
     id: "term-dify-enterprise",
@@ -412,7 +408,6 @@ function createInitialWorkspaceSetting(): WorkspaceSetting {
     enabledChannels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
     enabledProducts: ["joto_brand", "weike_guardrails"],
     productPlans,
-    currentRole: "workbench_operator",
     finalReviewMode: "default_final",
     logMode: "demo_csv",
     updatedAt: nowIso()
@@ -525,6 +520,7 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
 
   delete sanitizedValue[legacyResultKey];
   delete sanitizedSetting[legacyPlatformKey];
+  delete sanitizedSetting.currentRole;
   const rawTasks = value.tasks || base.tasks;
   const rawWeeklyPlan = value.weeklyPlan || base.weeklyPlan;
   const rawWorkspaceSetting = value.workspaceSetting || base.workspaceSetting;
@@ -570,7 +566,6 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
           enabledChannels: normalizedChannels,
           enabledProducts: normalizedProducts,
           productPlans: normalizedProductPlans,
-          currentRole: coerceWorkspaceRole(value.workspaceSetting.currentRole, base.workspaceSetting.currentRole),
           knowledgeRagConfig: normalizeKnowledgeRagConfig(value.workspaceSetting.knowledgeRagConfig)
         }
       : base.workspaceSetting,
@@ -1188,10 +1183,6 @@ function normalizeProductPlans(value: unknown, products: ProductKey[], channels:
       enabled: typeof existing?.enabled === "boolean" ? existing.enabled : fallback.enabled
     };
   });
-}
-
-function coerceWorkspaceRole(value: unknown, fallback: WorkspaceRole): WorkspaceRole {
-  return workspaceRoles.includes(value as WorkspaceRole) ? (value as WorkspaceRole) : fallback;
 }
 
 function coerceKnowledgeBaseType(value: unknown, fallback: KnowledgeBaseType): KnowledgeBaseType {
@@ -5303,7 +5294,6 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
     enabledChannels,
     enabledProducts,
     productPlans,
-    currentRole: coerceWorkspaceRole(input.currentRole, state.workspaceSetting.currentRole),
     finalReviewMode:
       input.finalReviewMode === "default_final" || input.finalReviewMode === "manual_review"
         ? input.finalReviewMode
@@ -8669,28 +8659,6 @@ export function getWeeklyReport(week: string) {
   saveWithEvent(state, "weekly_report_snapshot_created", `Created weekly report snapshot for ${week}.`);
 
   return hydrateWeeklyReportSnapshot(state, snapshot);
-}
-
-type WeeklyReportResponse = ReturnType<typeof getWeeklyReport>;
-
-export function filterWeeklyReportForRole(report: WeeklyReportResponse, role: WorkspaceRole) {
-  if (canViewAiGovernance(role)) {
-    return report;
-  }
-
-  const {
-    promptTemplates: _promptTemplates,
-    suggestionDecisions: _suggestionDecisions,
-    recommendationOutcomes: _recommendationOutcomes,
-    planQualityFeedback: _planQualityFeedback,
-    ...businessReport
-  } = report;
-
-  return businessReport;
-}
-
-export function getWeeklyReportForRole(week: string, role: WorkspaceRole) {
-  return filterWeeklyReportForRole(getWeeklyReport(week), role);
 }
 
 export function createNextWeeklyPlanFromReport(week: string, input: Record<string, unknown> = {}) {

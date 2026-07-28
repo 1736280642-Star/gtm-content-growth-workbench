@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { WorkspaceRole } from "@/lib/types";
+import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
 import type {
   AiFrontendPlatform,
   CaptureComparison,
@@ -11,16 +11,8 @@ import type {
   FrontendCaptureWorkspace,
   ObservationGapDestination,
   ReviewObservationRequest,
-  V5MutationActor,
   V5ObservationApiEnvelope
 } from "./observation-contracts";
-
-function actorForRole(role: WorkspaceRole): V5MutationActor {
-  const writableRole = role === "content_growth" || role === "workbench_operator" || role === "knowledge_manager" || role === "developer_admin"
-    ? role
-    : "workbench_operator";
-  return { actorId: `local-${writableRole}`, actorRole: writableRole, actorType: "human" };
-}
 
 function idempotencyKey(scope: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `${scope}-${crypto.randomUUID()}`;
@@ -37,7 +29,7 @@ async function requestObservation<T>(path: string, options?: RequestInit) {
   return body.data;
 }
 
-export function useFrontendCapture(role: WorkspaceRole) {
+export function useFrontendCapture() {
   const [workspace, setWorkspace] = useState<FrontendCaptureWorkspace>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -72,7 +64,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
       const payload: CreateCaptureTasksRequest = {
         ...input,
         executionMode: "immediate_once",
-        actor: actorForRole(role),
+        actor: WORKSPACE_ACTOR,
         reason: "用户发起立即执行的单次 AI 前台测试",
         idempotencyKey: idempotencyKey("capture-task"),
         expectedVersion: 0
@@ -85,7 +77,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
       await refresh();
       return data;
     },
-    [refresh, role]
+    [refresh]
   );
 
   const analyzeGaps = useCallback(
@@ -94,7 +86,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          actor: actorForRole(role),
+          actor: WORKSPACE_ACTOR,
           reason: "生成候选缺口供人工复核",
           idempotencyKey: idempotencyKey("gap-analysis"),
           expectedVersion
@@ -102,7 +94,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
       });
       await refresh();
     },
-    [refresh, role]
+    [refresh]
   );
 
   const reviewGaps = useCallback(
@@ -112,7 +104,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
         decision: input.decision,
         destinations: input.destinations,
         note: input.note,
-        actor: actorForRole(role),
+        actor: WORKSPACE_ACTOR,
         reason: "人工确认观察缺口的业务去向",
         idempotencyKey: idempotencyKey("gap-review"),
         expectedVersion: input.expectedVersion
@@ -124,7 +116,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
       });
       await refresh();
     },
-    [refresh, role]
+    [refresh]
   );
 
   const compareTasks = useCallback(
@@ -135,7 +127,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
         body: JSON.stringify({
           baselineTaskId,
           comparisonTaskId,
-          actor: actorForRole(role),
+          actor: WORKSPACE_ACTOR,
           reason: "人工选择两次历史任务进行样本对比",
           idempotencyKey: idempotencyKey("capture-comparison"),
           expectedVersion: 0
@@ -144,7 +136,7 @@ export function useFrontendCapture(role: WorkspaceRole) {
       await refresh();
       return data;
     },
-    [refresh, role]
+    [refresh]
   );
 
   const reviewAnswer = useCallback(

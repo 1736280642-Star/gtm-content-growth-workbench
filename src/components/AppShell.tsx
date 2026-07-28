@@ -15,12 +15,10 @@ import {
   SettingOutlined,
   UploadOutlined
 } from "@ant-design/icons";
-import { Alert, Button, Layout, Menu, Space, Tag, Typography } from "antd";
+import { Button, Layout, Menu, Space, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { canViewRoute, getDefaultRouteForRole, getRouteLabel, getVisibleRoutesForRole, workspaceRoleLabels } from "@/lib/permissions";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 
 const { Header, Sider, Content } = Layout;
 
@@ -64,22 +62,10 @@ const navItems = [
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [siderCollapsed, setSiderCollapsed] = useState(false);
-  const {
-    state: { workspaceSetting }
-  } = useWorkbenchSnapshot();
-  const visibleRouteKeys = getVisibleRoutesForRole(workspaceSetting.currentRole);
-  const visibleNavItems = navItems.filter((item) => visibleRouteKeys.includes(item.key));
-  const currentPageKey = navItems
+  const selectedKey = navItems
     .map((item) => item.key)
     .filter((key) => key === "/" || pathname.startsWith(key))
     .sort((a, b) => b.length - a.length)[0];
-  const selectedKey = visibleNavItems
-    .map((item) => item.key)
-    .filter((key) => key === "/" || pathname.startsWith(key))
-    .sort((a, b) => b.length - a.length)[0];
-  const currentRouteVisible = !currentPageKey || canViewRoute(workspaceSetting.currentRole, currentPageKey);
-  const defaultRoute = getDefaultRouteForRole(workspaceSetting.currentRole);
-  const restrictedPageLabel = currentPageKey ? getRouteLabel(currentPageKey) : "当前页面";
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true);
@@ -121,7 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Menu
           mode="inline"
           selectedKeys={[selectedKey || "/"]}
-          items={visibleNavItems}
+          items={navItems}
           onClick={() => {
             if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true);
           }}
@@ -139,36 +125,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <Typography.Text strong>{"月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘 -> AI 前台测试"}</Typography.Text>
           <Space>
-            <Tag color="blue">{workspaceRoleLabels[workspaceSetting.currentRole]}</Tag>
             <Typography.Text type="secondary">AI 可控、效果可评估、复盘能回流</Typography.Text>
           </Space>
         </Header>
-        <Content style={contentStyle}>
-          {currentRouteVisible ? (
-            children
-          ) : (
-            <Alert
-              showIcon
-              type="warning"
-              message="当前角色无权进入此页面"
-              description={`为了避免普通业务流程看到内部治理配置和排查信息，工作台不会渲染「${restrictedPageLabel}」页面内容。当前角色：${
-                workspaceRoleLabels[workspaceSetting.currentRole]
-              }。`}
-              action={
-                <Space>
-                  <Link href={defaultRoute}>
-                    <Button size="small" type="primary">
-                      去{getRouteLabel(defaultRoute)}
-                    </Button>
-                  </Link>
-                  <Link href="/settings">
-                    <Button size="small">切换角色</Button>
-                  </Link>
-                </Space>
-              }
-            />
-          )}
-        </Content>
+        <Content style={contentStyle}>{children}</Content>
       </Layout>
     </Layout>
   );

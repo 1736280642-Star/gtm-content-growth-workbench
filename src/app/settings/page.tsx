@@ -6,10 +6,9 @@ import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { channelLabels, productLabels } from "@/lib/labels";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
-import { getVisibleRoutesForRole, workspaceRoleLabels, workspaceRouteLabels } from "@/lib/permissions";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { useEffect, useMemo, useState } from "react";
-import type { ChannelKey, ProductKey, ProductPlanConfig, WorkspaceRole } from "@/lib/types";
+import type { ChannelKey, ProductKey, ProductPlanConfig } from "@/lib/types";
 
 const finalReviewModeLabels = {
   default_final: "默认终稿",
@@ -106,7 +105,6 @@ function createSettingsRuleChecks(input: {
   dailyCount: number;
   channels: Array<keyof typeof channelLabels>;
   products: Array<keyof typeof productLabels>;
-  currentRole: WorkspaceRole;
   finalReviewMode: keyof typeof finalReviewModeLabels;
   logMode: keyof typeof logModeLabels;
 }): SettingsRuleCheck[] {
@@ -228,7 +226,6 @@ export default function SettingsPage() {
   const previewDailyCount = Form.useWatch("defaultDailyCount", form) ?? workspaceSetting.defaultDailyCount;
   const previewChannels = (Form.useWatch("enabledChannels", form) ?? workspaceSetting.enabledChannels) as Array<keyof typeof channelLabels>;
   const previewProducts = (Form.useWatch("enabledProducts", form) ?? workspaceSetting.enabledProducts) as Array<keyof typeof productLabels>;
-  const previewCurrentRole = (Form.useWatch("currentRole", form) ?? workspaceSetting.currentRole) as WorkspaceRole;
   const previewFinalReviewMode = (Form.useWatch("finalReviewMode", form) ?? workspaceSetting.finalReviewMode) as keyof typeof finalReviewModeLabels;
   const previewLogMode = (Form.useWatch("logMode", form) ?? workspaceSetting.logMode) as keyof typeof logModeLabels;
   const settingsRuleChecks = createSettingsRuleChecks({
@@ -236,7 +233,6 @@ export default function SettingsPage() {
     dailyCount: Number(previewDailyCount) || 0,
     channels: previewChannels,
     products: previewProducts,
-    currentRole: previewCurrentRole,
     finalReviewMode: previewFinalReviewMode,
     logMode: previewLogMode
   });
@@ -347,7 +343,6 @@ export default function SettingsPage() {
         description={
           <Space direction="vertical" size={8}>
             <Space wrap>
-              <Tag color="geekblue">{workspaceRoleLabels[previewCurrentRole]}</Tag>
               <Tag color="blue">每周 {previewWeeklyDays} 天</Tag>
               <Tag color="blue">每天 {previewDailyCount} 篇</Tag>
               <Tag color={previewFinalReviewMode === "manual_review" ? "gold" : "green"}>{finalReviewModeLabels[previewFinalReviewMode]}</Tag>
@@ -418,36 +413,6 @@ export default function SettingsPage() {
             <Form.Item label="默认产品" name="enabledProducts">
               <Checkbox.Group options={Object.entries(productLabels).map(([value, label]) => ({ value, label }))} />
             </Form.Item>
-          </Card>
-          <Card title="角色与可见范围">
-            <Form.Item label="当前使用角色" name="currentRole">
-              <Radio.Group
-                options={Object.entries(workspaceRoleLabels).map(([value, label]) => ({
-                  value,
-                  label
-                }))}
-              />
-            </Form.Item>
-            <Alert
-              showIcon
-              type="info"
-              message="角色用于控制工作台可见入口"
-              description="不同角色看到不同页面和操作；切换角色后，可见范围会立即更新。"
-              style={{ marginBottom: 16 }}
-            />
-            <Table
-              rowKey="route"
-              size="small"
-              pagination={false}
-              dataSource={getVisibleRoutesForRole(previewCurrentRole).map((route) => ({
-                route,
-                page: workspaceRouteLabels[route] || route
-              }))}
-              columns={[
-                { title: "可见页面", dataIndex: "page" },
-                { title: "路径", dataIndex: "route", render: (value) => <Tag>{value}</Tag> }
-              ]}
-            />
           </Card>
         </div>
         <div className="two-column" style={{ marginTop: 16 }}>

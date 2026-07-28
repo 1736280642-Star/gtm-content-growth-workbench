@@ -35,7 +35,6 @@ import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type {
   V5ContentCoverageRow,
@@ -95,9 +94,6 @@ function questionStateReason(question: V5QuestionView) {
 }
 
 export default function QuestionsKeywordsPage() {
-  const {
-    state: { workspaceSetting }
-  } = useWorkbenchSnapshot();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const [data, setData] = useState<QuestionsResponse["data"]>();
@@ -147,7 +143,7 @@ export default function QuestionsKeywordsPage() {
       await callJsonApi(editingQuestion ? `/api/v5/questions/${editingQuestion.questionId}` : "/api/v5/questions", {
         method: editingQuestion ? "PATCH" : "POST",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, editingQuestion?.rowVersion ?? data.stateVersion, editingQuestion ? "纠正系统对问题的理解" : "人工补充业务问题"),
+          ...createV5WritePayload(editingQuestion?.rowVersion ?? data.stateVersion, editingQuestion ? "纠正系统对问题的理解" : "人工补充业务问题"),
           text: values.text,
           product: values.product,
           audience: values.audience,
@@ -174,7 +170,7 @@ export default function QuestionsKeywordsPage() {
       await callJsonApi("/api/v5/questions/select-monthly", {
         method: "POST",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, data.stateVersion, `选择 ${month} 月度目标问题并锁定版本`),
+          ...createV5WritePayload(data.stateVersion, `选择 ${month} 月度目标问题并锁定版本`),
           month,
           questionIds: selectedQuestionIds.map(String)
         })
@@ -197,7 +193,7 @@ export default function QuestionsKeywordsPage() {
       await callJsonApi("/api/v5/question-decision-exceptions/batch-resolve", {
         method: "POST",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, exceptions[0]?.rowVersion || 0, "采用问题边界冲突的系统建议"),
+          ...createV5WritePayload(exceptions[0]?.rowVersion || 0, "采用问题边界冲突的系统建议"),
           resolutions: exceptions.map((item) => ({ exceptionId: item.exceptionId, action: "adopt_suggestion", expectedVersion: item.rowVersion }))
         })
       });
@@ -219,7 +215,7 @@ export default function QuestionsKeywordsPage() {
       await callJsonApi(`/api/v5/semantic-keywords/${keyword.keywordId}/exclude`, {
         method: "POST",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, keyword.rowVersion, reason),
+          ...createV5WritePayload(keyword.rowVersion, reason),
           reason
         })
       });
@@ -238,7 +234,7 @@ export default function QuestionsKeywordsPage() {
     try {
       await callJsonApi(`/api/v5/semantic-keywords/${keyword.keywordId}/restore`, {
         method: "POST",
-        body: JSON.stringify({ ...createV5WritePayload(workspaceSetting.currentRole, keyword.rowVersion, reason), reason })
+        body: JSON.stringify({ ...createV5WritePayload(keyword.rowVersion, reason), reason })
       });
       await refresh();
       messageApi.success("关键词已恢复，将继续由系统自动维护。 ");

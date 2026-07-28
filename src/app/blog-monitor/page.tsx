@@ -290,7 +290,7 @@ function BlogMonitorTabs({ activeKey }: { activeKey: "articles" | "diagnosis" | 
 export default function BlogMonitorPage() {
   const searchParams = useSearchParams();
   const {
-    state: { blogArticles, botVisits, workspaceSetting },
+    state: { blogArticles, botVisits },
     loading,
     error,
     refresh
@@ -319,7 +319,7 @@ export default function BlogMonitorPage() {
       <>
         <PageHeader title="官网博客监控" subtitle="在同一工作区查看文章表现与 P1 官网审计；两套对象、状态和指标保持独立。" />
         <BlogMonitorTabs activeKey="site-audit" />
-        <SiteAuditPanel role={workspaceSetting.currentRole} />
+        <SiteAuditPanel />
       </>
     );
   }

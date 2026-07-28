@@ -31,7 +31,6 @@ import { ActionEmpty } from "@/components/ActionEmpty";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type {
   V5ArticleExpressionProfileView,
@@ -50,7 +49,6 @@ export default function ConfigurationPage() {
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
-  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
   const [profilesData, setProfilesData] = useState<ProfilesResponse["data"]>();
   const [configurationItems, setConfigurationItems] = useState<V5ConfigurationStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,7 +129,7 @@ export default function ConfigurationPage() {
     setSaving(true);
     const expectedVersion = editingProfile?.rowVersion ?? profilesData.stateVersion;
     const body = {
-      ...createV5WritePayload(workspaceSetting.currentRole, expectedVersion, editingProfile ? "更新文章表达预设草稿" : "创建文章表达预设草稿"),
+      ...createV5WritePayload(expectedVersion, editingProfile ? "更新文章表达预设草稿" : "创建文章表达预设草稿"),
       name: values.name,
       applicableArticleTypes: editingProfile?.applicableArticleTypes || [],
       applicableChannels: editingProfile?.applicableChannels || [],
@@ -169,7 +167,7 @@ export default function ConfigurationPage() {
       await callJsonApi(`/api/v5/article-expression-profiles/${profile.profileId}/publish`, {
         method: "POST",
         body: JSON.stringify({
-          ...createV5WritePayload(workspaceSetting.currentRole, profile.rowVersion, "人工发布文章表达预设新版本"),
+          ...createV5WritePayload(profile.rowVersion, "人工发布文章表达预设新版本"),
           profileVersionId: profile.currentVersion.profileVersionId
         })
       });

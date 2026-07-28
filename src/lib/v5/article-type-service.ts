@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readWorkbenchState } from "@/lib/workbench-store";
-import type { WorkspaceRole } from "@/lib/types";
+import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
 import type {
   ArticleTypeActivateRequest,
   ArticleTypePatchRequest,
@@ -19,7 +19,6 @@ import type {
 import { readArticleTypeState, updateArticleTypeState, type ArticleTypeState } from "./article-type-repository";
 import { ARTICLE_TYPE_PROMPT_VERSION, createArticleTypeSemanticProvider, type ArticleTypeSemanticProvider } from "./article-type-semantic-provider";
 
-const WRITE_ROLES = new Set<WorkspaceRole>(["content_growth", "workbench_operator", "developer_admin"]);
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export class ArticleTypeServiceError extends Error {
@@ -45,11 +44,7 @@ function cleanStrings(value: unknown, limit = 12) {
 }
 
 function requireActor() {
-  const actor = readWorkbenchState().workspaceSetting.currentRole;
-  if (!WRITE_ROLES.has(actor)) {
-    throw new ArticleTypeServiceError(403, "ARTICLE_TYPE_FORBIDDEN", "当前角色无权维护内容类型，请切换到内容增长、工作台运营或开发管理员。" );
-  }
-  return actor;
+  return WORKSPACE_ACTOR.actorId;
 }
 
 function requireIdempotencyKey(value: string | null) {

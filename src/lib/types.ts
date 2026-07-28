@@ -57,8 +57,6 @@ export type FinalReviewMode = "default_final" | "manual_review";
 
 export type LogMode = "demo_csv" | "csv_import" | "nginx_log" | "cdn_log";
 
-export type WorkspaceRole = "content_publisher" | "content_growth" | "workbench_operator" | "knowledge_manager" | "developer_admin";
-
 export type DataConfidence = "real" | "imported" | "demo" | "pending";
 
 export type KnowledgeSourceType = "url" | "markdown" | "pdf" | "docx" | "manual" | "auto_crawl";
@@ -327,7 +325,6 @@ export interface WorkspaceSetting {
   enabledChannels: ChannelKey[];
   enabledProducts: ProductKey[];
   productPlans?: ProductPlanConfig[];
-  currentRole: WorkspaceRole;
   finalReviewMode: FinalReviewMode;
   logMode: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;

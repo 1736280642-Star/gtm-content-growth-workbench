@@ -4,34 +4,6 @@ const args = process.argv.slice(2);
 const baseUrlArg = args.find((arg) => arg.startsWith("--base-url="));
 const baseUrl = (baseUrlArg ? baseUrlArg.split("=").slice(1).join("=") : DEFAULT_BASE_URL).replace(/\/$/, "");
 
-async function resolveCurrentRole() {
-  try {
-    const response = await fetch(`${baseUrl}/api/workbench-state`, {
-      headers: { accept: "application/json" }
-    });
-    const body = await response.json();
-    return body.state?.workspaceSetting?.currentRole;
-  } catch {
-    return undefined;
-  }
-}
-
-async function setCurrentRole(currentRole) {
-  if (!currentRole) return;
-
-  await fetch(`${baseUrl}/api/workspace-settings`, {
-    method: "PATCH",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ currentRole })
-  });
-}
-
-const previousRole = await resolveCurrentRole();
-await setCurrentRole("workbench_operator");
-
 const targets = [
   { name: "dashboard_page", path: "/", expect: "JOTO GTM" },
   { name: "monthly_matrix_page", path: "/monthly-matrix", expect: "月度内容矩阵" },
@@ -117,20 +89,16 @@ async function checkTarget(target) {
 
 const results = [];
 
-try {
-  for (const target of targets) {
-    try {
-      results.push(await checkTarget(target));
-    } catch (error) {
-      results.push({
-        name: target.name,
-        ok: false,
-        detail: error instanceof Error ? error.message : String(error)
-      });
-    }
+for (const target of targets) {
+  try {
+    results.push(await checkTarget(target));
+  } catch (error) {
+    results.push({
+      name: target.name,
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error)
+    });
   }
-} finally {
-  await setCurrentRole(previousRole);
 }
 
 const failed = results.filter((item) => !item.ok);

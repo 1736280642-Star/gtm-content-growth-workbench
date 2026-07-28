@@ -96,14 +96,6 @@ async function main() {
     configDiagnostics.body.message || `http ${configDiagnostics.httpStatus}`
   );
 
-  const preparedRole = await request("/api/workspace-settings", {
-    method: "PATCH",
-    body: JSON.stringify({
-      currentRole: "workbench_operator"
-    })
-  });
-  assertCondition("workspace_role_prepare", preparedRole.ok && preparedRole.body.data?.workspaceSetting?.currentRole === "workbench_operator", preparedRole.body.message || `http ${preparedRole.httpStatus}`);
-
   const governanceBefore = await request("/api/ai-governance");
   const bodyPromptBefore = governanceBefore.body.data?.promptTemplates?.find((item) => item.id === "batch_body_generation");
   assertCondition(
@@ -139,47 +131,9 @@ async function main() {
     promptVersionRollback.body.message || `http ${promptVersionRollback.httpStatus}`
   );
 
-  const restrictedRole = await request("/api/workspace-settings", {
-    method: "PATCH",
-    body: JSON.stringify({
-      currentRole: "content_publisher"
-    })
-  });
-  assertCondition("workspace_role_restrict", restrictedRole.ok && restrictedRole.body.data?.workspaceSetting?.currentRole === "content_publisher", restrictedRole.body.message || `http ${restrictedRole.httpStatus}`);
-
-  const restrictedGovernance = await request("/api/ai-governance");
-  assertCondition(
-    "ai_governance_restricted_by_role",
-    restrictedGovernance.ok &&
-      restrictedGovernance.body.data?.access?.canViewFullGovernance === false &&
-      (restrictedGovernance.body.data?.auditLog?.length || 0) === 0 &&
-      (restrictedGovernance.body.data?.callLogs?.length || 0) === 0,
-    restrictedGovernance.body.data?.access?.message || `http ${restrictedGovernance.httpStatus}`
-  );
-
-  const restrictedPromptVersionDetail = await request("/api/prompt-versions/batch_body_generation");
-  assertCondition(
-    "prompt_version_detail_restricted",
-    restrictedPromptVersionDetail.httpStatus === 403 && restrictedPromptVersionDetail.body.message?.includes("无权"),
-    restrictedPromptVersionDetail.body.message || `http ${restrictedPromptVersionDetail.httpStatus}`
-  );
-
-  const restrictedProductExpressionRule = await request("/api/knowledge-bases/kb-001/product-expression", {
-    method: "POST",
-    body: JSON.stringify({
-      action: "regenerate"
-    })
-  });
-  assertCondition(
-    "product_expression_rule_restricted_by_role",
-    restrictedProductExpressionRule.httpStatus === 403,
-    restrictedProductExpressionRule.body.message || `http ${restrictedProductExpressionRule.httpStatus}`
-  );
-
   const savedSetting = await request("/api/workspace-settings", {
     method: "PATCH",
     body: JSON.stringify({
-      currentRole: "workbench_operator",
       defaultWeeklyDays: 1,
       defaultDailyCount: 1,
       enabledChannels: ["wechat"],
@@ -1010,41 +964,6 @@ async function main() {
     `${weeklyReport.body.targetTotalCount || 0} target total count`
   );
 
-  const restrictedWeeklyReportRole = await request("/api/workspace-settings", {
-    method: "PATCH",
-    body: JSON.stringify({
-      currentRole: "content_growth"
-    })
-  });
-  assertCondition(
-    "weekly_report_role_restrict",
-    restrictedWeeklyReportRole.ok && restrictedWeeklyReportRole.body.data?.workspaceSetting?.currentRole === "content_growth",
-    restrictedWeeklyReportRole.body.message || `http ${restrictedWeeklyReportRole.httpStatus}`
-  );
-  const restrictedWeeklyReport = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}`);
-  assertCondition(
-    "weekly_report_restricted_response",
-    restrictedWeeklyReport.ok &&
-      restrictedWeeklyReport.body.targetTotalCount >= 1 &&
-      Array.isArray(restrictedWeeklyReport.body.nextWeekSuggestionItems) &&
-      !Object.prototype.hasOwnProperty.call(restrictedWeeklyReport.body, "promptTemplates") &&
-      !Object.prototype.hasOwnProperty.call(restrictedWeeklyReport.body, "suggestionDecisions") &&
-      !Object.prototype.hasOwnProperty.call(restrictedWeeklyReport.body, "recommendationOutcomes") &&
-      !Object.prototype.hasOwnProperty.call(restrictedWeeklyReport.body, "planQualityFeedback"),
-    restrictedWeeklyReport.body.message || `http ${restrictedWeeklyReport.httpStatus}`
-  );
-  const restoredWeeklyReportRole = await request("/api/workspace-settings", {
-    method: "PATCH",
-    body: JSON.stringify({
-      currentRole: "workbench_operator"
-    })
-  });
-  assertCondition(
-    "weekly_report_role_restore",
-    restoredWeeklyReportRole.ok && restoredWeeklyReportRole.body.data?.workspaceSetting?.currentRole === "workbench_operator",
-    restoredWeeklyReportRole.body.message || `http ${restoredWeeklyReportRole.httpStatus}`
-  );
-
   const suggestion = weeklyReport.body.nextWeekSuggestionItems?.[0];
   assertCondition("weekly_report_suggestion_available", Boolean(suggestion?.id), suggestion?.id || "missing suggestion id");
 
@@ -1089,71 +1008,6 @@ async function main() {
     Array.isArray(reportAfterSuggestionDecision?.recommendationOutcomes) &&
       reportAfterSuggestionDecision.recommendationOutcomes.some((item) => item.suggestion && item.evaluationStatus && item.modelLearningSignal),
     `${reportAfterSuggestionDecision?.recommendationOutcomes?.length || 0} recommendation outcomes`
-  );
-
-  const blockedSuggestionRole = await request("/api/workspace-settings", {
-    method: "PATCH",
-    body: JSON.stringify({
-      currentRole: "content_publisher"
-    })
-  });
-  assertCondition(
-    "weekly_report_suggestion_role_block_prepare",
-    blockedSuggestionRole.ok && blockedSuggestionRole.body.data?.workspaceSetting?.currentRole === "content_publisher",
-    blockedSuggestionRole.body.message || `http ${blockedSuggestionRole.httpStatus}`
-  );
-  const blockedSuggestionDecision = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}/suggestions/${suggestion.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      status: "rejected",
-      reason: "smoke workflow validates weekly report suggestion permission guard."
-    })
-  });
-  assertCondition(
-    "weekly_report_suggestion_restricted_by_role",
-    blockedSuggestionDecision.httpStatus === 403 && blockedSuggestionDecision.body.message?.includes("无权处理周报建议"),
-    blockedSuggestionDecision.body.message || `http ${blockedSuggestionDecision.httpStatus}`
-  );
-
-  const restrictedSuggestionRole = await request("/api/workspace-settings", {
-    method: "PATCH",
-    body: JSON.stringify({
-      currentRole: "content_growth"
-    })
-  });
-  assertCondition(
-    "weekly_report_suggestion_role_restrict",
-    restrictedSuggestionRole.ok && restrictedSuggestionRole.body.data?.workspaceSetting?.currentRole === "content_growth",
-    restrictedSuggestionRole.body.message || `http ${restrictedSuggestionRole.httpStatus}`
-  );
-  const restrictedSuggestionDecision = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}/suggestions/${suggestion.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      status: "adopted",
-      reason: "smoke workflow validates restricted weekly report suggestion response."
-    })
-  });
-  const restrictedSuggestionReport = restrictedSuggestionDecision.body.data?.report || {};
-  assertCondition(
-    "weekly_report_suggestion_response_restricted",
-    restrictedSuggestionDecision.ok &&
-      restrictedSuggestionReport.targetTotalCount >= 1 &&
-      !Object.prototype.hasOwnProperty.call(restrictedSuggestionReport, "promptTemplates") &&
-      !Object.prototype.hasOwnProperty.call(restrictedSuggestionReport, "suggestionDecisions") &&
-      !Object.prototype.hasOwnProperty.call(restrictedSuggestionReport, "recommendationOutcomes") &&
-      !Object.prototype.hasOwnProperty.call(restrictedSuggestionReport, "planQualityFeedback"),
-    restrictedSuggestionDecision.body.message || `http ${restrictedSuggestionDecision.httpStatus}`
-  );
-  const restoredSuggestionRole = await request("/api/workspace-settings", {
-    method: "PATCH",
-    body: JSON.stringify({
-      currentRole: "workbench_operator"
-    })
-  });
-  assertCondition(
-    "weekly_report_suggestion_role_restore",
-    restoredSuggestionRole.ok && restoredSuggestionRole.body.data?.workspaceSetting?.currentRole === "workbench_operator",
-    restoredSuggestionRole.body.message || `http ${restoredSuggestionRole.httpStatus}`
   );
 
   const weeklyReportMarkdown = await request(`/api/weekly-reports/${generatedPlan.body.weeklyPlan.weekStart}/export`);
