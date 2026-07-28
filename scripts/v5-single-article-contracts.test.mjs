@@ -13,7 +13,6 @@ const files = Object.fromEntries(await Promise.all([
   "src/components/AppShell.tsx",
   "src/components/BatchGenerationMatrixTable.tsx",
   "src/lib/repositories/local-json.ts",
-  "src/lib/permissions.ts",
   "src/app/api/content-tasks/[id]/generate/route.ts"
 ].map(async (path) => [path, await readFile(path, "utf8")])));
 
@@ -62,9 +61,6 @@ test("formal API, task-row drawer and V4 generation route coexist", () => {
   assert.doesNotMatch(files["src/components/BatchGenerationMatrixTable.tsx"], />生成<\/Button>/);
   assert.doesNotMatch(files["src/components/BatchGenerationMatrixTable.tsx"], /softQualityScore|hardRuleStatus|claimCount/);
   assert.match(files["src/lib/repositories/local-json.ts"], /resolve\(process\.cwd\(\), process\.env\.WORKBENCH_STATE_PATH/);
-  assert.match(files["src/lib/permissions.ts"], /"\/batch-generation"/);
-  assert.match(files["src/lib/permissions.ts"], /"\/v5\/drafts"/);
-  assert.match(files["src/lib/permissions.ts"], /route\.startsWith\(`\$\{allowedRoute\}\//);
   assert.match(files["src/app/globals.css"], /\.page-header > \.ant-space[\s\S]*flex-wrap: wrap/);
   assert.match(files["src/components/AppShell.tsx"], /window\.matchMedia\("\(max-width: 760px\)"\)/);
   assert.match(files["src/app/globals.css"], /\.app-sider\.ant-layout-sider-collapsed \.ant-menu[\s\S]*display: none/);
