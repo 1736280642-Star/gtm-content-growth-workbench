@@ -1,4 +1,5 @@
-import type { WechatLayoutTemplateId } from "./wechat-presentation-contracts";
+import { JOTO_OFFICIAL_WECHAT_TEMPLATE_ID, renderJotoOfficialWechatHtml } from "./joto-wechat-layout-renderer";
+import type { WechatLayoutTemplateId, WechatRenderableTemplateId } from "./wechat-presentation-contracts";
 
 interface Theme {
   accent: string;
@@ -60,7 +61,8 @@ function headingHtml(text: string, level: number, index: number, theme: Theme) {
   return `<h${level} style="${base}color:${theme.accent};">${text}</h${level}>`;
 }
 
-export function renderWechatHtml(input: { title: string; markdown: string; templateId: WechatLayoutTemplateId }) {
+export function renderWechatHtml(input: { title: string; markdown: string; templateId: WechatRenderableTemplateId }) {
+  if (input.templateId === JOTO_OFFICIAL_WECHAT_TEMPLATE_ID) return renderJotoOfficialWechatHtml(input);
   const theme = themes[input.templateId];
   const lines = input.markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: string[] = [];

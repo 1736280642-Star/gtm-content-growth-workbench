@@ -225,6 +225,13 @@ export interface ContentDraftArtifact {
   articleBody: string;
   channelLayoutTree: ContentLayoutNode[];
   visualSuggestions: VisualMaterialSuggestion[];
+  wechatPresentation?: {
+    templateId: "joto-official-v1";
+    previewHtml: string;
+    publishHtml: string;
+    htmlHash: string;
+    validation: { passed: boolean; blockers: string[]; warnings: string[]; checkedAt: string };
+  };
   factCheck: { supportedClaims: string[]; needsConfirmation: string[]; rejectedClaims: string[] };
   editorCheck: { deterministicResults: string[]; advisoryResults: string[] };
   riskAndGapSnapshot: RiskAndGapItem[];

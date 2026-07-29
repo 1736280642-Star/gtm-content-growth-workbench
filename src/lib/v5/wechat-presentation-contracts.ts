@@ -10,6 +10,7 @@ export const WECHAT_LAYOUT_TEMPLATE_IDS = [
 ] as const;
 
 export type WechatLayoutTemplateId = typeof WECHAT_LAYOUT_TEMPLATE_IDS[number];
+export type WechatRenderableTemplateId = WechatLayoutTemplateId | "joto-official-v1";
 export type WechatLayoutFamily = "official" | "natural";
 export type WechatPresentationReviewStatus = "pending_review" | "approved" | "rejected" | "stale";
 export type WechatTemplateSelectionStatus = "selected" | "superseded" | "stale";

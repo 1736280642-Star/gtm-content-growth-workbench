@@ -3043,6 +3043,47 @@ body {
   box-shadow: 0 8px 24px rgba(31, 42, 48, 0.06);
 }
 
+.wechat-official-preview {
+  min-width: 0;
+  max-width: 780px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #dbe2ec;
+  box-shadow: 0 8px 24px rgba(31, 42, 48, 0.06);
+}
+
+.wechat-official-preview-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  color: #526079;
+  background: #f5f8ff;
+  border-bottom: 1px solid #dbe2ec;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.wechat-official-preview-meta strong {
+  flex: 0 0 auto;
+  color: #0022fc;
+  font-size: 13px;
+}
+
+.wechat-official-preview-meta span {
+  text-align: right;
+}
+
+.wechat-official-preview-frame {
+  display: block;
+  width: 100%;
+  height: 1080px;
+  background: #f3f3f3;
+  border: 0;
+}
+
 .wechat-brand-bar {
   display: flex;
   align-items: center;
@@ -3360,6 +3401,19 @@ body {
   .wechat-brand-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .wechat-official-preview-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .wechat-official-preview-meta span {
+    text-align: left;
+  }
+
+  .wechat-official-preview-frame {
+    height: 900px;
   }
 
   .wechat-article-preview > header {

@@ -2055,6 +2055,7 @@ addContentCheck("batch generate accepts selected ids", "src/app/api/content-task
   "src/lib/v5/free-production-output-validator.ts",
   "src/lib/v5/free-production-repository.ts",
   "src/lib/v5/free-production-service.ts",
+  "src/lib/v5/joto-wechat-layout-renderer.ts",
   "src/lib/v5/free-content-expression-type-repository.ts",
   "src/lib/v5/free-content-expression-type-service.ts",
   "src/app/api/v5/free-production/batches/from-expression/route.ts",
@@ -2063,8 +2064,10 @@ addContentCheck("batch generate accepts selected ids", "src/app/api/content-task
   "src/app/api/v5/free-production/batches/[id]/confirm-and-publish/route.ts",
   "src/app/api/v5/free-production/batches/[id]/retry-failures/route.ts",
   "database/migrations/20260727_012_v5_free_content_production.sql",
+  "scripts/extract-wechat-article-layout.mjs",
   "scripts/v5-free-production.test.mjs",
-  "docs/方案与规划/V5自由内容生产实现记录.md"
+  "docs/方案与规划/V5自由内容生产实现记录.md",
+  "docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md"
 ].forEach((filePath) => addFileCheck(`v5 free production file: ${filePath}`, filePath));
 
 addContentCheck("v5 free production expression contracts", "src/lib/v5/free-production-contracts.ts", [
@@ -2098,6 +2101,40 @@ addContentCheck("v5 free production safety orchestration", "src/lib/v5/free-prod
   "assertPublishPayloadSanitized",
   "planningSource: \"free_production\""
 ]);
+addContentCheck("v5 free production official wechat html", "src/lib/v5/free-production-service.ts", [
+  "JOTO_OFFICIAL_WECHAT_TEMPLATE_ID",
+  "renderJotoOfficialWechatPreviewDocument",
+  "wechatPresentation",
+  "contentFormat: isWechat ? \"wechat_html\" : \"markdown\"",
+  "FREE_PRODUCTION_WECHAT_HTML_INVALID"
+]);
+addContentCheck("v5 free production official wechat preview", "src/components/free-production/WechatArticlePreview.tsx", [
+  "artifact.wechatPresentation.previewHtml",
+  "JOTO 官方排版",
+  "wechat-official-preview-frame"
+]);
+addContentCheck("v5 official wechat renderer", "src/lib/v5/joto-wechat-layout-renderer.ts", [
+  "joto-official-v1",
+  "renderJotoOfficialWechatBody",
+  "renderJotoOfficialWechatPreviewDocument",
+  "includeVisualPlaceholders",
+  "data-preview-only=\"visual-suggestion\"",
+  "点击蓝字 关注我们"
+]);
+addContentCheck("v5 monthly wechat layout registry remains eight templates", "src/lib/v5/wechat-layout-selector.ts", [
+  "official-command",
+  "official-blueprint",
+  "official-cobalt",
+  "official-graphite",
+  "natural-fieldnotes",
+  "natural-notebook",
+  "natural-column",
+  "natural-calm"
+]);
+addAbsentCheck("v5 monthly wechat layout registry excludes forced free-production template", "src/lib/v5/wechat-layout-selector.ts", [
+  "joto-official-v1"
+]);
+addContentCheck("v5 wechat layout extraction package script", "package.json", ["extract:wechat-layout"]);
 addAbsentCheck("v5 free production has no workspace role guard", "src/lib/v5/free-production-service.ts", [
   "currentRole",
   "WorkspaceRole",
