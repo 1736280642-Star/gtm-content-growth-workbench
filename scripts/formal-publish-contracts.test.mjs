@@ -89,7 +89,8 @@ test("real adapter sends the idempotent payload through the authenticated local 
       contentHash,
       idempotencyKey: buildPublishIdempotencyKey("schedule-1", "wechat", contentHash),
       title: "Title",
-      markdown: "A sufficiently long body ".repeat(8),
+      markdown: `<section data-wechat-layout="joto-official-v1"><p>${"A sufficiently long body ".repeat(8)}</p></section>`,
+      contentFormat: "wechat_html",
       scheduledAt: new Date().toISOString(),
       sourceDraftId: "draft-1"
     };
@@ -98,6 +99,8 @@ test("real adapter sends the idempotent payload through the authenticated local 
     assert.equal(result.status, "pending_verify");
     assert.equal(requests[0].body.platform, "weixin");
     assert.equal(requests[1].body.idempotencyKey, payload.idempotencyKey);
+    assert.equal(requests[1].body.contentFormat, "wechat_html");
+    assert.equal(requests[1].body.markdown, payload.markdown);
     assert.equal(new Headers(requests[1].init.headers).get("authorization"), "Bearer test-token");
   } finally {
     globalThis.fetch = previous.fetch;

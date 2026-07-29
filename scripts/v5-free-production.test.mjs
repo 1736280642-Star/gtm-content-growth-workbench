@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 import { mkdir, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const scratch = path.resolve(process.cwd(), ".tmp", `v5-free-production-${process.pid}`);
@@ -19,6 +20,8 @@ const expressionRepository = await import("../src/lib/v5/free-content-expression
 const expressionService = await import("../src/lib/v5/free-content-expression-type-service.ts");
 const productionService = await import("../src/lib/v5/free-production-service.ts");
 const productionRepository = await import("../src/lib/v5/free-production-repository.ts");
+const jotoWechatLayout = await import("../src/lib/v5/joto-wechat-layout-renderer.ts");
+const wechatValidator = await import("../src/lib/v5/wechat-layout-validator.ts");
 
 after(async () => {
   if (!scratch.startsWith(path.resolve(process.cwd(), ".tmp") + path.sep)) throw new Error("Refusing to remove an unexpected test path.");
@@ -130,6 +133,42 @@ test("publish payload removes preview annotations and digest remains stable", ()
   assert.equal(result.markdown.includes("配图建议"), false);
   assert.equal(result.markdown.includes("INTERNAL"), false);
   assert.equal(compiler.contentDigest(result.markdown), compiler.contentDigest(result.markdown));
+});
+
+test("JOTO 官方预览和正式 HTML 使用同一渲染器且正式产物不含配图批注", () => {
+  const sections = [{ sectionKey: "workflow", heading: "工作流变化", markdown: "AI 承担重复工作，人保留最终判断。" }];
+  const visualSuggestions = [{
+    id: "visual-test",
+    placementAnchor: "workflow",
+    assetType: "workflow_comparison",
+    recommendation: "展示前后流程对比",
+    captionSuggestion: "工作流变化示意",
+    purpose: "解释变化",
+    optional: true
+  }];
+  const previewBody = jotoWechatLayout.renderJotoOfficialWechatBody({ sections, visualSuggestions, includeVisualPlaceholders: true });
+  const publishHtml = jotoWechatLayout.renderJotoOfficialWechatBody({ sections, visualSuggestions, includeVisualPlaceholders: false });
+  const previewHtml = jotoWechatLayout.renderJotoOfficialWechatPreviewDocument({ title: "正式排版", bodyHtml: previewBody });
+
+  assert.match(previewHtml, /data-wechat-layout="joto-official-v1"/);
+  assert.match(previewHtml, /配图建议/);
+  assert.doesNotMatch(publishHtml, /data-preview-only|visual-suggestion|配图建议/);
+  assert.equal(wechatValidator.validateWechatHtml(publishHtml).passed, true);
+});
+
+test("自由内容公众号产物契约和发布服务固定使用正式 wechat_html", async () => {
+  const [contractSource, serviceSource, previewSource] = await Promise.all([
+    readFile(new URL("../src/lib/v5/free-production-contracts.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/free-production-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/WechatArticlePreview.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(contractSource, /wechatPresentation\?:/);
+  assert.match(contractSource, /templateId:\s*"joto-official-v1"/);
+  assert.match(serviceSource, /contentFormat:\s*isWechat\s*\?\s*"wechat_html"\s*:\s*"markdown"/);
+  assert.match(serviceSource, /renderJotoOfficialWechatPreviewDocument/);
+  assert.match(previewSource, /artifact\.wechatPresentation\.previewHtml/);
+  assert.equal((previewSource.match(/ConfirmAutoPublishButton/g) || []).length, 0);
 });
 
 test("automatic repair is capped at one attempt", () => {

@@ -27,7 +27,13 @@ import { assertPublishPayloadSanitized, validateFreeProductionOutput } from "./f
 import { getActiveFreeContentExpressionTypeVersion, listFreeContentExpressionTypes, markFreeExpressionUsed } from "./free-content-expression-type-service";
 import { readFreeExpressionBrandBaseline } from "./free-content-expression-type-repository";
 import { readFreeProductionState, updateFreeProductionState, type FreeProductionState } from "./free-production-repository";
+import {
+  JOTO_OFFICIAL_WECHAT_TEMPLATE_ID,
+  renderJotoOfficialWechatBody,
+  renderJotoOfficialWechatPreviewDocument
+} from "./joto-wechat-layout-renderer";
 import { updateV5MonthlyState } from "./monthly-repository";
+import { validateWechatHtml } from "./wechat-layout-validator";
 
 export const MAXIMUM_FREE_PRODUCTION_REPAIR_COUNT = 1;
 
@@ -247,6 +253,31 @@ async function runGeneration(batchId: string, options?: { affectedSectionKeys?: 
     await updateFreeProductionState((current) => { const target = current.batches[batchId]; target.status = "generation_failed"; target.failureCode = generated.code; target.failureMessage = generated.message; target.nextAction = generated.nextAction; target.version += 1; target.updatedAt = new Date().toISOString(); });
     return getFreeProductionBatch(batchId);
   }
+  const wechatPresentation = batch.channelConfig.channel === "wechat_official_account"
+    ? (() => {
+        const previewBodyHtml = renderJotoOfficialWechatBody({
+          sections: generated.parsed.sections,
+          visualSuggestions: plan.visualMaterialPlan,
+          includeVisualPlaceholders: true
+        });
+        const publishHtml = renderJotoOfficialWechatBody({
+          sections: generated.parsed.sections,
+          visualSuggestions: plan.visualMaterialPlan,
+          includeVisualPlaceholders: false
+        });
+        return {
+          templateId: JOTO_OFFICIAL_WECHAT_TEMPLATE_ID,
+          previewHtml: renderJotoOfficialWechatPreviewDocument({
+            title: generated.selectedTitle,
+            summary: generated.parsed.summary,
+            bodyHtml: previewBodyHtml
+          }),
+          publishHtml,
+          htmlHash: contentDigest(publishHtml),
+          validation: validateWechatHtml(publishHtml)
+        };
+      })()
+    : undefined;
   return updateFreeProductionState((current) => {
     const target = current.batches[batchId];
     const now = new Date().toISOString();
@@ -268,10 +299,11 @@ async function runGeneration(batchId: string, options?: { affectedSectionKeys?: 
       articleBody: generated.body,
       channelLayoutTree: buildWechatLayout({ selectedTitle: generated.selectedTitle, summary: generated.parsed.summary, sections: generated.parsed.sections }),
       visualSuggestions: plan.visualMaterialPlan,
+      wechatPresentation,
       factCheck: { supportedClaims: knowledge.flatMap((item) => (item.evidence as Array<{ summary: string }>).map((evidence) => evidence.summary)), needsConfirmation: target.risks.filter((risk) => risk.status === "needs_approval").map((risk) => risk.title), rejectedClaims: generated.validation.blockingIssues },
       editorCheck: { deterministicResults: generated.validation.repairableIssues, advisoryResults: generated.validation.advisoryIssues },
       riskAndGapSnapshot: target.risks,
-      contentDigest: contentDigest(generated.body),
+      contentDigest: wechatPresentation?.htmlHash || contentDigest(generated.body),
       createdAt: now,
       version: (currentArtifact?.version || 0) + 1
     };
@@ -386,6 +418,21 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
   if (!readiness?.connected) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_CHANNEL_NOT_READY", "表达绑定的发布账号尚未连接。", "在当前页完成连接或选择其他表达。", [readiness?.blockingReason || "连接不可用"]);
   const sanitized = assertPublishPayloadSanitized(artifact);
   if (!sanitized.passed || sanitized.markdown !== sanitizePublishMarkdown(artifact.articleBody)) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SANITIZATION_FAILED", "发布正文仍包含内部标记或预览批注。", "刷新正文并重新执行完整检查。", sanitized.blocked);
+  const isWechat = batch.channelConfig.channel === "wechat_official_account";
+  if (isWechat && !artifact.wechatPresentation) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_WECHAT_HTML_MISSING", "公众号正式排版尚未生成。", "重新生成正文后再确认自动发布。");
+  if (isWechat && artifact.wechatPresentation) {
+    const htmlValidation = validateWechatHtml(artifact.wechatPresentation.publishHtml);
+    const previewOnlyMarkers = ["data-preview-only", "配图建议", "visual-suggestion"].filter((marker) => artifact.wechatPresentation?.publishHtml.includes(marker));
+    if (!artifact.wechatPresentation.validation.passed || !htmlValidation.passed || previewOnlyMarkers.length) {
+      throw new FreeProductionServiceError(
+        422,
+        "FREE_PRODUCTION_WECHAT_HTML_INVALID",
+        "公众号正式 HTML 未通过发布检查。",
+        "重新生成正文并检查正式排版后再发布。",
+        [...artifact.wechatPresentation.validation.blockers, ...htmlValidation.blockers, ...previewOnlyMarkers.map((marker) => `正式 HTML 包含预览标记：${marker}`)]
+      );
+    }
+  }
   const platform = publishPlatform(batch.channelConfig.channel);
   if (!platform) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_PLATFORM_UNSUPPORTED", "当前渠道尚未接入正式自动发布。", "选择已接入自动发布的表达或转人工处理。");
   const auth = await checkFormalPublishAuth(platform);
@@ -404,7 +451,7 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
     return { batch: target, replayed: false };
   });
   if (reservation.replayed) return reservation.batch;
-  const result = await submitFormalPublish(platform, { scheduleId: `free-task-${batch.id}`, contentHash: artifact.contentDigest, idempotencyKey: `${batch.id}:${artifact.contentDigest}`, title: artifact.selectedTitle, markdown: sanitized.markdown, summary: artifact.summary, scheduledAt: new Date().toISOString(), sourceDraftId: artifact.id, matrixItemId: `free-task-${batch.id}`, coverMediaId: batch.risks.find((risk) => risk.key === "wechat_cover")?.assetRef });
+  const result = await submitFormalPublish(platform, { scheduleId: `free-task-${batch.id}`, contentHash: artifact.contentDigest, idempotencyKey: `${batch.id}:${artifact.contentDigest}`, title: artifact.selectedTitle, markdown: isWechat ? artifact.wechatPresentation!.publishHtml : sanitized.markdown, contentFormat: isWechat ? "wechat_html" : "markdown", summary: artifact.summary, scheduledAt: new Date().toISOString(), sourceDraftId: artifact.id, matrixItemId: `free-task-${batch.id}`, coverMediaId: batch.risks.find((risk) => risk.key === "wechat_cover")?.assetRef });
   const expression = await getActiveFreeContentExpressionTypeVersion(batch.freeContentExpressionTypeVersionId);
   const updated = await updateFreeProductionState((state) => {
     const target = state.batches[batchId]; const task = state.tasks[`free-task-${batchId}`]; const now = new Date().toISOString();

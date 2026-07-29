@@ -527,6 +527,7 @@ export interface PlatformPublishPayload {
   idempotencyKey: string;
   title: string;
   markdown: string;
+  contentFormat?: "markdown" | "wechat_html";
   summary?: string;
   scheduledAt: string;
   sourceDraftId: string;
