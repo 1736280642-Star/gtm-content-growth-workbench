@@ -159,8 +159,15 @@ function mergeSourceSummary(previous: Record<string, number>, source: string) {
 }
 
 function deriveKeywords(signal: V5QuestionSignalInput) {
-  const matched = signal.text.match(/腾讯云\s*ADP\s*服务商|ADP\s*实施(?:交付)?|企业知识(?:管理|检索)|WorkBuddy/gi) || [];
-  return Array.from(new Set([...(signal.keywords || []), signal.product || "", ...(signal.entities || []), ...matched]
+  const lexicalCandidates = signal.text.match(
+    /[A-Za-z][A-Za-z0-9+._-]*(?:\s+[A-Za-z][A-Za-z0-9+._-]*){0,2}/g
+  ) || [];
+  return Array.from(new Set([
+    ...(signal.keywords || []),
+    signal.product || "",
+    ...(signal.entities || []),
+    ...lexicalCandidates
+  ]
     .map((item) => item.trim())
     .filter((item) => item.length >= 2 && item.length <= 32)));
 }

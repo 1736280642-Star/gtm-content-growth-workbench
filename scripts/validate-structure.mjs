@@ -244,6 +244,7 @@ addContentCheck("v5 content production one-repair orchestration", "src/lib/v5/co
 ].forEach((filePath) => addFileCheck(`v5 observation file: ${filePath}`, filePath));
 
 addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
+  "产品与 GEO 调研",
   "月度内容矩阵",
   "/daily-execution",
   "当日执行",
@@ -253,7 +254,7 @@ addContentCheck("v5 navigation entries", "src/components/AppShell.tsx", [
   "知识库",
   "问题与关键词池",
   "配置管理",
-  "月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘"
+  "产品 GEO 准入 -> 月度内容矩阵 -> 人工排程 -> 当日执行 -> 月度复盘"
 ]);
 
 addAbsentCheck("site audit has no standalone navigation", "src/components/AppShell.tsx", [
@@ -1083,20 +1084,19 @@ addContentCheck("knowledge import pages", "src/app/knowledge/import/page.tsx", [
   "服务端解析器",
   "/knowledge/import/url",
   "/knowledge/import/document",
-  "/knowledge/vectorize",
-  "/knowledge/rule-packages"
+  "托管并自动索引"
 ]);
-addContentCheck("knowledge import rule package linkage", "src/app/knowledge/import/url/page.tsx", [
-  "规则包处理方式",
-  "关联已有规则包",
-  "linkedProductExpressionRulePackageId",
-  "productExpressionRulePackageMode"
+addContentCheck("managed URL import governance", "src/app/knowledge/import/url/page.tsx", [
+  "/api/v5/knowledge-imports/urls",
+  "productId",
+  "authorityLevel",
+  "publicUseConfirmed"
 ]);
-addContentCheck("knowledge document import rule package linkage", "src/app/knowledge/import/document/page.tsx", [
-  "规则包处理方式",
-  "关联已有规则包",
-  "linkedProductExpressionRulePackageId",
-  "productExpressionRulePackageMode",
+addContentCheck("managed document import governance", "src/app/knowledge/import/document/page.tsx", [
+  "/api/v5/knowledge-imports/documents",
+  "productId",
+  "authorityLevel",
+  "publicUseConfirmed",
   "/api/knowledge-bases/parse-documents",
   "FormData"
 ]);

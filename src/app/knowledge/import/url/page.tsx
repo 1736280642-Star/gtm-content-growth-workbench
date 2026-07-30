@@ -1,27 +1,32 @@
 "use client";
 
-import { Alert, Button, Card, Checkbox, Form, Input, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Checkbox, Form, Input, Select, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
-import type { KnowledgeBase, KnowledgeFetchProvider, KnowledgeSource } from "@/lib/types";
+import type { KnowledgeFetchProvider, KnowledgeSource } from "@/lib/types";
 
-const knowledgeTypeOptions: Array<{ value: KnowledgeBase["type"]; label: string }> = [
-  { value: "brand", label: "品牌事实" },
-  { value: "product", label: "产品知识" },
-  { value: "official_blog", label: "官网博客" },
-  { value: "channel_history", label: "渠道历史" },
-  { value: "competitor", label: "竞品参考" },
-  { value: "custom", label: "用户自定义" }
+const authorityOptions = [
+  { value: "A2", label: "A2 - 官方产品页面" },
+  { value: "B1", label: "B1 - 经确认的业务页面" },
+  { value: "B2", label: "B2 - 官方历史内容" }
 ];
+
+interface ManagedImportResponse {
+  message?: string;
+  data?: { pipelineStatus: "queued" | "pending_config"; batchIds: string[]; generatedClaims: number; missingConfiguration: string[] };
+}
+
+interface ProductListResponse {
+  products: Array<{ productId: string; displayName: string }>;
+}
 
 const fetchProviderLabels: Record<KnowledgeFetchProvider, string> = {
   cache: "历史缓存",
   xcrawl: "XCrawl",
   proxy_fetch: "代理抓取",
-  local_fetch: "本地兜底",
+  local_fetch: "服务端直连",
   manual: "手动文本",
   site_import: "后台全量导入"
 };
@@ -52,20 +57,42 @@ function getSourceStatusColor(source: KnowledgeSource) {
 }
 
 export default function KnowledgeUrlImportPage() {
-  const {
-    state: { knowledgeBases }
-  } = useWorkbenchSnapshot();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [parsedSources, setParsedSources] = useState<KnowledgeSource[]>([]);
-  const rulePackageOptions = knowledgeBases
-    .filter((item) => item.productExpressionRuleDraft)
-    .map((item) => ({
-      value: item.id,
-      label: `${item.name}（${item.productExpressionRuleDraft?.version || "草稿"}）`
-    }));
+  const [importResult, setImportResult] = useState<ManagedImportResponse["data"]>();
+  const [productOptions, setProductOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const idempotencyKey = useRef(crypto.randomUUID());
+
+  useEffect(() => {
+    let active = true;
+    callJsonApi<ProductListResponse>("/api/v5/products")
+      .then((result) => {
+        if (!active) return;
+        const requestedProductId = new URLSearchParams(window.location.search).get("productId");
+        const options = (result.products || []).map((item) => ({
+          value: item.productId,
+          label: item.displayName
+        }));
+        setProductOptions(options);
+        const requested = options.find((option) => option.value === requestedProductId);
+        if (!form.getFieldValue("productId") && (requested || options[0])) {
+          form.setFieldValue("productId", (requested || options[0]).value);
+        }
+      })
+      .catch((error) => {
+        if (active) messageApi.error(error instanceof Error ? error.message : "产品列表加载失败");
+      })
+      .finally(() => {
+        if (active) setProductsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form, messageApi]);
 
   async function handleParse() {
     const values = form.getFieldsValue();
@@ -93,31 +120,29 @@ export default function KnowledgeUrlImportPage() {
   }
 
   async function handleSave() {
-    const values = form.getFieldsValue();
+    const values = await form.validateFields();
+    if (!parsedSources.some((source) => source.status === "parsed")) {
+      messageApi.warning("请先解析 URL 并确认正文预览。");
+      return;
+    }
     setSaving(true);
 
     try {
-      const result = await callJsonApi<{ data?: { knowledgeBase?: KnowledgeBase } }>("/api/knowledge-bases", {
+      const result = await callJsonApi<ManagedImportResponse>("/api/v5/knowledge-imports/urls", {
         method: "POST",
         body: JSON.stringify({
-          ...values,
-          sourceType: values.autoCrawlEnabled ? "auto_crawl" : "url",
-          status: "enabled",
-          sources: parsedSources,
-          productExpressionSource: Boolean(values.productExpressionSource),
-          productExpressionRulePackageMode: values.productExpressionSource ? values.rulePackageMode || "new" : "none",
-          linkedProductExpressionRulePackageId: values.rulePackageMode === "existing" ? values.linkedProductExpressionRulePackageId : undefined,
-          crawlWeekday: values.crawlWeekday,
-          crawlHour: values.crawlHour
+          name: values.name,
+          urlsText: values.urlsText,
+          productId: values.productId,
+          authorityLevel: values.authorityLevel,
+          publicUseConfirmed: values.publicUseConfirmed === true,
+          idempotencyKey: idempotencyKey.current
         })
       });
-      const id = result.data?.knowledgeBase?.id;
-      messageApi.success(formatApiMessage(result, values.autoCrawlEnabled ? "知识库已创建，后台导入任务已启动。" : "知识库已保存为待向量化。"));
-      if (id) {
-        window.location.href = `/knowledge/${id}`;
-      }
+      setImportResult(result.data);
+      messageApi.success(formatApiMessage(result, "URL 正文已托管，治理与索引任务已创建。"));
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "保存知识库失败");
+      messageApi.error(error instanceof Error ? error.message : "URL 导入失败");
     } finally {
       setSaving(false);
     }
@@ -128,7 +153,7 @@ export default function KnowledgeUrlImportPage() {
       {contextHolder}
       <PageHeader
         title="URL 导入"
-        subtitle="粘贴一个或多个 URL，解析成 Markdown 预览后保存为待向量化知识库。"
+        subtitle="服务端抓取并托管 URL 正文，随后自动进入 Claim、Snapshot、Embedding 与 OpenSearch 链路。"
         actions={
           <Space>
             <Link href="/knowledge/import">
@@ -142,18 +167,22 @@ export default function KnowledgeUrlImportPage() {
       />
 
       <Card>
-        <Form form={form} layout="vertical" initialValues={{ type: "official_blog", productExpressionSource: false, rulePackageMode: "new", autoCrawlEnabled: false, crawlWeekday: 1, crawlHour: 9 }}>
+        <Form form={form} layout="vertical" initialValues={{ authorityLevel: "A2", publicUseConfirmed: false }}>
           <div className="knowledge-detail-two-column">
             <div>
               <Typography.Title level={5}>基础信息</Typography.Title>
               <Form.Item label="知识库名称" name="name" rules={[{ required: true, message: "请填写知识库名称" }]}>
                 <Input placeholder="例如：JOTO 官网博客资料" />
               </Form.Item>
-              <Form.Item label="知识库类型" name="type">
-                <Select options={knowledgeTypeOptions} />
+              <Form.Item label="所属产品" name="productId" rules={[{ required: true, message: "请选择资料所属产品" }]}>
+                <Select
+                  options={productOptions}
+                  loading={productsLoading}
+                  notFoundContent={<Link href="/products/new">先新增产品</Link>}
+                />
               </Form.Item>
-              <Form.Item label="资料用途" name="usageScope">
-                <Input.TextArea rows={3} placeholder="例如：官网博客证据、产品表达、GEO 诊断信源" />
+              <Form.Item label="来源权威等级" name="authorityLevel" rules={[{ required: true, message: "请选择来源权威等级" }]}>
+                <Select options={authorityOptions} />
               </Form.Item>
               <Form.Item label="URL 列表" name="urlsText" rules={[{ required: true, message: "请填写至少一个 URL" }]} extra="一行一个 URL；系统会拒绝本机、内网和无法解析的地址。">
                 <Input.TextArea rows={8} placeholder="https://jotoai.com/..." />
@@ -166,50 +195,14 @@ export default function KnowledgeUrlImportPage() {
 
             <div>
               <Typography.Title level={5}>导入设置</Typography.Title>
-              <Form.Item name="productExpressionSource" valuePropName="checked">
-                <Checkbox>作为产品表达规则包来源</Checkbox>
+              <Form.Item name="publicUseConfirmed" valuePropName="checked" rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error("请确认公开内容生产权限")) }]}>
+                <Checkbox>我确认页面内容可用于公开内容生产与证据引用</Checkbox>
               </Form.Item>
-              <Form.Item shouldUpdate={(prev, next) => prev.productExpressionSource !== next.productExpressionSource || prev.rulePackageMode !== next.rulePackageMode}>
-                {({ getFieldValue }) =>
-                  getFieldValue("productExpressionSource") ? (
-                    <Space direction="vertical" style={{ width: "100%" }}>
-                      <Form.Item label="规则包处理方式" name="rulePackageMode" style={{ marginBottom: 0 }}>
-                        <Select
-                          options={[
-                            { value: "new", label: "新建产品表达规则包" },
-                            { value: "existing", label: "关联已有规则包" }
-                          ]}
-                        />
-                      </Form.Item>
-                      {getFieldValue("rulePackageMode") === "existing" ? (
-                        <Form.Item
-                          label="选择已有规则包"
-                          name="linkedProductExpressionRulePackageId"
-                          rules={[{ required: true, message: "请选择要关联的产品表达规则包" }]}
-                        >
-                          <Select options={rulePackageOptions} placeholder="选择已有规则包" />
-                        </Form.Item>
-                      ) : null}
-                    </Space>
-                  ) : null
-                }
-              </Form.Item>
-              <Form.Item name="autoCrawlEnabled" valuePropName="checked">
-                <Checkbox>启用自动化导入</Checkbox>
-              </Form.Item>
-              <Space wrap>
-                <Form.Item label="周几" name="crawlWeekday">
-                  <InputNumber min={1} max={7} />
-                </Form.Item>
-                <Form.Item label="几点" name="crawlHour">
-                  <InputNumber min={0} max={23} />
-                </Form.Item>
-              </Space>
               <Alert
                 showIcon
                 type="info"
-                message="解析链路"
-                description="普通 URL 按 历史缓存 -> XCrawl -> 代理抓取 -> 本地兜底 的顺序解析正文。博客聚合页会先识别 sitemap 和文章数量，保存后创建后台任务，再逐篇按配置抓取真实正文。"
+                message="服务端解析链路"
+                description="系统按历史缓存、XCrawl、代理抓取、服务端直连的顺序获取正文；保存时会重新校验并把正文写入 MySQL。"
               />
             </div>
           </div>
@@ -240,13 +233,21 @@ export default function KnowledgeUrlImportPage() {
           ) : null}
 
           <Form.Item label="Markdown 解析预览" name="contentPreview" style={{ marginTop: 24 }}>
-            <Input.TextArea rows={12} placeholder="点击解析后显示 Markdown 预览。" />
+            <Input.TextArea rows={12} readOnly placeholder="点击解析后显示 Markdown 预览。" />
           </Form.Item>
+          {importResult ? (
+            <Alert
+              showIcon
+              type={importResult.pipelineStatus === "queued" ? "success" : "warning"}
+              message={importResult.pipelineStatus === "queued" ? "治理与索引任务已排队" : "正文已托管，等待基础设施配置"}
+              description={importResult.pipelineStatus === "queued"
+                ? "SourceAsset 与 SourceRevision 已创建，Worker 将继续提取 Claim、生成 Snapshot、Embedding 和 OpenSearch 索引。"
+                : `仍缺少：${importResult.missingConfiguration.join(", ")}`}
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
           <Space>
-            <Button type="primary" loading={saving} onClick={handleSave}>保存并启动导入</Button>
-            <Link href="/knowledge/vectorize">
-              <Button>去切片与向量化</Button>
-            </Link>
+            <Button type="primary" loading={saving} onClick={handleSave}>托管并启动治理</Button>
           </Space>
         </Form>
       </Card>

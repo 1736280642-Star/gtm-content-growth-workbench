@@ -4,7 +4,7 @@ import { buildClaimAwareChunks } from "./chunking-service";
 import { getRagInfrastructureStatus, RagInfrastructureError } from "./infrastructure";
 import { persistRagIndexBuild, readRagIndexBuildContext } from "./index-build-repository";
 import { HttpRagOpenSearchAdapter } from "./opensearch-adapter";
-import { LocalRagRawAssetStore, type RagRawAssetStore } from "./raw-asset-store";
+import { DefaultRagRawAssetStore, type RagRawAssetStore } from "./raw-asset-store";
 import type { RagKnowledgeChunk } from "./contracts";
 
 export interface RagIndexBuildResult {
@@ -42,7 +42,7 @@ export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { 
   const missingClaimIds = context.manifest.approvedClaimIds.filter((id) => !loadedClaimIds.has(id));
   if (missingClaimIds.length) throw new Error(`Manifest 中有 ${missingClaimIds.length} 条已批准 Claim 无法加载。`);
 
-  const store = dependencies.rawAssetStore || new LocalRagRawAssetStore();
+  const store = dependencies.rawAssetStore || new DefaultRagRawAssetStore();
   const chunks: RagKnowledgeChunk[] = [];
   const reviewRequired: RagKnowledgeChunk[] = [];
   const qualityIssues: Array<{ chunkId: string; codes: string[] }> = [];

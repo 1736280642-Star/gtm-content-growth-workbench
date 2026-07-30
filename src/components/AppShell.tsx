@@ -2,6 +2,7 @@
 
 import {
   ApiOutlined,
+  AppstoreOutlined,
   BarChartOutlined,
   BookOutlined,
   CalendarOutlined,
@@ -46,6 +47,7 @@ const contentStyle: CSSProperties = {
 };
 
 const navItems = [
+  { key: "/products", icon: <AppstoreOutlined />, label: <Link href="/products">产品与 GEO 调研</Link> },
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
   { key: "/free-production", icon: <FormOutlined />, label: <Link href="/free-production">自由内容生产</Link> },
@@ -125,7 +127,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             justifyContent: "space-between"
           }}
         >
-          <Typography.Text strong>{"月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘 -> AI 前台测试"}</Typography.Text>
+          <Typography.Text strong>{"产品 GEO 准入 -> 月度内容矩阵 -> 人工排程 -> 当日执行 -> 月度复盘 -> AI 前台测试"}</Typography.Text>
           <Space>
             <Typography.Text type="secondary">AI 可控、效果可评估、复盘能回流</Typography.Text>
           </Space>

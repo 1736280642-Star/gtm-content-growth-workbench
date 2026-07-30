@@ -44,6 +44,13 @@ export interface RagSourceImportCandidate extends RagSourceClassification {
   sourceUpdatedAt: string;
   normalizedTextRef: string;
   rawAssetRef?: string;
+  knowledgeBaseName?: string;
+  managedContent?: {
+    normalizedText: string;
+    rawContent?: Buffer;
+    mimeType?: string;
+    originalFileName?: string;
+  };
 }
 
 export const RAG_SOURCE_ROOT_ENV = {
