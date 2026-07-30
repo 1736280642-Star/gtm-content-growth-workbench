@@ -7,6 +7,7 @@ import type {
   FreeContentExpressionTypeVersion,
   FreeExpressionPresetKey,
   FreeProductionAuditEvent,
+  FreeProductionSourceMode,
   RequiredExpressionInput,
   TitleStrategyKey,
   VisualSuggestionMode
@@ -27,6 +28,7 @@ interface PresetSeed {
   scenario: string;
   contentGoal: string;
   defaultAudience: string;
+  sourceMode: FreeProductionSourceMode;
   productId: string;
   knowledgeSnapshotIds: string[];
   channelBinding: FreeContentExpressionTypeVersion["channelBinding"];
@@ -79,6 +81,7 @@ async function createSeedState(): Promise<FreeContentExpressionTypeState> {
       scenario: preset.scenario,
       contentGoal: preset.contentGoal,
       defaultAudience: preset.defaultAudience,
+      sourceMode: preset.sourceMode,
       productId: preset.productId,
       productRuleResolutionPolicy: "active_product_rule" as const,
       knowledgeSelectionPolicy: "all_product_ready_snapshots" as const,
@@ -149,10 +152,25 @@ async function createSeedState(): Promise<FreeContentExpressionTypeState> {
 
 async function normalizeState(value: Partial<FreeContentExpressionTypeState>) {
   const seed = await createSeedState();
+  const sourceModeByPreset: Record<FreeExpressionPresetKey, FreeProductionSourceMode> = {
+    product_release: "knowledge",
+    scenario_solution: "knowledge",
+    strategic_partnership: "facts",
+    event_recap: "facts_with_meeting_text",
+    industry_insight: "knowledge"
+  };
+  const storedVersions = value.versions && typeof value.versions === "object" ? value.versions : seed.versions;
+  const versions = Object.fromEntries(Object.entries(storedVersions).map(([id, version]) => [id, {
+    ...version,
+    sourceMode: version.sourceMode || sourceModeByPreset[version.presetKey],
+    productId: "",
+    knowledgeSnapshotIds: [],
+    knowledgeSelectionPolicy: "selected_product_snapshots"
+  }])) as Record<string, FreeContentExpressionTypeVersion>;
   return {
     schemaVersion: 1 as const,
     types: value.types && typeof value.types === "object" ? value.types : seed.types,
-    versions: value.versions && typeof value.versions === "object" ? value.versions : seed.versions,
+    versions,
     audits: Array.isArray(value.audits) ? value.audits : [],
     idempotency: value.idempotency && typeof value.idempotency === "object" ? value.idempotency : {}
   };

@@ -2049,18 +2049,23 @@ addContentCheck("batch generate accepts selected ids", "src/app/api/content-task
   "src/components/free-production/WechatArticlePreview.tsx",
   "src/components/free-production/RiskAndGapPanel.tsx",
   "src/components/free-production/ConfirmAutoPublishButton.tsx",
+  "src/components/free-production/CitationSourcePanel.tsx",
+  "src/components/free-production/ExpressionSettingsDrawer.tsx",
+  "src/components/free-production/ProductionInputPanel.tsx",
   "src/lib/v5/free-production-contracts.ts",
   "src/lib/v5/free-production-compiler.ts",
   "src/lib/v5/free-production-expression-plan.ts",
   "src/lib/v5/free-production-output-validator.ts",
   "src/lib/v5/free-production-repository.ts",
   "src/lib/v5/free-production-service.ts",
+  "src/lib/v5/free-production-presentation.ts",
   "src/lib/v5/joto-wechat-layout-renderer.ts",
   "src/lib/v5/free-content-expression-type-repository.ts",
   "src/lib/v5/free-content-expression-type-service.ts",
   "src/app/api/v5/free-production/batches/from-expression/route.ts",
   "src/app/api/v5/free-production/batches/[id]/supplements/route.ts",
   "src/app/api/v5/free-production/batches/[id]/recheck/route.ts",
+  "src/app/api/v5/free-production/batches/[id]/review-sources/route.ts",
   "src/app/api/v5/free-production/batches/[id]/confirm-and-publish/route.ts",
   "src/app/api/v5/free-production/batches/[id]/retry-failures/route.ts",
   "database/migrations/20260727_012_v5_free_content_production.sql",
@@ -2081,10 +2086,14 @@ addContentCheck("v5 free production expression contracts", "src/lib/v5/free-prod
 ]);
 addContentCheck("v5 free production preset entry", "src/app/free-production/page.tsx", [
   "表达预设",
-  "新建表达",
+  "新建类型",
   "batches/from-expression",
   "GenerationResultWorkspace",
   "confirm-and-publish"
+]);
+addContentCheck("v5 free production preset settings entry", "src/components/free-production/ExpressionPresetList.tsx", [
+  "查看设置",
+  "ExpressionSettingsDrawer"
 ]);
 addAbsentCheck("v5 free production has no legacy configuration form", "src/app/free-production/page.tsx", [
   "FreeProductionForm",

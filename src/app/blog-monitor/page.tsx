@@ -14,7 +14,7 @@ import { confidenceLabels } from "@/lib/labels";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
 import type { BlogArticle, DataConfidence } from "@/lib/types";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 const indexedStatusLabels: Record<BlogArticle["indexedStatus"], string> = {
@@ -287,7 +287,7 @@ function BlogMonitorTabs({ activeKey }: { activeKey: "articles" | "diagnosis" | 
   );
 }
 
-export default function BlogMonitorPage() {
+function BlogMonitorPageContent() {
   const searchParams = useSearchParams();
   const {
     state: { blogArticles, botVisits },
@@ -867,5 +867,13 @@ export default function BlogMonitorPage() {
         </Space>
       </Modal>
     </>
+  );
+}
+
+export default function BlogMonitorPage() {
+  return (
+    <Suspense fallback={null}>
+      <BlogMonitorPageContent />
+    </Suspense>
   );
 }

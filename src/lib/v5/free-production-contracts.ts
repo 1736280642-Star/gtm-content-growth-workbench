@@ -18,6 +18,7 @@ export type FreeExpressionPresetKey = (typeof FREE_EXPRESSION_PRESET_KEYS)[numbe
 export type TitleStrategyKey = "pain_suspense" | "role_resonance" | "value_release" | "industry_question";
 export type AudienceLensKey = "executive" | "business_owner" | "frontline_user" | "it_digital" | "security_compliance" | "procurement" | "ecosystem_partner";
 export type VisualSuggestionMode = "off" | "placeholders";
+export type FreeProductionSourceMode = "knowledge" | "facts" | "facts_with_meeting_text";
 export type FreeContentExpressionTypeStatus = "draft" | "active" | "archived";
 export type PromotionStrength = "restrained" | "moderate" | "explicit";
 export type FreeProductionStatus = "draft" | "compiling" | "generating" | "checking" | "repairing" | "needs_input" | "ready_for_confirmation" | "blocked" | "publishing" | "published" | "generation_failed" | "publish_failed" | "cancelled";
@@ -92,6 +93,7 @@ export interface FreeContentExpressionTypeVersion {
   scenario: string;
   contentGoal: string;
   defaultAudience: string;
+  sourceMode: FreeProductionSourceMode;
   productId: string;
   productRuleResolutionPolicy: "active_product_rule";
   knowledgeSelectionPolicy: "all_product_ready_snapshots" | "selected_product_snapshots";
@@ -149,12 +151,41 @@ export interface FreeContentExpressionTypeSummary extends FreeContentExpressionT
 export interface CreateFreeExpressionInput {
   name: string;
   baseTypeId: string;
-  productId: string;
-  knowledgeSnapshotIds: string[];
-  channel: FreeProductionChannel;
-  publishingConnectionId?: string;
+  sourceMode: FreeProductionSourceMode;
   description: string;
   visualSuggestionMode: VisualSuggestionMode;
+}
+
+export interface FreeProductionFactInput {
+  time: string;
+  location: string;
+  people: string;
+  event: string;
+  publicConfirmed: boolean;
+}
+
+export interface CreateFreeProductionInput {
+  expectedVersion: number;
+  auditReason: string;
+  expressionTypeVersionId: string;
+  productId?: string;
+  knowledgeSnapshotIds: string[];
+  expressionFocus: string;
+  factItems: FreeProductionFactInput[];
+  meetingText?: string;
+}
+
+export interface FreeProductionSourceExcerpt {
+  id: string;
+  sourceType: "knowledge" | "human_fact" | "meeting_text";
+  excerpt: string;
+  sourceSnapshotId?: string;
+  sourceSnapshotHash?: string;
+}
+
+export interface FreeProductionClaimCitation {
+  claimText: string;
+  sourceIds: string[];
 }
 
 export type FreeContentExpressionTypeDraftInput = Omit<
@@ -212,6 +243,7 @@ export interface DraftSection {
   sectionKey: string;
   heading: string;
   markdown: string;
+  citations?: FreeProductionClaimCitation[];
 }
 
 export interface ContentDraftArtifact {
@@ -225,6 +257,7 @@ export interface ContentDraftArtifact {
   articleBody: string;
   channelLayoutTree: ContentLayoutNode[];
   visualSuggestions: VisualMaterialSuggestion[];
+  sourceExcerpts: FreeProductionSourceExcerpt[];
   wechatPresentation?: {
     templateId: "joto-official-v1";
     previewHtml: string;
@@ -280,6 +313,16 @@ export interface FreeProductionBatch {
   productExpressionRulePackageVersionId: string;
   knowledgeSnapshotIds: string[];
   freeContentExpressionTypeVersionId: string;
+  sourceMode: FreeProductionSourceMode;
+  expressionFocus: string;
+  factItems: FreeProductionFactInput[];
+  meetingText?: string;
+  sourceExcerpts: FreeProductionSourceExcerpt[];
+  sourceReview?: {
+    artifactId: string;
+    reviewedBy: string;
+    reviewedAt: string;
+  };
   supplementalMaterialRefs: string[];
   riskAndGapSummary: { ready: number; needsInput: number; needsApproval: number; warning: number; blocked: number };
   generationInputSnapshotId?: string;

@@ -19,9 +19,20 @@ function resolveStatePath() {
 }
 
 function normalizeState(value: Partial<FreeProductionState>): FreeProductionState {
+  const batches = Object.fromEntries(Object.entries(value.batches || {}).map(([id, batch]) => {
+    const sourceExcerpts = Array.isArray(batch.sourceExcerpts) ? batch.sourceExcerpts : [];
+    return [id, {
+      ...batch,
+      sourceMode: batch.sourceMode || "knowledge",
+      expressionFocus: batch.expressionFocus || "",
+      factItems: Array.isArray(batch.factItems) ? batch.factItems : [],
+      sourceExcerpts,
+      draftArtifacts: Array.isArray(batch.draftArtifacts) ? batch.draftArtifacts.map((artifact) => ({ ...artifact, sourceExcerpts: Array.isArray(artifact.sourceExcerpts) ? artifact.sourceExcerpts : sourceExcerpts })) : []
+    }];
+  })) as Record<string, FreeProductionBatch>;
   return {
     schemaVersion: 1,
-    batches: value.batches && typeof value.batches === "object" ? value.batches : {},
+    batches,
     tasks: value.tasks && typeof value.tasks === "object" ? value.tasks : {},
     audits: Array.isArray(value.audits) ? value.audits : [],
     idempotency: value.idempotency && typeof value.idempotency === "object" ? value.idempotency : {}

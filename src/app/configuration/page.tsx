@@ -26,7 +26,7 @@ import {
   message
 } from "antd";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
@@ -45,7 +45,7 @@ function tabFromQuery(value: string | null) {
   return value === "connections" ? "publish_connections" : value || "models";
 }
 
-export default function ConfigurationPage() {
+function ConfigurationPageContent() {
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -295,6 +295,14 @@ export default function ConfigurationPage() {
         </Form>
       </Modal>
     </>
+  );
+}
+
+export default function ConfigurationPage() {
+  return (
+    <Suspense fallback={null}>
+      <ConfigurationPageContent />
+    </Suspense>
   );
 }
 

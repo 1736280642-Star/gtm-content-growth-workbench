@@ -8,7 +8,6 @@ import type {
   FreeContentExpressionTypeVersion,
   TitleStrategyKey
 } from "./free-production-contracts";
-import { FREE_PRODUCTION_CHANNELS } from "./free-production-contracts";
 import { readFreeContentExpressionTypeState, updateFreeContentExpressionTypeState, type FreeContentExpressionTypeState } from "./free-content-expression-type-repository";
 
 export class FreeContentExpressionTypeServiceError extends Error {
@@ -97,8 +96,7 @@ export async function createFreeContentExpressionType(input: { expectedVersion: 
   const description = String(input.input?.description || "").trim();
   if (name.length < 2 || name.length > 30) throw new FreeContentExpressionTypeServiceError(422, "FREE_CONTENT_TYPE_VALIDATION_FAILED", "表达名称必须为 2 到 30 个字符。");
   if (!description || description.length > 1000) throw new FreeContentExpressionTypeServiceError(422, "FREE_CONTENT_TYPE_VALIDATION_FAILED", "表达说明必须为 1 到 1000 个字符。");
-  if (!input.input.productId || !input.input.knowledgeSnapshotIds?.length) throw new FreeContentExpressionTypeServiceError(422, "FREE_CONTENT_TYPE_VALIDATION_FAILED", "请选择生产池产品和至少一个可用知识范围。");
-  if (!FREE_PRODUCTION_CHANNELS.includes(input.input.channel)) throw new FreeContentExpressionTypeServiceError(422, "FREE_CONTENT_TYPE_CHANNEL_INVALID", "目标渠道只允许官网、知乎和公众号。");
+  if (!input.input.sourceMode || !["knowledge", "facts", "facts_with_meeting_text"].includes(input.input.sourceMode)) throw new FreeContentExpressionTypeServiceError(422, "FREE_CONTENT_TYPE_SOURCE_MODE_INVALID", "请选择知识库、事件事实或会议文本资料入口。");
   return updateFreeContentExpressionTypeState((state) => idempotent(state, key, input, () => {
     const baseProfile = state.types[input.input.baseTypeId];
     const base = baseProfile?.activeVersionId ? state.versions[baseProfile.activeVersionId] : undefined;
@@ -113,11 +111,12 @@ export async function createFreeContentExpressionType(input: { expectedVersion: 
       version: 1,
       name,
       description,
-      productId: input.input.productId,
+      sourceMode: input.input.sourceMode,
+      productId: "",
       knowledgeSelectionPolicy: "selected_product_snapshots" as const,
-      knowledgeSnapshotIds: Array.from(new Set(input.input.knowledgeSnapshotIds)),
-      applicableChannels: [input.input.channel],
-      channelBinding: { ...base.channelBinding, channel: input.input.channel, publishingConnectionId: input.input.publishingConnectionId },
+      knowledgeSnapshotIds: [],
+      applicableChannels: ["wechat_official_account" as const],
+      channelBinding: { ...base.channelBinding, channel: "wechat_official_account" as const, publishingConnectionId: undefined },
       visualSuggestionMode: input.input.visualSuggestionMode,
       audienceLensPolicy: inferAudience(description, base.audienceLensPolicy),
       defaultTitleStrategyKey: inferTitleStrategy(description, base),
@@ -132,7 +131,7 @@ export async function createFreeContentExpressionType(input: { expectedVersion: 
     const version = { ...partial, snapshotHash: hash(partial) } satisfies FreeContentExpressionTypeVersion;
     state.versions[versionId] = version;
     state.types[typeId] = { typeId, presetKey: base.presetKey, status: "active", currentVersionId: versionId, activeVersionId: versionId, version: 1, usageCount: 0, createdBy: actor, createdAt: now, updatedBy: actor, updatedAt: now };
-    state.audits.push({ auditId: randomUUID(), action: "free_content_expression_created", objectId: typeId, actor, auditReason, createdAt: now, summary: { baseTypeId: base.typeId, presetKey: base.presetKey, channel: input.input.channel } });
+    state.audits.push({ auditId: randomUUID(), action: "free_content_type_created", objectId: typeId, actor, auditReason, createdAt: now, summary: { baseTypeId: base.typeId, presetKey: base.presetKey, sourceMode: input.input.sourceMode } });
     return summarize(state, typeId);
   }));
 }

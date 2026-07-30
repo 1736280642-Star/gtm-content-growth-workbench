@@ -46,10 +46,10 @@ export default function FreeProductionTasksPage() {
   return (
     <>
       {contextHolder}
-      <PageHeader title="自由生产任务与发布" subtitle="查看单篇正文的生成与发布状态；失败恢复不会改动已经成功的结果。" actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Link href="/free-production"><Button type="primary" icon={<PlusOutlined />}>选择表达</Button></Link></Space>} />
+      <PageHeader title="自由生产任务与发布" subtitle="查看单篇正文的生成与发布状态；失败恢复不会改动已经成功的结果。" actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Link href="/free-production"><Button type="primary" icon={<PlusOutlined />}>选择类型</Button></Link></Space>} />
       {failedCount ? <Alert className="free-task-alert" showIcon type="warning" message={`${failedCount} 个批次需要处理`} description="打开批次查看失败原因和下一步，重试只作用于失败任务。" /> : null}
       <Tabs className="free-production-tabs" activeKey="tasks" items={[
-        { key: "expressions", label: <Link href="/free-production">表达预设</Link>, children: null },
+        { key: "expressions", label: <Link href="/free-production">内容类型</Link>, children: null },
         { key: "tasks", label: <Link href="/free-production/tasks">任务与发布</Link>, children: <FreeProductionTaskTable data={batches} loading={loading} onPreview={(batch) => router.push(`/free-production?batch=${encodeURIComponent(batch.id)}`)} onRetry={(batch) => void retry(batch)} /> }
       ]} />
     </>

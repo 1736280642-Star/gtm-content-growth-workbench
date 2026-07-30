@@ -4,7 +4,7 @@ import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Alert, Button, message, Space, Spin, Tabs, Tag } from "antd";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { BatchGenerationMatrixTable } from "@/components/BatchGenerationMatrixTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ScheduleCalendarLite } from "@/components/ScheduleCalendarLite";
@@ -13,7 +13,7 @@ import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
 import type { ProductionDraftSummary, ScheduleDraftItem } from "@/lib/v5/monthly-workspace-contracts";
 import type { FormalDraftVersion } from "@/lib/v5/single-article-contracts";
 
-export default function MonthlyBatchGenerationPage() {
+function MonthlyBatchGenerationPageContent() {
   const [messageApi, messageContext] = message.useMessage();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState("content");
@@ -142,5 +142,13 @@ export default function MonthlyBatchGenerationPage() {
         ]}
       />
     </>
+  );
+}
+
+export default function MonthlyBatchGenerationPage() {
+  return (
+    <Suspense fallback={null}>
+      <MonthlyBatchGenerationPageContent />
+    </Suspense>
   );
 }
