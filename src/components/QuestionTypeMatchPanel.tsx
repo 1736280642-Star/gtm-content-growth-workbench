@@ -36,7 +36,11 @@ export function QuestionTypeMatchPanel({
   const byQuestion = useMemo(() => new Map(questions.map((question) => [question.questionVersionId, suggestions.filter((item) => item.questionVersionId === question.questionVersionId)])), [questions, suggestions]);
 
   function setSelection(item: QuestionTypeSuggestion, status: "accepted" | "rejected") {
-    setSuggestions((current) => current.map((candidate) => candidate.suggestionId === item.suggestionId ? { ...candidate, selectionStatus: status } : candidate));
+    setSuggestions((current) => current.map((candidate) => {
+      if (candidate.suggestionId !== item.suggestionId) return candidate;
+      const isSelected = candidate.selectionStatus === "accepted" || candidate.selectionStatus === "manual_added";
+      return { ...candidate, selectionStatus: status === "accepted" && isSelected ? "rejected" : status };
+    }));
   }
 
   function addManual(question: TargetQuestionOption, profileVersionId: string) {

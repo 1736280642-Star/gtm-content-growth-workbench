@@ -432,7 +432,7 @@
     "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3": {
       "matchRunId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
       "month": "2026-07",
-      "revision": 2,
+      "revision": 8,
       "status": "confirmed",
       "questionVersionIds": [
         "question-version-21419968-3f66-4928-86e3-bf012be076cb",
@@ -487,7 +487,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-c3feb27e-5443-464d-b61b-9c4d8a900204",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -508,7 +508,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-5a69f361-bfce-4cfd-8718-7b50121095bb",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -529,7 +529,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-8c66216a-7367-44a5-9f45-2559e42802cf",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -572,7 +572,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-f27bd629-4489-42ec-ae69-ec73bd1280ed",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -593,7 +593,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-d73728aa-b3ce-42b0-ba82-92b521ff662e",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -613,7 +613,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-6dc67090-f6b5-49e8-8b3e-de82f333d591",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -656,7 +656,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-5eb62581-0b2e-47a1-8ac4-479e0359b9ba",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -676,7 +676,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-c8afc6d4-804d-4b78-aef0-8c8c5cf8ccac",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -696,7 +696,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-95818743-f99d-4730-87cd-0bf4461573dd",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -737,7 +737,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-e4897929-2c0d-40ae-8e77-db221c8cade2",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -757,7 +757,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-0f44a224-0442-419f-a856-33196a08e1e8",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -777,7 +777,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-3f993233-3847-4306-bb6b-d0ce811133a6",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -819,7 +819,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-5486128b-9258-4158-a64a-b54b5ad81c40",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -840,7 +840,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-b2a11f9d-94f6-4f55-b193-62b6b8b2ede2",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -860,7 +860,7 @@
           ],
           "conflictProfileVersionIds": [],
           "suggestionId": "type-suggestion-7eae1214-15a8-49ac-b76d-3ddf47e6dad1",
-          "selectionStatus": "accepted",
+          "selectionStatus": "rejected",
           "selectionSource": "ai_recommended"
         },
         {
@@ -882,16 +882,433 @@
       "createdAt": "2026-07-30T09:38:58.227Z",
       "createdBy": "workbench_operator",
       "auditReason": "为月度目标问题运行内容类型语义匹配",
-      "confirmedAt": "2026-07-30T09:42:25.164Z",
-      "confirmedBy": "workbench_operator"
+      "confirmedAt": "2026-07-31T02:45:47.063Z",
+      "confirmedBy": "local-workspace-user"
+    },
+    "type-match-2026-07-04ced396-97aa-4b83-82f0-740ada9de5fc": {
+      "matchRunId": "type-match-2026-07-04ced396-97aa-4b83-82f0-740ada9de5fc",
+      "month": "2026-07",
+      "revision": 9,
+      "status": "confirmed",
+      "questionVersionIds": [
+        "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+        "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+        "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+        "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+        "question-version-21419968-3f66-4928-86e3-bf012be076cb"
+      ],
+      "provider": "deepseek",
+      "providerModel": "deepseek-v4-flash",
+      "promptVersion": "v5-article-type-semantic-v1",
+      "suggestions": [
+        {
+          "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+          "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+          "articleTypeName": "选型与比较",
+          "fitLevel": "high",
+          "semanticScore": 0.9,
+          "reason": "问题涉及服务商适合场景的判断，需要比较服务能力与场景需求，支持企业选型决策。",
+          "matchedFacets": [
+            "服务商适合性判断",
+            "企业场景",
+            "能力边界"
+          ],
+          "missingInformation": [
+            "具体比较维度"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-97404518-88d1-45f8-a66d-86ccf964b8e4",
+          "selectionStatus": "rejected",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+          "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+          "articleTypeName": "场景解决方案",
+          "fitLevel": "high",
+          "semanticScore": 0.85,
+          "reason": "需要围绕具体企业业务场景解释限制条件并映射到可落地的实施支持方案。",
+          "matchedFacets": [
+            "业务场景",
+            "方案路径",
+            "实施边界"
+          ],
+          "missingInformation": [
+            "具体场景细节"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-7eeadd92-6156-46a2-b485-09771923db03",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+          "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+          "articleTypeName": "案例与证据",
+          "fitLevel": "possible",
+          "semanticScore": 0.6,
+          "reason": "若有可公开的真实案例和结果证据，可用于说明适用场景，但需确认案例库是否存在。",
+          "matchedFacets": [
+            "适用条件",
+            "结果证据"
+          ],
+          "missingInformation": [
+            "可公开案例证据"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-786767ed-4a45-4213-b5fa-99089b7e5cfa",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+          "articleTypeProfileVersionId": "system-template-faq-v1",
+          "articleTypeName": "FAQ",
+          "fitLevel": "high",
+          "semanticScore": 0.95,
+          "reason": "问题直接询问项目实施与交付中的常见问题，适合用FAQ集中简明回答。",
+          "matchedFacets": [
+            "常见问题",
+            "项目实施",
+            "交付"
+          ],
+          "missingInformation": [],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-eea07c2c-2488-40a8-831d-8d5f18b986ec",
+          "selectionStatus": "rejected",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+          "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+          "articleTypeName": "技术实践",
+          "fitLevel": "medium",
+          "semanticScore": 0.7,
+          "reason": "若常见问题中包含技术配置或故障排查，可提供可复现的技术实践路径。",
+          "matchedFacets": [
+            "故障排查",
+            "配置",
+            "常见问题"
+          ],
+          "missingInformation": [
+            "是否包含技术细节未知"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-3151d5a8-d338-4e87-9d92-24ab09f951da",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+          "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+          "articleTypeName": "实施指南",
+          "fitLevel": "medium",
+          "semanticScore": 0.7,
+          "reason": "常见问题中可能涉及实施步骤或风险点，可结合实施指南进行说明。",
+          "matchedFacets": [
+            "实施步骤",
+            "风险点"
+          ],
+          "missingInformation": [
+            "需要更具体的问题范围"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-f18176b3-c09f-4094-bd69-8633457fb030",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+          "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+          "articleTypeName": "选型与比较",
+          "fitLevel": "high",
+          "semanticScore": 0.85,
+          "reason": "明确服务覆盖的项目阶段是评估服务商能力边界的关键，可用于选型比较。",
+          "matchedFacets": [
+            "能力边界",
+            "服务范围",
+            "项目阶段"
+          ],
+          "missingInformation": [
+            "与其他服务商的比较"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-a1c90ce7-ad59-4ecf-af0a-dcc6a095abfb",
+          "selectionStatus": "rejected",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+          "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+          "articleTypeName": "实施指南",
+          "fitLevel": "medium",
+          "semanticScore": 0.75,
+          "reason": "项目阶段本身是实施路径的组成，可结合实施指南按阶段说明。",
+          "matchedFacets": [
+            "实施路径",
+            "阶段划分",
+            "交付物"
+          ],
+          "missingInformation": [
+            "具体执行动作"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-c1ff1c6d-30ac-47a5-9c2d-5d766ab87ea9",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+          "articleTypeProfileVersionId": "system-template-faq-v1",
+          "articleTypeName": "FAQ",
+          "fitLevel": "medium",
+          "semanticScore": 0.7,
+          "reason": "这个问题可以被直接以清单形式简明回答，但高频属性弱于FAQ典型场景。",
+          "matchedFacets": [
+            "服务范围",
+            "简明回答"
+          ],
+          "missingInformation": [
+            "高频问题属性弱"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-6678e157-bc99-4729-b3b3-e51cd9c25efa",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+          "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+          "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+          "articleTypeName": "实施指南",
+          "fitLevel": "high",
+          "semanticScore": 0.95,
+          "reason": "问题聚焦项目启动前的前置条件和资料准备，正是实施指南的核心适用场景。",
+          "matchedFacets": [
+            "前置条件",
+            "需求准备",
+            "启动前"
+          ],
+          "missingInformation": [],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-f1fc1c4e-27bb-4fcd-bbe7-1b987bea4ed0",
+          "selectionStatus": "rejected",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+          "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+          "articleTypeProfileVersionId": "system-template-faq-v1",
+          "articleTypeName": "FAQ",
+          "fitLevel": "medium",
+          "semanticScore": 0.75,
+          "reason": "可以用检查清单的形式解答准备事项，但作为FAQ的问题属性不够聚焦。",
+          "matchedFacets": [
+            "准备清单",
+            "简明回答"
+          ],
+          "missingInformation": [
+            "高频问题不足"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-2e4c2ef3-4b90-4073-affe-d84815c010f7",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+          "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+          "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+          "articleTypeName": "场景解决方案",
+          "fitLevel": "medium",
+          "semanticScore": 0.7,
+          "reason": "可以围绕中小企业特有的资源约束提供针对性准备建议，但问题核心偏清单化。",
+          "matchedFacets": [
+            "中小企业场景",
+            "业务约束",
+            "准备路径"
+          ],
+          "missingInformation": [
+            "具体场景细节"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-ec5f0ff5-fae7-4032-82e3-946478cf5476",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+          "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+          "articleTypeName": "选型与比较",
+          "fitLevel": "high",
+          "semanticScore": 0.95,
+          "reason": "判断服务是否适合自身项目正是典型的选型决策问题，需要比较维度与适用边界。",
+          "matchedFacets": [
+            "适合性判断",
+            "选型标准",
+            "项目匹配"
+          ],
+          "missingInformation": [],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-8bc544de-2523-48f9-b4a0-ddd3c7ccb455",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+          "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+          "articleTypeName": "场景解决方案",
+          "fitLevel": "medium",
+          "semanticScore": 0.8,
+          "reason": "需要结合企业自身项目的具体场景和约束进行适配判断，可转化为可执行方案。",
+          "matchedFacets": [
+            "自身项目",
+            "场景约束",
+            "方案适配"
+          ],
+          "missingInformation": [
+            "具体项目条件"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-ef0dfb69-ce3c-46b0-9d16-2f31c6a4be57",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        },
+        {
+          "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+          "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+          "articleTypeName": "案例与证据",
+          "fitLevel": "possible",
+          "semanticScore": 0.6,
+          "reason": "若有相似企业的成功案例和结果证据，可增强判断说服力，但需确认案例可公开。",
+          "matchedFacets": [
+            "案例条件",
+            "实际结果"
+          ],
+          "missingInformation": [
+            "可公开案例"
+          ],
+          "conflictProfileVersionIds": [],
+          "suggestionId": "type-suggestion-8371eb6f-9346-48e6-9889-b9322ee49050",
+          "selectionStatus": "accepted",
+          "selectionSource": "ai_recommended"
+        }
+      ],
+      "createdAt": "2026-07-31T02:46:11.135Z",
+      "createdBy": "local-workspace-user",
+      "auditReason": "为月度目标问题运行内容类型语义匹配",
+      "confirmedAt": "2026-07-31T02:53:06.307Z",
+      "confirmedBy": "local-workspace-user"
     }
   },
   "monthRunIds": {
     "2026-07": [
+      "type-match-2026-07-04ced396-97aa-4b83-82f0-740ada9de5fc",
       "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3"
     ]
   },
   "auditLog": [
+    {
+      "auditId": "1ba55a79-79f2-4a16-ba27-533fc8461c3a",
+      "event": "type_match_confirmed",
+      "objectId": "type-match-2026-07-04ced396-97aa-4b83-82f0-740ada9de5fc",
+      "actor": "local-workspace-user",
+      "auditReason": "人工确认月度内容类型组合",
+      "createdAt": "2026-07-31T02:53:06.307Z",
+      "summary": {
+        "accepted": 11
+      }
+    },
+    {
+      "auditId": "452e66b4-08c9-4a76-bfb8-a105cbe4e9f2",
+      "event": "type_match_run",
+      "objectId": "type-match-2026-07-04ced396-97aa-4b83-82f0-740ada9de5fc",
+      "actor": "local-workspace-user",
+      "auditReason": "为月度目标问题运行内容类型语义匹配",
+      "createdAt": "2026-07-31T02:46:11.135Z",
+      "summary": {
+        "status": "draft",
+        "suggestionCount": 15
+      }
+    },
+    {
+      "auditId": "ccc4b452-5b3b-44a5-9a44-cab5572c617e",
+      "event": "type_match_confirmed",
+      "objectId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+      "actor": "local-workspace-user",
+      "auditReason": "人工确认月度内容类型组合",
+      "createdAt": "2026-07-31T02:45:47.063Z",
+      "summary": {
+        "accepted": 5
+      }
+    },
+    {
+      "auditId": "dec93968-36e7-48c4-be80-07436f2ad82f",
+      "event": "type_match_confirmed",
+      "objectId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+      "actor": "local-workspace-user",
+      "auditReason": "人工确认月度内容类型组合",
+      "createdAt": "2026-07-31T02:44:06.952Z",
+      "summary": {
+        "accepted": 5
+      }
+    },
+    {
+      "auditId": "918bdad5-2e43-4a65-a6fb-604370b812c2",
+      "event": "type_match_confirmed",
+      "objectId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+      "actor": "local-workspace-user",
+      "auditReason": "人工确认月度内容类型组合",
+      "createdAt": "2026-07-31T02:43:42.353Z",
+      "summary": {
+        "accepted": 5
+      }
+    },
+    {
+      "auditId": "99b020a6-82e1-4774-9da8-729dd31f546e",
+      "event": "type_match_confirmed",
+      "objectId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+      "actor": "local-workspace-user",
+      "auditReason": "人工确认月度内容类型组合",
+      "createdAt": "2026-07-31T02:36:47.178Z",
+      "summary": {
+        "accepted": 5
+      }
+    },
+    {
+      "auditId": "f52cb66d-f45f-49d2-98ab-50ca6ae1fd6d",
+      "event": "type_match_confirmed",
+      "objectId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+      "actor": "local-workspace-user",
+      "auditReason": "人工确认月度内容类型组合",
+      "createdAt": "2026-07-31T02:25:49.312Z",
+      "summary": {
+        "accepted": 5
+      }
+    },
+    {
+      "auditId": "1d9b26c6-ca11-4a70-983a-44f2ebbd1d49",
+      "event": "type_match_confirmed",
+      "objectId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+      "actor": "local-workspace-user",
+      "auditReason": "人工确认月度内容类型组合",
+      "createdAt": "2026-07-31T02:24:04.067Z",
+      "summary": {
+        "accepted": 20
+      }
+    },
     {
       "auditId": "ec6549d9-b529-4180-a147-20d707432dde",
       "event": "type_match_confirmed",
@@ -1819,6 +2236,3426 @@
         "confirmedBy": "workbench_operator"
       },
       "createdAt": "2026-07-30T09:42:25.165Z"
+    },
+    "confirm-match:2026-07:acb6f9c8-4849-4e93-af1e-8d5e36fedd47": {
+      "requestHash": "cf2d4d4eacbdf9de2b8327462e1dc8e040a732fbae48411c6bbe8544899f0ef3",
+      "response": {
+        "matchRunId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+        "month": "2026-07",
+        "revision": 3,
+        "status": "confirmed",
+        "questionVersionIds": [
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.92,
+            "reason": "问题明确要求判断服务是否适合，涉及选型标准、能力边界和方案差异，与选型与比较的语义高度匹配。",
+            "matchedFacets": [
+              "决策背景",
+              "比较维度",
+              "适用边界",
+              "选择建议"
+            ],
+            "missingInformation": [
+              "具体项目需求细节",
+              "候选服务商对比信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-79fa95f3-acd0-47ca-9909-210d5e183bf9",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "通过类似案例的适用条件和结果证据可辅助判断，但本问题未明确要求案例证据，仅作为支撑。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "结果证据",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实可公开的案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c3feb27e-5443-464d-b61b-9c4d8a900204",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可作为集中回答常见判断问题的一种形式，但问题焦点更偏向决策比较而非通用答疑。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "具体高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5a69f361-bfce-4cfd-8718-7b50121095bb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.5,
+            "reason": "虽可围绕具体项目场景展开，但问题核心是判断而非解决方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "明确业务场景描述"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8c66216a-7367-44a5-9f45-2559e42802cf",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.93,
+            "reason": "问题明确要求列举适合场景，与场景解决方案的目标——将业务问题映射为方案高度匹配。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-4aa47c49-b736-4352-b37c-776df095908d",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "涉及场景适用性判断，可用选型与比较框架分析场景边界，但问题更偏场景列举。",
+            "matchedFacets": [
+              "适用边界",
+              "比较维度",
+              "决策背景"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f27bd629-4489-42ec-ae69-ec73bd1280ed",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可用已验证案例说明适用场景，但问题未明确要求案例。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-d73728aa-b3ce-42b0-ba82-92b521ff662e",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可集中回答哪些场景适合的高频问题，但问题本身更偏场景梳理而非问答。",
+            "matchedFacets": [
+              "问题列表",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6dc67090-f6b5-49e8-8b3e-de82f333d591",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.94,
+            "reason": "问题直接询问常见问题，FAQ 正是集中回答高频具体问题的理想类型。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明",
+              "进一步行动"
+            ],
+            "missingInformation": [
+              "具体高频问题列表"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5246ab65-f2ea-49b9-967f-c4b941f98dfd",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "实施指南中的风险点模块可覆盖常见问题，但问题焦点是列举而非步骤指导。",
+            "matchedFacets": [
+              "风险点",
+              "关键配置",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "实施步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5eb62581-0b2e-47a1-8ac4-479e0359b9ba",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "技术实践的常见问题模块可列举技术类常见问题，但问题不限技术范畴。",
+            "matchedFacets": [
+              "常见问题",
+              "验证方法"
+            ],
+            "missingInformation": [
+              "技术环境细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c8afc6d4-804d-4b78-aef0-8c8c5cf8ccac",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.45,
+            "reason": "虽然可围绕场景描述问题，但问题核心是枚举而非方案解决。",
+            "matchedFacets": [
+              "核心问题",
+              "场景现状"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-95818743-f99d-4730-87cd-0bf4461573dd",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.91,
+            "reason": "问题直接询问项目阶段，实施指南中的实施步骤模块天然适合说明覆盖阶段。",
+            "matchedFacets": [
+              "实施步骤",
+              "前置条件",
+              "关键配置"
+            ],
+            "missingInformation": [
+              "具体步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eaa9f4f8-d3cc-4503-a0cb-6d2241cd25c2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可放在选型与比较中作为服务范围比较维度，但问题重心是阶段列举。",
+            "matchedFacets": [
+              "比较维度",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-e4897929-2c0d-40ae-8e77-db221c8cade2",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.62,
+            "reason": "可作为FAQ中的一个常见问题进行回答，但内容较窄。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-0f44a224-0442-419f-a856-33196a08e1e8",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可在特定场景中提及阶段，但问题不指向具体场景。",
+            "matchedFacets": [
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3f993233-3847-4306-bb6b-d0ce811133a6",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦前置条件和准备，实施指南的前置条件模块完美匹配。",
+            "matchedFacets": [
+              "前置条件",
+              "实施步骤",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "具体项目细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c6625691-f706-4893-a993-ea852fb4eceb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "可作为高频问题以FAQ形式给出准备清单，但内容更偏指南性。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5486128b-9258-4158-a64a-b54b5ad81c40",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可围绕中小企业这一特定场景展开准备清单，但问题核心是前置准备而非方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径"
+            ],
+            "missingInformation": [
+              "场景痛点细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-b2a11f9d-94f6-4f55-b193-62b6b8b2ede2",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0.42,
+            "reason": "如果准备涉及技术配置可含技术内容，但问题偏非技术准备。",
+            "matchedFacets": [
+              "目标与环境",
+              "实现步骤"
+            ],
+            "missingInformation": [
+              "技术配置细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eae1214-15a8-49ac-b76d-3ddf47e6dad1",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "suggestionId": "type-suggestion-974cbc45-8345-4b05-bd6d-68c42e939090",
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0,
+            "reason": "用户手动加入内容策略。",
+            "matchedFacets": [],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "selectionStatus": "manual_added",
+            "selectionSource": "user_selected"
+          }
+        ],
+        "createdAt": "2026-07-30T09:38:58.227Z",
+        "createdBy": "workbench_operator",
+        "auditReason": "为月度目标问题运行内容类型语义匹配",
+        "confirmedAt": "2026-07-31T02:24:04.067Z",
+        "confirmedBy": "local-workspace-user"
+      },
+      "createdAt": "2026-07-31T02:24:04.068Z"
+    },
+    "confirm-match:2026-07:0333525c-43c4-4359-b080-e5f7d1090cd5": {
+      "requestHash": "d68823ea86f5e78ada92b3a6d1a955379654ba48667a964a6d22c6d22e799988",
+      "response": {
+        "matchRunId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+        "month": "2026-07",
+        "revision": 4,
+        "status": "confirmed",
+        "questionVersionIds": [
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.92,
+            "reason": "问题明确要求判断服务是否适合，涉及选型标准、能力边界和方案差异，与选型与比较的语义高度匹配。",
+            "matchedFacets": [
+              "决策背景",
+              "比较维度",
+              "适用边界",
+              "选择建议"
+            ],
+            "missingInformation": [
+              "具体项目需求细节",
+              "候选服务商对比信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-79fa95f3-acd0-47ca-9909-210d5e183bf9",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "通过类似案例的适用条件和结果证据可辅助判断，但本问题未明确要求案例证据，仅作为支撑。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "结果证据",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实可公开的案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c3feb27e-5443-464d-b61b-9c4d8a900204",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可作为集中回答常见判断问题的一种形式，但问题焦点更偏向决策比较而非通用答疑。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "具体高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5a69f361-bfce-4cfd-8718-7b50121095bb",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.5,
+            "reason": "虽可围绕具体项目场景展开，但问题核心是判断而非解决方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "明确业务场景描述"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8c66216a-7367-44a5-9f45-2559e42802cf",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.93,
+            "reason": "问题明确要求列举适合场景，与场景解决方案的目标——将业务问题映射为方案高度匹配。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-4aa47c49-b736-4352-b37c-776df095908d",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "涉及场景适用性判断，可用选型与比较框架分析场景边界，但问题更偏场景列举。",
+            "matchedFacets": [
+              "适用边界",
+              "比较维度",
+              "决策背景"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f27bd629-4489-42ec-ae69-ec73bd1280ed",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可用已验证案例说明适用场景，但问题未明确要求案例。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-d73728aa-b3ce-42b0-ba82-92b521ff662e",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可集中回答哪些场景适合的高频问题，但问题本身更偏场景梳理而非问答。",
+            "matchedFacets": [
+              "问题列表",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6dc67090-f6b5-49e8-8b3e-de82f333d591",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.94,
+            "reason": "问题直接询问常见问题，FAQ 正是集中回答高频具体问题的理想类型。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明",
+              "进一步行动"
+            ],
+            "missingInformation": [
+              "具体高频问题列表"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5246ab65-f2ea-49b9-967f-c4b941f98dfd",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "实施指南中的风险点模块可覆盖常见问题，但问题焦点是列举而非步骤指导。",
+            "matchedFacets": [
+              "风险点",
+              "关键配置",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "实施步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5eb62581-0b2e-47a1-8ac4-479e0359b9ba",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "技术实践的常见问题模块可列举技术类常见问题，但问题不限技术范畴。",
+            "matchedFacets": [
+              "常见问题",
+              "验证方法"
+            ],
+            "missingInformation": [
+              "技术环境细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c8afc6d4-804d-4b78-aef0-8c8c5cf8ccac",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.45,
+            "reason": "虽然可围绕场景描述问题，但问题核心是枚举而非方案解决。",
+            "matchedFacets": [
+              "核心问题",
+              "场景现状"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-95818743-f99d-4730-87cd-0bf4461573dd",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.91,
+            "reason": "问题直接询问项目阶段，实施指南中的实施步骤模块天然适合说明覆盖阶段。",
+            "matchedFacets": [
+              "实施步骤",
+              "前置条件",
+              "关键配置"
+            ],
+            "missingInformation": [
+              "具体步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eaa9f4f8-d3cc-4503-a0cb-6d2241cd25c2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可放在选型与比较中作为服务范围比较维度，但问题重心是阶段列举。",
+            "matchedFacets": [
+              "比较维度",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-e4897929-2c0d-40ae-8e77-db221c8cade2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.62,
+            "reason": "可作为FAQ中的一个常见问题进行回答，但内容较窄。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-0f44a224-0442-419f-a856-33196a08e1e8",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可在特定场景中提及阶段，但问题不指向具体场景。",
+            "matchedFacets": [
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3f993233-3847-4306-bb6b-d0ce811133a6",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦前置条件和准备，实施指南的前置条件模块完美匹配。",
+            "matchedFacets": [
+              "前置条件",
+              "实施步骤",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "具体项目细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c6625691-f706-4893-a993-ea852fb4eceb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "可作为高频问题以FAQ形式给出准备清单，但内容更偏指南性。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5486128b-9258-4158-a64a-b54b5ad81c40",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可围绕中小企业这一特定场景展开准备清单，但问题核心是前置准备而非方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径"
+            ],
+            "missingInformation": [
+              "场景痛点细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-b2a11f9d-94f6-4f55-b193-62b6b8b2ede2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0.42,
+            "reason": "如果准备涉及技术配置可含技术内容，但问题偏非技术准备。",
+            "matchedFacets": [
+              "目标与环境",
+              "实现步骤"
+            ],
+            "missingInformation": [
+              "技术配置细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eae1214-15a8-49ac-b76d-3ddf47e6dad1",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "suggestionId": "type-suggestion-974cbc45-8345-4b05-bd6d-68c42e939090",
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0,
+            "reason": "用户手动加入内容策略。",
+            "matchedFacets": [],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "selectionStatus": "manual_added",
+            "selectionSource": "user_selected"
+          }
+        ],
+        "createdAt": "2026-07-30T09:38:58.227Z",
+        "createdBy": "workbench_operator",
+        "auditReason": "为月度目标问题运行内容类型语义匹配",
+        "confirmedAt": "2026-07-31T02:25:49.312Z",
+        "confirmedBy": "local-workspace-user"
+      },
+      "createdAt": "2026-07-31T02:25:49.312Z"
+    },
+    "confirm-match:2026-07:5eb6698e-cd58-4658-920e-3469bdf6ee69": {
+      "requestHash": "060d0297fc7c3b1a713b7a618ae2b33c88c8f95f255e8c04683a9d425ce4be27",
+      "response": {
+        "matchRunId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+        "month": "2026-07",
+        "revision": 5,
+        "status": "confirmed",
+        "questionVersionIds": [
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.92,
+            "reason": "问题明确要求判断服务是否适合，涉及选型标准、能力边界和方案差异，与选型与比较的语义高度匹配。",
+            "matchedFacets": [
+              "决策背景",
+              "比较维度",
+              "适用边界",
+              "选择建议"
+            ],
+            "missingInformation": [
+              "具体项目需求细节",
+              "候选服务商对比信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-79fa95f3-acd0-47ca-9909-210d5e183bf9",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "通过类似案例的适用条件和结果证据可辅助判断，但本问题未明确要求案例证据，仅作为支撑。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "结果证据",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实可公开的案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c3feb27e-5443-464d-b61b-9c4d8a900204",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可作为集中回答常见判断问题的一种形式，但问题焦点更偏向决策比较而非通用答疑。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "具体高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5a69f361-bfce-4cfd-8718-7b50121095bb",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.5,
+            "reason": "虽可围绕具体项目场景展开，但问题核心是判断而非解决方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "明确业务场景描述"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8c66216a-7367-44a5-9f45-2559e42802cf",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.93,
+            "reason": "问题明确要求列举适合场景，与场景解决方案的目标——将业务问题映射为方案高度匹配。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-4aa47c49-b736-4352-b37c-776df095908d",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "涉及场景适用性判断，可用选型与比较框架分析场景边界，但问题更偏场景列举。",
+            "matchedFacets": [
+              "适用边界",
+              "比较维度",
+              "决策背景"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f27bd629-4489-42ec-ae69-ec73bd1280ed",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可用已验证案例说明适用场景，但问题未明确要求案例。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-d73728aa-b3ce-42b0-ba82-92b521ff662e",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可集中回答哪些场景适合的高频问题，但问题本身更偏场景梳理而非问答。",
+            "matchedFacets": [
+              "问题列表",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6dc67090-f6b5-49e8-8b3e-de82f333d591",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.94,
+            "reason": "问题直接询问常见问题，FAQ 正是集中回答高频具体问题的理想类型。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明",
+              "进一步行动"
+            ],
+            "missingInformation": [
+              "具体高频问题列表"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5246ab65-f2ea-49b9-967f-c4b941f98dfd",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "实施指南中的风险点模块可覆盖常见问题，但问题焦点是列举而非步骤指导。",
+            "matchedFacets": [
+              "风险点",
+              "关键配置",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "实施步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5eb62581-0b2e-47a1-8ac4-479e0359b9ba",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "技术实践的常见问题模块可列举技术类常见问题，但问题不限技术范畴。",
+            "matchedFacets": [
+              "常见问题",
+              "验证方法"
+            ],
+            "missingInformation": [
+              "技术环境细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c8afc6d4-804d-4b78-aef0-8c8c5cf8ccac",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.45,
+            "reason": "虽然可围绕场景描述问题，但问题核心是枚举而非方案解决。",
+            "matchedFacets": [
+              "核心问题",
+              "场景现状"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-95818743-f99d-4730-87cd-0bf4461573dd",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.91,
+            "reason": "问题直接询问项目阶段，实施指南中的实施步骤模块天然适合说明覆盖阶段。",
+            "matchedFacets": [
+              "实施步骤",
+              "前置条件",
+              "关键配置"
+            ],
+            "missingInformation": [
+              "具体步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eaa9f4f8-d3cc-4503-a0cb-6d2241cd25c2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可放在选型与比较中作为服务范围比较维度，但问题重心是阶段列举。",
+            "matchedFacets": [
+              "比较维度",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-e4897929-2c0d-40ae-8e77-db221c8cade2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.62,
+            "reason": "可作为FAQ中的一个常见问题进行回答，但内容较窄。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-0f44a224-0442-419f-a856-33196a08e1e8",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可在特定场景中提及阶段，但问题不指向具体场景。",
+            "matchedFacets": [
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3f993233-3847-4306-bb6b-d0ce811133a6",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦前置条件和准备，实施指南的前置条件模块完美匹配。",
+            "matchedFacets": [
+              "前置条件",
+              "实施步骤",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "具体项目细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c6625691-f706-4893-a993-ea852fb4eceb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "可作为高频问题以FAQ形式给出准备清单，但内容更偏指南性。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5486128b-9258-4158-a64a-b54b5ad81c40",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可围绕中小企业这一特定场景展开准备清单，但问题核心是前置准备而非方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径"
+            ],
+            "missingInformation": [
+              "场景痛点细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-b2a11f9d-94f6-4f55-b193-62b6b8b2ede2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0.42,
+            "reason": "如果准备涉及技术配置可含技术内容，但问题偏非技术准备。",
+            "matchedFacets": [
+              "目标与环境",
+              "实现步骤"
+            ],
+            "missingInformation": [
+              "技术配置细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eae1214-15a8-49ac-b76d-3ddf47e6dad1",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "suggestionId": "type-suggestion-974cbc45-8345-4b05-bd6d-68c42e939090",
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0,
+            "reason": "用户手动加入内容策略。",
+            "matchedFacets": [],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "selectionStatus": "manual_added",
+            "selectionSource": "user_selected"
+          }
+        ],
+        "createdAt": "2026-07-30T09:38:58.227Z",
+        "createdBy": "workbench_operator",
+        "auditReason": "为月度目标问题运行内容类型语义匹配",
+        "confirmedAt": "2026-07-31T02:36:47.178Z",
+        "confirmedBy": "local-workspace-user"
+      },
+      "createdAt": "2026-07-31T02:36:47.179Z"
+    },
+    "confirm-match:2026-07:412fb3d1-f62a-41e2-92d5-e6237655f96e": {
+      "requestHash": "1c3773766590b2f4f3f6bbd0f35bd97266f68bc4fc02efbf9cf5494e36e5a683",
+      "response": {
+        "matchRunId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+        "month": "2026-07",
+        "revision": 6,
+        "status": "confirmed",
+        "questionVersionIds": [
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.92,
+            "reason": "问题明确要求判断服务是否适合，涉及选型标准、能力边界和方案差异，与选型与比较的语义高度匹配。",
+            "matchedFacets": [
+              "决策背景",
+              "比较维度",
+              "适用边界",
+              "选择建议"
+            ],
+            "missingInformation": [
+              "具体项目需求细节",
+              "候选服务商对比信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-79fa95f3-acd0-47ca-9909-210d5e183bf9",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "通过类似案例的适用条件和结果证据可辅助判断，但本问题未明确要求案例证据，仅作为支撑。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "结果证据",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实可公开的案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c3feb27e-5443-464d-b61b-9c4d8a900204",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可作为集中回答常见判断问题的一种形式，但问题焦点更偏向决策比较而非通用答疑。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "具体高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5a69f361-bfce-4cfd-8718-7b50121095bb",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.5,
+            "reason": "虽可围绕具体项目场景展开，但问题核心是判断而非解决方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "明确业务场景描述"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8c66216a-7367-44a5-9f45-2559e42802cf",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.93,
+            "reason": "问题明确要求列举适合场景，与场景解决方案的目标——将业务问题映射为方案高度匹配。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-4aa47c49-b736-4352-b37c-776df095908d",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "涉及场景适用性判断，可用选型与比较框架分析场景边界，但问题更偏场景列举。",
+            "matchedFacets": [
+              "适用边界",
+              "比较维度",
+              "决策背景"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f27bd629-4489-42ec-ae69-ec73bd1280ed",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可用已验证案例说明适用场景，但问题未明确要求案例。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-d73728aa-b3ce-42b0-ba82-92b521ff662e",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可集中回答哪些场景适合的高频问题，但问题本身更偏场景梳理而非问答。",
+            "matchedFacets": [
+              "问题列表",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6dc67090-f6b5-49e8-8b3e-de82f333d591",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.94,
+            "reason": "问题直接询问常见问题，FAQ 正是集中回答高频具体问题的理想类型。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明",
+              "进一步行动"
+            ],
+            "missingInformation": [
+              "具体高频问题列表"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5246ab65-f2ea-49b9-967f-c4b941f98dfd",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "实施指南中的风险点模块可覆盖常见问题，但问题焦点是列举而非步骤指导。",
+            "matchedFacets": [
+              "风险点",
+              "关键配置",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "实施步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5eb62581-0b2e-47a1-8ac4-479e0359b9ba",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "技术实践的常见问题模块可列举技术类常见问题，但问题不限技术范畴。",
+            "matchedFacets": [
+              "常见问题",
+              "验证方法"
+            ],
+            "missingInformation": [
+              "技术环境细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c8afc6d4-804d-4b78-aef0-8c8c5cf8ccac",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.45,
+            "reason": "虽然可围绕场景描述问题，但问题核心是枚举而非方案解决。",
+            "matchedFacets": [
+              "核心问题",
+              "场景现状"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-95818743-f99d-4730-87cd-0bf4461573dd",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.91,
+            "reason": "问题直接询问项目阶段，实施指南中的实施步骤模块天然适合说明覆盖阶段。",
+            "matchedFacets": [
+              "实施步骤",
+              "前置条件",
+              "关键配置"
+            ],
+            "missingInformation": [
+              "具体步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eaa9f4f8-d3cc-4503-a0cb-6d2241cd25c2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可放在选型与比较中作为服务范围比较维度，但问题重心是阶段列举。",
+            "matchedFacets": [
+              "比较维度",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-e4897929-2c0d-40ae-8e77-db221c8cade2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.62,
+            "reason": "可作为FAQ中的一个常见问题进行回答，但内容较窄。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-0f44a224-0442-419f-a856-33196a08e1e8",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可在特定场景中提及阶段，但问题不指向具体场景。",
+            "matchedFacets": [
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3f993233-3847-4306-bb6b-d0ce811133a6",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦前置条件和准备，实施指南的前置条件模块完美匹配。",
+            "matchedFacets": [
+              "前置条件",
+              "实施步骤",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "具体项目细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c6625691-f706-4893-a993-ea852fb4eceb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "可作为高频问题以FAQ形式给出准备清单，但内容更偏指南性。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5486128b-9258-4158-a64a-b54b5ad81c40",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可围绕中小企业这一特定场景展开准备清单，但问题核心是前置准备而非方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径"
+            ],
+            "missingInformation": [
+              "场景痛点细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-b2a11f9d-94f6-4f55-b193-62b6b8b2ede2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0.42,
+            "reason": "如果准备涉及技术配置可含技术内容，但问题偏非技术准备。",
+            "matchedFacets": [
+              "目标与环境",
+              "实现步骤"
+            ],
+            "missingInformation": [
+              "技术配置细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eae1214-15a8-49ac-b76d-3ddf47e6dad1",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "suggestionId": "type-suggestion-974cbc45-8345-4b05-bd6d-68c42e939090",
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0,
+            "reason": "用户手动加入内容策略。",
+            "matchedFacets": [],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "selectionStatus": "manual_added",
+            "selectionSource": "user_selected"
+          }
+        ],
+        "createdAt": "2026-07-30T09:38:58.227Z",
+        "createdBy": "workbench_operator",
+        "auditReason": "为月度目标问题运行内容类型语义匹配",
+        "confirmedAt": "2026-07-31T02:43:42.353Z",
+        "confirmedBy": "local-workspace-user"
+      },
+      "createdAt": "2026-07-31T02:43:42.353Z"
+    },
+    "confirm-match:2026-07:0c55e7af-bfda-41a1-8a2e-e9570e97eb4b": {
+      "requestHash": "ecebd6cf3ff643189e962f23fb0647ec1af9bb2688ec78ed79e6145888d146ef",
+      "response": {
+        "matchRunId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+        "month": "2026-07",
+        "revision": 7,
+        "status": "confirmed",
+        "questionVersionIds": [
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.92,
+            "reason": "问题明确要求判断服务是否适合，涉及选型标准、能力边界和方案差异，与选型与比较的语义高度匹配。",
+            "matchedFacets": [
+              "决策背景",
+              "比较维度",
+              "适用边界",
+              "选择建议"
+            ],
+            "missingInformation": [
+              "具体项目需求细节",
+              "候选服务商对比信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-79fa95f3-acd0-47ca-9909-210d5e183bf9",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "通过类似案例的适用条件和结果证据可辅助判断，但本问题未明确要求案例证据，仅作为支撑。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "结果证据",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实可公开的案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c3feb27e-5443-464d-b61b-9c4d8a900204",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可作为集中回答常见判断问题的一种形式，但问题焦点更偏向决策比较而非通用答疑。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "具体高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5a69f361-bfce-4cfd-8718-7b50121095bb",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.5,
+            "reason": "虽可围绕具体项目场景展开，但问题核心是判断而非解决方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "明确业务场景描述"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8c66216a-7367-44a5-9f45-2559e42802cf",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.93,
+            "reason": "问题明确要求列举适合场景，与场景解决方案的目标——将业务问题映射为方案高度匹配。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-4aa47c49-b736-4352-b37c-776df095908d",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "涉及场景适用性判断，可用选型与比较框架分析场景边界，但问题更偏场景列举。",
+            "matchedFacets": [
+              "适用边界",
+              "比较维度",
+              "决策背景"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f27bd629-4489-42ec-ae69-ec73bd1280ed",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可用已验证案例说明适用场景，但问题未明确要求案例。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-d73728aa-b3ce-42b0-ba82-92b521ff662e",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可集中回答哪些场景适合的高频问题，但问题本身更偏场景梳理而非问答。",
+            "matchedFacets": [
+              "问题列表",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6dc67090-f6b5-49e8-8b3e-de82f333d591",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.94,
+            "reason": "问题直接询问常见问题，FAQ 正是集中回答高频具体问题的理想类型。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明",
+              "进一步行动"
+            ],
+            "missingInformation": [
+              "具体高频问题列表"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5246ab65-f2ea-49b9-967f-c4b941f98dfd",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "实施指南中的风险点模块可覆盖常见问题，但问题焦点是列举而非步骤指导。",
+            "matchedFacets": [
+              "风险点",
+              "关键配置",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "实施步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5eb62581-0b2e-47a1-8ac4-479e0359b9ba",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "技术实践的常见问题模块可列举技术类常见问题，但问题不限技术范畴。",
+            "matchedFacets": [
+              "常见问题",
+              "验证方法"
+            ],
+            "missingInformation": [
+              "技术环境细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c8afc6d4-804d-4b78-aef0-8c8c5cf8ccac",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.45,
+            "reason": "虽然可围绕场景描述问题，但问题核心是枚举而非方案解决。",
+            "matchedFacets": [
+              "核心问题",
+              "场景现状"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-95818743-f99d-4730-87cd-0bf4461573dd",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.91,
+            "reason": "问题直接询问项目阶段，实施指南中的实施步骤模块天然适合说明覆盖阶段。",
+            "matchedFacets": [
+              "实施步骤",
+              "前置条件",
+              "关键配置"
+            ],
+            "missingInformation": [
+              "具体步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eaa9f4f8-d3cc-4503-a0cb-6d2241cd25c2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可放在选型与比较中作为服务范围比较维度，但问题重心是阶段列举。",
+            "matchedFacets": [
+              "比较维度",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-e4897929-2c0d-40ae-8e77-db221c8cade2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.62,
+            "reason": "可作为FAQ中的一个常见问题进行回答，但内容较窄。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-0f44a224-0442-419f-a856-33196a08e1e8",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可在特定场景中提及阶段，但问题不指向具体场景。",
+            "matchedFacets": [
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3f993233-3847-4306-bb6b-d0ce811133a6",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦前置条件和准备，实施指南的前置条件模块完美匹配。",
+            "matchedFacets": [
+              "前置条件",
+              "实施步骤",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "具体项目细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c6625691-f706-4893-a993-ea852fb4eceb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "可作为高频问题以FAQ形式给出准备清单，但内容更偏指南性。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5486128b-9258-4158-a64a-b54b5ad81c40",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可围绕中小企业这一特定场景展开准备清单，但问题核心是前置准备而非方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径"
+            ],
+            "missingInformation": [
+              "场景痛点细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-b2a11f9d-94f6-4f55-b193-62b6b8b2ede2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0.42,
+            "reason": "如果准备涉及技术配置可含技术内容，但问题偏非技术准备。",
+            "matchedFacets": [
+              "目标与环境",
+              "实现步骤"
+            ],
+            "missingInformation": [
+              "技术配置细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eae1214-15a8-49ac-b76d-3ddf47e6dad1",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "suggestionId": "type-suggestion-974cbc45-8345-4b05-bd6d-68c42e939090",
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0,
+            "reason": "用户手动加入内容策略。",
+            "matchedFacets": [],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "selectionStatus": "manual_added",
+            "selectionSource": "user_selected"
+          }
+        ],
+        "createdAt": "2026-07-30T09:38:58.227Z",
+        "createdBy": "workbench_operator",
+        "auditReason": "为月度目标问题运行内容类型语义匹配",
+        "confirmedAt": "2026-07-31T02:44:06.952Z",
+        "confirmedBy": "local-workspace-user"
+      },
+      "createdAt": "2026-07-31T02:44:06.952Z"
+    },
+    "confirm-match:2026-07:3ab0a82f-cab3-4fc1-b943-33fc2be8e70a": {
+      "requestHash": "6e44830f9966018f0a419c5e43db54dd489650c6723ebb95c7133fd8ea75368d",
+      "response": {
+        "matchRunId": "type-match-2026-07-27caf3f0-2bdf-4841-91ec-dce0fa97c6a3",
+        "month": "2026-07",
+        "revision": 8,
+        "status": "confirmed",
+        "questionVersionIds": [
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.92,
+            "reason": "问题明确要求判断服务是否适合，涉及选型标准、能力边界和方案差异，与选型与比较的语义高度匹配。",
+            "matchedFacets": [
+              "决策背景",
+              "比较维度",
+              "适用边界",
+              "选择建议"
+            ],
+            "missingInformation": [
+              "具体项目需求细节",
+              "候选服务商对比信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-79fa95f3-acd0-47ca-9909-210d5e183bf9",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "通过类似案例的适用条件和结果证据可辅助判断，但本问题未明确要求案例证据，仅作为支撑。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "结果证据",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实可公开的案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c3feb27e-5443-464d-b61b-9c4d8a900204",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可作为集中回答常见判断问题的一种形式，但问题焦点更偏向决策比较而非通用答疑。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "具体高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5a69f361-bfce-4cfd-8718-7b50121095bb",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.5,
+            "reason": "虽可围绕具体项目场景展开，但问题核心是判断而非解决方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "明确业务场景描述"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8c66216a-7367-44a5-9f45-2559e42802cf",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.93,
+            "reason": "问题明确要求列举适合场景，与场景解决方案的目标——将业务问题映射为方案高度匹配。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-4aa47c49-b736-4352-b37c-776df095908d",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "涉及场景适用性判断，可用选型与比较框架分析场景边界，但问题更偏场景列举。",
+            "matchedFacets": [
+              "适用边界",
+              "比较维度",
+              "决策背景"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f27bd629-4489-42ec-ae69-ec73bd1280ed",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可用已验证案例说明适用场景，但问题未明确要求案例。",
+            "matchedFacets": [
+              "案例背景",
+              "实施条件",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "真实案例数据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-d73728aa-b3ce-42b0-ba82-92b521ff662e",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可集中回答哪些场景适合的高频问题，但问题本身更偏场景梳理而非问答。",
+            "matchedFacets": [
+              "问题列表",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "高频问题集合"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6dc67090-f6b5-49e8-8b3e-de82f333d591",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.94,
+            "reason": "问题直接询问常见问题，FAQ 正是集中回答高频具体问题的理想类型。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明",
+              "进一步行动"
+            ],
+            "missingInformation": [
+              "具体高频问题列表"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5246ab65-f2ea-49b9-967f-c4b941f98dfd",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "实施指南中的风险点模块可覆盖常见问题，但问题焦点是列举而非步骤指导。",
+            "matchedFacets": [
+              "风险点",
+              "关键配置",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "实施步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5eb62581-0b2e-47a1-8ac4-479e0359b9ba",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.68,
+            "reason": "技术实践的常见问题模块可列举技术类常见问题，但问题不限技术范畴。",
+            "matchedFacets": [
+              "常见问题",
+              "验证方法"
+            ],
+            "missingInformation": [
+              "技术环境细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c8afc6d4-804d-4b78-aef0-8c8c5cf8ccac",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.45,
+            "reason": "虽然可围绕场景描述问题，但问题核心是枚举而非方案解决。",
+            "matchedFacets": [
+              "核心问题",
+              "场景现状"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-95818743-f99d-4730-87cd-0bf4461573dd",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.91,
+            "reason": "问题直接询问项目阶段，实施指南中的实施步骤模块天然适合说明覆盖阶段。",
+            "matchedFacets": [
+              "实施步骤",
+              "前置条件",
+              "关键配置"
+            ],
+            "missingInformation": [
+              "具体步骤细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eaa9f4f8-d3cc-4503-a0cb-6d2241cd25c2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "medium",
+            "semanticScore": 0.65,
+            "reason": "可放在选型与比较中作为服务范围比较维度，但问题重心是阶段列举。",
+            "matchedFacets": [
+              "比较维度",
+              "适用边界"
+            ],
+            "missingInformation": [
+              "对比对象信息"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-e4897929-2c0d-40ae-8e77-db221c8cade2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.62,
+            "reason": "可作为FAQ中的一个常见问题进行回答，但内容较窄。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-0f44a224-0442-419f-a856-33196a08e1e8",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.48,
+            "reason": "可在特定场景中提及阶段，但问题不指向具体场景。",
+            "matchedFacets": [
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体业务场景"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3f993233-3847-4306-bb6b-d0ce811133a6",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦前置条件和准备，实施指南的前置条件模块完美匹配。",
+            "matchedFacets": [
+              "前置条件",
+              "实施步骤",
+              "验收清单"
+            ],
+            "missingInformation": [
+              "具体项目细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c6625691-f706-4893-a993-ea852fb4eceb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.72,
+            "reason": "可作为高频问题以FAQ形式给出准备清单，但内容更偏指南性。",
+            "matchedFacets": [
+              "问题列表",
+              "简明回答",
+              "条件说明"
+            ],
+            "missingInformation": [
+              "其他高频问题"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-5486128b-9258-4158-a64a-b54b5ad81c40",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "possible",
+            "semanticScore": 0.55,
+            "reason": "可围绕中小企业这一特定场景展开准备清单，但问题核心是前置准备而非方案。",
+            "matchedFacets": [
+              "场景现状",
+              "核心问题",
+              "方案路径"
+            ],
+            "missingInformation": [
+              "场景痛点细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-b2a11f9d-94f6-4f55-b193-62b6b8b2ede2",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0.42,
+            "reason": "如果准备涉及技术配置可含技术内容，但问题偏非技术准备。",
+            "matchedFacets": [
+              "目标与环境",
+              "实现步骤"
+            ],
+            "missingInformation": [
+              "技术配置细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eae1214-15a8-49ac-b76d-3ddf47e6dad1",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "suggestionId": "type-suggestion-974cbc45-8345-4b05-bd6d-68c42e939090",
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "possible",
+            "semanticScore": 0,
+            "reason": "用户手动加入内容策略。",
+            "matchedFacets": [],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "selectionStatus": "manual_added",
+            "selectionSource": "user_selected"
+          }
+        ],
+        "createdAt": "2026-07-30T09:38:58.227Z",
+        "createdBy": "workbench_operator",
+        "auditReason": "为月度目标问题运行内容类型语义匹配",
+        "confirmedAt": "2026-07-31T02:45:47.063Z",
+        "confirmedBy": "local-workspace-user"
+      },
+      "createdAt": "2026-07-31T02:45:47.063Z"
+    },
+    "match:2026-07:165b3472-ce07-4c92-afd1-591dfdc3580c": {
+      "requestHash": "e51d723fb4d37d9bfe644a031c9bd717b2e17c510d9b99a103a4bd75c69496a0",
+      "response": {
+        "matchRunId": "type-match-2026-07-04ced396-97aa-4b83-82f0-740ada9de5fc",
+        "month": "2026-07",
+        "revision": 8,
+        "status": "draft",
+        "questionVersionIds": [
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.9,
+            "reason": "问题涉及服务商适合场景的判断，需要比较服务能力与场景需求，支持企业选型决策。",
+            "matchedFacets": [
+              "服务商适合性判断",
+              "企业场景",
+              "能力边界"
+            ],
+            "missingInformation": [
+              "具体比较维度"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-97404518-88d1-45f8-a66d-86ccf964b8e4",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.85,
+            "reason": "需要围绕具体企业业务场景解释限制条件并映射到可落地的实施支持方案。",
+            "matchedFacets": [
+              "业务场景",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eeadd92-6156-46a2-b485-09771923db03",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "possible",
+            "semanticScore": 0.6,
+            "reason": "若有可公开的真实案例和结果证据，可用于说明适用场景，但需确认案例库是否存在。",
+            "matchedFacets": [
+              "适用条件",
+              "结果证据"
+            ],
+            "missingInformation": [
+              "可公开案例证据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-786767ed-4a45-4213-b5fa-99089b7e5cfa",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题直接询问项目实施与交付中的常见问题，适合用FAQ集中简明回答。",
+            "matchedFacets": [
+              "常见问题",
+              "项目实施",
+              "交付"
+            ],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eea07c2c-2488-40a8-831d-8d5f18b986ec",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "若常见问题中包含技术配置或故障排查，可提供可复现的技术实践路径。",
+            "matchedFacets": [
+              "故障排查",
+              "配置",
+              "常见问题"
+            ],
+            "missingInformation": [
+              "是否包含技术细节未知"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3151d5a8-d338-4e87-9d92-24ab09f951da",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "常见问题中可能涉及实施步骤或风险点，可结合实施指南进行说明。",
+            "matchedFacets": [
+              "实施步骤",
+              "风险点"
+            ],
+            "missingInformation": [
+              "需要更具体的问题范围"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f18176b3-c09f-4094-bd69-8633457fb030",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.85,
+            "reason": "明确服务覆盖的项目阶段是评估服务商能力边界的关键，可用于选型比较。",
+            "matchedFacets": [
+              "能力边界",
+              "服务范围",
+              "项目阶段"
+            ],
+            "missingInformation": [
+              "与其他服务商的比较"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-a1c90ce7-ad59-4ecf-af0a-dcc6a095abfb",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.75,
+            "reason": "项目阶段本身是实施路径的组成，可结合实施指南按阶段说明。",
+            "matchedFacets": [
+              "实施路径",
+              "阶段划分",
+              "交付物"
+            ],
+            "missingInformation": [
+              "具体执行动作"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c1ff1c6d-30ac-47a5-9c2d-5d766ab87ea9",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "这个问题可以被直接以清单形式简明回答，但高频属性弱于FAQ典型场景。",
+            "matchedFacets": [
+              "服务范围",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "高频问题属性弱"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6678e157-bc99-4729-b3b3-e51cd9c25efa",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦项目启动前的前置条件和资料准备，正是实施指南的核心适用场景。",
+            "matchedFacets": [
+              "前置条件",
+              "需求准备",
+              "启动前"
+            ],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f1fc1c4e-27bb-4fcd-bbe7-1b987bea4ed0",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.75,
+            "reason": "可以用检查清单的形式解答准备事项，但作为FAQ的问题属性不够聚焦。",
+            "matchedFacets": [
+              "准备清单",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "高频问题不足"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-2e4c2ef3-4b90-4073-affe-d84815c010f7",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "可以围绕中小企业特有的资源约束提供针对性准备建议，但问题核心偏清单化。",
+            "matchedFacets": [
+              "中小企业场景",
+              "业务约束",
+              "准备路径"
+            ],
+            "missingInformation": [
+              "具体场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-ec5f0ff5-fae7-4032-82e3-946478cf5476",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "判断服务是否适合自身项目正是典型的选型决策问题，需要比较维度与适用边界。",
+            "matchedFacets": [
+              "适合性判断",
+              "选型标准",
+              "项目匹配"
+            ],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8bc544de-2523-48f9-b4a0-ddd3c7ccb455",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "medium",
+            "semanticScore": 0.8,
+            "reason": "需要结合企业自身项目的具体场景和约束进行适配判断，可转化为可执行方案。",
+            "matchedFacets": [
+              "自身项目",
+              "场景约束",
+              "方案适配"
+            ],
+            "missingInformation": [
+              "具体项目条件"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-ef0dfb69-ce3c-46b0-9d16-2f31c6a4be57",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "possible",
+            "semanticScore": 0.6,
+            "reason": "若有相似企业的成功案例和结果证据，可增强判断说服力，但需确认案例可公开。",
+            "matchedFacets": [
+              "案例条件",
+              "实际结果"
+            ],
+            "missingInformation": [
+              "可公开案例"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8371eb6f-9346-48e6-9889-b9322ee49050",
+            "selectionStatus": "suggested",
+            "selectionSource": "ai_recommended"
+          }
+        ],
+        "createdAt": "2026-07-31T02:46:11.135Z",
+        "createdBy": "local-workspace-user",
+        "auditReason": "为月度目标问题运行内容类型语义匹配"
+      },
+      "createdAt": "2026-07-31T02:46:11.138Z"
+    },
+    "confirm-match:2026-07:593efbec-97f4-4bdf-b07c-ddde20db1146": {
+      "requestHash": "843fa493ab31011deea8b3ff33f6445e667242406a724a2affe1f00e9658b84d",
+      "response": {
+        "matchRunId": "type-match-2026-07-04ced396-97aa-4b83-82f0-740ada9de5fc",
+        "month": "2026-07",
+        "revision": 9,
+        "status": "confirmed",
+        "questionVersionIds": [
+          "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+          "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+          "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+          "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+          "question-version-21419968-3f66-4928-86e3-bf012be076cb"
+        ],
+        "provider": "deepseek",
+        "providerModel": "deepseek-v4-flash",
+        "promptVersion": "v5-article-type-semantic-v1",
+        "suggestions": [
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.9,
+            "reason": "问题涉及服务商适合场景的判断，需要比较服务能力与场景需求，支持企业选型决策。",
+            "matchedFacets": [
+              "服务商适合性判断",
+              "企业场景",
+              "能力边界"
+            ],
+            "missingInformation": [
+              "具体比较维度"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-97404518-88d1-45f8-a66d-86ccf964b8e4",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "high",
+            "semanticScore": 0.85,
+            "reason": "需要围绕具体企业业务场景解释限制条件并映射到可落地的实施支持方案。",
+            "matchedFacets": [
+              "业务场景",
+              "方案路径",
+              "实施边界"
+            ],
+            "missingInformation": [
+              "具体场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-7eeadd92-6156-46a2-b485-09771923db03",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "question": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "possible",
+            "semanticScore": 0.6,
+            "reason": "若有可公开的真实案例和结果证据，可用于说明适用场景，但需确认案例库是否存在。",
+            "matchedFacets": [
+              "适用条件",
+              "结果证据"
+            ],
+            "missingInformation": [
+              "可公开案例证据"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-786767ed-4a45-4213-b5fa-99089b7e5cfa",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题直接询问项目实施与交付中的常见问题，适合用FAQ集中简明回答。",
+            "matchedFacets": [
+              "常见问题",
+              "项目实施",
+              "交付"
+            ],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-eea07c2c-2488-40a8-831d-8d5f18b986ec",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-technical-practice-v1",
+            "articleTypeName": "技术实践",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "若常见问题中包含技术配置或故障排查，可提供可复现的技术实践路径。",
+            "matchedFacets": [
+              "故障排查",
+              "配置",
+              "常见问题"
+            ],
+            "missingInformation": [
+              "是否包含技术细节未知"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-3151d5a8-d338-4e87-9d92-24ab09f951da",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "question": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "常见问题中可能涉及实施步骤或风险点，可结合实施指南进行说明。",
+            "matchedFacets": [
+              "实施步骤",
+              "风险点"
+            ],
+            "missingInformation": [
+              "需要更具体的问题范围"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f18176b3-c09f-4094-bd69-8633457fb030",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.85,
+            "reason": "明确服务覆盖的项目阶段是评估服务商能力边界的关键，可用于选型比较。",
+            "matchedFacets": [
+              "能力边界",
+              "服务范围",
+              "项目阶段"
+            ],
+            "missingInformation": [
+              "与其他服务商的比较"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-a1c90ce7-ad59-4ecf-af0a-dcc6a095abfb",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "medium",
+            "semanticScore": 0.75,
+            "reason": "项目阶段本身是实施路径的组成，可结合实施指南按阶段说明。",
+            "matchedFacets": [
+              "实施路径",
+              "阶段划分",
+              "交付物"
+            ],
+            "missingInformation": [
+              "具体执行动作"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-c1ff1c6d-30ac-47a5-9c2d-5d766ab87ea9",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "question": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "这个问题可以被直接以清单形式简明回答，但高频属性弱于FAQ典型场景。",
+            "matchedFacets": [
+              "服务范围",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "高频问题属性弱"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-6678e157-bc99-4729-b3b3-e51cd9c25efa",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-implementation-guide-v1",
+            "articleTypeName": "实施指南",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "问题聚焦项目启动前的前置条件和资料准备，正是实施指南的核心适用场景。",
+            "matchedFacets": [
+              "前置条件",
+              "需求准备",
+              "启动前"
+            ],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-f1fc1c4e-27bb-4fcd-bbe7-1b987bea4ed0",
+            "selectionStatus": "rejected",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-faq-v1",
+            "articleTypeName": "FAQ",
+            "fitLevel": "medium",
+            "semanticScore": 0.75,
+            "reason": "可以用检查清单的形式解答准备事项，但作为FAQ的问题属性不够聚焦。",
+            "matchedFacets": [
+              "准备清单",
+              "简明回答"
+            ],
+            "missingInformation": [
+              "高频问题不足"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-2e4c2ef3-4b90-4073-affe-d84815c010f7",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "question": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "medium",
+            "semanticScore": 0.7,
+            "reason": "可以围绕中小企业特有的资源约束提供针对性准备建议，但问题核心偏清单化。",
+            "matchedFacets": [
+              "中小企业场景",
+              "业务约束",
+              "准备路径"
+            ],
+            "missingInformation": [
+              "具体场景细节"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-ec5f0ff5-fae7-4032-82e3-946478cf5476",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-selection-comparison-v1",
+            "articleTypeName": "选型与比较",
+            "fitLevel": "high",
+            "semanticScore": 0.95,
+            "reason": "判断服务是否适合自身项目正是典型的选型决策问题，需要比较维度与适用边界。",
+            "matchedFacets": [
+              "适合性判断",
+              "选型标准",
+              "项目匹配"
+            ],
+            "missingInformation": [],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8bc544de-2523-48f9-b4a0-ddd3c7ccb455",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-scenario-solution-v1",
+            "articleTypeName": "场景解决方案",
+            "fitLevel": "medium",
+            "semanticScore": 0.8,
+            "reason": "需要结合企业自身项目的具体场景和约束进行适配判断，可转化为可执行方案。",
+            "matchedFacets": [
+              "自身项目",
+              "场景约束",
+              "方案适配"
+            ],
+            "missingInformation": [
+              "具体项目条件"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-ef0dfb69-ce3c-46b0-9d16-2f31c6a4be57",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          },
+          {
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "question": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+            "articleTypeProfileVersionId": "system-template-case-evidence-v1",
+            "articleTypeName": "案例与证据",
+            "fitLevel": "possible",
+            "semanticScore": 0.6,
+            "reason": "若有相似企业的成功案例和结果证据，可增强判断说服力，但需确认案例可公开。",
+            "matchedFacets": [
+              "案例条件",
+              "实际结果"
+            ],
+            "missingInformation": [
+              "可公开案例"
+            ],
+            "conflictProfileVersionIds": [],
+            "suggestionId": "type-suggestion-8371eb6f-9346-48e6-9889-b9322ee49050",
+            "selectionStatus": "accepted",
+            "selectionSource": "ai_recommended"
+          }
+        ],
+        "createdAt": "2026-07-31T02:46:11.135Z",
+        "createdBy": "local-workspace-user",
+        "auditReason": "为月度目标问题运行内容类型语义匹配",
+        "confirmedAt": "2026-07-31T02:53:06.307Z",
+        "confirmedBy": "local-workspace-user"
+      },
+      "createdAt": "2026-07-31T02:53:06.307Z"
     }
   }
 }

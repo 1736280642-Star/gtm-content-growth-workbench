@@ -162,12 +162,26 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
   const foundation = readV5FoundationSnapshot();
   const monthlyLocks = foundation.monthlyQuestionLocks.filter((lock) => lock.month === month);
 
-  if (monthlyLocks.length) {
-    const versionsById = new Map(foundation.questionVersions.map((version) => [version.questionVersionId, version]));
+  // A monthly lock is a historical snapshot, not the only source of eligible
+  // questions. Without this fallback, newly confirmed ADP questions remained
+  // invisible in the real strategy UI until someone edited repository data.
+  const versionsById = new Map(foundation.questionVersions.map((version) => [version.questionVersionId, version]));
+  const toOption = (questionId: string, questionVersionId: string, status: TargetQuestionOption["status"]): TargetQuestionOption | undefined => {
+    const version = versionsById.get(questionVersionId);
+    if (!version || version.questionId !== questionId || !version.text.trim()) return undefined;
+    return {
+      questionVersionId: version.questionVersionId,
+      question: version.text.trim(),
+      productId: version.product,
+      status,
+      source: "v5_formal"
+    };
+  };
 
-    return monthlyLocks.map((lock) => {
-      const version = versionsById.get(lock.questionVersionId);
-      if (!version || version.questionId !== lock.questionId) {
+  if (monthlyLocks.length) {
+    const locked = monthlyLocks.map((lock) => {
+      const option = toOption(lock.questionId, lock.questionVersionId, "frozen");
+      if (!option) {
         throw new V5ServiceError(
           500,
           "V5_MONTHLY_QUESTION_VERSION_MISSING",
@@ -176,14 +190,15 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
         );
       }
 
-      return {
-        questionVersionId: version.questionVersionId,
-        question: version.text.trim(),
-        productId: version.product,
-        status: "frozen" as const,
-        source: "v5_formal" as const
-      };
+      return option;
     });
+
+    const currentFormal = foundation.questions.flatMap((question) => {
+      if (!question.currentVersionId || !["available", "observing"].includes(question.status)) return [];
+      const option = toOption(question.questionId, question.currentVersionId, "monthly_ready");
+      return option ? [option] : [];
+    });
+    return Array.from(new Map([...locked, ...currentFormal].map((item) => [item.questionVersionId, item])).values());
   }
 
   if (source !== "v4_runtime") return [];
