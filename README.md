@@ -1,6 +1,6 @@
-# JOTO GTM 内容增长工作台 V5
+# 基于GEO优化的内容增长工作台 V5
 
-面向 JOTO WorkBuddy、腾讯云 ADP 等产品的 GEO 内容增长工作台。V5 把“问题—知识—月度策略—文章生产—排期执行—发布回传—前台观察—月度复盘”串成一条可追溯链路。
+基于GEO优化面向多产品矩阵的自动生产内容与发布的工作台。V5 把“问题—知识—月度策略—文章生产—排期执行—发布回传—前台观察—月度复盘”串成一条可追溯链路。
 
 V5 的规划与复盘周期只有自然月：`MonthlyPlan -> date execution -> publish and metrics -> MonthlyReview -> next month proposal`。日期视图只能执行已批准的月度计划，不能成为第二套规划源。
 
