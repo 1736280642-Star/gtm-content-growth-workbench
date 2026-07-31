@@ -11,6 +11,9 @@ export interface V5KnowledgeMaterialView {
   title: string;
   kind: "url" | "document" | "text";
   status: V5KnowledgeMaterialStatus;
+  canonicalUrl?: string;
+  contentHash?: string;
+  collectionSourceId?: string;
   importedAt: string;
   updatedAt: string;
   failureReason?: string;

@@ -25,5 +25,6 @@ yarn-error.log*
 docs/**
 !docs/
 !docs/usage.md
+!docs/dynamic-knowledge-collection-governance.md
 !docs/方案与规划/
 !docs/方案与规划/*.md

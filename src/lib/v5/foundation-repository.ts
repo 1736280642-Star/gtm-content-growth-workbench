@@ -9,6 +9,11 @@ import type {
   V5KnowledgeUnderstandingItem
 } from "./knowledge-workspace-contracts";
 import type {
+  V5KnowledgeCollectionRun,
+  V5KnowledgeCollectionSnapshot,
+  V5KnowledgeCollectionSource
+} from "./knowledge-collection-contracts";
+import type {
   V5AuditRecord,
   V5ContentCoverageRow,
   V5MonthlyQuestionLock,
@@ -39,6 +44,9 @@ export interface V5FoundationState {
   knowledgeMaterials: V5KnowledgeMaterialView[];
   knowledgeUnderstanding: V5KnowledgeUnderstandingItem[];
   knowledgeActionItems: V5KnowledgeActionItem[];
+  knowledgeCollectionSources: V5KnowledgeCollectionSource[];
+  knowledgeCollectionRuns: V5KnowledgeCollectionRun[];
+  knowledgeCollectionSnapshots: V5KnowledgeCollectionSnapshot[];
   articleExpressionProfiles: V5ArticleExpressionProfile[];
   articleExpressionProfileVersions: V5ArticleExpressionProfileVersion[];
   audits: V5AuditRecord[];
@@ -79,6 +87,9 @@ function emptyState(): V5FoundationState {
     knowledgeMaterials: [],
     knowledgeUnderstanding: [],
     knowledgeActionItems: [],
+    knowledgeCollectionSources: [],
+    knowledgeCollectionRuns: [],
+    knowledgeCollectionSnapshots: [],
     articleExpressionProfiles: [],
     articleExpressionProfileVersions: [],
     audits: [],

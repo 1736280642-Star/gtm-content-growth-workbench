@@ -165,6 +165,7 @@ SourceAsset/SourceRevision -> Claim -> SourceSnapshot/Manifest
 | --- | --- |
 | [`V5_PRODUCTION_USER_FLOW_RUNBOOK.md`](./V5_PRODUCTION_USER_FLOW_RUNBOOK.md) | 正式生产链路、页面顺序、治理 API 和人工审批边界 |
 | [`V5_BACKEND_INTEGRATION.md`](./V5_BACKEND_INTEGRATION.md) | 后端、MySQL、RAG、Provider 和运行时集成说明 |
+| [`docs/dynamic-knowledge-collection-governance.md`](./docs/dynamic-knowledge-collection-governance.md) | 指定站点与微信公众号文章的每日采集、识别归档、知识库路由和动态治理方案 |
 | [`docs/usage.md`](./docs/usage.md) | 本地启动、配置诊断、常用验证和渠道接入说明 |
 | [`docs/方案与规划/分支二-月度策略与批量生产开发文档.md`](./docs/方案与规划/分支二-月度策略与批量生产开发文档.md) | 月度策略、矩阵和批量生产方案 |
 | [`docs/方案与规划/2026-07-24-v5-automatic-knowledge-production.md`](./docs/方案与规划/2026-07-24-v5-automatic-knowledge-production.md) | 自动知识生产、Evidence Gate 和 RAG 链路 |

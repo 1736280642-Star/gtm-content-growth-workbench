@@ -14,8 +14,11 @@ Run these workers from the deployment scheduler. No business-page action is requ
 npm.cmd run worker:v5-rag:source-import -- --write
 npm.cmd run worker:v5-rag:knowledge-refresh
 npm.cmd run worker:v5-rag:index
+npm.cmd run worker:v5-knowledge-collection
 npm.cmd run worker:v5-content-production
 ```
+
+`worker:v5-knowledge-collection` scans due imported sources and automatically completes article discovery, body extraction, entity classification, knowledge-base routing, archival and managed RAG ingestion. Use `--repeat --interval-seconds=900` for resident scheduling, `--source=<sourceId> --force` for an operations-only rerun. Business pages do not require a daily action.
 
 The refresh worker freezes the latest governed SourceSnapshot, activates the automatic rule package and monthly readiness, creates an approved Manifest, and queues an immutable index. The index worker uses the configured Embedding and OpenSearch services, replays approved and blocked Claims, activates the alias only when all hard metrics pass, then releases affected tasks to `ready_for_generation`.
 

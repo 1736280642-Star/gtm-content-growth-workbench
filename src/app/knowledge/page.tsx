@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { MetricCard } from "@/components/MetricCard";
+import { KnowledgeCollectionWorkspace } from "@/components/KnowledgeCollectionWorkspace";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
@@ -98,6 +99,7 @@ export default function KnowledgePage() {
         <MetricCard title="资料" value={materialCount} suffix="份" />
         <MetricCard title="待处理" value={pendingCount} suffix="项" />
       </div>
+      <KnowledgeCollectionWorkspace />
       <Card className="foundation-panel" bordered={false}>
         <Space style={{ marginBottom: 16 }} wrap>
           <Select
