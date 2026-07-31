@@ -171,6 +171,7 @@ SourceAsset/SourceRevision -> Claim -> SourceSnapshot/Manifest
 | [`docs/方案与规划/2026-07-16-v5-real-rag-knowledge-production-integration-plan.md`](./docs/方案与规划/2026-07-16-v5-real-rag-knowledge-production-integration-plan.md) | 真实 RAG 生产集成计划与验收边界 |
 | [`docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md`](./docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md) | GEO 研究 Agent 方案 |
 | [`docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md`](./docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md) | 微信、CSDN、掘金、知乎草稿/发布适配和配置边界 |
+| [`docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md`](./docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md) | 知乎、掘金、CSDN 真实自动发布测试环境、结果、能力判断与卡点 |
 | [`docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md`](./docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md) | 公众号排版与正式 HTML 链路 |
 | [`docs/方案与规划/v5-ui-phase-status.md`](./docs/方案与规划/v5-ui-phase-status.md) | V5 UI 阶段状态与已知缺口 |
 
