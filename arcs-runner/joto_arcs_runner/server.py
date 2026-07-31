@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .env import load_project_env
 from .ledger import PublishLedger
 from .platforms import BrowserPublisher, PLATFORM_CONFIG
 
@@ -31,6 +32,13 @@ def validate_publish_payload(payload: dict[str, Any]) -> str | None:
         return f"missing fields: {', '.join(missing)}"
     if payload["platform"] not in PLATFORM_CONFIG:
         return "platform is not supported"
+    if payload["platform"] in {"csdn", "juejin"}:
+        hybrid_required = ["externalDraftId", "editorUrl", "tagIds"]
+        if payload["platform"] == "juejin":
+            hybrid_required.append("categoryId")
+        hybrid_missing = [name for name in hybrid_required if not payload.get(name)]
+        if hybrid_missing:
+            return f"hybrid publish missing fields: {', '.join(hybrid_missing)}"
     if payload["idempotencyKey"] != expected_idempotency_key(payload):
         return "idempotencyKey does not match scheduleId, platform, and contentHash"
     return None
@@ -53,11 +61,45 @@ class RunnerService:
             return 400, {"ok": False, "status": "precheck_failed", "publishStatus": "failed", "failureCode": "payload_invalid", "failureReason": error, "nextAction": "Create a new publish schedule from V5."}
 
         key = str(payload["idempotencyKey"])
-        created, record = self.ledger.begin(key, {"scheduleId": payload["scheduleId"], "platform": payload["platform"], "contentHash": payload["contentHash"], "title": payload["title"]})
+        created, record = self.ledger.begin(key, {
+            "scheduleId": payload["scheduleId"],
+            "platform": payload["platform"],
+            "contentHash": payload["contentHash"],
+            "title": payload["title"],
+            "externalDraftId": payload.get("externalDraftId"),
+            "editorUrl": payload.get("editorUrl"),
+        })
         if not created:
+            previous_result = record.get("result") if isinstance(record.get("result"), dict) else None
+            can_resume_existing_draft = bool(
+                previous_result
+                and (
+                    previous_result.get("failureCode") == "payload_invalid"
+                    or (
+                        previous_result.get("failureCode") == "adapter_failed"
+                        and (
+                            "editor structure changed before title or content input" in str(previous_result.get("diagnosticCode") or "")
+                            or "编辑器结构已变化，未找到标题或正文输入区" in str(previous_result.get("failureReason") or "")
+                            or str(previous_result.get("failureReason") or "") == "BrowserConnectError"
+                        )
+                    )
+                    or (
+                        payload.get("platform") == "csdn"
+                        and previous_result.get("failureCode") == "publish_action_unconfirmed"
+                        and str(previous_result.get("failureReason") or "") == "csdn 第一层发布已点击，但最终确认弹窗或确认按钮未出现。"
+                    )
+                )
+                and record.get("externalDraftId")
+                and record.get("externalDraftId") == payload.get("externalDraftId")
+                and record.get("editorUrl") == payload.get("editorUrl")
+            )
+            if can_resume_existing_draft:
+                result = self.publisher.publish(str(payload["platform"]), payload)
+                self.ledger.complete(key, result)
+                return (200 if result.get("ok") else 409 if result.get("status") == "manual_takeover_required" else 502), result
             if isinstance(record.get("result"), dict):
                 return 200, {**record["result"], "duplicateProtected": True}
-            return 409, {"ok": False, "status": "pending_verify", "publishStatus": "submitted", "failureCode": "duplicate_protected", "failureReason": "The same idempotency key is already in progress.", "nextAction": "Verify the platform state; do not publish again.", "duplicateProtected": True}
+            return 409, {"ok": False, "status": "pending_verify", "publishStatus": "failed", "failureCode": "publish_action_unconfirmed", "failureReason": "The same idempotency key is already in progress without a confirmed result.", "nextAction": "Verify the platform creator record; do not publish again.", "duplicateProtected": True}
 
         result = self.publisher.publish(str(payload["platform"]), payload)
         self.ledger.complete(key, result)
@@ -67,7 +109,7 @@ class RunnerService:
         key = str(payload.get("idempotencyKey", ""))
         record = self.ledger.get(key) if key else None
         if not record:
-            return 404, {"ok": False, "status": "pending_verify", "failureCode": "verification_failed", "failureReason": "idempotency record was not found", "nextAction": "Inspect the platform creator center manually."}
+            return 404, {"ok": False, "status": "pending_verify", "publishStatus": "failed", "failureCode": "publish_action_unconfirmed", "failureReason": "idempotency record was not found", "nextAction": "Inspect the platform creator center manually; do not publish again."}
         platform = str(record.get("platform", ""))
         verify_payload = {**record, **payload}
         result = self.publisher.verify(platform, verify_payload)
@@ -131,6 +173,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    load_project_env()
     host = os.environ.get("ARCS_RUNNER_HOST", "127.0.0.1").strip()
     port = int(os.environ.get("ARCS_RUNNER_PORT", "9530"))
     token = os.environ.get("JOTO_PUBLISH_RUNNER_TOKEN", "").strip() or os.environ.get("WECHATSYNC_BRIDGE_TOKEN", "").strip()

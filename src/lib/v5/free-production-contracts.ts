@@ -183,11 +183,6 @@ export interface FreeProductionSourceExcerpt {
   sourceSnapshotHash?: string;
 }
 
-export interface FreeProductionClaimCitation {
-  claimText: string;
-  sourceIds: string[];
-}
-
 export type FreeContentExpressionTypeDraftInput = Omit<
   FreeContentExpressionTypeVersion,
   "freeContentExpressionTypeVersionId" | "typeId" | "version" | "status" | "snapshotHash" | "createdBy" | "createdAt" | "activatedAt"
@@ -243,7 +238,6 @@ export interface DraftSection {
   sectionKey: string;
   heading: string;
   markdown: string;
-  citations?: FreeProductionClaimCitation[];
 }
 
 export interface ContentDraftArtifact {
@@ -318,11 +312,6 @@ export interface FreeProductionBatch {
   factItems: FreeProductionFactInput[];
   meetingText?: string;
   sourceExcerpts: FreeProductionSourceExcerpt[];
-  sourceReview?: {
-    artifactId: string;
-    reviewedBy: string;
-    reviewedAt: string;
-  };
   supplementalMaterialRefs: string[];
   riskAndGapSummary: { ready: number; needsInput: number; needsApproval: number; warning: number; blocked: number };
   generationInputSnapshotId?: string;

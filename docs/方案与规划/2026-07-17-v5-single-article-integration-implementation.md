@@ -99,7 +99,7 @@ Bootstrap 的 `ON DUPLICATE KEY UPDATE id = id` 只能防重复写，不能证�
 - 证据不足、配置缺失、版本漂移和 Provider 失败都会显示真实原因，不会出现伪成功正文。
 - 同一幂等键重试不会新增 Draft。
 - 正文页面可直接核对事实追溯与硬规则结果，只有通过后才能复制 Markdown。
-- V4 原有执行入口仍保持可用。
+- 兼容入口会跳转到当前月度执行页面，不再维护第二套生产入口。
 
 ## 6. 已完成验证
 
@@ -111,7 +111,7 @@ Bootstrap 的 `ON DUPLICATE KEY UPDATE id = id` 只能防重复写，不能证�
 - `npm.cmd run build`
 - `node scripts/init-v5-monthly-schema.mjs --plan`：包含 `010`，排除 V4 Drop migration
 
-Build 仍报告 `today` 和 `weekly-plan` 的既有 React Hook warning；本轮没有修改这两个 V4 页面。
+旧日期执行入口已经收敛为兼容跳转；构建只验证当前月度主链路。
 
 ## 7. 真实 E2E 剩余条件
 

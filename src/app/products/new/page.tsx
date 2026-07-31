@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
+import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
 import type { GeoResearchWorkspace } from "@/lib/v5/geo-research-contracts";
@@ -29,12 +30,14 @@ export default function NewProductPage() {
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const [saving, setSaving] = useState(false);
+  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
 
   async function submit() {
     const values = await form.validateFields();
     setSaving(true);
     try {
       const write = createV5WritePayload(
+        workspaceSetting.currentRole,
         0,
         "新增产品并创建 GEO 前置调研项目"
       );

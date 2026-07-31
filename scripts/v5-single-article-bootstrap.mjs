@@ -8,7 +8,8 @@ const requiredEnv = ["MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER",
 const missingEnv = requiredEnv.filter((name) => !process.env[name]?.trim());
 const actorId = String(process.env.V5_SINGLE_ARTICLE_BOOTSTRAP_ACTOR_ID || "single-article-bootstrap").trim();
 const actorRole = String(process.env.V5_SINGLE_ARTICLE_BOOTSTRAP_ACTOR_ROLE || "developer_admin").trim();
-const auditReason = "Bootstrap one approved Pharaoh Command single-article matrix item";
+const productId = String(process.env.V5_SINGLE_ARTICLE_PRODUCT_ID || "tencent-adp-joto").trim();
+const auditReason = `Bootstrap one approved ${productId} single-article matrix item`;
 const month = String(process.env.V5_SINGLE_ARTICLE_MONTH || new Date().toISOString().slice(0, 7)).trim();
 const scope = "single_article_acceptance";
 
@@ -81,12 +82,11 @@ try {
     const [productRows] = await connection.query(
       `SELECT * FROM product_entity
        WHERE status = 'active' AND confirmed_by IS NOT NULL AND confirmed_at IS NOT NULL
-         AND (LOWER(canonical_name) LIKE '%pharaoh%command%' OR LOWER(display_name) LIKE '%pharaoh%command%'
-           OR LOWER(CAST(aliases AS CHAR)) LIKE '%pharaoh%command%')
-       ORDER BY CASE WHEN LOWER(canonical_name) = 'pharaoh command' THEN 0 ELSE 1 END, created_at LIMIT 2`
+         AND id = ? LIMIT 2`,
+      [productId]
     );
     if (productRows.length !== 1) {
-      fail("pharaoh_product_not_unique", `需要且只能找到一个已确认 Pharaoh Command 产品，当前为 ${productRows.length} 个。`, "完成 Source Import 与产品实体人工确认，并消除重名后重试。");
+      fail("product_not_unique", `需要且只能找到一个已确认产品 ${productId}，当前为 ${productRows.length} 个。`, "完成 Source Import 与产品实体人工确认后重试。");
     }
     const product = productRows[0];
     const [snapshotRows] = await connection.query(
@@ -125,12 +125,15 @@ try {
          AND pc.review_status IN ('supported', 'conditional') AND pc.conflict_group_id IS NULL
          AND pc.reviewed_by IS NOT NULL AND pc.reviewed_at IS NOT NULL
          AND pc.authority_level IN ('A1', 'A2')
-         AND sa.document_type LIKE 'official_%' AND sa.visibility = 'public' AND sa.lifecycle_status = 'current'
+         AND sa.visibility = 'public' AND sa.lifecycle_status = 'current'
        ORDER BY FIELD(pc.claim_type, 'product_identity', 'positioning', 'capability', 'feature'),
          FIELD(pc.authority_level, 'A1', 'A2'), pc.confidence DESC`,
       [...approvedClaimIds, product.id]
     );
-    const titleClaim = claimRows.find((claim) => typeof claim.normalized_claim === "string" && claim.normalized_claim.trim().length <= 500);
+    const titleClaim = claimRows.find((claim) => {
+      const text = typeof claim.normalized_claim === "string" ? claim.normalized_claim.trim() : "";
+      return text.length >= 12 && text.length <= 120 && /ADP/i.test(text) && /知识|智能体/.test(text);
+    }) || claimRows.find((claim) => typeof claim.normalized_claim === "string" && claim.normalized_claim.trim().length >= 12 && claim.normalized_claim.trim().length <= 120);
     if (!titleClaim) fail("title_claim_missing", "Manifest 中没有适合作为标题的已批准官网 Claim。", "人工批准一条 500 字以内的产品身份或能力 Claim 后重建 Manifest。");
     const manifestScope = String(snapshot.matrix_scope_version || "").trim();
     if (!manifestScope) fail("matrix_scope_missing", "approved Manifest 缺少 matrixScopeVersion。", "按目标矩阵范围重新生成 Manifest。");
@@ -146,7 +149,7 @@ try {
     }
     const matrixVersionId = numericScope === undefined ? manifestScope : `single-matrix-${suffix}`;
     const matrixVersionNumber = numericScope || 1;
-    const matrixItemId = `single-pharaoh-${suffix}`;
+    const matrixItemId = `single-article-${suffix}`;
     const productionProfileSuffix = stableSuffix(product.id, "wechat", "explicit_product_intro", "v1.0.0");
     const promptGroupId = `single-prompt-${productionProfileSuffix}`;
     const promptGroupVersionId = `single-prompt-v1-${productionProfileSuffix}`;
@@ -166,9 +169,9 @@ try {
     };
     await connection.query(
       `INSERT INTO prompt_group (id, product_id, name, channel, platform_content_type, status, active_version_id, created_by)
-       VALUES (?, ?, 'Pharaoh Command 微信正式产品介绍', 'wechat', 'explicit_product_intro', 'approved', ?, ?)
+       VALUES (?, ?, ?, 'wechat', 'explicit_product_intro', 'approved', ?, ?)
        ON DUPLICATE KEY UPDATE id = id`,
-      [promptGroupId, product.id, promptGroupVersionId, actorId]
+      [promptGroupId, product.id, `${product.display_name} 微信正式产品介绍`, promptGroupVersionId, actorId]
     );
     await connection.query(
       `INSERT INTO prompt_group_version
@@ -218,7 +221,7 @@ try {
         strategy_package_version_id, matrix_version_id, approved_at, approved_by, version)
        VALUES (?, ?, 'approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
        ON DUPLICATE KEY UPDATE id = id`,
-      [monthlyPlanId, month, JSON.stringify({ businessGoal: "验证 Pharaoh Command 单篇正式内容生产链路" }),
+      [monthlyPlanId, month, JSON.stringify({ businessGoal: `验证 ${product.display_name} 单篇正式内容生产链路` }),
         JSON.stringify({ [product.id]: 1 }), JSON.stringify({ wechat: 1 }), JSON.stringify({ explicit_product_intro: 1 }),
         JSON.stringify({ articleCount: 1 }), strategyVersionId, matrixVersionId, now, actorId]
     );
@@ -256,7 +259,7 @@ try {
         "正在评估企业 AI 产品与内容生产方案的负责人", primaryDistilledTermId, JSON.stringify([]), JSON.stringify(parseJson(snapshot.knowledge_base_ids, [])),
         rule.id, promptGroupId, promptGroupVersionId, channelRuleVersionId, scope,
         JSON.stringify({ platformContentType: "explicit_product_intro", titleClaimId: titleClaim.id, channelRuleSnapshot }),
-        "基于已批准官网证据解释 Pharaoh Command 的产品定位、已证实能力、适用条件与限制。", now, actorId]
+        `基于已批准证据解释 ${product.display_name} 的产品定位、已证实能力、适用条件与限制。`, now, actorId]
     );
     const [bindingRows] = await connection.query(
       `SELECT i.id, i.monthly_plan_id, i.matrix_version_id, i.product_id, i.channel, i.content_type,

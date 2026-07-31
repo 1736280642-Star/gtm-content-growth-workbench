@@ -82,6 +82,17 @@ function MonthlyBatchGenerationPageContent() {
     messageApi.success(body.message || "正文已保存并进入自动复检。");
   }
 
+  async function generateTask(task: { taskId: string }) {
+    const response = await fetch(`/api/v5/content-tasks/${encodeURIComponent(task.taskId)}/prepare-and-generate`, {
+      method: "POST",
+      headers: { "x-idempotency-key": crypto.randomUUID() }
+    });
+    const body = await response.json() as { ok?: boolean; error?: { message?: string; nextAction?: string } };
+    if (!response.ok || !body.ok) throw new Error([body.error?.message, body.error?.nextAction].filter(Boolean).join(" ") || "正式正文生成失败。");
+    await refresh(workspace?.month);
+    messageApi.success("正式正文已生成并完成规则检查。");
+  }
+
   async function saveSchedule(item: ScheduleDraftItem, value: { date: string; time: string; platformAccount: string }) {
     if (!workspace?.plan) throw new Error("月度计划尚未加载。");
     const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(workspace.month)}/schedule/${encodeURIComponent(item.matrixItemId)}`, {
@@ -132,7 +143,7 @@ function MonthlyBatchGenerationPageContent() {
           {
             key: "content",
             label: `内容 ${tasks.length}`,
-            children: <BatchGenerationMatrixTable items={tasks} initialDraft={initialDraft} onSaveDraft={saveDraft} />
+            children: <BatchGenerationMatrixTable items={tasks} initialDraft={initialDraft} onSaveDraft={saveDraft} onGenerate={generateTask} />
           },
           {
             key: "schedule",

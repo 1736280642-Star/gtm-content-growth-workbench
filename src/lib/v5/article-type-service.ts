@@ -18,6 +18,7 @@ import type {
 } from "./article-type-contracts";
 import { readArticleTypeState, updateArticleTypeState, type ArticleTypeState } from "./article-type-repository";
 import { ARTICLE_TYPE_PROMPT_VERSION, createArticleTypeSemanticProvider, type ArticleTypeSemanticProvider } from "./article-type-semantic-provider";
+import { readV5FoundationSnapshot } from "./foundation-repository";
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -396,11 +397,11 @@ export async function runQuestionTypeMatch(
   const key = requireIdempotencyKey(idempotencyHeader);
   const uniqueQuestionIds = Array.from(new Set(request.questionVersionIds || []));
   if (!uniqueQuestionIds.length || uniqueQuestionIds.length > 30) throw new ArticleTypeServiceError(422, "INVALID_MATCH_QUESTIONS", "请选择 1 到 30 个目标问题。" );
-  const workbench = readWorkbenchState();
+  const foundation = readV5FoundationSnapshot();
   const questions = uniqueQuestionIds.map((questionVersionId) => {
-    const item = workbench.distilledTerms.find((term) => term.id === questionVersionId);
+    const item = foundation.questionVersions.find((version) => version.questionVersionId === questionVersionId);
     if (!item) throw new ArticleTypeServiceError(422, "QUESTION_VERSION_NOT_FOUND", `目标问题 ${questionVersionId} 不存在。` );
-    return { questionVersionId, question: item.term, productId: item.product };
+    return { questionVersionId, question: item.text, productId: item.product };
   });
   const hash = requestHash({ month, request: { ...request, questionVersionIds: uniqueQuestionIds } });
   const storageKey = `match:${month}:${key}`;
@@ -451,7 +452,7 @@ export async function confirmQuestionTypeMatch(month: string, request: QuestionT
   const auditReason = requireAuditReason(request.auditReason);
   const key = requireIdempotencyKey(idempotencyHeader);
   const hash = requestHash({ month, request });
-  const questionById = new Map(readWorkbenchState().distilledTerms.map((item) => [item.id, item.term]));
+  const questionById = new Map(readV5FoundationSnapshot().questionVersions.map((item) => [item.questionVersionId, item.text]));
   return updateArticleTypeState((state) => idempotentMutation({
     state,
     storageKey: `confirm-match:${month}:${key}`,

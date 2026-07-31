@@ -14,6 +14,7 @@ export interface RagChunkingInput {
   normalizedMarkdown: string;
   approvedClaims: V5ProductClaim[];
   blockedClaimIds: string[];
+  blockedClaims?: V5ProductClaim[];
   unresolvedConflictIds?: string[];
   chunkerVersion: string;
 }
@@ -100,24 +101,30 @@ export function buildClaimAwareChunks(input: RagChunkingInput): RagChunkingResul
   const approvedClaims = input.approvedClaims.filter((claim) => !input.blockedClaimIds.includes(claim.claimId));
   const unresolvedConflictIds = new Set(input.unresolvedConflictIds || []);
   const parentBySection = new Map<string, RagKnowledgeChunk>();
+  const sanitizeBlockedText = (content: string) => (input.blockedClaims || []).reduce(
+    (current, claim) => claim.originalQuote ? current.replaceAll(claim.originalQuote, "") : current,
+    content
+  ).trim();
 
   for (const section of parsedSections) {
     const sectionClaims = approvedClaims.filter((claim) => claimSection(claim, parsedSections, markdown) === section);
     if (!sectionClaims.length) continue;
     const key = section.headingPath.join(" / ") || input.source.title || input.revision.titleSnapshot || "正文";
+    const parentContent = sanitizeBlockedText(section.content);
+    if (!parentContent) continue;
     const parent: RagKnowledgeChunk = {
       chunkId: stableChunkId(input.indexSnapshotId, input.revision.sourceRevisionId, "parent", key), indexSnapshotId: input.indexSnapshotId, namespace: input.namespace,
       productId: input.productId, productName: input.productName, knowledgeBaseIds: input.knowledgeBaseIds,
       sourceId: input.source.sourceId, sourceRevisionId: input.revision.sourceRevisionId, claimIds: sectionClaims.map((claim) => claim.claimId),
       sourceLocator: { headingPath: section.headingPath, characterRange: [section.start, section.end] }, semanticType: "source_parent",
-      chunkTitle: key, summary: section.content.slice(0, 240), content: section.content, originalQuote: section.content,
+      chunkTitle: key, summary: parentContent.slice(0, 240), content: parentContent, originalQuote: parentContent,
       canonicalUrl: input.source.canonicalUrl, documentType: input.source.documentType, authorityLevel: input.source.authorityLevel,
       lifecycleStatus: input.source.lifecycleStatus, visibility: input.source.visibility, supportMode: "background_only", claimScope: "public_product",
       capabilityStatus: input.source.lifecycleStatus, conditions: [], limitations: [], scenarioTags: [], capabilityTags: [], audienceTags: [], problemTags: [],
       channelTags: [], distilledTermIds: [], questionCandidateIds: [], conflictGroupIds: sectionClaims.flatMap((claim) => claim.conflictGroupId && unresolvedConflictIds.has(claim.conflictGroupId) ? [claim.conflictGroupId] : []),
       rulePackageVersionId: input.rulePackageVersionId, validFrom: input.source.validFrom, validUntil: input.source.validUntil,
-      contentHash: hash(section.content), semanticHash: hash(section.content.toLowerCase().replace(/\s+/g, " ")),
-      duplicateClusterId: hash(section.content.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ")).slice(0, 32), status: "active", chunkerVersion: input.chunkerVersion
+      contentHash: hash(parentContent), semanticHash: hash(parentContent.toLowerCase().replace(/\s+/g, " ")),
+      duplicateClusterId: hash(parentContent.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ")).slice(0, 32), status: "active", chunkerVersion: input.chunkerVersion
     };
     parentBySection.set(key, parent);
     chunks.push(parent);
@@ -150,10 +157,11 @@ export function buildClaimAwareChunks(input: RagChunkingInput): RagChunkingResul
     };
     const issues = issueCodes(chunk, claim);
     if (!section || !context.includes(claim.originalQuote)) issues.push("quote_not_found_in_revision");
-    if (issues.length) {
+    if (issues.length) qualityIssues.push({ chunkId: chunk.chunkId, codes: Array.from(new Set(issues)) });
+    const blockingIssues = issues.filter((code) => code !== "too_short");
+    if (blockingIssues.length) {
       chunk.status = "review_required";
       reviewRequired.push(chunk);
-      qualityIssues.push({ chunkId: chunk.chunkId, codes: Array.from(new Set(issues)) });
     } else {
       chunks.push(chunk);
     }

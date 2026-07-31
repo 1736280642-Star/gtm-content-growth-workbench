@@ -1,5 +1,5 @@
 import { Tag } from "antd";
-import type { PublishStatus } from "@/lib/v5-ui-mock-data";
+import type { PublishStatus } from "@/lib/v5/monthly-workspace-contracts";
 
 const publishStatusLabels: Record<PublishStatus, string> = {
   scheduled: "已排程",

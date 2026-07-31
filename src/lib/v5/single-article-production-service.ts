@@ -69,7 +69,7 @@ export async function prepareAndGenerateSingleArticle(input: {
   }
   try {
     const matrix = await readRagMatrixItemContextRecord(input.taskId);
-    if (!matrix) throw new SingleArticleProductionError(404, "formal_task_not_found", "正式单篇矩阵项不存在。", "运行 Bootstrap 并确认正式任务已写入 MySQL。");
+    if (!matrix) throw new SingleArticleProductionError(404, "formal_task_not_found", "正式矩阵项不存在。", "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
     const snapshot = await readActiveRagIndexSnapshotRecord({ productId: matrix.productId, namespace: "production_public", language: "zh-CN" });
     if (!snapshot) throw new SingleArticleProductionError(409, "active_snapshot_missing", `${matrix.productName} 没有 active production_public IndexSnapshot。`, "系统将在索引构建与评测通过后自动恢复该任务。");
     const request: RagRetrievalRequest = {

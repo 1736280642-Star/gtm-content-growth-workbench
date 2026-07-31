@@ -1,8 +1,11 @@
 import http from "node:http";
+import { loadProjectEnv } from "../../scripts/load-project-env.mjs";
+
+loadProjectEnv();
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.V5_CAPTURE_RUNNER_PORT || 17321);
-const WORKBENCH_URL = (process.env.V5_WORKBENCH_BASE_URL || "http://127.0.0.1:3047").replace(/\/$/, "");
+const WORKBENCH_URL = (process.env.V5_WORKBENCH_BASE_URL || "http://127.0.0.1:3050").replace(/\/$/, "");
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
 const activeTaskIds = new Set();
 let extensionHeartbeat;

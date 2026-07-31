@@ -2,7 +2,9 @@ import { loadProjectEnv } from "../scripts/load-project-env.mjs";
 
 loadProjectEnv();
 
-const [{ hasV5GovernanceDatabaseConfig }, repository, service] = await Promise.all([
+const generationPolicyVersion = "formal-generation@2";
+
+const [{ hasV5GovernanceDatabaseConfig, getV5GovernancePool }, repository, service] = await Promise.all([
   import("../src/lib/v5/knowledge-governance-repository.ts"),
   import("../src/lib/v5/single-article-production-repository.ts"),
   import("../src/lib/v5/single-article-production-service.ts")
@@ -18,7 +20,7 @@ if (!hasV5GovernanceDatabaseConfig()) {
     try {
       const result = await service.prepareAndGenerateSingleArticle({
         taskId: task.taskId,
-        idempotencyKey: `automatic-generation:${task.taskId}:${task.taskVersion}`,
+        idempotencyKey: `automatic-generation:${task.taskId}:${task.taskVersion}:${generationPolicyVersion}`,
         actor: {
           actorId: "v5-content-production-worker",
           actorRole: "knowledge_production_worker",
@@ -37,3 +39,5 @@ if (!hasV5GovernanceDatabaseConfig()) {
   }
   console.log(JSON.stringify({ status: tasks.length ? "processed" : "idle", processed: results.length, results }));
 }
+
+await getV5GovernancePool().end();

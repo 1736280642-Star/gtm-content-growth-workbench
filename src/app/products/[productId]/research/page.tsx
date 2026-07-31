@@ -34,6 +34,7 @@ import { GeoStructuredData } from "@/components/geo/GeoStructuredData";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
+import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type {
   GeoBlueprintVersion,
@@ -170,6 +171,7 @@ export default function ProductResearchPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [error, setError] = useState<string>();
+  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -212,7 +214,7 @@ export default function ProductResearchPage() {
     if (!data?.workspace || !data.readiness.canCreateRun) return;
     setStarting(true);
     try {
-      const write = createV5WritePayload(data.workspace.project.rowVersion, "启动产品 GEO 前置研究");
+      const write = createV5WritePayload(workspaceSetting.currentRole, data.workspace.project.rowVersion, "启动产品 GEO 前置研究");
       await callJsonApi(`/api/v5/products/${encodeURIComponent(productId)}/research-runs`, {
         method: "POST",
         headers: { "x-idempotency-key": write.idempotencyKey },
@@ -235,7 +237,7 @@ export default function ProductResearchPage() {
     const values = await projectForm.validateFields();
     setCreatingProject(true);
     try {
-      const write = createV5WritePayload(0, "为已登记产品创建 GEO 前置调研项目");
+      const write = createV5WritePayload(workspaceSetting.currentRole, 0, "为已登记产品创建 GEO 前置调研项目");
       await callJsonApi(`/api/v5/products/${encodeURIComponent(productId)}/research-project`, {
         method: "POST",
         headers: { "x-idempotency-key": write.idempotencyKey },
@@ -276,7 +278,7 @@ export default function ProductResearchPage() {
     const values = await editForm.validateFields();
     setSavingBoundary(true);
     try {
-      const write = createV5WritePayload(project.rowVersion, "更新 GEO 研究边界");
+      const write = createV5WritePayload(workspaceSetting.currentRole, project.rowVersion, "更新 GEO 研究边界");
       await callJsonApi(`/api/v5/products/${encodeURIComponent(productId)}/research-project`, {
         method: "PATCH",
         headers: { "x-idempotency-key": write.idempotencyKey },
@@ -305,7 +307,7 @@ export default function ProductResearchPage() {
     if (!blueprint) return;
     setApproving(true);
     try {
-      const write = createV5WritePayload(blueprint.rowVersion, "人工确认 GEO 蓝图并允许进入月度策略");
+      const write = createV5WritePayload(workspaceSetting.currentRole, blueprint.rowVersion, "人工确认 GEO 蓝图并允许进入月度策略");
       await callJsonApi(
         `/api/v5/products/${encodeURIComponent(productId)}/blueprints/${encodeURIComponent(blueprint.blueprintVersionId)}/approve`,
         {
@@ -329,7 +331,7 @@ export default function ProductResearchPage() {
     const values = await reviewForm.validateFields();
     setRequestingChanges(true);
     try {
-      const write = createV5WritePayload(blueprint.rowVersion, "退回 GEO 蓝图并记录修改要求");
+      const write = createV5WritePayload(workspaceSetting.currentRole, blueprint.rowVersion, "退回 GEO 蓝图并记录修改要求");
       await callJsonApi(
         `/api/v5/products/${encodeURIComponent(productId)}/blueprints/${encodeURIComponent(blueprint.blueprintVersionId)}/request-changes`,
         {

@@ -1,7 +1,9 @@
 import type { RagInfrastructureStatus } from "./contracts";
 
 const mysqlConfig = ["MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"] as const;
-const openSearchConfig = ["OPENSEARCH_URL", "OPENSEARCH_USERNAME", "OPENSEARCH_PASSWORD"] as const;
+const openSearchUrlConfig = ["OPENSEARCH_URL"] as const;
+
+export type OpenSearchAuthMode = "auto" | "none" | "basic";
 
 const embeddingProviders = {
   qwen_embedding: { apiKey: "DASHSCOPE_API_KEY", model: "QWEN_EMBEDDING_MODEL" },
@@ -12,9 +14,40 @@ function missing(names: readonly string[]) {
   return names.filter((name) => !process.env[name]?.trim());
 }
 
+export function getOpenSearchAuthMode(): OpenSearchAuthMode {
+  const configured = process.env.OPENSEARCH_AUTH_MODE?.trim().toLowerCase();
+  if (configured === "none" || configured === "basic") return configured;
+  return "auto";
+}
+
+export function getOpenSearchMissingConfig() {
+  const missingConfig = missing(openSearchUrlConfig);
+  const configuredMode = process.env.OPENSEARCH_AUTH_MODE?.trim().toLowerCase();
+  if (configuredMode && !["auto", "none", "basic"].includes(configuredMode)) {
+    missingConfig.push("OPENSEARCH_AUTH_MODE");
+  }
+  const authMode = getOpenSearchAuthMode();
+  const username = process.env.OPENSEARCH_USERNAME?.trim();
+  const password = process.env.OPENSEARCH_PASSWORD?.trim();
+  if (authMode === "basic" || (authMode === "auto" && Boolean(username || password))) {
+    if (!username) missingConfig.push("OPENSEARCH_USERNAME");
+    if (!password) missingConfig.push("OPENSEARCH_PASSWORD");
+  }
+  return missingConfig;
+}
+
+export function getOpenSearchAuthorizationHeader() {
+  const authMode = getOpenSearchAuthMode();
+  const username = process.env.OPENSEARCH_USERNAME?.trim();
+  const password = process.env.OPENSEARCH_PASSWORD?.trim();
+  if (authMode === "none" || (authMode === "auto" && !username && !password)) return undefined;
+  if (!username || !password) return undefined;
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
+
 export function getRagInfrastructureStatus(): RagInfrastructureStatus {
   const mysqlMissing = missing(mysqlConfig);
-  const openSearchMissing = missing(openSearchConfig);
+  const openSearchMissing = getOpenSearchMissingConfig();
   const provider = process.env.RAG_EMBEDDING_PROVIDER?.trim() as keyof typeof embeddingProviders | undefined;
   const providerConfig = provider ? embeddingProviders[provider] : undefined;
   const embeddingMissing = providerConfig

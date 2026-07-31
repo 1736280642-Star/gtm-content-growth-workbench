@@ -20,7 +20,6 @@ const expressionRepository = await import("../src/lib/v5/free-content-expression
 const expressionService = await import("../src/lib/v5/free-content-expression-type-service.ts");
 const productionService = await import("../src/lib/v5/free-production-service.ts");
 const productionRepository = await import("../src/lib/v5/free-production-repository.ts");
-const productionPresentation = await import("../src/lib/v5/free-production-presentation.ts");
 const jotoWechatLayout = await import("../src/lib/v5/joto-wechat-layout-renderer.ts");
 const wechatValidator = await import("../src/lib/v5/wechat-layout-validator.ts");
 
@@ -78,16 +77,14 @@ test("workspace type inherits a system structure without binding a product", asy
   );
 });
 
-test("free production UI uses typed inputs and keeps source, cover, and publish controls visible", async () => {
-  const [pageSource, inputSource, sourcePanelSource, resultSource, presetListSource, settingsDrawerSource, taskTableSource, reviewRouteSource] = await Promise.all([
+test("free production UI uses typed inputs and a compact source snapshot rail", async () => {
+  const [pageSource, inputSource, sourcePanelSource, resultSource, presetListSource, settingsDrawerSource] = await Promise.all([
     readFile(new URL("../src/app/free-production/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/ProductionInputPanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/CitationSourcePanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/GenerationResultWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/ExpressionPresetList.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/components/free-production/ExpressionSettingsDrawer.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/components/free-production/FreeProductionTaskTable.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/app/api/v5/free-production/batches/[id]/review-sources/route.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/components/free-production/ExpressionSettingsDrawer.tsx", import.meta.url), "utf8")
   ]);
   assert.match(pageSource, /新建类型/);
   assert.match(pageSource, /ProductionInputPanel/);
@@ -97,16 +94,7 @@ test("free production UI uses typed inputs and keeps source, cover, and publish 
   assert.match(sourcePanelSource, /source\.excerpt/);
   assert.match(sourcePanelSource, /sourceMeta\[source\.sourceType\]/);
   assert.match(resultSource, /CitationSourcePanel/);
-  assert.match(resultSource, /RiskAndGapPanel/);
-  assert.match(resultSource, /ConfirmAutoPublishButton/);
-  assert.doesNotMatch(resultSource, /setStep/);
   assert.doesNotMatch(resultSource, /ContentQualitySummary/);
-  assert.match(sourcePanelSource, /确认来源已核对/);
-  assert.match(pageSource, /requiresRegeneration/);
-  assert.match(pageSource, /封面素材已保存/);
-  assert.doesNotMatch(taskTableSource, /待补充/);
-  assert.match(taskTableSource, /freeProductionStatusPresentation/);
-  assert.match(reviewRouteSource, /reviewFreeProductionSources/);
   assert.match(presetListSource, /查看设置/);
   assert.match(settingsDrawerSource, /用途/);
   assert.match(settingsDrawerSource, /生产规则/);
@@ -126,72 +114,6 @@ test("knowledge, human facts, and meeting text become traceable source snapshots
   assert.match(sources[3].excerpt, /核心场景/);
 });
 
-test("claim citations bind verbatim article facts to existing source ids", () => {
-  const sources = [{ id: "source-knowledge-1", sourceType: "knowledge", excerpt: "产品已完成阶段验收。" }];
-  const validSections = [{ sectionKey: "result", heading: "阶段结果", markdown: "产品已完成阶段验收。", citations: [{ claimText: "产品已完成阶段验收", sourceIds: ["source-knowledge-1"] }] }];
-  assert.equal(validator.validateFreeProductionCitations(validSections, sources).passed, true);
-  const missingSource = [{ ...validSections[0], citations: [{ claimText: "产品已完成阶段验收", sourceIds: ["source-missing"] }] }];
-  const invalid = validator.validateFreeProductionCitations(missingSource, sources);
-  assert.equal(invalid.passed, false);
-  assert.match(invalid.issues.join("；"), /不存在的来源 ID/);
-  const incompleteCoverage = [{ ...validSections[0], markdown: "产品已完成阶段验收。新增结果未经来源确认。", citations: validSections[0].citations }];
-  assert.match(validator.validateFreeProductionCitations(incompleteCoverage, sources).issues.join("；"), /逐句来源映射/);
-});
-
-test("task status exposes the actual next action and ignores obsolete legacy risks", () => {
-  const artifact = {
-    id: "artifact-status",
-    sourceExcerpts: [{ id: "source-status", sourceType: "knowledge", excerpt: "可追溯片段" }],
-    sections: [{ sectionKey: "result", heading: "结果", markdown: "完成阶段验收。", citations: [{ claimText: "完成阶段验收", sourceIds: ["source-status"] }] }]
-  };
-  const batch = {
-    status: "needs_input",
-    currentDraftArtifactId: artifact.id,
-    draftArtifacts: [artifact],
-    sourceReview: undefined,
-    channelConfig: { requiredPublishAssetKeys: ["wechat_cover"] },
-    risks: [
-      { id: "legacy-launch", key: "launch_status", status: "needs_input", reason: "旧上线状态" },
-      { id: "legacy-cta", key: "cta_url", status: "needs_input", reason: "旧 CTA" },
-      { id: "cover", key: "wechat_cover", status: "blocked", reason: "缺少封面" }
-    ]
-  };
-  assert.equal(productionPresentation.freeProductionStatusPresentation(batch).label, "待核对来源");
-  batch.sourceReview = { artifactId: artifact.id, reviewedBy: "tester", reviewedAt: new Date().toISOString() };
-  assert.equal(productionPresentation.freeProductionStatusPresentation(batch).label, "待补封面");
-  batch.risks[2] = { ...batch.risks[2], status: "ready", assetRef: "cover-asset" };
-  assert.equal(productionPresentation.freeProductionStatusPresentation(batch).label, "待确认发布");
-  assert.deepEqual(productionPresentation.blockingFreeProductionRisks(batch), []);
-});
-
-test("source review is persisted and invalidated by a new artifact", async () => {
-  const source = { id: "source-review", sourceType: "human_fact", excerpt: "事件已于现场完成。" };
-  const artifact = {
-    id: "artifact-review",
-    articleBody: "# 标题\n\n事件已于现场完成。",
-    sourceExcerpts: [source],
-    sections: [{ sectionKey: "event", heading: "事件", markdown: "事件已于现场完成。", citations: [{ claimText: "事件已于现场完成", sourceIds: [source.id] }] }]
-  };
-  const batch = {
-    id: "batch-review",
-    version: 1,
-    status: "needs_input",
-    currentDraftArtifactId: artifact.id,
-    draftArtifacts: [artifact],
-    sourceExcerpts: [source],
-    sourceReview: undefined,
-    channelConfig: { requiredPublishAssetKeys: ["wechat_cover"] },
-    risks: [{ id: "cover-review", key: "wechat_cover", status: "blocked", reason: "缺少封面" }]
-  };
-  await productionRepository.updateFreeProductionState((state) => { state.batches[batch.id] = batch; });
-  const reviewed = await productionService.reviewFreeProductionSources(batch.id, { expectedVersion: 1, auditReason: "验收来源核对持久化", artifactId: artifact.id }, "review-source-idempotency");
-  assert.equal(reviewed.sourceReview.artifactId, artifact.id);
-  assert.equal(reviewed.status, "blocked");
-  reviewed.currentDraftArtifactId = "artifact-new";
-  reviewed.draftArtifacts.push({ ...artifact, id: "artifact-new" });
-  assert.equal(productionPresentation.hasCurrentSourceReview(reviewed), false);
-});
-
 test("replaying a production request returns the existing batch without generating again", async () => {
   const expressionState = await expressionRepository.readFreeContentExpressionTypeState();
   const expression = Object.values(expressionState.versions).find((item) => item.presetKey === "product_release" && item.systemManaged);
@@ -199,8 +121,6 @@ test("replaying a production request returns the existing batch without generati
   const request = { expectedVersion: 0, auditReason: "验收生产任务幂等回放", expressionTypeVersionId: expression.freeContentExpressionTypeVersionId };
   const key = "test-production-idempotency";
   const batch = { id: "free-batch-idempotency", status: "published", version: 4 };
-  const before = await productionRepository.readFreeProductionState();
-  const expectedBatchCount = Object.keys(before.batches).length + (before.batches[batch.id] ? 0 : 1);
   await productionRepository.updateFreeProductionState((state) => {
     state.batches[batch.id] = batch;
     state.idempotency[key] = { requestHash: createHash("sha256").update(JSON.stringify(request)).digest("hex"), response: batch, createdAt: new Date().toISOString() };
@@ -209,7 +129,7 @@ test("replaying a production request returns the existing batch without generati
   assert.equal(replay.id, batch.id);
   assert.equal(replay.status, "published");
   const state = await productionRepository.readFreeProductionState();
-  assert.equal(Object.keys(state.batches).length, expectedBatchCount);
+  assert.equal(Object.keys(state.batches).length, 1);
 });
 
 test("expression plan preserves the preset structure and exposes only missing business facts", async () => {
@@ -250,11 +170,7 @@ test("local regeneration changes only affected sections", () => {
 
 test("publish payload removes preview annotations and digest remains stable", () => {
   const articleBody = "# 标题\n\n正文\n\n> 配图建议：工作流对比\n\n[[INTERNAL:check]]\n\n<!-- visual-suggestion: cover -->";
-  const artifact = {
-    articleBody,
-    sourceExcerpts: [{ id: "source-publish", sourceType: "knowledge", excerpt: "正文事实来源" }],
-    sections: [{ sectionKey: "body", heading: "正文", markdown: "正文事实", citations: [{ claimText: "正文事实", sourceIds: ["source-publish"] }] }]
-  };
+  const artifact = { articleBody };
   const result = validator.assertPublishPayloadSanitized(artifact);
   assert.equal(result.passed, true);
   assert.equal(result.markdown.includes("配图建议"), false);

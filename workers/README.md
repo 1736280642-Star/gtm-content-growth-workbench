@@ -32,6 +32,7 @@ npm.cmd run worker:import-channel-metrics -- --base-url http://127.0.0.1:3000 --
 npm.cmd run worker:run-pipeline -- --base-url http://127.0.0.1:3000 --log-file-path data/demo-ai-bot-log.csv
 npm.cmd run worker:run-pipeline -- --base-url http://127.0.0.1:3000 --skip-blog --log-file-path data/demo-ai-bot-log.csv --channel-metrics-path imports/channel-metrics-smoke.csv
 npm.cmd run worker:schedule-pipeline -- --base-url http://127.0.0.1:3000 --interval-seconds 3600 --repeat --max-runs 24
+npm.cmd run worker:direct-publish -- --base-url http://127.0.0.1:3000 --interval-seconds 30
 ```
 
 脚本职责：
@@ -39,7 +40,8 @@ npm.cmd run worker:schedule-pipeline -- --base-url http://127.0.0.1:3000 --inter
 1. `sync-blog.mjs`: 调用 `/api/blog-articles/sync`，支持 `sourceUrl`、`sourcePath`、`csv`、`json`、`text`。
 2. `import-demo-log.mjs`: 调用 `/api/log-imports`，支持 `sourceType`、`filePath`、`sourcePath`、`csv`、`raw-log`。
 3. `import-channel-metrics.mjs`: 调用 `/api/channel-metrics/import`，支持 `filePath`、`sourcePath`、`csv`。
-4. `run-pipeline.mjs`: 串联博客同步、日志导入、渠道数据导入和周报读取，支持 `skip-*` 参数跳过外部依赖步骤。
+4. `run-pipeline.mjs`: 串联博客同步、日志导入、渠道数据导入和月度复盘读取，支持 `skip-*` 参数跳过外部依赖步骤。
 5. `schedule-pipeline.mjs`: 按固定间隔重复调用 `/api/pipeline/run`，默认只执行一次；传 `--repeat` 才会循环。
+6. `direct-publish-worker.mjs`: 常驻扫描到期 `PublishSchedule`，先验证 `pending_verify`，再领取 `scheduledAt` 已到期的任务。默认每 30 秒运行一次；使用 `--once` 可执行单轮检查。页面无需人工点击，失败只记录明确状态，不会把编辑器草稿误报为已发布。
 
 当外部模型配置缺失时，pipeline 会返回 `partial`，并把对应步骤标记为 `pending_config`；这表示配置依赖尚未满足，不代表日志或渠道导入失败。

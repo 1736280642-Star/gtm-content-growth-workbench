@@ -1,14 +1,15 @@
 "use client";
 
-import { Alert, Button, Card, Checkbox, Form, InputNumber, Radio, Select, Space, Table, Tag, message } from "antd";
+import { Alert, Button, Card, Checkbox, Form, Radio, Select, Space, Table, Tag, message } from "antd";
 import Link from "next/link";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { channelLabels, productLabels } from "@/lib/labels";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
+import { getVisibleRoutesForRole, workspaceRoleLabels, workspaceRouteLabels } from "@/lib/permissions";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { useEffect, useMemo, useState } from "react";
-import type { ChannelKey, ProductKey, ProductPlanConfig } from "@/lib/types";
+import type { ChannelKey, ProductKey, ProductPlanConfig, WorkspaceRole } from "@/lib/types";
 
 const finalReviewModeLabels = {
   default_final: "默认终稿",
@@ -22,7 +23,7 @@ const logModeLabels = {
   cdn_log: "CDN 日志"
 } as const;
 
-type SettingsRuleNextStep = "select_channels" | "select_products" | "reduce_volume" | "confirm_review" | "configure_real_log" | "configure_geo" | "ready";
+type SettingsRuleNextStep = "select_channels" | "select_products" | "confirm_review" | "configure_real_log" | "configure_geo" | "ready";
 
 interface SettingsRuleCheck {
   key: string;
@@ -36,7 +37,6 @@ interface SettingsRuleCheck {
 const settingsRuleNextStepLabels: Record<SettingsRuleNextStep, string> = {
   select_channels: "选择渠道",
   select_products: "选择产品",
-  reduce_volume: "降低产能",
   confirm_review: "确认终稿",
   configure_real_log: "配置日志",
   configure_geo: "配置 GEO",
@@ -46,23 +46,17 @@ const settingsRuleNextStepLabels: Record<SettingsRuleNextStep, string> = {
 const settingsRuleNextStepColors: Record<SettingsRuleNextStep, string> = {
   select_channels: "red",
   select_products: "red",
-  reduce_volume: "gold",
   confirm_review: "gold",
   configure_real_log: "blue",
   configure_geo: "gold",
   ready: "green"
 };
 
-function getDefaultProductWeeklyQuota(product: ProductKey) {
-  return product === "joto_brand" ? 5 : 10;
-}
-
 function createDefaultProductPlans(products: ProductKey[], channels: ChannelKey[]): ProductPlanConfig[] {
   const fallbackChannels: ChannelKey[] = channels.length ? channels : ["wechat"];
 
   return products.map((product) => ({
     product,
-    weeklyQuota: getDefaultProductWeeklyQuota(product),
     channels: fallbackChannels,
     enabled: true
   }));
@@ -83,14 +77,12 @@ function normalizeUiProductPlans(
     const existing = source?.find((item) => item.product === product);
     const fallback = defaults.find((item) => item.product === product) || {
       product,
-      weeklyQuota: getDefaultProductWeeklyQuota(product),
       channels,
       enabled: true
     };
 
     return {
       product,
-      weeklyQuota: existing?.weeklyQuota ?? fallback.weeklyQuota,
       channels: existing?.channels?.length ? existing.channels : fallback.channels,
       knowledgeBaseIds: normalizeKnowledgeBaseIds(existing?.knowledgeBaseIds, existing?.knowledgeBaseId),
       knowledgeBaseId: normalizeKnowledgeBaseIds(existing?.knowledgeBaseIds, existing?.knowledgeBaseId)[0],
@@ -101,15 +93,12 @@ function normalizeUiProductPlans(
 }
 
 function createSettingsRuleChecks(input: {
-  weeklyDays: number;
-  dailyCount: number;
   channels: Array<keyof typeof channelLabels>;
   products: Array<keyof typeof productLabels>;
+  currentRole: WorkspaceRole;
   finalReviewMode: keyof typeof finalReviewModeLabels;
   logMode: keyof typeof logModeLabels;
 }): SettingsRuleCheck[] {
-  const weeklyCapacity = input.weeklyDays * input.dailyCount;
-
   return [
     input.channels.length
       ? {
@@ -117,14 +106,14 @@ function createSettingsRuleChecks(input: {
           item: "渠道范围",
           status: `已选择 ${input.channels.length} 个渠道`,
           detail: input.channels.map((item) => channelLabels[item]).join("、"),
-          action: "可以进入周计划生成。",
+          action: "可以进入月度内容矩阵。",
           nextStep: "ready"
         }
       : {
           key: "channels",
           item: "渠道范围",
           status: "未选择渠道",
-          detail: "周计划无法稳定分配发布渠道。",
+          detail: "月度内容矩阵无法稳定分配发布渠道。",
           action: "先选择至少一个首批渠道。",
           nextStep: "select_channels"
         },
@@ -144,23 +133,6 @@ function createSettingsRuleChecks(input: {
           detail: "内容任务缺少产品方向，后续生成会失去判断边界。",
           action: "先选择至少一个产品方向。",
           nextStep: "select_products"
-        },
-    weeklyCapacity > 20
-      ? {
-          key: "capacity",
-          item: "周产能",
-          status: `每周 ${weeklyCapacity} 篇`,
-          detail: "超过 20 篇会放大生成、审核和发布回填压力。",
-          action: "建议先降低每周天数或每日篇数，完成一周试跑后再扩容。",
-          nextStep: "reduce_volume"
-        }
-      : {
-          key: "capacity",
-          item: "周产能",
-          status: `每周 ${weeklyCapacity} 篇`,
-          detail: "当前产能适合本地试跑和人工复核。",
-          action: "可以继续使用当前节奏。",
-          nextStep: "ready"
         },
     input.finalReviewMode === "default_final"
       ? {
@@ -205,7 +177,7 @@ function getSettingsRuleEntry(nextStep: SettingsRuleNextStep) {
   }
 
   if (nextStep === "ready") {
-    return { type: "link" as const, href: "/weekly-plan", label: "去周计划" };
+    return { type: "link" as const, href: "/monthly-matrix", label: "去月度内容矩阵" };
   }
 
   return { type: "save" as const, label: "保存设置" };
@@ -222,23 +194,20 @@ export default function SettingsPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [saving, setSaving] = useState(false);
   const [productPlans, setProductPlans] = useState<ProductPlanConfig[]>([]);
-  const previewWeeklyDays = Form.useWatch("defaultWeeklyDays", form) ?? workspaceSetting.defaultWeeklyDays;
-  const previewDailyCount = Form.useWatch("defaultDailyCount", form) ?? workspaceSetting.defaultDailyCount;
   const previewChannels = (Form.useWatch("enabledChannels", form) ?? workspaceSetting.enabledChannels) as Array<keyof typeof channelLabels>;
   const previewProducts = (Form.useWatch("enabledProducts", form) ?? workspaceSetting.enabledProducts) as Array<keyof typeof productLabels>;
+  const previewCurrentRole = (Form.useWatch("currentRole", form) ?? workspaceSetting.currentRole) as WorkspaceRole;
   const previewFinalReviewMode = (Form.useWatch("finalReviewMode", form) ?? workspaceSetting.finalReviewMode) as keyof typeof finalReviewModeLabels;
   const previewLogMode = (Form.useWatch("logMode", form) ?? workspaceSetting.logMode) as keyof typeof logModeLabels;
   const settingsRuleChecks = createSettingsRuleChecks({
-    weeklyDays: Number(previewWeeklyDays) || 0,
-    dailyCount: Number(previewDailyCount) || 0,
     channels: previewChannels,
     products: previewProducts,
+    currentRole: previewCurrentRole,
     finalReviewMode: previewFinalReviewMode,
     logMode: previewLogMode
   });
   const blockingRuleChecks = settingsRuleChecks.filter((item) => item.nextStep !== "ready");
   const firstBlockingRule = blockingRuleChecks[0];
-  const productPlanTotal = productPlans.filter((item) => item.enabled).reduce((sum, item) => sum + item.weeklyQuota, 0);
   const knowledgeBaseOptions = useMemo(
     () => knowledgeBases.filter((item) => item.status === "enabled").map((item) => ({ value: item.id, label: item.name })),
     [knowledgeBases]
@@ -324,7 +293,7 @@ export default function SettingsPage() {
       {contextHolder}
       <PageHeader
         title="工作台设置"
-        subtitle="管理默认发布规则、终稿规则和日志模式。"
+        subtitle="管理月度内容生产的默认范围、终稿规则和日志模式。"
         actions={
           <Space>
             <Button onClick={handleResetForm}>恢复当前保存配置</Button>
@@ -343,8 +312,7 @@ export default function SettingsPage() {
         description={
           <Space direction="vertical" size={8}>
             <Space wrap>
-              <Tag color="blue">每周 {previewWeeklyDays} 天</Tag>
-              <Tag color="blue">每天 {previewDailyCount} 篇</Tag>
+              <Tag color="geekblue">{workspaceRoleLabels[previewCurrentRole]}</Tag>
               <Tag color={previewFinalReviewMode === "manual_review" ? "gold" : "green"}>{finalReviewModeLabels[previewFinalReviewMode]}</Tag>
               <Tag color={previewLogMode === "demo_csv" ? "default" : "processing"}>{logModeLabels[previewLogMode]}</Tag>
             </Space>
@@ -368,7 +336,7 @@ export default function SettingsPage() {
         showIcon
         style={{ marginBottom: 16 }}
         message={blockingRuleChecks.length ? `规则检查发现 ${blockingRuleChecks.length} 个待处理项` : "当前规则可进入主流程"}
-        description={firstBlockingRule ? `${firstBlockingRule.item}：${firstBlockingRule.action}` : "渠道、产品、产能、终稿和日志都已具备可执行入口。"}
+        description={firstBlockingRule ? `${firstBlockingRule.item}：${firstBlockingRule.action}` : "渠道、产品、终稿和日志都已具备可执行入口。"}
       />
       <Card title="规则检查" style={{ marginBottom: 16 }}>
         <Table
@@ -400,19 +368,43 @@ export default function SettingsPage() {
       </Card>
       <Form form={form} layout="vertical">
         <div className="two-column">
-          <Card title="发布节奏与范围">
-            <Form.Item label="默认每周发布天数" name="defaultWeeklyDays">
-              <InputNumber min={1} max={7} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item label="默认每日篇数" name="defaultDailyCount">
-              <InputNumber min={1} max={10} style={{ width: "100%" }} />
-            </Form.Item>
+          <Card title="默认发布范围">
             <Form.Item label="默认渠道" name="enabledChannels">
               <Checkbox.Group options={Object.entries(channelLabels).map(([value, label]) => ({ value, label }))} />
             </Form.Item>
             <Form.Item label="默认产品" name="enabledProducts">
               <Checkbox.Group options={Object.entries(productLabels).map(([value, label]) => ({ value, label }))} />
             </Form.Item>
+          </Card>
+          <Card title="角色与可见范围">
+            <Form.Item label="当前使用角色" name="currentRole">
+              <Radio.Group
+                options={Object.entries(workspaceRoleLabels).map(([value, label]) => ({
+                  value,
+                  label
+                }))}
+              />
+            </Form.Item>
+            <Alert
+              showIcon
+              type="info"
+              message="角色用于控制工作台可见入口"
+              description="不同角色看到不同页面和操作；切换角色后，可见范围会立即更新。"
+              style={{ marginBottom: 16 }}
+            />
+            <Table
+              rowKey="route"
+              size="small"
+              pagination={false}
+              dataSource={getVisibleRoutesForRole(previewCurrentRole).map((route) => ({
+                route,
+                page: workspaceRouteLabels[route] || route
+              }))}
+              columns={[
+                { title: "可见页面", dataIndex: "page" },
+                { title: "路径", dataIndex: "route", render: (value) => <Tag>{value}</Tag> }
+              ]}
+            />
           </Card>
         </div>
         <div className="two-column" style={{ marginTop: 16 }}>
@@ -436,32 +428,19 @@ export default function SettingsPage() {
               />
             </Form.Item>
           </Card>
-          <Card
-            title="默认产品/品牌计划"
-            extra={<Tag color={productPlanTotal ? "purple" : "default"}>{`默认周配额 ${productPlanTotal} 篇`}</Tag>}
-          >
+          <Card title="默认产品/品牌映射">
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
               {productPlans.map((plan) => (
                 <div className="settings-product-plan-card" key={plan.product}>
                   <div className="settings-product-plan-header">
                     <Space size={8} wrap>
                       <Tag color={plan.enabled ? "purple" : "default"}>{productLabels[plan.product]}</Tag>
-                      <Tag>{`${plan.weeklyQuota} 篇/周`}</Tag>
                     </Space>
                     <Checkbox checked={plan.enabled} onChange={(event) => updateProductPlan(plan.product, { enabled: event.target.checked })}>
                       启用
                     </Checkbox>
                   </div>
                   <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                    <InputNumber
-                      min={0}
-                      max={50}
-                      value={plan.weeklyQuota}
-                      addonAfter="篇/周"
-                      disabled={!plan.enabled}
-                      onChange={(value) => updateProductPlan(plan.product, { weeklyQuota: Number(value || 0) })}
-                      style={{ width: "100%" }}
-                    />
                     <Select
                       mode="multiple"
                       value={plan.channels}
@@ -494,7 +473,7 @@ export default function SettingsPage() {
                 showIcon
                 type="info"
                 message="这里保存长期默认值"
-                description="周计划页可以基于默认值做本周微调；本周临时配额不会反向污染长期默认配置。"
+                description="月度内容矩阵可以基于默认值做当月调整；当月临时配额不会反向污染长期默认配置。"
               />
             </Space>
           </Card>

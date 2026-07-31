@@ -841,6 +841,15 @@ export async function readV5ReadinessContext(productId: string) {
   );
   const version = versionRows[0];
   if (!version) return { productId };
+  const knowledgeBaseIds = parseV5Json<string[]>(version.linked_knowledge_base_ids, []);
+  let knowledgeBaseRows: RowDataPacket[] = [];
+  if (knowledgeBaseIds.length) {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT id, name, status FROM knowledge_base WHERE id IN (${knowledgeBaseIds.map(() => "?").join(",")})`,
+      knowledgeBaseIds
+    );
+    knowledgeBaseRows = rows;
+  }
   const [snapshotRows] = await pool.query<RowDataPacket[]>(
     "SELECT id, snapshot_hash FROM source_snapshot WHERE product_id = ? AND snapshot_hash = ? LIMIT 1",
     [productId, String(version.source_snapshot_hash)]
@@ -856,10 +865,17 @@ export async function readV5ReadinessContext(productId: string) {
   return {
     productId,
     rulePackageVersionId: String(version.id),
+    rulePackageVersion: String(version.version),
     rulePackageStatus: String(version.status),
     sourceSnapshotId: snapshotRows[0] ? String(snapshotRows[0].id) : undefined,
     sourceSnapshotHash: snapshotRows[0] ? String(snapshotRows[0].snapshot_hash) : undefined,
     monthlyMatrixScope: parseV5Json<Record<string, unknown>>(version.monthly_matrix_scope, {}),
+    knowledgeBaseIds,
+    knowledgeBases: knowledgeBaseRows.map((row) => ({
+      knowledgeBaseId: String(row.id),
+      name: String(row.name),
+      status: String(row.status)
+    })),
     evidenceGapIds: parseV5Json<string[]>(version.evidence_gap_ids, []),
     gaps: gapRows.map((row) => ({
       id: String(row.id),

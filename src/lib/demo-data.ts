@@ -4,40 +4,12 @@ import type {
   BotVisitSummary,
   ContentTask,
   KnowledgeBase,
-  PublishRecord,
-  WeeklyPlan
+  PublishRecord
 } from "./types";
-
-export const weeklyPlan: WeeklyPlan = {
-  id: "wp-2026-06-16",
-  weekStart: "2026-06-16",
-  weekEnd: "2026-06-22",
-  targetTotalCount: 15,
-  status: "running",
-  productPlans: [
-    {
-      product: "joto_brand",
-      weeklyQuota: 5,
-      channels: ["wechat"],
-      knowledgeBaseId: "kb-001",
-      productExpressionRulePackageId: "kb-001",
-      enabled: true
-    },
-    {
-      product: "weike_guardrails",
-      weeklyQuota: 10,
-      channels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
-      knowledgeBaseId: "kb-002",
-      productExpressionRulePackageId: "kb-002",
-      enabled: true
-    }
-  ]
-};
 
 export const tasks: ContentTask[] = [
   {
     id: "task-001",
-    weeklyPlanId: weeklyPlan.id,
     publishDate: "2026-06-17",
     channel: "wechat",
     product: "joto_brand",
@@ -52,7 +24,6 @@ export const tasks: ContentTask[] = [
   },
   {
     id: "task-002",
-    weeklyPlanId: weeklyPlan.id,
     publishDate: "2026-06-17",
     channel: "csdn",
     product: "weike_guardrails",
@@ -67,7 +38,6 @@ export const tasks: ContentTask[] = [
   },
   {
     id: "task-003",
-    weeklyPlanId: weeklyPlan.id,
     publishDate: "2026-06-17",
     channel: "juejin",
     product: "weike_guardrails",
@@ -82,7 +52,6 @@ export const tasks: ContentTask[] = [
   },
   {
     id: "task-004",
-    weeklyPlanId: weeklyPlan.id,
     publishDate: "2026-06-18",
     channel: "zhihu_toutiao_general",
     product: "weike_guardrails",

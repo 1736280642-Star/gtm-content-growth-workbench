@@ -27,12 +27,6 @@ import { freeProductionChannelLabels } from "./free-production-contracts";
 import { buildWechatLayout, contentDigest, createInitialRisks, getCalendarMonthBounds, mergeRegeneratedSections, sanitizePublishMarkdown, summarizeRisks } from "./free-production-compiler";
 import { compileExpressionPlan } from "./free-production-expression-plan";
 import { assertPublishPayloadSanitized, validateFreeProductionOutput } from "./free-production-output-validator";
-import {
-  blockingFreeProductionRisks,
-  freeProductionGateStatus,
-  hasCurrentSourceReview,
-  visibleFreeProductionRisks
-} from "./free-production-presentation";
 import { getActiveFreeContentExpressionTypeVersion, listFreeContentExpressionTypes, markFreeExpressionUsed } from "./free-content-expression-type-service";
 import { readFreeExpressionBrandBaseline } from "./free-content-expression-type-repository";
 import { readFreeProductionState, updateFreeProductionState, type FreeProductionState } from "./free-production-repository";
@@ -204,42 +198,21 @@ function parseProviderJson(content: string) {
   const sections = Array.isArray(value.sections) ? value.sections.flatMap((item): DraftSection[] => {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
-    const citations = Array.isArray(record.citations) ? record.citations.flatMap((citation) => {
-      if (!citation || typeof citation !== "object") return [];
-      const citationRecord = citation as Record<string, unknown>;
-      const claimText = typeof citationRecord.claimText === "string" ? citationRecord.claimText.trim() : "";
-      const sourceIds = Array.isArray(citationRecord.sourceIds)
-        ? citationRecord.sourceIds.filter((sourceId): sourceId is string => typeof sourceId === "string").map((sourceId) => sourceId.trim()).filter(Boolean)
-        : [];
-      return claimText ? [{ claimText, sourceIds }] : [];
-    }) : [];
-    return typeof record.sectionKey === "string" && typeof record.heading === "string" && typeof record.markdown === "string"
-      ? [{ sectionKey: record.sectionKey.trim(), heading: record.heading.trim(), markdown: record.markdown.trim(), citations }]
-      : [];
+    return typeof record.sectionKey === "string" && typeof record.heading === "string" && typeof record.markdown === "string" ? [{ sectionKey: record.sectionKey.trim(), heading: record.heading.trim(), markdown: record.markdown.trim() }] : [];
   }) : [];
   return { titleCandidates, summary, sections };
 }
 
 function generationPrompt(input: { batch: FreeProductionBatch; expression: FreeContentExpressionTypeVersion; knowledge: Array<Record<string, unknown>>; brandBaseline: Record<string, unknown>; affectedSectionKeys?: string[]; currentArtifact?: ContentDraftArtifact }) {
-  const firstSourceId = input.batch.sourceExcerpts[0]?.id || "source-id";
-  const schema = {
-    titleCandidates: ["标题1", "标题2", "标题3"],
-    summary: "80字以内摘要",
-    sections: input.expression.structureModules.map((sectionKey) => ({
-      sectionKey,
-      heading: "中文章节标题",
-      markdown: "该章节正文，所有事实必须来自 sourceExcerpts。",
-      citations: [{ claimText: "正文中逐字出现的完整句子", sourceIds: [firstSourceId] }]
-    }))
-  };
+  const schema = { titleCandidates: ["标题1", "标题2", "标题3"], summary: "80字以内摘要", sections: input.expression.structureModules.map((sectionKey) => ({ sectionKey, heading: "中文章节标题", markdown: "该章节正文" })) };
   return {
-    systemPrompt: "你是 JOTO 企业公众号内容生产助手。只能使用提供的知识、补充事实和规则，不得猜测客户名称、数据、上线状态、合作范围、能力边界、CTA 或合规结论。缺失事实直接省略，不写待补充标记。每个章节必须输出 citations；markdown 中每个完整句子都必须有一条 citation，claimText 必须逐字等于该句正文，sourceIds 只能引用 sourceExcerpts 提供的 id。严格输出单个 JSON 对象，不输出 Markdown 代码围栏或解释。",
+    systemPrompt: "你是 JOTO 企业公众号内容生产助手。只能使用提供的知识、补充事实和规则，不得猜测客户名称、数据、上线状态、合作范围、能力边界、CTA 或合规结论。缺失事实直接省略，不写待补充标记。严格输出单个 JSON 对象，不输出 Markdown 代码围栏或解释。",
     userPrompt: JSON.stringify({
       task: input.affectedSectionKeys?.length ? "只重写 affectedSectionKeys 对应章节；其余章节原样返回，最终仍输出完整 sections。" : "生成一篇单篇渠道正文。",
       subjectName: input.batch.productName || "JOTO",
       expression: { presetKey: input.expression.presetKey, contentGoal: input.expression.contentGoal, audience: input.expression.defaultAudience, audienceLens: input.expression.audienceLensPolicy, titleStrategy: input.expression.defaultTitleStrategyKey, structureModules: input.expression.structureModules, length: input.expression.recommendedLength, expressionConfig: input.expression.expressionConfig, promotionConfig: input.expression.promotionConfig, requirements: input.expression.additionalWritingRequirements },
       knowledge: input.knowledge,
-      sourceExcerpts: input.batch.sourceExcerpts.map(({ id, sourceType, excerpt }) => ({ id, sourceType, excerpt })),
+      sourceExcerpts: input.batch.sourceExcerpts.map(({ sourceType, excerpt }) => ({ sourceType, excerpt })),
       expressionFocus: input.batch.expressionFocus,
       supplementalFacts: input.batch.inputSnapshots.at(-1)?.supplementalFacts || {},
       brandBaseline: input.brandBaseline,
@@ -264,14 +237,14 @@ async function generateArtifact(input: { batch: FreeProductionBatch; expression:
     parsed.titleCandidates = parsed.titleCandidates.length === 3 ? parsed.titleCandidates : input.currentArtifact.titleCandidates;
     parsed.summary = parsed.summary || input.currentArtifact.summary;
   }
-  let validation = validateFreeProductionOutput({ expression: input.expression, productName: input.batch.productName || "JOTO", sources: input.batch.sourceExcerpts, ...parsed });
+  let validation = validateFreeProductionOutput({ expression: input.expression, productName: input.batch.productName || "JOTO", ...parsed });
   let repairCount: 0 | 1 = 0;
   if (validation.repairableIssues.length && !validation.blockingIssues.length) {
     response = await callAiProvider({ provider, systemPrompt: prompt.systemPrompt, userPrompt: `${prompt.userPrompt}\n\n上次输出未通过确定性检查：${validation.repairableIssues.join("；")}。只修复这些结构与表达问题，仍输出完整 JSON。`, temperature: 0.15 });
     repairCount = 1;
     if (response.ok && response.content) {
       try { parsed = parseProviderJson(response.content); } catch { /* Preserve the last parse for actionable failure reporting. */ }
-      validation = validateFreeProductionOutput({ expression: input.expression, productName: input.batch.productName || "JOTO", sources: input.batch.sourceExcerpts, ...parsed });
+      validation = validateFreeProductionOutput({ expression: input.expression, productName: input.batch.productName || "JOTO", ...parsed });
     }
   }
   const selectedTitle = parsed.titleCandidates[0] || `${input.batch.productName || "JOTO"}：一段真实工作流的变化`;
@@ -382,7 +355,7 @@ async function runGeneration(batchId: string, options?: { affectedSectionKeys?: 
       visualSuggestions: plan.visualMaterialPlan,
       wechatPresentation,
       sourceExcerpts: target.sourceExcerpts,
-      factCheck: { supportedClaims: generated.parsed.sections.flatMap((section) => (section.citations || []).map((citation) => citation.claimText)), needsConfirmation: target.risks.filter((risk) => risk.status === "needs_approval").map((risk) => risk.title), rejectedClaims: generated.validation.blockingIssues },
+      factCheck: { supportedClaims: target.sourceExcerpts.map((item) => item.excerpt), needsConfirmation: target.risks.filter((risk) => risk.status === "needs_approval").map((risk) => risk.title), rejectedClaims: generated.validation.blockingIssues },
       editorCheck: { deterministicResults: generated.validation.repairableIssues, advisoryResults: generated.validation.advisoryIssues },
       riskAndGapSnapshot: target.risks,
       contentDigest: wechatPresentation?.htmlHash || contentDigest(generated.body),
@@ -392,8 +365,7 @@ async function runGeneration(batchId: string, options?: { affectedSectionKeys?: 
     const artifact = artifactPartial satisfies ContentDraftArtifact;
     target.draftArtifacts.push(artifact);
     target.currentDraftArtifactId = artifact.id;
-    target.sourceReview = undefined;
-    target.status = freeProductionGateStatus(target);
+    target.status = target.risks.some((risk) => ["needs_input", "needs_approval"].includes(risk.status)) ? "needs_input" : target.risks.some((risk) => risk.status === "blocked") ? "blocked" : "ready_for_confirmation";
     target.repairCount = generated.repairCount;
     target.failureCode = undefined; target.failureMessage = undefined; target.nextAction = undefined;
     target.version += 1; target.updatedAt = now;
@@ -508,10 +480,7 @@ export async function supplementFreeProductionBatch(batchId: string, input: { ex
   return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input, supplements: input.supplements.map((item) => ({ riskId: item.riskId, value: typeof item.value === "string" ? item.value : { fileName: item.value.fileName, mimeType: item.value.mimeType, digest: hash(item.value.dataBase64) } })) }, () => {
     const batch = state.batches[batchId]; version(batch, input.expectedVersion); const now = new Date().toISOString();
     for (const item of resolved) { const risk = batch.risks.find((candidate) => candidate.id === item.riskId)!; risk.status = "ready"; risk.value = item.value || risk.value; risk.assetRef = item.assetRef; risk.resolvedAt = now; if (item.assetRef) batch.supplementalMaterialRefs.push(item.assetRef); }
-    const affectedSectionKeys = resolved.flatMap((item) => batch.risks.find((risk) => risk.id === item.riskId)?.affectedSectionKeys || []);
-    batch.riskAndGapSummary = summarizeRisks(visibleFreeProductionRisks(batch));
-    batch.status = affectedSectionKeys.length ? "checking" : freeProductionGateStatus(batch);
-    batch.version += 1; batch.updatedAt = now;
+    batch.riskAndGapSummary = summarizeRisks(batch.risks); batch.status = "checking"; batch.version += 1; batch.updatedAt = now;
     state.audits.push({ auditId: randomUUID(), action: "free_production_supplements_saved", objectId: batchId, actor: actorId, auditReason: context.auditReason, createdAt: now, summary: { riskIds: resolved.map((item) => item.riskId) } }); return batch;
   }));
 }
@@ -524,31 +493,6 @@ export async function recheckFreeProductionBatch(batchId: string, input: { expec
   const affected = Array.from(new Set(batch.risks.filter((risk) => risk.status === "ready" && previousSnapshot.find((item) => item.id === risk.id)?.status !== "ready").flatMap((risk) => risk.affectedSectionKeys)));
   if (!affected.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_NO_AFFECTED_SECTIONS", "没有需要局部重生成的已补充内容。", "填写风险项后再提交重新检查。");
   return runGeneration(batchId, { affectedSectionKeys: affected, auditReason: context.auditReason, actorId });
-}
-
-export async function reviewFreeProductionSources(batchId: string, input: { expectedVersion: number; auditReason: string; artifactId: string }, header: string | null) {
-  const actorId = actor();
-  const context = mutationContext(input, header);
-  return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input }, () => {
-    const batch = state.batches[batchId];
-    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回任务列表并刷新。");
-    version(batch, input.expectedVersion);
-    const artifact = batch.draftArtifacts.find((item) => item.id === batch.currentDraftArtifactId && item.id === input.artifactId);
-    if (!artifact) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_ARTIFACT_CHANGED", "正文已经更新，本次来源核对不再有效。", "刷新后重新核对最新正文与来源。");
-    const citationCheck = assertPublishPayloadSanitized(artifact);
-    if (!artifact.sourceExcerpts.length || citationCheck.blocked.some((item) => item.includes("来源") || item.includes("引用"))) {
-      throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SOURCE_TRACEABILITY_INVALID", "正文缺少完整的来源映射。", "重新选择资料生成正文后再核对来源。", citationCheck.blocked);
-    }
-    const now = new Date().toISOString();
-    batch.sourceReview = { artifactId: artifact.id, reviewedBy: actorId, reviewedAt: now };
-    batch.status = freeProductionGateStatus(batch);
-    batch.version += 1;
-    batch.updatedAt = now;
-    const task = state.tasks[`free-task-${batchId}`];
-    if (task) { task.status = batch.status; task.updatedAt = now; }
-    state.audits.push({ auditId: randomUUID(), action: "free_production_sources_reviewed", objectId: batchId, actor: actorId, auditReason: context.auditReason, createdAt: now, summary: { artifactId: artifact.id, sourceCount: artifact.sourceExcerpts.length } });
-    return batch;
-  }));
 }
 
 function publishPlatform(channel: FreeProductionChannel): DirectPublishPlatformKey | undefined { if (channel === "zhihu") return "zhihu"; if (channel === "wechat_official_account") return "wechat"; return undefined; }
@@ -566,11 +510,9 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
   version(batch, input.expectedVersion);
   const artifact = batch.draftArtifacts.find((item) => item.id === batch.currentDraftArtifactId);
   if (!artifact || artifact.contentDigest !== input.contentDigest) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_CONTENT_DIGEST_MISMATCH", "正文已更新，当前确认不再有效。", "刷新并查看最新正文后重新确认自动发布。");
-  if (!hasCurrentSourceReview(batch, artifact)) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SOURCE_REVIEW_REQUIRED", "引用来源尚未完成核对。", "核对当前正文的来源片段并确认后再发布。");
-  const blockers = blockingFreeProductionRisks(batch);
+  const blockers = batch.risks.filter((risk) => ["needs_input", "needs_approval", "blocked"].includes(risk.status));
   if (blockers.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_PUBLISH_BLOCKED", "风险与缺失项尚未清零。", "在当前页补齐全部阻断项并重新检查。", blockers.map((risk) => `${risk.title}：${risk.reason}`));
-  const visibleRisks = visibleFreeProductionRisks(batch);
-  const requiredAssets = batch.channelConfig.requiredPublishAssetKeys.filter((key) => !visibleRisks.some((risk) => risk.key === key && risk.status === "ready" && risk.assetRef));
+  const requiredAssets = batch.channelConfig.requiredPublishAssetKeys.filter((key) => !batch.risks.some((risk) => risk.key === key && risk.status === "ready" && risk.assetRef));
   if (requiredAssets.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_REQUIRED_ASSET_MISSING", "必需发布素材缺失。", "在当前页上传或选择公众号封面后重新检查。", requiredAssets);
   const readiness = channelReadiness().find((item) => item.channel === batch.channelConfig.channel);
   if (!readiness?.connected) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_CHANNEL_NOT_READY", "表达绑定的发布账号尚未连接。", "在当前页完成连接或选择其他表达。", [readiness?.blockingReason || "连接不可用"]);

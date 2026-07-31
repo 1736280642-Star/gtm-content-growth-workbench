@@ -9,6 +9,8 @@ interface BridgePublishResponse {
   publishStatus?: PublishResult["publishStatus"];
   platformArticleId?: string;
   externalTaskId?: string;
+  externalDraftId?: string;
+  editorUrl?: string;
   publicUrl?: string;
   pendingCsvReturn?: boolean;
   failureCode?: PublishFailureCode;
@@ -149,6 +151,8 @@ export async function submitFormalPublish(platform: DirectPublishPlatformKey, pa
       publishStatus: result.publishStatus,
       platformArticleId: result.platformArticleId,
       externalTaskId: result.externalTaskId,
+      externalDraftId: result.externalDraftId,
+      editorUrl: result.editorUrl,
       publicUrl: result.publicUrl,
       idempotencyKey: payload.idempotencyKey,
       pendingCsvReturn: result.pendingCsvReturn,
@@ -200,6 +204,7 @@ export async function verifyFormalPublish(platform: DirectPublishPlatformKey, re
     return {
       ok: response.ok && payload.ok !== false,
       status,
+      publishStatus: payload.publishStatus,
       verifyStatus: status === "published_verified" || status === "published_pending_url" ? "verified" : status === "pending_verify" ? "pending" : "failed",
       platformArticleId: payload.platformArticleId || result.platformArticleId,
       externalTaskId: payload.externalTaskId || result.externalTaskId,
@@ -211,14 +216,14 @@ export async function verifyFormalPublish(platform: DirectPublishPlatformKey, re
     };
   } catch (error) {
     return {
-      ok: true,
+      ok: false,
       status: "pending_verify",
       verifyStatus: "pending",
       platformArticleId: result.platformArticleId,
       externalTaskId: result.externalTaskId,
       publicUrl: result.publicUrl,
       pendingCsvReturn: true,
-      failureCode: "verification_failed",
+      failureCode: platform === "wechat" ? "verification_failed" : "publish_action_unconfirmed",
       failureReason: error instanceof Error ? error.message : "正式发布验证调用失败。",
       nextAction: "不要重复发布；恢复本机 bridge 后只执行验证。"
     };

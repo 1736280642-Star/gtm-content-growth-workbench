@@ -1,9 +1,4 @@
-import type {
-  ContentDraftArtifact,
-  DraftSection,
-  FreeContentExpressionTypeVersion,
-  FreeProductionSourceExcerpt
-} from "./free-production-contracts";
+import type { ContentDraftArtifact, DraftSection, FreeContentExpressionTypeVersion } from "./free-production-contracts";
 import { sanitizePublishMarkdown } from "./free-production-compiler";
 
 const forbiddenClaims = ["行业第一", "革命性", "颠覆性", "完全替代人", "100%", "绝对安全"];
@@ -15,43 +10,7 @@ export interface FreeProductionValidationResult {
   advisoryIssues: string[];
 }
 
-function normalizedClaim(value: string) {
-  return value.replace(/\s+/g, "").replace(/[“”"'`]/g, "");
-}
-
-export function validateFreeProductionCitations(sections: DraftSection[], sources: FreeProductionSourceExcerpt[]) {
-  const issues: string[] = [];
-  const safeSources = Array.isArray(sources) ? sources : [];
-  const safeSections = Array.isArray(sections) ? sections : [];
-  const sourceIds = new Set(safeSources.map((source) => source.id));
-  if (!safeSources.length) issues.push("正文没有可追溯的来源片段。");
-  if (!safeSections.length) issues.push("正文没有可核对的章节。");
-  for (const section of safeSections) {
-    if (!Array.isArray(section.citations) || !section.citations.length) {
-      issues.push(`章节 ${section.sectionKey} 没有事实声明与来源映射。`);
-      continue;
-    }
-    const sectionText = normalizedClaim(`${section.heading}${section.markdown}`);
-    const citedClaims = new Set<string>();
-    for (const citation of section.citations) {
-      const claimText = normalizedClaim(citation.claimText || "");
-      if (!claimText || !sectionText.includes(claimText)) issues.push(`章节 ${section.sectionKey} 的引用声明不在正文中。`);
-      if (claimText) citedClaims.add(claimText);
-      if (!citation.sourceIds?.length) issues.push(`章节 ${section.sectionKey} 的引用声明没有来源 ID。`);
-      const unknownIds = (citation.sourceIds || []).filter((sourceId) => !sourceIds.has(sourceId));
-      if (unknownIds.length) issues.push(`章节 ${section.sectionKey} 引用了不存在的来源 ID：${unknownIds.join("、")}。`);
-    }
-    const sentences = section.markdown
-      .split(/[。！？!?；;\n]+/)
-      .map((sentence) => normalizedClaim(sentence.replace(/^[-*#>\d.)、\s]+/, "")))
-      .filter((sentence) => sentence.length >= 4);
-    const uncovered = sentences.filter((sentence) => !citedClaims.has(sentence));
-    if (uncovered.length) issues.push(`章节 ${section.sectionKey} 有 ${uncovered.length} 个句子没有逐句来源映射。`);
-  }
-  return { passed: issues.length === 0, issues };
-}
-
-export function validateFreeProductionOutput(input: { expression: FreeContentExpressionTypeVersion; productName: string; titleCandidates: string[]; summary: string; sections: DraftSection[]; sources?: FreeProductionSourceExcerpt[] }) : FreeProductionValidationResult {
+export function validateFreeProductionOutput(input: { expression: FreeContentExpressionTypeVersion; productName: string; titleCandidates: string[]; summary: string; sections: DraftSection[] }) : FreeProductionValidationResult {
   const repairableIssues: string[] = [];
   const blockingIssues: string[] = [];
   const advisoryIssues: string[] = [];
@@ -63,7 +22,6 @@ export function validateFreeProductionOutput(input: { expression: FreeContentExp
   const article = input.sections.map((section) => `${section.heading}\n${section.markdown}`).join("\n\n");
   const forbidden = forbiddenClaims.filter((claim) => article.includes(claim) || input.titleCandidates.some((title) => title.includes(claim)));
   if (forbidden.length) blockingIssues.push(`命中无证据高风险结论：${forbidden.join("、")}`);
-  if (input.sources) blockingIssues.push(...validateFreeProductionCitations(input.sections, input.sources).issues);
   if (input.expression.qualityGateConfig.requireHumanAiBoundary && !input.expression.structureModules.includes("human_ai_boundary") && !/人工|最终决策|专业判断/.test(article)) repairableIssues.push("正文缺少人机边界说明。");
   const minimumRatio = input.expression.qualityGateConfig.productMentionMinimumRatio;
   if (minimumRatio) {
@@ -78,6 +36,5 @@ export function validateFreeProductionOutput(input: { expression: FreeContentExp
 export function assertPublishPayloadSanitized(artifact: ContentDraftArtifact) {
   const sanitized = sanitizePublishMarkdown(artifact.articleBody);
   const blocked = ["配图建议", "素材建议", "内部核验", "待补充", "[[VISUAL:", "[[MISSING:", "[[INTERNAL:"].filter((value) => sanitized.includes(value));
-  const citationValidation = validateFreeProductionCitations(artifact.sections, artifact.sourceExcerpts);
-  return { passed: blocked.length === 0 && citationValidation.passed, blocked: [...blocked, ...citationValidation.issues], markdown: sanitized };
+  return { passed: blocked.length === 0, blocked, markdown: sanitized };
 }

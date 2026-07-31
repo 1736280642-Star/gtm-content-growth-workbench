@@ -70,6 +70,7 @@ function verifyLocalResult(result: PublishResult): VerifyResult {
   return {
     ok: true,
     status: result.status,
+    publishStatus: result.publishStatus,
     verifyStatus: result.status === "pending_verify" ? "pending" : "verified",
     platformArticleId: result.platformArticleId,
     externalTaskId: result.externalTaskId,
@@ -129,6 +130,15 @@ class JuejinDirectPublishAdapter extends BaseDirectPublishAdapter {
 
 class CsdnDirectPublishAdapter extends BaseDirectPublishAdapter {
   platform = "csdn" as const;
+
+  async validatePayload(payload: PlatformPublishPayload): Promise<ValidationResult> {
+    const base = await super.validatePayload(payload);
+    if (!base.ok) return base;
+    if (getMode() === "real" && !payload.tagIds?.length) {
+      return { ok: false, message: "CSDN 正式发布缺少标签。", nextAction: "请补齐 CSDN_TAGS 后重新创建排程。", failureCode: "payload_invalid" };
+    }
+    return base;
+  }
 }
 
 class ZhihuDirectPublishAdapter extends BaseDirectPublishAdapter {

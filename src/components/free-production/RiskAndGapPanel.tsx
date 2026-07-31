@@ -21,7 +21,6 @@ export function RiskAndGapPanel({ risks, saving, onSubmit }: { risks: RiskAndGap
     const value = values[risk.id];
     return typeof value === "string" ? Boolean(value.trim()) : Boolean(value?.dataBase64);
   });
-  const submitLabel = actionable.every((risk) => risk.affectedSectionKeys.length === 0) ? "保存发布素材" : "提交并重新检查";
   return (
     <div className="risk-gap-panel">
       <div className="risk-gap-heading"><div><span className="v5-kicker">发布门禁</span><h2>风险与缺失项</h2></div><strong>{actionable.length}</strong></div>
@@ -34,7 +33,7 @@ export function RiskAndGapPanel({ risks, saving, onSubmit }: { risks: RiskAndGap
           </section>
         ))}
       </div>
-      {actionable.length ? <Button block type="primary" loading={saving} disabled={!readyToSubmit} onClick={() => onSubmit(actionable.flatMap((risk) => values[risk.id] ? [{ riskId: risk.id, value: values[risk.id] }] : []))}>{submitLabel}</Button> : null}
+      {actionable.length ? <Button block type="primary" loading={saving} disabled={!readyToSubmit} onClick={() => onSubmit(actionable.flatMap((risk) => values[risk.id] ? [{ riskId: risk.id, value: values[risk.id] }] : []))}>提交并重新检查</Button> : null}
     </div>
   );
 }

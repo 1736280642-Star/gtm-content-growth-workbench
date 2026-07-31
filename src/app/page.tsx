@@ -65,6 +65,17 @@ export default function DashboardPage() {
       entryLabel: "进入月度矩阵"
     },
     {
+      key: "free-content-production",
+      title: "自由内容生产",
+      count: 0,
+      primary: true,
+      status: "按需创建",
+      statusColor: "purple",
+      description: "在当前已批准月度计划内，按需创建一篇正式正文，不自动排程或发布。",
+      href: "/free-production",
+      entryLabel: "创建单篇正文"
+    },
+    {
       key: "batch-generation",
       title: "批量生成与人工排程",
       count: batchAttentionCount,

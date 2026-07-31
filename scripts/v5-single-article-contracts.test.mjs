@@ -7,6 +7,7 @@ const files = Object.fromEntries(await Promise.all([
   "src/lib/v5/single-article-production-service.ts",
   "src/lib/v5/formal-generation-service.ts",
   "src/lib/v5/single-article-production-repository.ts",
+  "workers/content-production-worker.mjs",
   "src/app/api/v5/content-tasks/[taskId]/prepare-and-generate/route.ts",
   "src/app/api/v5/drafts/[id]/route.ts",
   "src/app/globals.css",
@@ -50,6 +51,15 @@ test("formal generation explicitly extracts rules and enforces eight traceable f
   assert.match(generation, /sentenceMatchesEvidence/);
   assert.match(generation, /removeUnsupportedFormalPassages/);
   assert.match(files["src/lib/v5/single-article-production-repository.ts"], /copy_allowed, test_only/);
+});
+
+test("formal generation has a hard-rule-validated evidence-only fallback", () => {
+  const service = files["src/lib/v5/formal-generation-service.ts"];
+  assert.match(service, /buildDeterministicEvidenceFallback/);
+  assert.match(service, /selected\.length < 8/);
+  assert.match(service, /providerModel: `\$\{lastModel \|\| provider\}-evidence-fallback`/);
+  assert.match(service, /fallbackValidation\.passed/);
+  assert.match(files["workers/content-production-worker.mjs"], /formal-generation@2/);
 });
 
 test("formal API, task-row drawer and V4 generation route coexist", () => {

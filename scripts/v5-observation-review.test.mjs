@@ -70,6 +70,8 @@ test("V5 observation, review and site audit contracts", async (t) => {
     assert.match(adapter, /stopControlDisappeared/);
     assert.match(localRunner, /origin\.startsWith\("chrome-extension:\/\/"\)/);
     assert.match(localRunner, /127\.0\.0\.1/);
+    assert.match(localRunner, /loadProjectEnv\(\)/);
+    assert.match(localRunner, /V5_WORKBENCH_BASE_URL/);
     assert.equal(localRunner.includes("(cookie|password|token|"), false);
   });
 

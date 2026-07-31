@@ -1,12 +1,15 @@
 {
   "schemaVersion": 1,
-  "version": 1,
+  "version": 16,
   "questions": [
     {
       "questionId": "question-adp-provider",
       "currentVersionId": "question-version-adp-provider-v1",
       "status": "available",
-      "keywordIds": ["keyword-adp-provider", "keyword-adp-delivery"],
+      "keywordIds": [
+        "keyword-adp-provider",
+        "keyword-adp-delivery"
+      ],
       "evidenceGap": false,
       "knowledgeReadiness": {
         "subjectKnowledgeBaseId": "kb-adp-service",
@@ -15,7 +18,11 @@
         "hasProductExpressionRulePackage": true,
         "hasFactSourceMapping": true
       },
-      "conflictAssessment": {"hasConflict": false, "categories": [], "conflictingQuestionIds": []},
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
       "rowVersion": 1,
       "createdAt": "2026-07-22T01:00:00.000Z",
       "updatedAt": "2026-07-22T01:00:00.000Z"
@@ -24,21 +31,27 @@
       "questionId": "question-workbuddy-scenes",
       "currentVersionId": "question-version-workbuddy-scenes-v1",
       "status": "observing",
-      "keywordIds": ["keyword-enterprise-search"],
+      "keywordIds": [
+        "keyword-enterprise-search"
+      ],
       "evidenceGap": true,
       "knowledgeReadiness": {
         "hasProductExpressionRulePackage": false,
         "hasFactSourceMapping": false
       },
-      "conflictAssessment": {"hasConflict": false, "categories": [], "conflictingQuestionIds": []},
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
       "rowVersion": 1,
       "createdAt": "2026-07-22T01:00:00.000Z",
       "updatedAt": "2026-07-22T01:00:00.000Z"
     },
     {
       "questionId": "question-adp-ownership",
-      "currentVersionId": "question-version-adp-ownership-v1",
-      "status": "decision_required",
+      "currentVersionId": "question-version-d6e6540b-913f-425c-8f49-2d1dff945b79",
+      "status": "available",
       "keywordIds": [],
       "evidenceGap": false,
       "knowledgeReadiness": {
@@ -48,10 +61,146 @@
         "hasProductExpressionRulePackage": true,
         "hasFactSourceMapping": true
       },
-      "conflictAssessment": {"hasConflict": true, "categories": ["business"], "conflictingQuestionIds": ["question-adp-provider"]},
-      "rowVersion": 1,
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
+      "rowVersion": 3,
       "createdAt": "2026-07-22T01:00:00.000Z",
-      "updatedAt": "2026-07-22T01:00:00.000Z"
+      "updatedAt": "2026-07-30T09:07:51.431Z"
+    },
+    {
+      "questionId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+      "currentVersionId": "question-version-44f40fae-f9e9-4cd1-9258-1b908efd7606",
+      "status": "observing",
+      "keywordIds": [],
+      "evidenceGap": false,
+      "knowledgeReadiness": {
+        "hasProductExpressionRulePackage": false,
+        "hasFactSourceMapping": false
+      },
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
+      "rowVersion": 2,
+      "createdAt": "2026-07-27T05:41:08.009Z",
+      "updatedAt": "2026-07-30T09:08:38.740Z"
+    },
+    {
+      "questionId": "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+      "currentVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+      "status": "observing",
+      "keywordIds": [
+        "keyword-7b5e568e-331c-42f5-ac52-831fd19d0795",
+        "keyword-950779f2-6795-4f19-bf4e-5538d92b268d",
+        "keyword-22fa36b1-0d9c-4427-b6fd-4e0c6a241cce"
+      ],
+      "evidenceGap": false,
+      "knowledgeReadiness": {
+        "hasProductExpressionRulePackage": false,
+        "hasFactSourceMapping": false
+      },
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
+      "rowVersion": 1,
+      "createdAt": "2026-07-30T09:09:19.904Z",
+      "updatedAt": "2026-07-30T09:09:19.904Z"
+    },
+    {
+      "questionId": "question-3e43a948-45e9-45e7-924e-c896906c569a",
+      "currentVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+      "status": "observing",
+      "keywordIds": [
+        "keyword-7b5e568e-331c-42f5-ac52-831fd19d0795",
+        "keyword-22fa36b1-0d9c-4427-b6fd-4e0c6a241cce"
+      ],
+      "evidenceGap": false,
+      "knowledgeReadiness": {
+        "hasProductExpressionRulePackage": false,
+        "hasFactSourceMapping": false
+      },
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
+      "rowVersion": 1,
+      "createdAt": "2026-07-30T09:09:55.627Z",
+      "updatedAt": "2026-07-30T09:09:55.627Z"
+    },
+    {
+      "questionId": "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+      "currentVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+      "status": "observing",
+      "keywordIds": [
+        "keyword-7b5e568e-331c-42f5-ac52-831fd19d0795",
+        "keyword-950779f2-6795-4f19-bf4e-5538d92b268d",
+        "keyword-22fa36b1-0d9c-4427-b6fd-4e0c6a241cce"
+      ],
+      "evidenceGap": false,
+      "knowledgeReadiness": {
+        "hasProductExpressionRulePackage": false,
+        "hasFactSourceMapping": false
+      },
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
+      "rowVersion": 1,
+      "createdAt": "2026-07-30T09:12:47.701Z",
+      "updatedAt": "2026-07-30T09:12:47.701Z"
+    },
+    {
+      "questionId": "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5",
+      "currentVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+      "status": "observing",
+      "keywordIds": [
+        "keyword-7b5e568e-331c-42f5-ac52-831fd19d0795",
+        "keyword-22fa36b1-0d9c-4427-b6fd-4e0c6a241cce"
+      ],
+      "evidenceGap": false,
+      "knowledgeReadiness": {
+        "hasProductExpressionRulePackage": false,
+        "hasFactSourceMapping": false
+      },
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
+      "rowVersion": 1,
+      "createdAt": "2026-07-30T09:13:13.034Z",
+      "updatedAt": "2026-07-30T09:13:13.034Z"
+    },
+    {
+      "questionId": "question-ba49271d-bccf-4037-9a4b-4da1a8074370",
+      "currentVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+      "status": "observing",
+      "keywordIds": [
+        "keyword-7b5e568e-331c-42f5-ac52-831fd19d0795",
+        "keyword-950779f2-6795-4f19-bf4e-5538d92b268d",
+        "keyword-22fa36b1-0d9c-4427-b6fd-4e0c6a241cce"
+      ],
+      "evidenceGap": false,
+      "knowledgeReadiness": {
+        "hasProductExpressionRulePackage": false,
+        "hasFactSourceMapping": false
+      },
+      "conflictAssessment": {
+        "hasConflict": false,
+        "categories": [],
+        "conflictingQuestionIds": []
+      },
+      "rowVersion": 1,
+      "createdAt": "2026-07-30T09:27:19.186Z",
+      "updatedAt": "2026-07-30T09:27:19.186Z"
     }
   ],
   "questionVersions": [
@@ -62,12 +211,31 @@
       "text": "企业应该如何选择腾讯云 ADP 服务商？",
       "normalizedText": "企业应该如何选择腾讯云adp服务商",
       "product": "腾讯云 ADP",
-      "entities": ["JOTO", "腾讯云"],
+      "entities": [
+        "JOTO",
+        "腾讯云"
+      ],
       "relationship": "JOTO 提供实施与交付服务",
       "audience": "企业 AI 项目负责人",
-      "suggestedArticleTypes": ["选型与比较", "实施指南", "FAQ"],
-      "sourceSummary": {"site_search": 12, "ai_observation": 3, "manual": 1},
-      "trace": {"source": "demo", "sourceIds": ["demo-signal-adp"], "algorithmVersion": "question-normalizer.v1.0.0", "confidence": 0.94, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "suggestedArticleTypes": [
+        "选型与比较",
+        "实施指南",
+        "FAQ"
+      ],
+      "sourceSummary": {
+        "site_search": 12,
+        "ai_observation": 3,
+        "manual": 1
+      },
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "demo-signal-adp"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 0.94,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      },
       "createdAt": "2026-07-22T01:00:00.000Z"
     },
     {
@@ -77,12 +245,28 @@
       "text": "WorkBuddy 适合哪些企业知识管理场景？",
       "normalizedText": "workbuddy适合哪些企业知识管理场景",
       "product": "WorkBuddy",
-      "entities": ["WorkBuddy", "JOTO"],
+      "entities": [
+        "WorkBuddy",
+        "JOTO"
+      ],
       "relationship": "JOTO 提供相关实施服务",
       "audience": "企业知识管理负责人",
-      "suggestedArticleTypes": ["场景解决方案", "服务能力"],
-      "sourceSummary": {"sales_question": 2},
-      "trace": {"source": "demo", "sourceIds": ["demo-signal-workbuddy"], "algorithmVersion": "question-normalizer.v1.0.0", "confidence": 0.61, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "suggestedArticleTypes": [
+        "场景解决方案",
+        "服务能力"
+      ],
+      "sourceSummary": {
+        "sales_question": 2
+      },
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "demo-signal-workbuddy"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 0.61,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      },
       "createdAt": "2026-07-22T01:00:00.000Z"
     },
     {
@@ -92,13 +276,254 @@
       "text": "JOTO ADP 产品包含哪些能力？",
       "normalizedText": "jotoadp产品包含哪些能力",
       "product": "腾讯云 ADP",
-      "entities": ["JOTO", "腾讯云 ADP"],
+      "entities": [
+        "JOTO",
+        "腾讯云 ADP"
+      ],
       "relationship": "产品归属尚不明确",
       "audience": "企业 AI 项目负责人",
-      "suggestedArticleTypes": ["能力说明"],
-      "sourceSummary": {"manual": 1},
-      "trace": {"source": "demo", "sourceIds": ["demo-signal-conflict"], "algorithmVersion": "question-normalizer.v1.0.0", "confidence": 0.86, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "suggestedArticleTypes": [
+        "能力说明"
+      ],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "demo-signal-conflict"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 0.86,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      },
       "createdAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "questionVersionId": "question-version-5a883a21-93c8-4afa-b59d-dddd4a944e7a",
+      "questionId": "question-adp-ownership",
+      "versionNumber": 2,
+      "text": "改为“JOTO 的腾讯云 ADP 实施服务能力”。",
+      "normalizedText": "改为joto的腾讯云adp实施服务能力",
+      "product": "腾讯云 ADP",
+      "entities": [
+        "JOTO",
+        "腾讯云 ADP"
+      ],
+      "relationship": "产品归属尚不明确",
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": [
+        "能力说明"
+      ],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "human_decision",
+        "sourceIds": [
+          "decision-adp-ownership"
+        ],
+        "algorithmVersion": "question-boundary.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-27T05:14:14.770Z"
+      },
+      "createdAt": "2026-07-27T05:14:14.770Z"
+    },
+    {
+      "questionVersionId": "question-version-fb666c3a-cdbe-4686-989e-0074e1731bd9",
+      "questionId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+      "versionNumber": 1,
+      "text": "中小企业如何部署腾讯云ADP",
+      "normalizedText": "中小企业如何部署腾讯云adp",
+      "entities": [],
+      "suggestedArticleTypes": [],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "manual",
+        "sourceIds": [
+          "manual-1785130868006"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-27T05:41:08.009Z"
+      },
+      "createdAt": "2026-07-27T05:41:08.009Z"
+    },
+    {
+      "questionVersionId": "question-version-d6e6540b-913f-425c-8f49-2d1dff945b79",
+      "questionId": "question-adp-ownership",
+      "versionNumber": 3,
+      "text": "JOTO 能为腾讯云 ADP 项目提供哪些实施与交付服务？",
+      "normalizedText": "joto能为腾讯云adp项目提供哪些实施与交付服务",
+      "product": "腾讯云 ADP",
+      "entities": [
+        "JOTO",
+        "腾讯云 ADP"
+      ],
+      "relationship": "产品归属尚不明确",
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": [
+        "能力说明"
+      ],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "human_correction",
+        "sourceIds": [
+          "local-workbench_operator"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:07:51.431Z"
+      },
+      "createdAt": "2026-07-30T09:07:51.431Z"
+    },
+    {
+      "questionVersionId": "question-version-44f40fae-f9e9-4cd1-9258-1b908efd7606",
+      "questionId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+      "versionNumber": 2,
+      "text": "中小企业部署腾讯云 ADP 前需要准备哪些条件？",
+      "normalizedText": "中小企业部署腾讯云adp前需要准备哪些条件",
+      "entities": [],
+      "suggestedArticleTypes": [],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "human_correction",
+        "sourceIds": [
+          "local-workbench_operator"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:08:38.740Z"
+      },
+      "createdAt": "2026-07-30T09:08:38.740Z",
+      "product": "腾讯云 ADP",
+      "audience": "中小企业 AI 项目负责人"
+    },
+    {
+      "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+      "questionId": "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+      "versionNumber": 1,
+      "text": "哪些企业场景适合由 JOTO 提供腾讯云 ADP 实施与交付支持？",
+      "normalizedText": "哪些企业场景适合由joto提供腾讯云adp实施与交付支持",
+      "product": "腾讯云 ADP",
+      "entities": [],
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": [],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "manual",
+        "sourceIds": [
+          "manual-1785402559902"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:09:19.904Z"
+      },
+      "createdAt": "2026-07-30T09:09:19.904Z"
+    },
+    {
+      "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+      "questionId": "question-3e43a948-45e9-45e7-924e-c896906c569a",
+      "versionNumber": 1,
+      "text": "腾讯云 ADP 项目实施与交付中常见问题有哪些？",
+      "normalizedText": "腾讯云adp项目实施与交付中常见问题有哪些",
+      "product": "腾讯云 ADP",
+      "entities": [],
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": [],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "manual",
+        "sourceIds": [
+          "manual-1785402595626"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:09:55.627Z"
+      },
+      "createdAt": "2026-07-30T09:09:55.627Z"
+    },
+    {
+      "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+      "questionId": "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+      "versionNumber": 1,
+      "text": "JOTO 的腾讯云 ADP 实施与交付服务覆盖哪些项目阶段？",
+      "normalizedText": "joto的腾讯云adp实施与交付服务覆盖哪些项目阶段",
+      "product": "腾讯云 ADP",
+      "entities": [],
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": [],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "manual",
+        "sourceIds": [
+          "manual-1785402767700"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:12:47.701Z"
+      },
+      "createdAt": "2026-07-30T09:12:47.701Z"
+    },
+    {
+      "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+      "questionId": "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5",
+      "versionNumber": 1,
+      "text": "中小企业启动腾讯云 ADP 项目前应完成哪些需求与资料准备？",
+      "normalizedText": "中小企业启动腾讯云adp项目前应完成哪些需求与资料准备",
+      "product": "腾讯云 ADP",
+      "entities": [],
+      "audience": "中小企业 AI 项目负责人",
+      "suggestedArticleTypes": [],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "manual",
+        "sourceIds": [
+          "manual-1785402793034"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:13:13.034Z"
+      },
+      "createdAt": "2026-07-30T09:13:13.034Z"
+    },
+    {
+      "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+      "questionId": "question-ba49271d-bccf-4037-9a4b-4da1a8074370",
+      "versionNumber": 1,
+      "text": "企业如何判断 JOTO 的腾讯云 ADP 实施与交付服务是否适合自身项目？",
+      "normalizedText": "企业如何判断joto的腾讯云adp实施与交付服务是否适合自身项目",
+      "product": "腾讯云 ADP",
+      "entities": [],
+      "audience": "企业 AI 项目负责人",
+      "suggestedArticleTypes": [],
+      "sourceSummary": {
+        "manual": 1
+      },
+      "trace": {
+        "source": "manual",
+        "sourceIds": [
+          "manual-1785403639184"
+        ],
+        "algorithmVersion": "question-normalizer.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:27:19.186Z"
+      },
+      "createdAt": "2026-07-30T09:27:19.186Z"
     }
   ],
   "keywords": [
@@ -107,10 +532,22 @@
       "text": "腾讯云 ADP 服务商",
       "normalizedText": "腾讯云adp服务商",
       "status": "effective",
-      "relatedQuestionIds": ["question-adp-provider"],
-      "relatedEntities": ["腾讯云 ADP"],
+      "relatedQuestionIds": [
+        "question-adp-provider"
+      ],
+      "relatedEntities": [
+        "腾讯云 ADP"
+      ],
       "recallScore": 0.91,
-      "trace": {"source": "demo", "sourceIds": ["demo-signal-adp"], "algorithmVersion": "semantic-keyword.v1.0.0", "confidence": 0.91, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "demo-signal-adp"
+        ],
+        "algorithmVersion": "semantic-keyword.v1.0.0",
+        "confidence": 0.91,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      },
       "rowVersion": 1,
       "updatedAt": "2026-07-22T01:00:00.000Z"
     },
@@ -119,10 +556,23 @@
       "text": "ADP 实施交付",
       "normalizedText": "adp实施交付",
       "status": "effective",
-      "relatedQuestionIds": ["question-adp-provider"],
-      "relatedEntities": ["JOTO", "腾讯云 ADP"],
+      "relatedQuestionIds": [
+        "question-adp-provider"
+      ],
+      "relatedEntities": [
+        "JOTO",
+        "腾讯云 ADP"
+      ],
       "recallScore": 0.83,
-      "trace": {"source": "demo", "sourceIds": ["demo-signal-adp"], "algorithmVersion": "semantic-keyword.v1.0.0", "confidence": 0.83, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "demo-signal-adp"
+        ],
+        "algorithmVersion": "semantic-keyword.v1.0.0",
+        "confidence": 0.83,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      },
       "rowVersion": 1,
       "updatedAt": "2026-07-22T01:00:00.000Z"
     },
@@ -131,12 +581,110 @@
       "text": "企业知识检索",
       "normalizedText": "企业知识检索",
       "status": "observing",
-      "relatedQuestionIds": ["question-workbuddy-scenes"],
-      "relatedEntities": ["WorkBuddy"],
+      "relatedQuestionIds": [
+        "question-workbuddy-scenes"
+      ],
+      "relatedEntities": [
+        "WorkBuddy"
+      ],
       "recallScore": 0.58,
-      "trace": {"source": "demo", "sourceIds": ["demo-signal-workbuddy"], "algorithmVersion": "semantic-keyword.v1.0.0", "confidence": 0.58, "recordedAt": "2026-07-22T01:00:00.000Z"},
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "demo-signal-workbuddy"
+        ],
+        "algorithmVersion": "semantic-keyword.v1.0.0",
+        "confidence": 0.58,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      },
       "rowVersion": 1,
       "updatedAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "keywordId": "keyword-7b5e568e-331c-42f5-ac52-831fd19d0795",
+      "text": "腾讯云 ADP",
+      "normalizedText": "腾讯云adp",
+      "status": "effective",
+      "relatedQuestionIds": [
+        "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+        "question-3e43a948-45e9-45e7-924e-c896906c569a",
+        "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+        "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5",
+        "question-ba49271d-bccf-4037-9a4b-4da1a8074370"
+      ],
+      "relatedEntities": [],
+      "recallScore": 1,
+      "trace": {
+        "source": "automatic_signal_ingestion",
+        "sourceIds": [
+          "manual-1785402559902",
+          "manual-1785402595626",
+          "manual-1785402767700",
+          "manual-1785402793034",
+          "manual-1785403639184"
+        ],
+        "algorithmVersion": "semantic-keyword.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:27:19.186Z"
+      },
+      "rowVersion": 5,
+      "updatedAt": "2026-07-30T09:27:19.186Z"
+    },
+    {
+      "keywordId": "keyword-950779f2-6795-4f19-bf4e-5538d92b268d",
+      "text": "JOTO",
+      "normalizedText": "joto",
+      "status": "effective",
+      "relatedQuestionIds": [
+        "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+        "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+        "question-ba49271d-bccf-4037-9a4b-4da1a8074370"
+      ],
+      "relatedEntities": [],
+      "recallScore": 1,
+      "trace": {
+        "source": "automatic_signal_ingestion",
+        "sourceIds": [
+          "manual-1785402559902",
+          "manual-1785402767700",
+          "manual-1785403639184"
+        ],
+        "algorithmVersion": "semantic-keyword.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:27:19.186Z"
+      },
+      "rowVersion": 3,
+      "updatedAt": "2026-07-30T09:27:19.186Z"
+    },
+    {
+      "keywordId": "keyword-22fa36b1-0d9c-4427-b6fd-4e0c6a241cce",
+      "text": "ADP",
+      "normalizedText": "adp",
+      "status": "effective",
+      "relatedQuestionIds": [
+        "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+        "question-3e43a948-45e9-45e7-924e-c896906c569a",
+        "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+        "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5",
+        "question-ba49271d-bccf-4037-9a4b-4da1a8074370"
+      ],
+      "relatedEntities": [],
+      "recallScore": 1,
+      "trace": {
+        "source": "automatic_signal_ingestion",
+        "sourceIds": [
+          "manual-1785402559902",
+          "manual-1785402595626",
+          "manual-1785402767700",
+          "manual-1785402793034",
+          "manual-1785403639184"
+        ],
+        "algorithmVersion": "semantic-keyword.v1.0.0",
+        "confidence": 1,
+        "recordedAt": "2026-07-30T09:27:19.186Z"
+      },
+      "rowVersion": 5,
+      "updatedAt": "2026-07-30T09:27:19.186Z"
     }
   ],
   "decisionExceptions": [
@@ -148,16 +696,114 @@
       "title": "“JOTO ADP 产品能力”可能混淆产品归属",
       "explanation": "系统无法确认 ADP 能力属于 JOTO 自有产品还是腾讯云产品服务。",
       "suggestion": "改为“JOTO 的腾讯云 ADP 实施服务能力”。",
-      "status": "open",
-      "trace": {"source": "demo", "sourceIds": ["demo-signal-conflict"], "algorithmVersion": "question-boundary.v1.0.0", "confidence": 0.86, "recordedAt": "2026-07-22T01:00:00.000Z"},
-      "rowVersion": 1,
-      "createdAt": "2026-07-22T01:00:00.000Z"
+      "status": "resolved_by_suggestion",
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "demo-signal-conflict"
+        ],
+        "algorithmVersion": "question-boundary.v1.0.0",
+        "confidence": 0.86,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      },
+      "rowVersion": 2,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "resolutionReason": "采用问题边界冲突的系统建议",
+      "resolvedAt": "2026-07-27T05:14:14.770Z"
     }
   ],
-  "monthlyQuestionLocks": [],
+  "monthlyQuestionLocks": [
+    {
+      "lockId": "monthly-question-lock-1d32f9e5-391f-4b70-a5ef-bd12dd86ccd7",
+      "month": "2026-07",
+      "questionId": "question-adp-provider",
+      "questionVersionId": "question-version-adp-provider-v1",
+      "lockedAt": "2026-07-27T05:14:04.347Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-0bbd186b-3d30-423a-903b-44745c429207",
+      "month": "2026-07",
+      "questionId": "question-workbuddy-scenes",
+      "questionVersionId": "question-version-workbuddy-scenes-v1",
+      "lockedAt": "2026-07-27T05:14:04.347Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-3b890824-1f3c-4353-837a-cab079e5ef2d",
+      "month": "2026-07",
+      "questionId": "question-adp-ownership",
+      "questionVersionId": "question-version-5a883a21-93c8-4afa-b59d-dddd4a944e7a",
+      "lockedAt": "2026-07-27T05:16:32.110Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-c785c980-b729-4b23-92c8-5b56a467c443",
+      "month": "2026-07",
+      "questionId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+      "questionVersionId": "question-version-fb666c3a-cdbe-4686-989e-0074e1731bd9",
+      "lockedAt": "2026-07-27T05:41:13.563Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-509c169b-bfaa-4749-803b-0c956db47170",
+      "month": "2026-07",
+      "questionId": "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+      "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+      "lockedAt": "2026-07-30T09:12:17.323Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-54f203db-a59b-4e23-b09f-0f33158553e4",
+      "month": "2026-07",
+      "questionId": "question-3e43a948-45e9-45e7-924e-c896906c569a",
+      "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+      "lockedAt": "2026-07-30T09:12:17.323Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-dc4508d2-7145-442a-822d-fdfd23f5aa17",
+      "month": "2026-07",
+      "questionId": "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+      "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+      "lockedAt": "2026-07-30T09:13:53.953Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-c8cd413b-1439-4f65-99c4-be91384ef086",
+      "month": "2026-07",
+      "questionId": "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5",
+      "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+      "lockedAt": "2026-07-30T09:13:53.953Z",
+      "lockedBy": "local-workbench_operator"
+    },
+    {
+      "lockId": "monthly-question-lock-71060401-9d8e-4e84-88b1-a221203623ad",
+      "month": "2026-07",
+      "questionId": "question-ba49271d-bccf-4037-9a4b-4da1a8074370",
+      "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+      "lockedAt": "2026-07-30T09:27:50.889Z",
+      "lockedBy": "local-workbench_operator"
+    }
+  ],
   "contentCoverage": [
-    {"questionId": "question-adp-provider", "questionVersionId": "question-version-adp-provider-v1", "question": "企业应该如何选择腾讯云 ADP 服务商？", "articleType": "选型与比较", "publishedCount": 1, "plannedCount": 4},
-    {"questionId": "question-adp-provider", "questionVersionId": "question-version-adp-provider-v1", "question": "企业应该如何选择腾讯云 ADP 服务商？", "articleType": "FAQ", "publishedCount": 0, "plannedCount": 2, "evidenceGap": "尚无公开案例证据"}
+    {
+      "questionId": "question-adp-provider",
+      "questionVersionId": "question-version-adp-provider-v1",
+      "question": "企业应该如何选择腾讯云 ADP 服务商？",
+      "articleType": "选型与比较",
+      "publishedCount": 1,
+      "plannedCount": 4
+    },
+    {
+      "questionId": "question-adp-provider",
+      "questionVersionId": "question-version-adp-provider-v1",
+      "question": "企业应该如何选择腾讯云 ADP 服务商？",
+      "articleType": "FAQ",
+      "publishedCount": 0,
+      "plannedCount": 2,
+      "evidenceGap": "尚无公开案例证据"
+    }
   ],
   "knowledgeBases": [
     {
@@ -178,8 +824,24 @@
     }
   ],
   "knowledgeMaterials": [
-    {"materialId": "material-adp-delivery", "knowledgeBaseId": "kb-adp-service", "title": "JOTO 腾讯云 ADP 项目交付方案", "kind": "document", "status": "ready", "importedAt": "2026-07-22T01:00:00.000Z", "updatedAt": "2026-07-22T01:00:00.000Z"},
-    {"materialId": "material-adp-product", "knowledgeBaseId": "kb-adp-service", "title": "腾讯云 ADP 产品页", "kind": "url", "status": "ready", "importedAt": "2026-07-22T01:00:00.000Z", "updatedAt": "2026-07-22T01:00:00.000Z"}
+    {
+      "materialId": "material-adp-delivery",
+      "knowledgeBaseId": "kb-adp-service",
+      "title": "JOTO 腾讯云 ADP 项目交付方案",
+      "kind": "document",
+      "status": "ready",
+      "importedAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    },
+    {
+      "materialId": "material-adp-product",
+      "knowledgeBaseId": "kb-adp-service",
+      "title": "腾讯云 ADP 产品页",
+      "kind": "url",
+      "status": "ready",
+      "importedAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    }
   ],
   "knowledgeUnderstanding": [
     {
@@ -191,7 +853,15 @@
       "sourceOwner": "JOTO",
       "visibility": "conditional_public",
       "limitation": "不得公开客户名称、报价和未发布承诺。",
-      "trace": {"source": "demo", "sourceIds": ["material-adp-delivery"], "algorithmVersion": "knowledge-understanding.v1.0.0", "confidence": 0.9, "recordedAt": "2026-07-22T01:00:00.000Z"}
+      "trace": {
+        "source": "demo",
+        "sourceIds": [
+          "material-adp-delivery"
+        ],
+        "algorithmVersion": "knowledge-understanding.v1.0.0",
+        "confidence": 0.9,
+        "recordedAt": "2026-07-22T01:00:00.000Z"
+      }
     }
   ],
   "knowledgeActionItems": [
@@ -211,7 +881,22 @@
     }
   ],
   "articleExpressionProfiles": [
-    {"profileId": "profile-professional-decision", "name": "专业决策型", "applicableArticleTypes": ["选型与比较"], "applicableChannels": ["官网", "知乎"], "currentVersionId": "profile-professional-decision-v1", "defaultProfile": true, "rowVersion": 1, "createdAt": "2026-07-22T01:00:00.000Z", "updatedAt": "2026-07-22T01:00:00.000Z"}
+    {
+      "profileId": "profile-professional-decision",
+      "name": "专业决策型",
+      "applicableArticleTypes": [
+        "选型与比较"
+      ],
+      "applicableChannels": [
+        "官网",
+        "知乎"
+      ],
+      "currentVersionId": "profile-professional-decision-v1",
+      "defaultProfile": true,
+      "rowVersion": 1,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "updatedAt": "2026-07-22T01:00:00.000Z"
+    }
   ],
   "articleExpressionProfileVersions": [
     {
@@ -222,23 +907,445 @@
       "targetAudience": "企业 AI 项目负责人",
       "writingFocus": "优先解释选型风险、实施条件和验收方式。",
       "structureModules": [
-        {"moduleId": "background", "label": "问题背景", "guidance": "说明决策场景", "required": true},
-        {"moduleId": "criteria", "label": "选择标准", "guidance": "覆盖实施、安全、交付与运营", "required": true},
-        {"moduleId": "comparison", "label": "方案比较", "guidance": "只比较有证据的维度", "required": true},
-        {"moduleId": "risk", "label": "风险", "guidance": "明确限制与前置条件", "required": true},
-        {"moduleId": "cta", "label": "行动建议", "guidance": "给出下一步评估方式", "required": true}
+        {
+          "moduleId": "background",
+          "label": "问题背景",
+          "guidance": "说明决策场景",
+          "required": true
+        },
+        {
+          "moduleId": "criteria",
+          "label": "选择标准",
+          "guidance": "覆盖实施、安全、交付与运营",
+          "required": true
+        },
+        {
+          "moduleId": "comparison",
+          "label": "方案比较",
+          "guidance": "只比较有证据的维度",
+          "required": true
+        },
+        {
+          "moduleId": "risk",
+          "label": "风险",
+          "guidance": "明确限制与前置条件",
+          "required": true
+        },
+        {
+          "moduleId": "cta",
+          "label": "行动建议",
+          "guidance": "给出下一步评估方式",
+          "required": true
+        }
       ],
       "forbiddenStyles": [],
       "minLength": 1800,
       "maxLength": 2500,
       "cta": "联系 JOTO 评估实施条件",
-      "systemRuleFallbackFields": ["forbiddenStyles", "other"],
+      "systemRuleFallbackFields": [
+        "forbiddenStyles",
+        "other"
+      ],
       "systemRuleVersion": "article-expression-system.v1.0.0",
       "evidenceWarning": false,
       "createdAt": "2026-07-22T01:00:00.000Z",
       "createdBy": "demo-seed"
     }
   ],
-  "audits": [],
-  "idempotency": []
+  "audits": [
+    {
+      "action": "monthly_question_versions_locked",
+      "objectType": "MonthlyPlanQuestion",
+      "objectId": "2026-07",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "选择 2026-07 月度目标问题并锁定版本",
+      "auditId": "audit-f7f315a3-dc5a-40df-9580-183c9d05e8f5",
+      "createdAt": "2026-07-30T09:27:50.890Z"
+    },
+    {
+      "action": "question_signals_ingested",
+      "objectType": "QuestionSet",
+      "objectId": "question-ba49271d-bccf-4037-9a4b-4da1a8074370",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "人工补充业务问题",
+      "auditId": "audit-cce7da24-9e10-46b3-9c84-a513ec3c509c",
+      "createdAt": "2026-07-30T09:27:19.187Z"
+    },
+    {
+      "action": "monthly_question_versions_locked",
+      "objectType": "MonthlyPlanQuestion",
+      "objectId": "2026-07",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "选择 2026-07 月度目标问题并锁定版本",
+      "auditId": "audit-f3c438df-d6a2-43c8-9f23-94249f56ef16",
+      "createdAt": "2026-07-30T09:13:53.953Z"
+    },
+    {
+      "action": "question_signals_ingested",
+      "objectType": "QuestionSet",
+      "objectId": "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "人工补充业务问题",
+      "auditId": "audit-01b90b31-3d12-4ccd-a1c3-451c2d69ebf0",
+      "createdAt": "2026-07-30T09:13:13.034Z"
+    },
+    {
+      "action": "question_signals_ingested",
+      "objectType": "QuestionSet",
+      "objectId": "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "人工补充业务问题",
+      "auditId": "audit-16bd6da8-f501-4c24-b31a-6a70684959b1",
+      "createdAt": "2026-07-30T09:12:47.702Z"
+    },
+    {
+      "action": "monthly_question_versions_locked",
+      "objectType": "MonthlyPlanQuestion",
+      "objectId": "2026-07",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "选择 2026-07 月度目标问题并锁定版本",
+      "auditId": "audit-c72cf145-f50a-4a5a-b18d-429b1187e3f8",
+      "createdAt": "2026-07-30T09:12:17.325Z"
+    },
+    {
+      "action": "question_signals_ingested",
+      "objectType": "QuestionSet",
+      "objectId": "question-3e43a948-45e9-45e7-924e-c896906c569a",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "人工补充业务问题",
+      "auditId": "audit-a34f4913-40d5-461b-9e37-321f5c7088ed",
+      "createdAt": "2026-07-30T09:09:55.628Z"
+    },
+    {
+      "action": "question_signals_ingested",
+      "objectType": "QuestionSet",
+      "objectId": "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "人工补充业务问题",
+      "auditId": "audit-5ecc6b9e-8f4c-4a72-92a8-9c24d407fa74",
+      "createdAt": "2026-07-30T09:09:19.907Z"
+    },
+    {
+      "action": "question_understanding_corrected",
+      "objectType": "QuestionSet",
+      "objectId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "纠正系统对问题的理解",
+      "auditId": "audit-01767168-a3ea-4c3d-9fb0-59d0fa44223b",
+      "createdAt": "2026-07-30T09:08:38.741Z"
+    },
+    {
+      "action": "question_understanding_corrected",
+      "objectType": "QuestionSet",
+      "objectId": "question-adp-ownership",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "纠正系统对问题的理解",
+      "auditId": "audit-ec2fc346-8614-411d-9622-8c77538b6d96",
+      "createdAt": "2026-07-30T09:07:51.435Z"
+    },
+    {
+      "action": "monthly_question_versions_locked",
+      "objectType": "MonthlyPlanQuestion",
+      "objectId": "2026-07",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "选择 2026-07 月度目标问题并锁定版本",
+      "auditId": "audit-3d8b2755-63fd-4861-97c0-1def4d890583",
+      "createdAt": "2026-07-27T05:41:13.564Z"
+    },
+    {
+      "action": "question_signals_ingested",
+      "objectType": "QuestionSet",
+      "objectId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "人工补充业务问题",
+      "auditId": "audit-a61e5677-47bb-4e01-8c9f-ce5815e9af93",
+      "createdAt": "2026-07-27T05:41:08.011Z"
+    },
+    {
+      "action": "monthly_question_versions_locked",
+      "objectType": "MonthlyPlanQuestion",
+      "objectId": "2026-07",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "选择 2026-07 月度目标问题并锁定版本",
+      "auditId": "audit-fd5316b8-b380-4cc0-b8b6-555097b4a8da",
+      "createdAt": "2026-07-27T05:16:32.113Z"
+    },
+    {
+      "action": "question_decisions_resolved",
+      "objectType": "QuestionDecisionException",
+      "objectId": "decision-adp-ownership",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "采用问题边界冲突的系统建议",
+      "auditId": "audit-aa0ed5c9-fa93-4409-9638-606a524e7333",
+      "createdAt": "2026-07-27T05:14:14.772Z"
+    },
+    {
+      "action": "monthly_question_versions_locked",
+      "objectType": "MonthlyPlanQuestion",
+      "objectId": "2026-07",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "actorType": "human",
+      "reason": "选择 2026-07 月度目标问题并锁定版本",
+      "auditId": "audit-b9b4672a-2e72-4aa8-8b0c-208e6e7c7fbd",
+      "createdAt": "2026-07-27T05:14:04.348Z"
+    }
+  ],
+  "idempotency": [
+    {
+      "operation": "lock_monthly_question_versions",
+      "idempotencyKey": "671e4207-2923-4bb7-aea4-77c9fb3ef784",
+      "requestHash": "11db941902c16cdff94e87e76e6938460b216f0624b04629f3f6259d859b04e0",
+      "response": {
+        "locks": [
+          {
+            "lockId": "monthly-question-lock-1d32f9e5-391f-4b70-a5ef-bd12dd86ccd7",
+            "month": "2026-07",
+            "questionId": "question-adp-provider",
+            "questionVersionId": "question-version-adp-provider-v1",
+            "lockedAt": "2026-07-27T05:14:04.347Z",
+            "lockedBy": "local-workbench_operator"
+          },
+          {
+            "lockId": "monthly-question-lock-0bbd186b-3d30-423a-903b-44745c429207",
+            "month": "2026-07",
+            "questionId": "question-workbuddy-scenes",
+            "questionVersionId": "question-version-workbuddy-scenes-v1",
+            "lockedAt": "2026-07-27T05:14:04.347Z",
+            "lockedBy": "local-workbench_operator"
+          }
+        ]
+      },
+      "createdAt": "2026-07-27T05:14:04.348Z"
+    },
+    {
+      "operation": "resolve_question_decisions",
+      "idempotencyKey": "cf30ab4e-5b59-40c2-b11b-c660d28b0480",
+      "requestHash": "48a1466df83af57c56f49ee9081285577e03ea7e1bd794ee28320628565d1e2b",
+      "response": {
+        "resolvedCount": 1
+      },
+      "createdAt": "2026-07-27T05:14:14.773Z"
+    },
+    {
+      "operation": "lock_monthly_question_versions",
+      "idempotencyKey": "c68f4703-2bb2-4a42-98c3-26a6766bd966",
+      "requestHash": "e4c65d0fed9613a42ef4a637ff59e8191d114b03c03788a2bcd2cc8cbae709e1",
+      "response": {
+        "locks": [
+          {
+            "lockId": "monthly-question-lock-3b890824-1f3c-4353-837a-cab079e5ef2d",
+            "month": "2026-07",
+            "questionId": "question-adp-ownership",
+            "questionVersionId": "question-version-5a883a21-93c8-4afa-b59d-dddd4a944e7a",
+            "lockedAt": "2026-07-27T05:16:32.110Z",
+            "lockedBy": "local-workbench_operator"
+          }
+        ]
+      },
+      "createdAt": "2026-07-27T05:16:32.113Z"
+    },
+    {
+      "operation": "ingest_question_signals",
+      "idempotencyKey": "3f4df232-3001-42cf-acb4-bd1a92c9a853",
+      "requestHash": "1a2b2d861ca1dbecb7242d4c932c239559e92e782544c45667cee00d32ce36ce",
+      "response": {
+        "questionIds": [
+          "question-7a9b2853-85a5-493b-ae37-6efca2539d9a"
+        ]
+      },
+      "createdAt": "2026-07-27T05:41:08.011Z"
+    },
+    {
+      "operation": "lock_monthly_question_versions",
+      "idempotencyKey": "700c80ec-5f0a-41ec-865d-e5a0dd2d04dd",
+      "requestHash": "08d56171c1723dd6366aa1ecd299b5ed9666d757fdbbf660b489f8898e4df7a2",
+      "response": {
+        "locks": [
+          {
+            "lockId": "monthly-question-lock-c785c980-b729-4b23-92c8-5b56a467c443",
+            "month": "2026-07",
+            "questionId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+            "questionVersionId": "question-version-fb666c3a-cdbe-4686-989e-0074e1731bd9",
+            "lockedAt": "2026-07-27T05:41:13.563Z",
+            "lockedBy": "local-workbench_operator"
+          }
+        ]
+      },
+      "createdAt": "2026-07-27T05:41:13.564Z"
+    },
+    {
+      "operation": "correct_question_understanding",
+      "idempotencyKey": "243ad17d-784f-497a-823d-a51d79a17a15",
+      "requestHash": "2b812a61f48c5ebc28aefc4dc8bc9e0adf6c88dbc792298dfeb11a4033aa86c1",
+      "response": {
+        "questionId": "question-adp-ownership",
+        "questionVersionId": "question-version-d6e6540b-913f-425c-8f49-2d1dff945b79"
+      },
+      "createdAt": "2026-07-30T09:07:51.435Z"
+    },
+    {
+      "operation": "correct_question_understanding",
+      "idempotencyKey": "4e065352-0eaa-44b7-953a-ca7c1b27c399",
+      "requestHash": "2ecc59d690fbb2f8959e761326de35a3fb357eee2eb1073ec88ebc065cbf3051",
+      "response": {
+        "questionId": "question-7a9b2853-85a5-493b-ae37-6efca2539d9a",
+        "questionVersionId": "question-version-44f40fae-f9e9-4cd1-9258-1b908efd7606"
+      },
+      "createdAt": "2026-07-30T09:08:38.741Z"
+    },
+    {
+      "operation": "ingest_question_signals",
+      "idempotencyKey": "a555990a-ec91-4971-b6b3-7e00fd00af5a",
+      "requestHash": "c0c4d37dda8c188638a76d30bf70134aaf319f3319a7023f46da5d0bd7457b9b",
+      "response": {
+        "questionIds": [
+          "question-3a557327-1d9e-4ad3-a27b-07d68b22524e"
+        ]
+      },
+      "createdAt": "2026-07-30T09:09:19.907Z"
+    },
+    {
+      "operation": "ingest_question_signals",
+      "idempotencyKey": "9b6992ff-1899-4af3-a415-aaf6723fffe2",
+      "requestHash": "74397b9bf1b028bd5bcdfefc6057f02cb2682c19320987fdc8298a65d1671710",
+      "response": {
+        "questionIds": [
+          "question-3e43a948-45e9-45e7-924e-c896906c569a"
+        ]
+      },
+      "createdAt": "2026-07-30T09:09:55.628Z"
+    },
+    {
+      "operation": "lock_monthly_question_versions",
+      "idempotencyKey": "ebc2f067-5473-404c-9968-08685717a351",
+      "requestHash": "04ea6915cb0f93c5091caa4b8d5d554ea8a3445bf5f7c99c75967f19f59e264f",
+      "response": {
+        "locks": [
+          {
+            "lockId": "monthly-question-lock-509c169b-bfaa-4749-803b-0c956db47170",
+            "month": "2026-07",
+            "questionId": "question-3a557327-1d9e-4ad3-a27b-07d68b22524e",
+            "questionVersionId": "question-version-4865235f-d908-45f1-aab6-6e6c245b2654",
+            "lockedAt": "2026-07-30T09:12:17.323Z",
+            "lockedBy": "local-workbench_operator"
+          },
+          {
+            "lockId": "monthly-question-lock-54f203db-a59b-4e23-b09f-0f33158553e4",
+            "month": "2026-07",
+            "questionId": "question-3e43a948-45e9-45e7-924e-c896906c569a",
+            "questionVersionId": "question-version-e76c4db9-3be9-4fd4-a1d9-5d1ac65e7c64",
+            "lockedAt": "2026-07-30T09:12:17.323Z",
+            "lockedBy": "local-workbench_operator"
+          }
+        ]
+      },
+      "createdAt": "2026-07-30T09:12:17.326Z"
+    },
+    {
+      "operation": "ingest_question_signals",
+      "idempotencyKey": "5443f9fa-8954-4942-a86f-c127625db6fe",
+      "requestHash": "0fa03377e53de8e99bc9304d4423097ba056cd155887efcd3fe6c0b822b8525d",
+      "response": {
+        "questionIds": [
+          "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb"
+        ]
+      },
+      "createdAt": "2026-07-30T09:12:47.702Z"
+    },
+    {
+      "operation": "ingest_question_signals",
+      "idempotencyKey": "b87243fa-5598-44de-aed3-ac127560d98a",
+      "requestHash": "a24efdcbe0673250be2b5128e03bc459302becb28a45bdd7f8749dfb71b7a88d",
+      "response": {
+        "questionIds": [
+          "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5"
+        ]
+      },
+      "createdAt": "2026-07-30T09:13:13.034Z"
+    },
+    {
+      "operation": "lock_monthly_question_versions",
+      "idempotencyKey": "009b9035-1ce4-40b6-99e0-2ca11cb5f11b",
+      "requestHash": "b8f16f726b15b289d0e32dc3c57b8a93aa321226e7e441895372692f528075e2",
+      "response": {
+        "locks": [
+          {
+            "lockId": "monthly-question-lock-dc4508d2-7145-442a-822d-fdfd23f5aa17",
+            "month": "2026-07",
+            "questionId": "question-0858a7ce-5308-49d5-8e3d-ccc422ffc3cb",
+            "questionVersionId": "question-version-c8658d9d-f6a1-4819-a91b-555e634d5991",
+            "lockedAt": "2026-07-30T09:13:53.953Z",
+            "lockedBy": "local-workbench_operator"
+          },
+          {
+            "lockId": "monthly-question-lock-c8cd413b-1439-4f65-99c4-be91384ef086",
+            "month": "2026-07",
+            "questionId": "question-ee032f30-09c2-4d9d-a2d5-6b52838452e5",
+            "questionVersionId": "question-version-a41f1c06-06a5-4690-9ace-11558236b2c5",
+            "lockedAt": "2026-07-30T09:13:53.953Z",
+            "lockedBy": "local-workbench_operator"
+          }
+        ]
+      },
+      "createdAt": "2026-07-30T09:13:53.953Z"
+    },
+    {
+      "operation": "ingest_question_signals",
+      "idempotencyKey": "8489d913-e7a0-43ce-8225-358eadaa48f8",
+      "requestHash": "e8ac645beecd84e935968bc2afefa035f3277348977d24c2bdde371376e7519e",
+      "response": {
+        "questionIds": [
+          "question-ba49271d-bccf-4037-9a4b-4da1a8074370"
+        ]
+      },
+      "createdAt": "2026-07-30T09:27:19.187Z"
+    },
+    {
+      "operation": "lock_monthly_question_versions",
+      "idempotencyKey": "17a4d507-7511-4787-9b6c-a57867634148",
+      "requestHash": "cb2a71f6f42d2b7e2c74787478b3da1b8fbbb44d69db5987340d42d0961c3f3d",
+      "response": {
+        "locks": [
+          {
+            "lockId": "monthly-question-lock-71060401-9d8e-4e84-88b1-a221203623ad",
+            "month": "2026-07",
+            "questionId": "question-ba49271d-bccf-4037-9a4b-4da1a8074370",
+            "questionVersionId": "question-version-21419968-3f66-4928-86e3-bf012be076cb",
+            "lockedAt": "2026-07-30T09:27:50.889Z",
+            "lockedBy": "local-workbench_operator"
+          }
+        ]
+      },
+      "createdAt": "2026-07-30T09:27:50.890Z"
+    }
+  ]
 }

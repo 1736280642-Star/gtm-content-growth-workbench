@@ -29,9 +29,9 @@ export async function runAutomaticKnowledgeRefresh(input: {
     manifestId: manifest.manifestId,
     namespace: "production_public",
     language: "zh-CN",
-    indexVersion: `auto-${context.sourceSnapshotHash.slice(0, 20)}`,
+    indexVersion: `auto-${context.sourceSnapshotHash.slice(0, 12)}-${context.rulePackageVersionId.slice(-12)}`,
     chunkSchemaVersion: "claim-aware@1",
-    chunkerVersion: "automatic-knowledge@1",
+    chunkerVersion: "automatic-knowledge@2",
     retrievalPolicyVersion: "v5-hybrid@1",
     actor: input.actor
   });

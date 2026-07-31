@@ -1,20 +1,36 @@
 import { getV5MonthlyProductionPool } from "./knowledge-governance-production-pool-service";
-import { hasV5GovernanceDatabaseConfig } from "./knowledge-governance-repository";
+import {
+  hasV5GovernanceDatabaseConfig,
+  readV5ReadinessContext
+} from "./knowledge-governance-repository";
 import { getV5MonthlyProductionReadiness } from "./knowledge-governance-service";
 import { getV5MonthlyPlan } from "./monthly-plan-service";
-import type { V5MonthlyPlan, V5MonthlyProductionReadiness, V5ProductionPoolEntry } from "./monthly-contracts";
-import type { RulePackageOption, V5GovernanceSource } from "./monthly-workspace-contracts";
+import type {
+  V5MonthlyPlan,
+  V5MonthlyProductionReadiness,
+  V5ProductionPoolEntry
+} from "./monthly-contracts";
+import type {
+  KnowledgeBaseOption,
+  RulePackageOption,
+  V5GovernanceSource
+} from "./monthly-workspace-contracts";
+import { listProducts } from "./product-registry-service";
 
 export interface MonthlyWorkspaceGovernanceSnapshot {
   source: V5GovernanceSource;
   rulePackages: RulePackageOption[];
+  knowledgeBases: KnowledgeBaseOption[];
   monthlyPlan: V5MonthlyPlan | null;
   productionReadiness: V5MonthlyProductionReadiness[];
   productionPoolEntries: V5ProductionPoolEntry[];
   message?: string;
 }
 
-function markPendingConfig(rulePackages: RulePackageOption[], message: string): MonthlyWorkspaceGovernanceSnapshot {
+function markPendingConfig(
+  rulePackages: RulePackageOption[],
+  message: string
+): MonthlyWorkspaceGovernanceSnapshot {
   return {
     source: "pending_config",
     rulePackages: rulePackages.map((item) => ({
@@ -23,6 +39,7 @@ function markPendingConfig(rulePackages: RulePackageOption[], message: string): 
       readinessSource: "pending_config",
       disabledReason: message
     })),
+    knowledgeBases: [],
     monthlyPlan: null,
     productionReadiness: [],
     productionPoolEntries: [],
@@ -42,58 +59,116 @@ export async function loadMonthlyWorkspaceGovernance(
   monthlyPlanId?: string
 ): Promise<MonthlyWorkspaceGovernanceSnapshot> {
   if (!hasV5GovernanceDatabaseConfig()) {
-    return markPendingConfig(rulePackages, "正式 V5 治理数据库未配置，不能确认 G6 月度生产准备度。");
+    return markPendingConfig(
+      rulePackages,
+      "正式 V5 治理数据库未配置，不能确认 G6 月度生产准备度。"
+    );
   }
 
   try {
-    const [monthlyPlanResult, readinessResults]: [
-      Awaited<ReturnType<typeof getV5MonthlyPlan>>,
-      Array<V5MonthlyProductionReadiness | undefined>
-    ] = await Promise.all([
+    const products = await listProducts();
+    const candidateByProduct = new Map(rulePackages.map((item) => [item.productId, item]));
+    const productById = new Map(products.map((item) => [item.productId, item]));
+    const productIds = Array.from(new Set([...candidateByProduct.keys(), ...productById.keys()]));
+
+    const [monthlyPlanResult, readinessAndContextResults] = await Promise.all([
       getV5MonthlyPlan(month),
       Promise.all(
-        rulePackages.map(async (rulePackage): Promise<V5MonthlyProductionReadiness | undefined> => {
-          const result = await getV5MonthlyProductionReadiness(rulePackage.productId);
-          const data: unknown = result.data;
-          return isFormalReadiness(data) ? data : undefined;
+        productIds.map(async (productId) => {
+          const [readinessResult, context] = await Promise.all([
+            getV5MonthlyProductionReadiness(productId),
+            readV5ReadinessContext(productId)
+          ]);
+          const data: unknown = readinessResult.data;
+          return {
+            productId,
+            readiness: isFormalReadiness(data) ? data : undefined,
+            context
+          };
         })
       )
     ]);
-    const productionReadiness = readinessResults.filter((item): item is V5MonthlyProductionReadiness => item !== undefined);
-    const readinessByProduct = new Map(productionReadiness.map((item) => [item.productId, item]));
-    const governedRulePackages = rulePackages.map((item) => {
-      const readiness = readinessByProduct.get(item.productId);
-      if (!readiness) {
-        return {
-          ...item,
-          monthlyProductionReady: false,
-          readinessSource: "v5_governance" as const,
-          disabledReason: "正式 V5 后端尚未生成该产品的 G6 MonthlyProductionReadiness。"
-        };
-      }
 
-      const approved = readiness.monthlyProductionReady && readiness.status === "approved" && Boolean(readiness.approvedAt && readiness.approvedBy);
+    const productionReadiness = readinessAndContextResults
+      .map((item) => item.readiness)
+      .filter((item): item is V5MonthlyProductionReadiness => item !== undefined);
+    const readinessByProduct = new Map(productionReadiness.map((item) => [item.productId, item]));
+    const contextByProduct = new Map(
+      readinessAndContextResults.map((item) => [item.productId, item.context])
+    );
+
+    const governedRulePackages = productIds.map((productId) => {
+      const item = candidateByProduct.get(productId);
+      const product = productById.get(productId);
+      const readiness = readinessByProduct.get(productId);
+      const context = contextByProduct.get(productId);
+      const approved = Boolean(
+        readiness
+        && readiness.monthlyProductionReady
+        && readiness.status === "approved"
+        && readiness.approvedAt
+        && readiness.approvedBy
+      );
+
       return {
-        ...item,
-        id: readiness.rulePackageVersionId,
-        status: approved ? "active" as const : item.status,
+        id:
+          readiness?.rulePackageVersionId
+          || context?.rulePackageVersionId
+          || item?.id
+          || `pending-${productId}`,
+        productId,
+        productName: product?.displayName || item?.productName || productId,
+        version: context?.rulePackageVersion || item?.version || "pending",
+        status: approved ? "active" as const : item?.status || "pending" as const,
         monthlyProductionReady: approved,
-        allowedChannels: readiness.allowedChannels.length ? readiness.allowedChannels : item.allowedChannels,
+        allowedChannels:
+          readiness?.allowedChannels.length
+            ? readiness.allowedChannels
+            : item?.allowedChannels || [],
         readinessSource: "v5_governance" as const,
+        knowledgeBaseIds: context?.knowledgeBaseIds || item?.knowledgeBaseIds || [],
+        sourceSnapshotHash:
+          readiness?.sourceSnapshotHash
+          || context?.sourceSnapshotHash
+          || item?.sourceSnapshotHash,
         disabledReason: approved
           ? undefined
-          : readiness.reasonCodes.length
+          : readiness?.reasonCodes.length
             ? `G6 未通过：${readiness.reasonCodes.join("、")}。`
-            : "G6 准备度尚未由人工 Owner 批准。"
-      };
+            : "正式 V5 后端尚未生成或批准该产品的 G6 MonthlyProductionReadiness。"
+      } satisfies RulePackageOption;
     });
+
+    const knowledgeBases = Array.from(
+      new Map(
+        readinessAndContextResults.flatMap(({ productId, context }) =>
+          (context.knowledgeBases || []).map((knowledgeBase) => [
+            knowledgeBase.knowledgeBaseId,
+            {
+              knowledgeBaseId: knowledgeBase.knowledgeBaseId,
+              name: knowledgeBase.name,
+              productId,
+              sourceSnapshotHash: context.sourceSnapshotHash || "",
+              status:
+                knowledgeBase.status === "enabled"
+                  ? "ready" as const
+                  : "pending_config" as const,
+              source: "v5_formal" as const
+            } satisfies KnowledgeBaseOption
+          ] as const)
+        )
+      ).values()
+    );
 
     const productionPoolPlanId = monthlyPlanResult.data?.monthlyPlanId || monthlyPlanId;
     const productionPoolEntries = productionPoolPlanId
       ? (
           await Promise.all(
             governedRulePackages.map(async (item) => {
-              const result = await getV5MonthlyProductionPool({ productId: item.productId, monthlyPlanId: productionPoolPlanId });
+              const result = await getV5MonthlyProductionPool({
+                productId: item.productId,
+                monthlyPlanId: productionPoolPlanId
+              });
               return result.data.entries as V5ProductionPoolEntry[];
             })
           )
@@ -103,6 +178,7 @@ export async function loadMonthlyWorkspaceGovernance(
     return {
       source: "v5_mysql",
       rulePackages: governedRulePackages,
+      knowledgeBases,
       monthlyPlan: monthlyPlanResult.data,
       productionReadiness,
       productionPoolEntries
@@ -117,6 +193,7 @@ export async function loadMonthlyWorkspaceGovernance(
         readinessSource: "pending_config",
         disabledReason: `${message} 请检查正式 Repository / Service 与 MySQL Schema。`
       })),
+      knowledgeBases: [],
       monthlyPlan: null,
       productionReadiness: [],
       productionPoolEntries: [],

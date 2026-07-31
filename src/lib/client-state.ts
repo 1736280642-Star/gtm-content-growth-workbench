@@ -7,8 +7,7 @@ import {
   drafts,
   knowledgeBases,
   publishRecords,
-  tasks,
-  weeklyPlan
+  tasks
 } from "./demo-data";
 import { getDashboardSummary as getSeedDashboardSummary } from "./metrics";
 import type { WorkbenchState } from "./workbench-store";
@@ -24,14 +23,27 @@ const initialState: WorkbenchState = {
     statePath: "data/workbench-state.json",
     initializedAt: ""
   },
-  weeklyPlan,
   workspaceSetting: {
     id: "workspace-setting-default",
-    defaultWeeklyDays: 5,
-    defaultDailyCount: 3,
     enabledChannels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
     enabledProducts: ["joto_brand", "weike_guardrails"],
-    productPlans: weeklyPlan.productPlans,
+    productPlans: [
+      {
+        product: "joto_brand",
+        channels: ["wechat"],
+        knowledgeBaseId: "kb-001",
+        productExpressionRulePackageId: "kb-001",
+        enabled: true
+      },
+      {
+        product: "weike_guardrails",
+        channels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
+        knowledgeBaseId: "kb-002",
+        productExpressionRulePackageId: "kb-002",
+        enabled: true
+      }
+    ],
+    currentRole: "content_publisher",
     finalReviewMode: "default_final",
     logMode: "demo_csv"
   },
@@ -74,8 +86,6 @@ const initialState: WorkbenchState = {
   distilledTermExtractionRules: [],
   distilledTermRuleDrafts: [],
   promptVersions: [],
-  weeklyReportSnapshots: [],
-  weeklyReportSuggestionDecisions: [],
   pipelineRuns: [],
   auditLog: []
 };

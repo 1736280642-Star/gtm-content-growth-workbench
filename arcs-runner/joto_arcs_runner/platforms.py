@@ -4,46 +4,74 @@ import re
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, unquote, urljoin, urlparse
+from urllib.request import Request, urlopen
 
 
 PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
     "csdn": {
         "auth_url": "https://mp.csdn.net/mp_blog/manage/article",
         "editor_url": "https://editor.csdn.net/md/?not_checkout=1",
+        "editor_hosts": ["editor.csdn.net"],
         "manager_url": "https://mp.csdn.net/mp_blog/manage/article",
         "login_markers": ["passport.csdn.net", "login"],
         "title": ["xpath://input[contains(@placeholder,'文章标题')]", "css:input.title-input"],
-        "content": ["css:.CodeMirror textarea", "xpath://div[contains(@class,'CodeMirror')]//textarea"],
+        "content": ["css:pre.editor__inner[contenteditable='true']", "css:.CodeMirror textarea", "xpath://div[contains(@class,'CodeMirror')]//textarea"],
         "publish": ["xpath://button[contains(normalize-space(.),'发布文章')]", "xpath://button[contains(normalize-space(.),'发布')]"],
-        "confirm": ["xpath://button[contains(normalize-space(.),'确认发布')]", "xpath://button[contains(normalize-space(.),'发布文章')]"],
+        "confirm": [
+            "xpath://button[contains(concat(' ',normalize-space(@class),' '),' btn-b-red ') and normalize-space(.)='发布文章']",
+            "xpath://button[contains(normalize-space(.),'确认发布')]",
+            "xpath://button[contains(normalize-space(.),'确定并发布')]",
+        ],
+        "tag_selected": ["xpath://span[contains(concat(' ',normalize-space(@class),' '),' el-tag ') and normalize-space(.)={{value}}]"],
+        "success_markers": ["发布成功", "审核中", "发布完成"],
+        "published_markers": ["已发布", "发布成功"],
+        "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://blog\.csdn\.net/[^/]+/article/details/\d+",
+        "article_id_pattern": r"(?:article/details/|articleId=)(\d+)",
     },
     "juejin": {
         "auth_url": "https://juejin.cn/creator/content/article",
         "editor_url": "https://juejin.cn/editor/drafts/new?v=2",
+        "editor_hosts": ["juejin.cn"],
         "manager_url": "https://juejin.cn/creator/content/article",
         "login_markers": ["login", "passport"],
         "title": ["xpath://input[contains(@placeholder,'输入文章标题')]", "css:input.title-input"],
         "content": ["css:.bytemd-editor textarea", "css:.CodeMirror textarea", "xpath://textarea"],
         "publish": ["xpath://button[contains(normalize-space(.),'发布')]"],
         "confirm": ["xpath://button[contains(normalize-space(.),'确定并发布')]", "xpath://button[contains(normalize-space(.),'确认发布')]"],
+        "tag_input": ["css:.tag-input.select input.byte-select__input"],
+        "tag_option": [
+            "xpath://li[contains(concat(' ',normalize-space(@class),' '),' byte-select-option ') and normalize-space(.)={{value}}]"
+        ],
+        "tag_selected": [
+            "xpath://div[contains(@class,'form-item') and .//div[contains(@class,'label') and contains(normalize-space(.),'添加标签')]]//span[contains(concat(' ',normalize-space(@class),' '),' byte-select__tag ') and normalize-space(.)={{value}}]"
+        ],
+        "success_markers": ["发布成功", "审核中", "文章发布成功"],
+        "published_markers": ["已发布", "发布成功"],
+        "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://juejin\.cn/post/[A-Za-z0-9]+",
+        "article_id_pattern": r"(?:post/|drafts/)([A-Za-z0-9]+)",
     },
     "zhihu": {
         "auth_url": "https://www.zhihu.com/creator",
         "editor_url": "https://zhuanlan.zhihu.com/write",
+        "editor_hosts": ["zhuanlan.zhihu.com"],
         "manager_url": "https://www.zhihu.com/creator/manage/creation/article",
         "login_markers": ["/signin", "login"],
         "title": ["xpath://textarea[contains(@placeholder,'请输入标题')]", "css:textarea.WriteIndex-titleInput"],
         "content": ["css:.DraftEditor-root", "xpath://div[contains(@class,'DraftEditor-root')]"],
         "publish": ["xpath://button[contains(normalize-space(.),'发布')]"],
         "confirm": ["xpath://button[contains(normalize-space(.),'确认发布')]"],
+        "success_markers": ["发布成功", "审核中", "已提交"],
+        "published_markers": ["已发布", "发布成功"],
+        "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://zhuanlan\.zhihu\.com/p/\d+",
+        "article_id_pattern": r"/p/(\d+)",
     },
 }
 
 CHALLENGE_MARKERS = ["验证码", "安全验证", "手机号验证", "手机确认", "captcha", "security challenge", "滑块"]
-REVIEW_MARKERS = ["审核中", "等待审核", "平台审核", "pending review"]
 PLATFORM_LOCKS = {platform: threading.Lock() for platform in PLATFORM_CONFIG}
 
 
@@ -75,12 +103,29 @@ def profile_dir(platform: str) -> Path:
 
 def _config(platform: str) -> dict[str, Any]:
     config = dict(PLATFORM_CONFIG[platform])
+    config.setdefault("selector_version", "2026-07-29-v1")
+    config.setdefault("category_option", [])
+    config.setdefault("category_selected", [])
+    config.setdefault("tag_option", [])
+    config.setdefault("tag_selected", [])
+    config.setdefault("tag_input", ["xpath://input[contains(@placeholder,'标签')]", "xpath://input[contains(@placeholder,'搜索')]"])
     raw = os.environ.get(f"ARCS_{platform.upper()}_SELECTORS_JSON", "").strip()
     if raw:
         value = json.loads(raw)
         if isinstance(value, dict):
             config.update(value)
     return config
+
+
+def browser_executable_path() -> Path | None:
+    configured = os.environ.get("ARCS_BROWSER_PATH", "").strip()
+    if not configured:
+        return None
+
+    path = Path(configured).expanduser().resolve()
+    if not path.is_file():
+        raise RuntimeError("ARCS_BROWSER_PATH must point to an existing Chromium browser executable")
+    return path
 
 
 def _browser(platform: str):
@@ -90,6 +135,9 @@ def _browser(platform: str):
         raise RuntimeError("DrissionPage is not installed; run `uv sync` in arcs-runner") from error
 
     options = ChromiumOptions()
+    executable_path = browser_executable_path()
+    if executable_path:
+        options.set_browser_path(str(executable_path))
     options.set_local_port(9330 + list(PLATFORM_CONFIG).index(platform))
     options.set_user_data_path(str(profile_dir(platform)))
     options.set_argument("--start-maximized")
@@ -102,6 +150,23 @@ def _first(tab, selectors: list[str], timeout: float = 2):
         element = tab.ele(selector, timeout=timeout)
         if element:
             return element
+    return None
+
+
+def _first_displayed(tab, selectors: list[str], timeout: float = 2):
+    for selector in selectors:
+        try:
+            elements = tab.eles(selector, timeout=timeout)
+        except (AttributeError, TypeError):
+            element = tab.ele(selector, timeout=timeout)
+            elements = [element] if element else []
+        for element in elements:
+            try:
+                size = element.rect.size
+                if element.states.is_displayed and size[0] > 0 and size[1] > 0:
+                    return element
+            except Exception:
+                continue
     return None
 
 
@@ -126,6 +191,151 @@ def _click_optional(tab, selectors: list[str], timeout: float = 1) -> bool:
     return True
 
 
+def _xpath_literal(value: str) -> str:
+    if "'" not in value:
+        return f"'{value}'"
+    if '"' not in value:
+        return f'"{value}"'
+    parts = value.split("'")
+    return "concat(" + ", \"'\", ".join(f"'{part}'" for part in parts) + ")"
+
+
+def _choice_selectors(value: str, selected: bool) -> list[str]:
+    literal = _xpath_literal(value)
+    state = (
+        "(@aria-selected='true' or @aria-checked='true' or @data-selected='true' "
+        "or contains(concat(' ',normalize-space(@class),' '),' selected ') "
+        "or contains(concat(' ',normalize-space(@class),' '),' active ') "
+        "or contains(concat(' ',normalize-space(@class),' '),' checked '))"
+    )
+    if selected:
+        return [
+            f"xpath://*[@data-id={literal} and {state}]",
+            f"xpath://*[normalize-space(.)={literal} and {state}]",
+        ]
+    return [
+        f"xpath://*[@data-id={literal}]",
+        f"xpath://*[normalize-space(.)={literal}]",
+    ]
+
+
+def _render_choice_templates(templates: list[str], value: str) -> list[str]:
+    literal = _xpath_literal(value)
+    return [str(template).replace("{{value}}", literal) for template in templates]
+
+
+def _element_is_selected(element) -> bool:
+    for name in ("aria-selected", "aria-checked", "data-selected", "checked"):
+        try:
+            if str(element.attr(name) or "").lower() in {"true", "checked", "selected"}:
+                return True
+        except Exception:
+            continue
+    try:
+        classes = set(str(element.attr("class") or "").lower().split())
+    except Exception:
+        classes = set()
+    return bool(
+        classes.intersection({"selected", "active", "checked", "is-selected", "is-active", "is-checked"})
+        or any(item.endswith("--selected") or item.endswith("--checked") for item in classes)
+    )
+
+
+def _ensure_selected(
+    tab,
+    value: str,
+    field_name: str,
+    selected_templates: list[str] | None = None,
+    option_templates: list[str] | None = None,
+    *,
+    click_by_js: bool = False,
+) -> tuple[bool, str | None]:
+    selected_selectors = _render_choice_templates(selected_templates or [], value) or _choice_selectors(value, selected=True)
+    option_selectors = _render_choice_templates(option_templates or [], value) or _choice_selectors(value, selected=False)
+    selected = _first_displayed(tab, selected_selectors, timeout=1)
+    option = _first_displayed(tab, option_selectors, timeout=1)
+    if selected or (option and _element_is_selected(option)):
+        return True, None
+
+    option = option or _first_displayed(tab, option_selectors, timeout=2)
+    if not option:
+        return False, f"未找到{field_name}选项：{value}。"
+    option.click(by_js=click_by_js)
+    tab.wait(0.3)
+    selected = _first_displayed(tab, selected_selectors, timeout=1)
+    refreshed = _first_displayed(tab, option_selectors, timeout=1)
+    if selected or (refreshed and _element_is_selected(refreshed)):
+        return True, None
+    return False, f"{field_name}已尝试选择，但页面未显示明确选中态：{value}。"
+
+
+def _failure(code: str, reason: str, next_action: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "status": "failed",
+        "publishStatus": "failed",
+        "failureCode": code,
+        "failureReason": reason,
+        "nextAction": next_action,
+    }
+
+
+def _unconfirmed(reason: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "status": "pending_verify",
+        "publishStatus": "failed",
+        "failureCode": "publish_action_unconfirmed",
+        "failureReason": reason,
+        "pendingCsvReturn": True,
+        "nextAction": "只检查指定草稿和创作后台；确认平台没有文章记录前不要创建新草稿或重复点击发布。",
+    }
+
+
+def _editor_url(platform: str, payload: dict[str, Any], config: dict[str, Any]) -> str:
+    if platform not in {"csdn", "juejin"}:
+        return str(payload.get("editorUrl") or config["editor_url"])
+    draft_id = str(payload.get("externalDraftId") or "").strip()
+    editor_url = str(payload.get("editorUrl") or "").strip()
+    if not draft_id or not editor_url:
+        raise ValueError(f"{platform} hybrid publish requires externalDraftId and editorUrl")
+    parsed = urlparse(editor_url)
+    if parsed.scheme != "https" or parsed.hostname not in config["editor_hosts"]:
+        raise ValueError(f"{platform} editorUrl is not an approved platform URL")
+    if draft_id not in unquote(editor_url):
+        raise ValueError(f"{platform} editorUrl does not contain externalDraftId")
+    return editor_url
+
+
+def _wait_for_publish_action(tab, confirm_selectors: list[str], initial_url: str, success_markers: list[str], timeout_seconds: int = 10) -> bool:
+    for _ in range(max(1, timeout_seconds * 2)):
+        if has_security_challenge(_body_text(tab)):
+            return False
+        if str(tab.url) != initial_url:
+            return True
+        if not _first(tab, confirm_selectors, timeout=0.2):
+            return True
+        text = _body_text(tab).lower()
+        if any(marker.lower() in text for marker in success_markers):
+            return True
+        tab.wait(0.5)
+    return False
+
+
+def _article_id(value: str, pattern: str) -> str | None:
+    match = re.search(pattern, value or "")
+    return match.group(1) if match else None
+
+
+def _record_status(text: str, config: dict[str, Any]) -> str | None:
+    normalized = text.lower()
+    if any(marker.lower() in normalized for marker in config["published_markers"]):
+        return "published"
+    if any(marker.lower() in normalized for marker in config["review_markers"]):
+        return "pending_review"
+    return None
+
+
 def _public_url(value: str, pattern: str) -> str | None:
     match = re.search(pattern, value or "")
     return match.group(0) if match else None
@@ -142,12 +352,100 @@ def _manual_takeover(message: str) -> dict[str, Any]:
     }
 
 
+def _verify_juejin_draft_api(payload: dict[str, Any]) -> dict[str, Any] | None:
+    external_draft_id = str(payload.get("externalDraftId") or "").strip()
+    cookie = os.environ.get("JUEJIN_COOKIE", "").strip()
+    if not external_draft_id or not cookie:
+        return None
+    csrf_token = os.environ.get("JUEJIN_CSRF_TOKEN", "").strip()
+    if not csrf_token:
+        csrf_token = next(
+            (
+                item.split("=", 1)[1]
+                for item in (part.strip() for part in cookie.split(";"))
+                if item.startswith("passport_csrf_token=")
+            ),
+            "",
+        )
+    query = os.environ.get("JUEJIN_DRAFT_API_QUERY", "").strip() or (
+        f"aid=2608&uuid={quote(os.environ.get('JUEJIN_UUID', ''))}&spider=0"
+    )
+    url = os.environ.get("JUEJIN_DRAFT_DETAIL_API_URL", "").strip() or (
+        f"https://api.juejin.cn/content_api/v1/article_draft/detail?{query}"
+    )
+    request = Request(
+        url,
+        data=json.dumps({"draft_id": external_draft_id}).encode("utf-8"),
+        method="POST",
+        headers={
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+            "Cookie": cookie,
+            "Origin": os.environ.get("JUEJIN_ORIGIN", "").strip() or "https://juejin.cn",
+            "Referer": os.environ.get("JUEJIN_REFERER", "").strip() or "https://juejin.cn/editor/drafts/new",
+            "User-Agent": os.environ.get("WECHATSYNC_USER_AGENT", "").strip() or "Mozilla/5.0",
+            **({"x-secsdk-csrf-token": csrf_token} if csrf_token else {}),
+        },
+    )
+    try:
+        with urlopen(request, timeout=15) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
+    if int(body.get("err_no") or 0) != 0:
+        return None
+    data = body.get("data") if isinstance(body.get("data"), dict) else {}
+    article_draft = data.get("article_draft") if isinstance(data.get("article_draft"), dict) else {}
+    article_id = str(
+        data.get("article_id")
+        or data.get("articleId")
+        or article_draft.get("article_id")
+        or article_draft.get("articleId")
+        or ""
+    ).strip()
+    if not article_id:
+        return None
+    public_url = f"https://juejin.cn/post/{article_id}"
+    try:
+        public_request = Request(
+            public_url,
+            headers={"User-Agent": os.environ.get("WECHATSYNC_USER_AGENT", "").strip() or "Mozilla/5.0"},
+        )
+        with urlopen(public_request, timeout=10) as response:
+            public_reachable = 200 <= int(getattr(response, "status", 0)) < 300
+    except Exception:
+        public_reachable = False
+    if public_reachable:
+        return {
+            "ok": True,
+            "status": "published_verified",
+            "publishStatus": "confirmed",
+            "verifyStatus": "verified",
+            "platformArticleId": article_id,
+            "publicUrl": public_url,
+            "pendingCsvReturn": False,
+            "nextAction": "已从掘金 draft detail 的 article_draft.article_id 和公开 URL 确认文章。",
+            "diagnosticSummary": "juejin_draft_api_confirmed_article",
+        }
+    return {
+        "ok": True,
+        "status": "published_pending_url",
+        "publishStatus": "pending_review",
+        "verifyStatus": "pending",
+        "platformArticleId": article_id,
+        "pendingCsvReturn": True,
+        "nextAction": "掘金已生成 article_id，但公开 URL 尚不可访问；等待平台审核或公开后再验证。",
+        "diagnosticSummary": "juejin_article_id_pending_public_url",
+    }
+
+
 class BrowserPublisher:
     def check_auth(self, platform: str) -> dict[str, Any]:
         config = _config(platform)
         with PLATFORM_LOCKS[platform]:
             browser = _browser(platform)
             tab = browser.new_tab()
+            publish_action_started = False
             try:
                 tab.get(config["auth_url"])
                 url = str(tab.url)
@@ -161,6 +459,16 @@ class BrowserPublisher:
                     "message": f"{platform} 登录态可用。" if logged_in else f"{platform} 需要重新登录。",
                     "nextAction": "可以执行正式发布。" if logged_in else "请在专用浏览器 profile 中完成登录。",
                 }
+            except Exception as error:
+                if has_security_challenge(_body_text(tab)):
+                    return {"authenticated": False, "status": "manual_takeover_required", "message": f"{platform} 出现安全挑战。", "nextAction": "请在专用浏览器 profile 中人工完成验证。"}
+                return {
+                    "authenticated": False,
+                    "status": "failed",
+                    "message": f"{platform} 浏览器登录态检查失败：{type(error).__name__}。",
+                    "failureCode": "adapter_failed",
+                    "nextAction": "检查专用浏览器是否可启动、profile 是否被占用以及 auth_url 页面结构；修复后只重跑预检查。",
+                }
             finally:
                 tab.close()
                 browser.quit()
@@ -171,7 +479,11 @@ class BrowserPublisher:
             browser = _browser(platform)
             tab = browser.new_tab()
             try:
-                tab.get(config["editor_url"])
+                try:
+                    editor_url = _editor_url(platform, payload, config)
+                except ValueError as error:
+                    return _failure("payload_invalid", str(error), "重新从平台草稿 API 创建排程载荷，禁止打开新建稿页面代替指定草稿。")
+                tab.get(editor_url)
                 if any(marker.lower() in str(tab.url).lower() for marker in config["login_markers"]):
                     return {"ok": False, "status": "precheck_failed", "publishStatus": "failed", "failureCode": "auth_required", "failureReason": f"{platform} 登录态已失效。", "nextAction": "请在专用浏览器 profile 中重新登录后创建新的发布排程。"}
                 if has_security_challenge(_body_text(tab)):
@@ -180,38 +492,114 @@ class BrowserPublisher:
                 title = _first(tab, config["title"], timeout=5)
                 content = _first(tab, config["content"], timeout=5)
                 if not title or not content:
-                    return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 编辑器结构已变化，未找到标题或正文输入区。", "nextAction": "请人工检查页面并更新本机 selector 配置；不要重复发布。"}
+                    return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 编辑器结构已变化，未找到标题或正文输入区。", "diagnosticCode": "editor structure changed before title or content input", "nextAction": "请人工检查页面并更新本机 selector 配置；不要重复发布。"}
                 _input(title, str(payload["title"]))
                 _input(content, str(payload["markdown"]))
 
-                if platform == "juejin":
-                    category = os.environ.get("JUEJIN_CATEGORY_LABEL", "").strip() or str(payload.get("categoryId") or "").strip()
+                if platform in {"csdn", "juejin"}:
+                    if not _click_optional(tab, config["publish"], timeout=5):
+                        return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 未找到发布设置入口。", "nextAction": "请人工检查编辑器页面，确认未发布后更新 selector。"}
+                    publish_action_started = True
+                    tab.wait(1)
+                    if has_security_challenge(_body_text(tab)):
+                        return _manual_takeover(f"{platform} 在发布设置阶段出现验证码或安全挑战。")
+                if platform in {"csdn", "juejin"}:
+                    category = (
+                        os.environ.get("JUEJIN_CATEGORY_LABEL", "").strip() or str(payload.get("categoryId") or "").strip()
+                        if platform == "juejin"
+                        else str(payload.get("categoryId") or "").strip()
+                    )
                     if category:
-                        _click_optional(tab, [f"xpath://*[@data-id='{category}']", f"xpath://*[contains(normalize-space(.),'{category}')]"], timeout=1)
-                if platform == "csdn":
-                    category = str(payload.get("categoryId") or "").strip()
-                    if category:
-                        _click_optional(tab, [f"xpath://*[contains(normalize-space(.),'{category}')]"], timeout=1)
+                        selected, reason = _ensure_selected(tab, category, "分类", config["category_selected"], config["category_option"])
+                        if not selected:
+                            return _failure("payload_invalid", reason or f"{platform} 分类未选中。", f"更新{platform}分类 selector 或分类配置，确认明确选中态后再发布。")
                 if platform in {"csdn", "juejin"}:
                     tags = payload.get("tagIds") or []
-                    tag_input = _first(tab, ["xpath://input[contains(@placeholder,'标签')]", "xpath://input[contains(@placeholder,'搜索')]"], timeout=1)
-                    if tag_input:
-                        for tag in tags:
-                            _input(tag_input, str(tag))
-                            tab.wait(0.2)
-                            _click_optional(tab, [f"xpath://*[contains(normalize-space(.),'{tag}')]"], timeout=1)
+                    if platform == "juejin":
+                        tags = [item.strip() for item in os.environ.get("JUEJIN_TAG_LABELS", "").split(",") if item.strip()]
+                    for tag in tags:
+                        selected, _ = _ensure_selected(
+                            tab,
+                            str(tag),
+                            "标签",
+                            config["tag_selected"],
+                            config["tag_option"],
+                            click_by_js=platform == "juejin",
+                        )
+                        if not selected:
+                            tag_input = _first(tab, config["tag_input"], timeout=1)
+                            if tag_input:
+                                _input(tag_input, str(tag))
+                                tab.wait(0.2)
+                            selected, reason = _ensure_selected(
+                                tab,
+                                str(tag),
+                                "标签",
+                                config["tag_selected"],
+                                config["tag_option"],
+                                click_by_js=platform == "juejin",
+                            )
+                        else:
+                            reason = None
+                        if not selected:
+                            return _failure("payload_invalid", reason or f"标签未选中：{tag}。", "更新标签 selector 或标签配置，确认每个标签均显示明确选中态后再发布。")
 
-                if not _click_optional(tab, config["publish"], timeout=5):
-                    return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 未找到正式发布按钮。", "nextAction": "请人工检查编辑器页面，确认未发布后更新 selector。"}
-                tab.wait(1)
-                if has_security_challenge(_body_text(tab)):
-                    return _manual_takeover(f"{platform} 在发布确认阶段出现验证码或安全挑战。")
-                _click_optional(tab, config["confirm"], timeout=3)
-                tab.wait(2)
+                if platform not in {"csdn", "juejin"}:
+                    if not _click_optional(tab, config["publish"], timeout=5):
+                        return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 未找到正式发布按钮。", "nextAction": "请人工检查编辑器页面，确认未发布后更新 selector。"}
+                    publish_action_started = True
+                    tab.wait(1)
+                    if has_security_challenge(_body_text(tab)):
+                        return _manual_takeover(f"{platform} 在发布确认阶段出现验证码或安全挑战。")
+                confirm = _first(tab, config["confirm"], timeout=5)
+                if not confirm:
+                    return _unconfirmed(f"{platform} 第一层发布已点击，但最终确认弹窗或确认按钮未出现。")
+                before_confirm_url = str(tab.url)
+                if platform == "juejin":
+                    tab.listen.start("content_api/v1/article/publish")
+                confirm.click()
+                publish_packet = tab.listen.wait(timeout=10, raise_err=False) if platform == "juejin" else None
+                if platform == "juejin":
+                    tab.listen.stop()
+                publish_body = getattr(getattr(publish_packet, "response", None), "body", None)
+                if isinstance(publish_body, dict):
+                    publish_error = publish_body.get("err_no", publish_body.get("error_code", 0))
+                    publish_message = str(publish_body.get("err_msg") or publish_body.get("message") or "").strip()
+                    publish_data = publish_body.get("data") if isinstance(publish_body.get("data"), dict) else {}
+                    article_id = str(
+                        publish_data.get("article_id")
+                        or publish_data.get("articleId")
+                        or publish_data.get("id")
+                        or ""
+                    ).strip()
+                    if str(publish_error) not in {"", "0", "None"}:
+                        return _failure(
+                            "adapter_failed",
+                            f"juejin 发布接口拒绝：{publish_message or publish_error}。",
+                            "根据平台业务错误修正发布设置；确认 draft detail 仍无 article_id 后才可恢复同一草稿。",
+                        )
+                    if article_id:
+                        return {
+                            "ok": True,
+                            "status": "published_verified",
+                            "publishStatus": "confirmed",
+                            "verifyStatus": "verified",
+                            "platformArticleId": article_id,
+                            "publicUrl": f"https://juejin.cn/post/{article_id}",
+                            "pendingCsvReturn": False,
+                            "nextAction": "已从掘金发布接口响应确认公开文章 ID。",
+                            "diagnosticSummary": "publish_api_confirmed_article",
+                        }
+                if not _wait_for_publish_action(tab, config["confirm"], before_confirm_url, config["success_markers"]):
+                    if has_security_challenge(_body_text(tab)):
+                        return _manual_takeover(f"{platform} 在最终确认后出现验证码或安全挑战。")
+                    return _unconfirmed(f"{platform} 最终确认按钮已点击，但弹窗未关闭、页面未跳转且没有成功提示。")
                 return self._verify_tab(platform, tab, payload)
             except Exception as error:
                 if has_security_challenge(_body_text(tab)):
                     return _manual_takeover(f"{platform} 出现验证码或安全挑战。")
+                if publish_action_started:
+                    return _unconfirmed(f"{platform} 发布点击后浏览器执行异常：{type(error).__name__}。")
                 return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 浏览器执行失败：{type(error).__name__}", "nextAction": "请先检查平台后台是否已生成文章；确认未生成后再创建新排程。"}
             finally:
                 tab.close()
@@ -219,6 +607,10 @@ class BrowserPublisher:
 
     def verify(self, platform: str, payload: dict[str, Any]) -> dict[str, Any]:
         with PLATFORM_LOCKS[platform]:
+            if platform == "juejin":
+                api_result = _verify_juejin_draft_api(payload)
+                if api_result:
+                    return api_result
             browser = _browser(platform)
             tab = browser.new_tab()
             try:
@@ -229,19 +621,73 @@ class BrowserPublisher:
 
     def _verify_tab(self, platform: str, tab, payload: dict[str, Any]) -> dict[str, Any]:
         config = _config(platform)
+        if platform == "juejin":
+            api_result = _verify_juejin_draft_api(payload)
+            if api_result:
+                return api_result
         url = _public_url(str(tab.url), config["public_pattern"])
+        article_id = _article_id(url or "", config["article_id_pattern"])
         if not url:
             tab.get(config["manager_url"])
             text = _body_text(tab)
             if has_security_challenge(text):
                 return _manual_takeover(f"{platform} 在发布后验证阶段出现安全挑战。")
+            if any(marker.lower() in str(tab.url).lower() for marker in config["login_markers"]):
+                return _failure("auth_required", f"{platform} 在发布后验证阶段登录态失效。", "请在专用浏览器 profile 中重新登录，然后只执行后台验证。")
             title = str(payload.get("title") or "").strip()
-            anchor = _first(tab, [f"xpath://a[contains(normalize-space(.),'{title}')]"], timeout=5) if title else None
-            href = str(anchor.attr("href")) if anchor else ""
+            literal = _xpath_literal(title)
+            title_element = _first(tab, [f"xpath://a[normalize-space(.)={literal}]", f"xpath://*[normalize-space(.)={literal}]"], timeout=5) if title else None
+            if not title_element:
+                return _unconfirmed(f"{platform} 创作后台未找到同标题文章：{title}。")
+            try:
+                record = title_element.ele(
+                    "xpath:./ancestor-or-self::*[self::tr or @role='row' or self::li or self::article "
+                    "or contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'creationmanage-creationcard') "
+                    "or contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'article-list-item-mp') "
+                    "or contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'article-item')][1]",
+                    timeout=1,
+                )
+            except Exception:
+                record = None
+            record = record or title_element
+            record_text = str(getattr(record, "text", "") or "")
+            anchor = None
+            if platform == "csdn":
+                try:
+                    anchor = record.ele("xpath:.//a[contains(@href,'blog.csdn.net') and contains(@href,'/article/details/')]", timeout=1)
+                except Exception:
+                    anchor = None
+            anchor = anchor or (title_element if str(getattr(title_element, "tag", "")).lower() == "a" else None)
+            if not anchor:
+                try:
+                    anchor = title_element.ele("xpath:./ancestor-or-self::a[@href][1]", timeout=1)
+                except Exception:
+                    anchor = None
+            try:
+                raw_href = str(anchor.attr("href") or "") if anchor else ""
+            except Exception:
+                raw_href = ""
+            if not raw_href:
+                try:
+                    anchor = record.ele("xpath:.//a[@href]", timeout=1)
+                    raw_href = str(anchor.attr("href") or "") if anchor else ""
+                except Exception:
+                    raw_href = ""
+            href = urljoin(config["manager_url"], raw_href) if raw_href else ""
             url = _public_url(href, config["public_pattern"])
-            if not url and any(marker.lower() in text.lower() for marker in REVIEW_MARKERS):
-                return {"ok": True, "status": "pending_verify", "publishStatus": "pending_review", "pendingCsvReturn": True, "nextAction": "平台文章仍在审核；后续只执行验证，不要重复发布。"}
+            article_id = _article_id(href, config["article_id_pattern"])
+            review_record_id = article_id or str(payload.get("externalDraftId") or "").strip() or None
+            record_status = _record_status(record_text, config)
+            if url and article_id:
+                return {"ok": True, "status": "published_verified", "publishStatus": "confirmed", "platformArticleId": article_id, "externalTaskId": None, "publicUrl": url, "pendingCsvReturn": False, "nextAction": "已从同标题创作后台记录确认公开文章 ID。", "diagnosticSummary": "creator_record_public_article"}
+            if record_status == "pending_review" and review_record_id:
+                return {"ok": True, "status": "published_pending_url", "publishStatus": "pending_review", "externalTaskId": review_record_id, "pendingCsvReturn": True, "nextAction": "已在同标题后台记录中确认审核中状态；不要重复发布。", "diagnosticSummary": "creator_record_pending_review"}
+            if record_status == "published" and review_record_id:
+                return {"ok": True, "status": "published_verified" if url else "published_pending_url", "publishStatus": "confirmed", "platformArticleId": article_id, "externalTaskId": None if article_id else review_record_id, "publicUrl": url, "pendingCsvReturn": not bool(url), "nextAction": "已在同标题后台记录中确认已发布状态。", "diagnosticSummary": "creator_record_published"}
+            if not record_status:
+                return _unconfirmed(f"{platform} 后台找到了同标题记录，但未读取到已发布或审核中状态。")
+            return _unconfirmed(f"{platform} 后台找到了同标题状态，但没有文章 ID 或审核记录 ID。")
         if url:
-            article_id = url.rstrip("/").split("/")[-1]
+            article_id = article_id or url.rstrip("/").split("/")[-1]
             return {"ok": True, "status": "published_verified", "publishStatus": "confirmed", "platformArticleId": article_id, "publicUrl": url, "pendingCsvReturn": False, "nextAction": "平台公开页面已验证。"}
-        return {"ok": True, "status": "pending_verify", "publishStatus": "submitted", "pendingCsvReturn": True, "nextAction": "未找到可公开访问的文章链接；后续只执行验证，不要重复发布。"}
+        return _unconfirmed(f"{platform} 未找到可公开页面或同标题后台记录。")

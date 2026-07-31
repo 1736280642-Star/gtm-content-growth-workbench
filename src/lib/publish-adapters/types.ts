@@ -22,6 +22,8 @@ export interface PublishResult {
   publishStatus?: "submitted" | "confirmed" | "pending_review" | "failed";
   platformArticleId?: string;
   externalTaskId?: string;
+  externalDraftId?: string;
+  editorUrl?: string;
   publicUrl?: string;
   idempotencyKey?: string;
   pendingCsvReturn?: boolean;
@@ -34,6 +36,7 @@ export interface PublishResult {
 export interface VerifyResult {
   ok: boolean;
   status: PublishAttemptStatus;
+  publishStatus?: PublishResult["publishStatus"];
   verifyStatus: "verified" | "pending" | "failed";
   platformArticleId?: string;
   externalTaskId?: string;

@@ -26,3 +26,4 @@ export interface CreateProductRegistryInput {
   productCategory?: string;
   aliases?: string[];
 }
+

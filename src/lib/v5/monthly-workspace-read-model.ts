@@ -1,8 +1,10 @@
 import type { V5MonthlyPlan } from "./monthly-contracts";
 import { getMonthlyWorkspaceBase } from "./monthly-service";
 import type {
+  BatchQueueItem,
   MonthlyPlanConfig,
   MonthlyWorkspaceReadModel,
+  ProductionMatrixTask,
   RulePackageOption,
   V5MonthlyPlanRecord
 } from "./monthly-workspace-contracts";
@@ -16,6 +18,9 @@ function readGoalText(plan: V5MonthlyPlan, key: string) {
 }
 
 function toWorkspacePlanConfig(plan: V5MonthlyPlan, rulePackages: RulePackageOption[]): MonthlyPlanConfig {
+  if (plan.workspaceConfig?.month === plan.month && Array.isArray(plan.workspaceConfig.groups)) {
+    return plan.workspaceConfig as unknown as MonthlyPlanConfig;
+  }
   const configuredChannels = Object.keys(plan.channelMix);
   return {
     month: plan.month,
@@ -52,6 +57,53 @@ function toWorkspacePlanRecord(plan: V5MonthlyPlan, rulePackages: RulePackageOpt
   };
 }
 
+function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string): ProductionMatrixTask {
+  const status: ProductionMatrixTask["status"] = item.scheduleStatus === "active"
+    ? "scheduled"
+    : item.draftId
+      ? "available"
+      : item.generationStatus === "generating"
+        ? "generating"
+        : item.finalEvidenceGate === "blocked" || item.evidencePreview === "needs_material"
+          ? "awaiting_material"
+          : item.generationStatus === "provider_failed"
+            ? "system_recovering"
+            : "ready_for_generation";
+
+  return {
+    taskId: item.matrixItemId,
+    monthlyPlanId: item.monthlyPlanId,
+    strategyPackageId: strategyPackageId || `formal-strategy-${item.monthlyPlanId}`,
+    quotaRuleId: `formal-${item.matrixItemId}`,
+    questionVersionId: "formal-matrix-snapshot",
+    question: item.primaryDistilledTerm || item.product,
+    baseTopicIndex: 1,
+    title: item.title,
+    contentType: item.contentType,
+    articleTypeProfileVersionId: item.contentType,
+    articleTypeNameSnapshot: item.contentType,
+    typeMatchRunId: "formal-matrix-approved",
+    typeSelectionSource: "user_selected",
+    matchReasonSnapshot: "来自已批准正式矩阵快照",
+    articleTypePromptConstraintSnapshot: "",
+    articleTypePromptConstraintSnapshotHash: "",
+    channel: item.channel,
+    rulePackageVersionId: item.rulePackageVersion,
+    knowledgeBaseIds: [],
+    sourceSnapshotHash: "formal-evidence-snapshot",
+    evidencePackSourceSnapshotHash: item.evidencePackId || "pending-evidence-pack",
+    status,
+    knowledgeTodoId: status === "awaiting_material" ? item.matrixItemId : undefined,
+    recoveryAttemptCount: 0,
+    automaticRepairCount: 0,
+    scheduledAt: item.scheduleDate ? `${item.scheduleDate}T${item.scheduleTime || "00:00"}:00+08:00` : undefined,
+    platformAccount: item.platformAccount,
+    formal: true,
+    formalDraftId: item.draftId,
+    updatedAt: new Date().toISOString()
+  };
+}
+
 export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Promise<MonthlyWorkspaceReadModel> {
   const base = await getMonthlyWorkspaceBase(requestedMonth);
   const [governance, productionQueue] = await Promise.all([
@@ -60,16 +112,27 @@ export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Pro
   ]);
   const formalPlanRecord = governance.monthlyPlan ? toWorkspacePlanRecord(governance.monthlyPlan, governance.rulePackages) : null;
   const plan = formalPlanRecord || base.plan;
+  const productionTasks = productionQueue.items.length
+    ? productionQueue.items.map((item) => toFormalProductionTask(item, governance.monthlyPlan?.strategyPackageVersionId))
+    : base.productionTasks;
   const adaptedRulePackages = governance.source === "v5_mysql" || base.source.referenceData !== "v4_runtime"
     ? governance.rulePackages
     : base.rulePackages;
+  const knowledgeBases = Array.from(
+    new Map(
+      [...base.knowledgeBases, ...governance.knowledgeBases]
+        .map((item) => [item.knowledgeBaseId, item])
+    ).values()
+  );
 
   return {
     ...base,
     batchQueueItems: productionQueue.items,
+    productionTasks,
     plan,
     draftPlan: plan?.config || base.draftPlan,
     rulePackages: adaptedRulePackages,
+    knowledgeBases,
     source: {
       ...base.source,
       monthlyData: plan ? "persisted" : base.source.monthlyData,

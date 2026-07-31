@@ -31,10 +31,12 @@ test("workbench imports persist managed SourceRevision content and queue formal 
 });
 
 test("normal workbench imports do not require local RAG source roots", () => {
+  const template = fs.readFileSync(path.join(root, ".env.local.example"), "utf8");
   const managedService = fs.readFileSync(path.join(root, "src/lib/v5/rag/managed-source-import-service.ts"), "utf8");
   const managedReference = fs.readFileSync(path.join(root, "src/lib/v5/rag/managed-content-reference.ts"), "utf8");
 
+  assert.doesNotMatch(template, /^RAG_SOURCE_ROOT_/m);
+  assert.doesNotMatch(template, /^RAG_IMPORT_/m);
   assert.match(managedReference, /mysql:\/\/source-revision/);
   assert.doesNotMatch(managedService, /RAG_SOURCE_ROOT_/);
-  assert.doesNotMatch(managedService, /RAG_IMPORT_/);
 });

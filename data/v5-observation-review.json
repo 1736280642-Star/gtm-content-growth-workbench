@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "tasks": {
+    "capture-task-70111dd6-4ab8-4ffd-a589-5f82fad49ded": {
+      "id": "capture-task-70111dd6-4ab8-4ffd-a589-5f82fad49ded",
+      "captureSessionId": "capture-session-e976a3ee-e2d8-4807-b914-575c90403e4f",
+      "version": 1,
+      "questionKey": "question-workbuddy-scenes",
+      "questionVersionId": "question-version-workbuddy-scenes-v1",
+      "questionText": "WorkBuddy 适合哪些企业知识管理场景？",
+      "temporaryQuestion": false,
+      "platform": "chatgpt",
+      "condition": {
+        "locale": "zh-CN",
+        "region": "上海",
+        "modelLabel": "平台默认",
+        "conversationMode": "new_conversation",
+        "personalizationMode": "off"
+      },
+      "status": "waiting_for_browser",
+      "statusHistory": [
+        {
+          "status": "draft",
+          "at": "2026-07-28T02:40:50.063Z",
+          "note": "已建立单次采集任务。"
+        },
+        {
+          "status": "environment_checking",
+          "at": "2026-07-28T02:40:50.063Z",
+          "note": "已检查本地采集环境。"
+        },
+        {
+          "status": "waiting_for_browser",
+          "at": "2026-07-28T02:40:50.063Z",
+          "note": "Runner 离线，等待浏览器环境就绪。"
+        }
+      ],
+      "manualIntervention": false,
+      "createdAt": "2026-07-28T02:40:50.063Z",
+      "createdBy": "local-workbench_operator",
+      "updatedAt": "2026-07-28T02:40:50.063Z",
+      "updatedBy": "local-workbench_operator"
+    }
+  },
+  "artifacts": {},
+  "answers": {},
+  "gaps": {},
+  "reviews": {},
+  "comparisons": {},
+  "monthlyReviews": {},
+  "proposals": {},
+  "siteAuditRuns": {},
+  "siteAuditFindings": {},
+  "siteRemediationTasks": {},
+  "siteAuditDiffs": {},
+  "auditLog": [
+    {
+      "id": "6e9cffb0-e0e7-4b35-9b60-6e79fbf79104",
+      "createdAt": "2026-07-28T02:40:50.065Z",
+      "event": "capture_task_created",
+      "objectType": "FrontendCaptureTask",
+      "objectId": "capture-task-70111dd6-4ab8-4ffd-a589-5f82fad49ded",
+      "actorId": "local-workbench_operator",
+      "actorRole": "workbench_operator",
+      "reason": "用户发起立即执行的单次 AI 前台测试",
+      "sourceIds": [
+        "question-version-workbuddy-scenes-v1"
+      ],
+      "beforeVersion": 0,
+      "afterVersion": 1
+    }
+  ],
+  "idempotency": {
+    "capture-task-create:capture-task-83cbd497-483f-40f2-9c24-713ef9a7318c": {
+      "requestHash": "d59ae83199eb9848911ae5c617d4ad3f67c4184a2d55079e79c15b06565ce886",
+      "response": [
+        {
+          "id": "capture-task-70111dd6-4ab8-4ffd-a589-5f82fad49ded",
+          "captureSessionId": "capture-session-e976a3ee-e2d8-4807-b914-575c90403e4f",
+          "version": 1,
+          "questionKey": "question-workbuddy-scenes",
+          "questionVersionId": "question-version-workbuddy-scenes-v1",
+          "questionText": "WorkBuddy 适合哪些企业知识管理场景？",
+          "temporaryQuestion": false,
+          "platform": "chatgpt",
+          "condition": {
+            "locale": "zh-CN",
+            "region": "上海",
+            "modelLabel": "平台默认",
+            "conversationMode": "new_conversation",
+            "personalizationMode": "off"
+          },
+          "status": "waiting_for_browser",
+          "statusHistory": [
+            {
+              "status": "draft",
+              "at": "2026-07-28T02:40:50.063Z",
+              "note": "已建立单次采集任务。"
+            },
+            {
+              "status": "environment_checking",
+              "at": "2026-07-28T02:40:50.063Z",
+              "note": "已检查本地采集环境。"
+            },
+            {
+              "status": "waiting_for_browser",
+              "at": "2026-07-28T02:40:50.063Z",
+              "note": "Runner 离线，等待浏览器环境就绪。"
+            }
+          ],
+          "manualIntervention": false,
+          "createdAt": "2026-07-28T02:40:50.063Z",
+          "createdBy": "local-workbench_operator",
+          "updatedAt": "2026-07-28T02:40:50.063Z",
+          "updatedBy": "local-workbench_operator"
+        }
+      ],
+      "createdAt": "2026-07-28T02:40:50.065Z"
+    }
+  }
+}

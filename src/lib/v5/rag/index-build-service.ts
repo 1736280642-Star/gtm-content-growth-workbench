@@ -23,6 +23,10 @@ function boundedPositiveInteger(value: string | undefined, fallback: number, max
   return Number.isInteger(parsed) && parsed > 0 ? Math.min(maximum, parsed) : fallback;
 }
 
+function embeddingBatchMaximum(provider: KnowledgeEmbeddingModelProvider) {
+  return provider === "qwen_embedding" ? 10 : 32;
+}
+
 export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { rawAssetStore?: RagRawAssetStore; openSearch?: HttpRagOpenSearchAdapter } = {}): Promise<RagIndexBuildResult> {
   const infrastructure = getRagInfrastructureStatus();
   if (infrastructure.status !== "ready") {
@@ -68,6 +72,7 @@ export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { 
       normalizedMarkdown: markdown,
       approvedClaims: item.claims,
       blockedClaimIds: context.manifest.blockedClaimIds,
+      blockedClaims: item.blockedClaims,
       unresolvedConflictIds: context.manifest.unresolvedConflictIds,
       chunkerVersion: context.snapshot.chunkerVersion
     });
@@ -79,7 +84,8 @@ export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { 
   const provider = infrastructure.embedding.provider as KnowledgeEmbeddingModelProvider;
   const vectors = new Map<string, number[]>();
   let model = infrastructure.embedding.model || "";
-  const batchSize = boundedPositiveInteger(process.env.RAG_EMBEDDING_BATCH_SIZE, 32, 64);
+  const providerBatchMaximum = embeddingBatchMaximum(provider);
+  const batchSize = boundedPositiveInteger(process.env.RAG_EMBEDDING_BATCH_SIZE, providerBatchMaximum, providerBatchMaximum);
   for (let start = 0; start < chunks.length; start += batchSize) {
     const batch = chunks.slice(start, start + batchSize);
     const result = await callEmbeddingProvider({ provider, input: batch.map((chunk) => `${chunk.chunkTitle}\n${chunk.summary}\n${chunk.content}`) });

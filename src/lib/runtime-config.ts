@@ -105,7 +105,7 @@ function createCsdnDraftCapability(): RuntimeCapability {
     label: "CSDN 草稿",
     purpose: "通过 CSDN 创作中心接口创建文章草稿，不自动发布",
     requiredEnv: ["CSDN_COOKIE"],
-    optionalEnv: ["CSDN_DRAFT_API_URL", "CSDN_DRAFT_PAYLOAD_JSON", "CSDN_HEADERS_JSON", "CSDN_TAGS", "CSDN_CATEGORIES", "CSDN_AUTH_CHECK_URL"]
+    optionalEnv: ["CSDN_DRAFT_API_URL", "CSDN_API_GATEWAY_KEY", "CSDN_API_GATEWAY_SIGNING_KEY", "CSDN_DRAFT_PAYLOAD_JSON", "CSDN_HEADERS_JSON", "CSDN_TAGS", "CSDN_CATEGORIES", "CSDN_AUTH_CHECK_URL"]
   });
 }
 
@@ -120,7 +120,9 @@ function createJuejinDraftCapability(): RuntimeCapability {
       "JUEJIN_DRAFT_API_QUERY",
       "JUEJIN_DRAFT_PAYLOAD_JSON",
       "JUEJIN_HEADERS_JSON",
+      "JUEJIN_TAG_LABELS",
       "JUEJIN_CATEGORY_ID",
+      "JUEJIN_CATEGORY_LABEL",
       "JUEJIN_CSRF_TOKEN",
       "JUEJIN_UUID",
       "JUEJIN_AUTH_CHECK_URL"

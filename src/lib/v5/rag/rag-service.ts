@@ -163,7 +163,7 @@ export async function createFinalEvidencePack(input: { retrievalRunId: string; a
   if (!stored) throw new RagServiceError(404, "retrieval_run_not_found", "RetrievalRun 不存在。" );
   const matrix = await readRagMatrixItemContextRecord(stored.request.matrixItemId);
   if (!matrix) throw new RagServiceError(404, "matrix_item_not_found", "RetrievalRun 绑定的矩阵项不存在。" );
-  if (matrix.matrixStatus !== "approved" || matrix.itemStatus !== "approved" || !matrix.matrixApprovedBy || !matrix.matrixApprovedAt) {
+  if (matrix.matrixStatus !== "approved" || !["approved", "ready_for_generation"].includes(matrix.itemStatus) || !matrix.matrixApprovedBy || !matrix.matrixApprovedAt) {
     throw new RagServiceError(409, "matrix_not_approved", "只有人工批准后的矩阵项才能冻结 Final EvidencePack。" );
   }
   if (!matrix.monthlyProductionReady || matrix.readinessStatus !== "approved" || matrix.ruleStatus !== "active" || !matrix.ruleImmutableAt) {

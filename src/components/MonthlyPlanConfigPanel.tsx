@@ -49,8 +49,11 @@ export function MonthlyPlanConfigPanel(props: MonthlyPlanConfigPanelProps) {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [matching, setMatching] = useState(false);
+  const valueSnapshot = JSON.stringify(value);
 
-  useEffect(() => setDraft(cloneConfig(value)), [value]);
+  useEffect(() => {
+    setDraft(cloneConfig(JSON.parse(valueSnapshot) as MonthlyPlanConfig));
+  }, [valueSnapshot]);
 
   const selectablePackages = rulePackages.filter((item) => item.status === "active" && item.monthlyProductionReady);
   const selectedQuestions = targetQuestions.filter((item) => (draft.questionVersionIds || []).includes(item.questionVersionId));

@@ -6,6 +6,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { fileURLToPath } from "node:url";
 import { resolveWeixinArticleContent } from "./lib/wechatsync-content.mjs";
 import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
+import { createCsdnGatewayHeaders } from "./lib/csdn-api-gateway.mjs";
 import { submitAndPollWechatPublish, verifyWechatPublish } from "./lib/wechat-formal-publish.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -320,9 +321,9 @@ function markdownToSimpleHtml(markdown) {
 
 function getPlatformInput(input) {
   const title = String(input.title || "").trim();
-  const markdown = String(input.content || "").trim();
+  const markdown = String(input.markdown || input.content || "").trim();
   const html = markdownToSimpleHtml(markdown);
-  const summary = createDigest(markdown);
+  const summary = String(input.summary || "").trim() || createDigest(markdown);
 
   return {
     title,
@@ -416,11 +417,13 @@ function createMissingConfigResult(platformLabel, missingConfig) {
 }
 
 function getCsdnMissingConfig() {
-  return ["CSDN_COOKIE"].filter((name) => !process.env[name]?.trim());
+  const missingConfig = ["CSDN_COOKIE", "CSDN_API_GATEWAY_KEY", "CSDN_API_GATEWAY_SIGNING_KEY"].filter((name) => !process.env[name]?.trim());
+  if (!splitEnvList(process.env.CSDN_TAGS).length) missingConfig.push("CSDN_TAGS");
+  return missingConfig;
 }
 
 function getJuejinMissingConfig() {
-  const missingConfig = ["JUEJIN_COOKIE"].filter((name) => !process.env[name]?.trim());
+  const missingConfig = ["JUEJIN_COOKIE", "JUEJIN_CATEGORY_LABEL", "JUEJIN_TAG_LABELS"].filter((name) => !process.env[name]?.trim());
 
   if (!splitEnvList(process.env.JUEJIN_TAG_IDS).length) {
     missingConfig.push("JUEJIN_TAG_IDS");
@@ -655,13 +658,24 @@ async function checkFormalPublishAuth(platform) {
     };
   }
 
+  if (platform === "csdn" || platform === "juejin") {
+    const draftApiAuth = await checkAuth(platform);
+    if (!draftApiAuth.authenticated) {
+      return {
+        ...draftApiAuth,
+        status: draftApiAuth.message?.includes("缺少配置") ? "pending_config" : "auth_required"
+      };
+    }
+  }
+
   try {
     const { response, payload } = await proxyArcs("/auth/check", { platform });
     return {
       authenticated: response.ok && payload.authenticated === true,
       status: payload.status || (response.ok ? "ready" : "auth_required"),
-      message: payload.message || `${platform} Arcs runner 登录态检查失败。`,
+      message: payload.message || payload.failureReason || `${platform} Arcs runner 登录态检查失败。`,
       nextAction: payload.nextAction || "请启动专用浏览器 profile 并完成平台登录。",
+      failureCode: payload.failureCode,
       missingConfig: payload.missingConfig
     };
   } catch (error) {
@@ -722,14 +736,28 @@ async function syncCsdnArticle(input) {
       cover_type: 1,
       is_new: 1
     };
-  const url = process.env.CSDN_DRAFT_API_URL || "https://bizapi.csdn.net/blog-console-api/v1/postedit/saveArticle";
-  const headers = {
+  const configuredUrl = process.env.CSDN_DRAFT_API_URL?.trim();
+  const url = !configuredUrl || configuredUrl.includes("/v1/postedit/saveArticle")
+    ? "https://bizapi.csdn.net/blog-console-api/v3/mdeditor/saveArticle"
+    : configuredUrl;
+  const baseHeaders = {
     Accept: "application/json, text/plain, */*",
     "Content-Type": "application/json;charset=UTF-8",
     Cookie: process.env.CSDN_COOKIE,
     Origin: process.env.CSDN_ORIGIN || "https://editor.csdn.net",
     Referer: process.env.CSDN_REFERER || "https://editor.csdn.net/",
-    "User-Agent": process.env.WECHATSYNC_USER_AGENT || "Mozilla/5.0",
+    "User-Agent": process.env.WECHATSYNC_USER_AGENT || "Mozilla/5.0"
+  };
+  const headers = {
+    ...baseHeaders,
+    ...createCsdnGatewayHeaders({
+      method: "POST",
+      url,
+      appKey: process.env.CSDN_API_GATEWAY_KEY,
+      signingKey: process.env.CSDN_API_GATEWAY_SIGNING_KEY,
+      accept: baseHeaders.Accept,
+      contentType: baseHeaders["Content-Type"]
+    }),
     ...getExtraHeaders("CSDN_HEADERS_JSON")
   };
   const { response, payload } = await fetchJson(url, {
@@ -1113,11 +1141,121 @@ async function publishFormalArticle(input) {
   if (input.platform === "weixin") return publishWeixinArticle(input);
   const validation = validateFormalPublishInput(input);
   if (!validation.ok) return validation;
+
+  if (input.platform === "csdn" || input.platform === "juejin") {
+    const existing = publishLedger.get(input.idempotencyKey);
+    if (existing?.result) {
+      const canResumeExistingDraft =
+        (existing.result.failureCode === "payload_invalid" ||
+          (existing.result.failureCode === "adapter_failed" &&
+            (String(existing.result.failureReason || "").includes("编辑器结构已变化，未找到标题或正文输入区") ||
+              String(existing.result.failureReason || "") === "BrowserConnectError")) ||
+          (input.platform === "csdn" &&
+            existing.result.failureCode === "publish_action_unconfirmed" &&
+            String(existing.result.failureReason || "") === "csdn 第一层发布已点击，但最终确认弹窗或确认按钮未出现。")) &&
+        existing.result.externalDraftId &&
+        existing.result.editorUrl;
+      const canRetryRejectedCsdnDraft =
+        input.platform === "csdn" &&
+        existing.result.failureCode === "adapter_failed" &&
+        String(existing.result.failureReason || "").includes("X-Ca-Key is not exist") &&
+        !existing.result.externalDraftId;
+      if (canResumeExistingDraft) {
+        input = {
+          ...input,
+          externalDraftId: String(existing.result.externalDraftId),
+          editorUrl: String(existing.result.editorUrl)
+        };
+      } else if (!canRetryRejectedCsdnDraft) {
+        return { statusCode: 200, payload: { ...existing.result, duplicateProtected: true } };
+      }
+    }
+    if (existing && !existing.result) {
+      return {
+        statusCode: 409,
+        payload: {
+          ok: false,
+          status: "pending_verify",
+          publishStatus: "failed",
+          failureCode: "publish_action_unconfirmed",
+          failureReason: "同一发布任务已开始，但尚未形成可确认结果。",
+          nextAction: "只检查平台创作后台和 runner 账本，不要再次创建草稿或点击发布。",
+          duplicateProtected: true
+        }
+      };
+    }
+
+    if (!existing) {
+      publishLedger.begin(input.idempotencyKey, {
+        scheduleId: input.scheduleId,
+        platform: input.platform,
+        contentHash: input.contentHash,
+        title: input.title
+      });
+    }
+
+    if (!input.externalDraftId || !input.editorUrl) {
+      let draft;
+      try {
+        draft = input.platform === "csdn" ? await syncCsdnArticle(input) : await syncJuejinArticle(input);
+      } catch (error) {
+        const result = {
+          ok: false,
+          status: "failed",
+          publishStatus: "failed",
+          failureCode: "adapter_failed",
+          failureReason: error instanceof Error ? error.message : "平台草稿创建失败。",
+          nextAction: "修复草稿 API 配置，并先确认平台后台没有新增草稿。"
+        };
+        publishLedger.complete(input.idempotencyKey, result);
+        return { statusCode: 502, payload: result };
+      }
+
+      if (!draft.ok || !draft.payload.externalDraftId || !draft.payload.editorUrl) {
+        const result = {
+          ok: false,
+          status: draft.payload.errorCode === "missing_config" ? "pending_config" : "failed",
+          publishStatus: "failed",
+          failureCode: draft.payload.errorCode === "missing_config" ? "pending_config" : "adapter_failed",
+          failureReason: draft.payload.message || `${input.platform} 草稿接口未返回草稿 ID。`,
+          nextAction: "修复草稿 API 配置；拿不到平台草稿 ID 时禁止进入浏览器发布。"
+        };
+        publishLedger.complete(input.idempotencyKey, result);
+        return { statusCode: draft.statusCode || 502, payload: result };
+      }
+
+      input = {
+        ...input,
+        externalDraftId: String(draft.payload.externalDraftId),
+        editorUrl: String(draft.payload.editorUrl)
+      };
+    }
+  }
+
   try {
     const { response, payload } = await proxyArcs("/publish", input);
-    return { statusCode: response.status, payload };
+    const result = input.platform === "csdn" || input.platform === "juejin"
+      ? { ...payload, externalDraftId: input.externalDraftId, editorUrl: input.editorUrl }
+      : payload;
+    if (input.platform === "csdn" || input.platform === "juejin") {
+      publishLedger.complete(input.idempotencyKey, result);
+    }
+    return { statusCode: response.status, payload: result };
   } catch (error) {
-    return { statusCode: 502, payload: { ok: false, status: "failed", publishStatus: "failed", failureCode: "adapter_failed", failureReason: error instanceof Error ? error.message : "Arcs runner 调用失败。", nextAction: "不要盲目重试；先检查平台后台是否已生成文章。" } };
+    const result = {
+      ok: false,
+      status: input.externalDraftId ? "pending_verify" : "failed",
+      publishStatus: "failed",
+      failureCode: input.externalDraftId ? "publish_action_unconfirmed" : "adapter_failed",
+      failureReason: error instanceof Error ? error.message : "Arcs runner 调用失败。",
+      nextAction: input.externalDraftId
+        ? "平台草稿已创建但发布动作未确认；只检查该草稿和创作后台，不要重复创建或发布。"
+        : "不要盲目重试；先检查平台后台是否已生成文章。",
+      externalDraftId: input.externalDraftId,
+      editorUrl: input.editorUrl
+    };
+    if (input.platform === "csdn" || input.platform === "juejin") publishLedger.complete(input.idempotencyKey, result);
+    return { statusCode: 502, payload: result };
   }
 }
 
@@ -1127,7 +1265,7 @@ async function verifyFormalArticle(input) {
       const { response, payload } = await proxyArcs("/verify", input);
       return { statusCode: response.status, payload };
     } catch (error) {
-      return { statusCode: 502, payload: { ok: true, status: "pending_verify", publishStatus: "submitted", failureCode: "verification_failed", failureReason: error instanceof Error ? error.message : "Arcs runner 验证失败。", nextAction: "不要重复发布；恢复 runner 后只执行验证。" } };
+      return { statusCode: 502, payload: { ok: false, status: "pending_verify", publishStatus: "failed", failureCode: "publish_action_unconfirmed", failureReason: error instanceof Error ? error.message : "Arcs runner 验证失败。", nextAction: "不要重复发布；恢复 runner 后只执行后台验证。" } };
     }
   }
 
