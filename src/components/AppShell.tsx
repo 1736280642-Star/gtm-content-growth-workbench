@@ -47,8 +47,8 @@ const contentStyle: CSSProperties = {
 };
 
 const navItems = [
-  { key: "/products", icon: <AppstoreOutlined />, label: <Link href="/products">产品与 GEO 调研</Link> },
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
+  { key: "/products", icon: <AppstoreOutlined />, label: <Link href="/products">产品与 GEO 调研</Link> },
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
   { key: "/free-production", icon: <FormOutlined />, label: <Link href="/free-production">自由内容生产</Link> },
   { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
@@ -96,7 +96,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Typography.Title level={4} style={{ margin: 0 }}>
                 JOTO GTM
               </Typography.Title>
-              <Typography.Text type="secondary">内容增长工作台</Typography.Text>
             </div>
           )}
           <Button
