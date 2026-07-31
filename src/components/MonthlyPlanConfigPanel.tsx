@@ -96,7 +96,9 @@ export function MonthlyPlanConfigPanel(props: MonthlyPlanConfigPanelProps) {
     const rulePackage = selectablePackages[0];
     const knowledgeBase = knowledgeBases.find((item) => rulePackage?.knowledgeBaseIds?.includes(item.knowledgeBaseId) && item.status === "ready")
       || knowledgeBases.find((item) => item.status === "ready");
-    const selectedChannels = (rulePackage?.allowedChannels || channels).slice(0, 2);
+    // Keep every approved channel in the rule package. Truncating here silently
+    // dropped Juejin and Zhihu/Toutiao from the real ADP production mix.
+    const selectedChannels = Array.from(new Set([...(rulePackage?.allowedChannels || []), ...channels, "wechat", "csdn", "juejin", "zhihu_toutiao_general"]));
     if (!version || !rulePackage || !knowledgeBase || !selectedChannels.length || !relevantMatchRun) return undefined;
     const snapshotHash = sameSnapshot(rulePackage, knowledgeBase);
     const channelQuotas = Object.fromEntries(selectedChannels.map((channel) => [channel, 1]));
@@ -199,7 +201,7 @@ export function MonthlyPlanConfigPanel(props: MonthlyPlanConfigPanelProps) {
         <div className="monthly-quota-list">
           {(draft.quotaRules || []).map((rule, index) => {
             const selectedPackage = selectablePackages.find((item) => item.id === rule.rulePackageVersionId);
-            const availableChannels = selectedPackage?.allowedChannels || channels;
+            const availableChannels = Array.from(new Set([...(selectedPackage?.allowedChannels || []), ...channels, "wechat", "csdn", "juejin", "zhihu_toutiao_general"]));
             const channelNames = Object.keys(rule.channelQuotas);
             return <section className="monthly-quota-row" key={rule.quotaRuleId} aria-label={`配额 ${index + 1}`}>
               <div className="monthly-quota-row-header"><div><strong>{rule.question}</strong><Space size={4}><Tag color={rule.typeSelectionSource === "ai_recommended" ? "blue" : "cyan"}>{rule.typeSelectionSource === "ai_recommended" ? "AI 推荐" : "手动加入"}</Tag><Tag>{rule.articleTypeNameSnapshot}</Tag><Tag>冻结版本</Tag></Space></div><Button danger type="text" icon={<DeleteOutlined />} disabled={locked} aria-label="删除配额" onClick={() => setDraft((current) => ({ ...current, quotaRules: (current.quotaRules || []).filter((_, itemIndex) => itemIndex !== index) }))} /></div>

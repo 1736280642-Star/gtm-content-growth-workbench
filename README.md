@@ -1,364 +1,179 @@
-# 基于GEO优化的自动化内容生产工作台 V5
+# JOTO GTM 内容增长工作台 V5
 
-基于GEO优化的自动化内容生产工作台面向企业内容增长、GEO 运营、知识维护和发布协作团队。V5 将问题、知识、月度策略、内容生产、发布结果、AI 前台观察和月度复盘连接成一条可追溯链路。
+面向 JOTO WorkBuddy、腾讯云 ADP 等产品的 GEO 内容增长工作台。V5 把“问题—知识—月度策略—文章生产—排期执行—发布回传—前台观察—月度复盘”串成一条可追溯链路。
 
-它不是通用 AI 写作器，也不把“生成一篇文章”当作终点。系统的目标是让内容从可追溯事实依据出发，在月度策略获批后自动完成知识检索、正文生产和事实校验，并用真实发布与观察结果推动下一个月的决策。
+V5 的规划与复盘周期只有自然月：`MonthlyPlan -> date execution -> publish and metrics -> MonthlyReview -> next month proposal`。日期视图只能执行已批准的月度计划，不能成为第二套规划源。
 
-## 1. V5 主流程
-
-V5 只使用自然月作为规划和复盘周期：
+## 项目结构
 
 ```text
-问题与知识准备
--> MonthlyPlan 与内容策略包
--> 月度内容矩阵
--> 自动 Evidence Gate
--> 后台正文生成与自动修复
--> 人工排程与日期执行
--> 发布 URL 和渠道指标回传
--> AI 前台测试与官网审计
--> MonthlyReview
--> 下月 Proposal
--> 人工批准新的 MonthlyPlan
+src/app/                  Next.js App Router 页面与 API Routes
+src/components/           可复用 UI 组件
+src/lib/                  领域类型、Repository、Service、Provider 适配器
+src/lib/v5/               V5 月度生产、知识治理、RAG、单篇文章等核心契约
+workers/                  RAG、知识刷新、内容生产、发布等后台 Worker
+arcs-runner/              AI 前台采集 Runner（Python）
+capture-runner/            浏览器采集服务（Node.js）
+scripts/                  校验、smoke、迁移、桥接和验收脚本
+data/                     本地状态、文章类型和演示/导入数据
+database/                 数据库 schema 与迁移
+docs/方案与规划/           方案、实现记录、验收和阶段状态
+design/                   原型与交互设计资料
+review/                   复盘与上下文沉淀
 ```
 
-核心规则：
+页面和 API 共用领域契约；页面负责配置、确认、查看和人工接管，后台服务负责可重复的解析、索引、证据、生成和状态流转。
 
-- `MonthlyPlan` 是规划真源。日期和工作日只用于查看、排程和执行已批准内容。
-- 月度周期从当月第一天开始，到当月最后一天结束。
-- 问题版本、知识快照、内容类型版本、规则包和证据快照在进入生产时冻结，后续更新不覆盖历史计划。
-- Evidence Gate 未通过的任务不能进入正式正文生成。
-- 资料导入后，系统自动建立 `SourceRevision`、提取和裁决 Claim、构建索引、冻结 EvidencePack、生成正文并校验事实；业务页面不提供向量化、正文生成或人工事实复核按钮。
-- 系统可以自动归类、推荐、事实裁决、修复和重试，但月度策略批准、正式发布、外部平台风险接管和下月计划仍由人决定。
-- 缺少真实 Provider、数据库、浏览器伴侣或发布连接时返回明确阻塞状态，不伪造正文、引用、采集或发布成功。
+## 快速开始
 
-## 2. 当前交付状态
+### 环境
 
-| 能力层 | 当前状态 | 说明 |
-| --- | --- | --- |
-| 问题、关键词、知识库、表达预设 | 已提供 V5 页面、契约、Service、API 和自动知识生产 Worker | 导入可信资料后自动形成版本化事实、索引和规则快照；正式运行取决于 MySQL、OpenSearch 和真实 Provider 配置 |
-| 月度策略与内容矩阵 | 已提供配置、预检、批准、版本冻结和渠道任务展开 | 未批准策略不能生产；真实生成仍依赖 MySQL、RAG、EvidencePack 和正文 Provider |
-| 内容类型库 | 已提供自定义类型、版本、启停和语义匹配 | AI 只提供待确认建议，不自动覆盖或发布用户配置 |
-| 批量生成与排程 | 已提供后台生成 Worker、页面状态、自动事实修复、技术重试和排程能力 | 页面只查看结果、编辑可用正文和安排发布，不提供生成或人工事实复核入口；依赖缺失时不写入伪正文 |
-| 日期执行与数据回传 | 已提供兼容执行、URL 回填和指标导入链路 | 真实发布是否可用取决于各平台适配器，HTTP 200 不等于公开发布成功 |
-| AI 前台测试 | 已提供任务、回答、引用、对比、缺口复核、浏览器伴侣和本地 Runner | P0 仅定义 ChatGPT DOM 适配器；其他平台未达到支持标准时必须显示“尚未支持” |
-| 月度复盘 | 已提供问题级聚合和下月 Proposal | Proposal 不会自动创建下月任务，也不会回写已批准策略 |
-| 官网审计 | 已合并到官网博客监控页签 | 与 AI 前台测试保持独立对象、状态和指标，不生成统一总分 |
-| 访问控制 | 工作台内不再提供角色切换或页面权限 | 当前按单工作区用户运行；公网部署前必须在应用外接入统一认证和访问控制 |
-
-## 3. 快速启动
-
-### 环境要求
-
-- Node.js 18.17 或更高版本，推荐当前 LTS。
-- npm 9 或更高版本。
-- Windows PowerShell。Next.js 可运行在其他系统，但部分仓库脚本按 Windows 设计。
-- Chrome。只有浏览器 smoke、AI 前台采集或平台浏览器适配需要。
-- MySQL 8.x、OpenSearch、真实 Embedding Provider 和正文 Provider。只有启用正式知识与正文生产链路时需要。
-
-### 安装与运行
+- Node.js 18.17+、npm 9+；推荐当前 LTS。
+- Windows PowerShell 可直接运行仓库脚本；Next.js 本身也可在其他系统运行。
+- 只浏览本地页面和隔离 smoke 时，不需要外部 Provider。
+- 真正的 RAG/正式生产需要 MySQL、OpenSearch、Embedding Provider、正文 Provider，以及相应的渠道配置。
 
 ```powershell
 npm.cmd install
-npm.cmd run dev:local
-```
-
-默认本地地址：
-
-```text
-http://127.0.0.1:3047
-```
-
-也可以指定端口：
-
-```powershell
 npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 ```
 
-不配置外部服务也可以查看页面和本地流程。依赖真实能力的区域会显示 `pending_config`、待连接或尚未支持，不应通过 mock 掩盖缺失配置。
+访问 <http://127.0.0.1:3047>。也可使用项目提供的 `npm.cmd run dev:local` 启动脚本。
 
-### 自动知识生产
+复制 `.env.local.example` 为 `.env.local` 后，只在本机填写真实配置。密钥、Cookie、Token、密码不得写入 README、日志、截图或 Git。
 
-业务使用路径只有两个前置动作：导入可信资料，以及批准月度内容策略。资料进入系统后，以下链路由后台完成，不需要点击向量化、生成或人工复核按钮：
-
-```text
-SourceAsset / SourceRevision
--> Claim 提取
--> 权威度、更新时间与冲突裁决
--> SourceSnapshot / 规则包 / Manifest
--> 真实 Embedding 与 OpenSearch 索引
--> EvidencePack
--> 正文生成、事实校验和自动删除无依据段落
--> 可追溯 DraftVersion
-```
-
-生产调度按顺序持续运行：
-
-```powershell
-npm.cmd run worker:v5-rag:source-import -- --write
-npm.cmd run worker:v5-rag:knowledge-refresh
-npm.cmd run worker:v5-rag:index
-npm.cmd run worker:v5-content-production
-```
-
-`source-import` 默认是 dry-run，生产调度必须显式使用 `--write`。后续三个 Worker 通过持久任务、租约和幂等键自动衔接；它们不是面向业务用户的手工操作步骤。资料更新会使旧 EvidencePack 失效，未完成任务只有在新索引通过回放评测并激活后才重新进入生成队列。
-
-事实裁决和正文约束：
-
-- 同一能力优先使用权威等级更高的资料；同等级时使用更新时间更新的版本。
-- 同等级、同时间且无法裁决的冲突双方都标记为 `disputed`，正文不得采用任一结论。
-- 条件性能力可以生成，但正文必须同时包含适用条件或限制。
-- 模型提出 EvidencePack 中不存在的产品能力、伪造 Claim 或过期 Claim 时，系统自动删除对应段落；修复后仍不通过则不保存为可用正文。
-- 任意事实句必须追溯到 `Claim -> SourceRevision -> headingPath / paragraphIndex / characterRange -> originalQuote`，正文同时展示准确原文引用。
-
-## 4. 页面功能与边界
-
-### 4.1 总览与基础准备
-
-| 页面 | 路由 | 主要功能 | 能力边界 |
-| --- | --- | --- | --- |
-| 首页数据看板 | `/` | 汇总本月矩阵量、生成进度、异常、回传和复盘待办，提供主流程入口 | 只做读取和导航，不在首页修改策略、正文或发布状态 |
-| 问题与关键词池 | `/questions-keywords` | 聚合业务信号、自动规范化和去重问题、维护关键词、处理问题池冲突、选择月度目标问题 | 主体知识库同时具备产品表达规则包和事实来源映射且无冲突时自动可用；缺任一对象进入观察；与现有问题池存在语义或业务冲突时进入待决策。选择问题时锁定 `questionVersionId`，但不代表已通过生成证据准入 |
-| 知识库列表 | `/knowledge` | 创建知识库、查看重点、状态和待处理数量 | 创建知识库不等于资料已可生产；正式可用性由资料处理和关键证据决定 |
-| 知识库详情 | `/knowledge/[id]` | 查看资料、系统理解和真正需要用户处理的事项，按需展开原文依据 | 普通视图隐藏哈希和底层治理字段；正式事实由 Claim 和 SourceRevision 管理，不能把知识库摘要直接当成引用 |
-| 内容导入 | `/knowledge/import` | 选择目标知识库和资料接入方式 | 只负责导入入口，不绕过资料解析、公开范围和治理检查 |
-| URL 导入 | `/knowledge/import/url` | 导入网页、博客索引或其他 URL 来源 | 抓取成功不等于事实可公开使用；真实抓取取决于连接配置 |
-| 文档导入 | `/knowledge/import/document` | 导入 Markdown、TXT、PDF、DOCX 等资料 | 文件解析结果仍需经过知识治理；不应上传含密钥或私人数据的文档 |
-| 知识向量化 | `/knowledge/vectorize` | 查看历史兼容索引状态和配置诊断 | 不属于 V5 正文生产操作链路；正式索引由后台 Worker 自动构建，页面操作不能绕过回放评测和 active Snapshot 校验 |
-| 规则包管理 | `/knowledge/rule-packages` | 查看产品表达规则包、版本和治理状态 | 自动知识链路使用来源快照生成并激活对应规则版本；页面不承担逐条事实复核，也不能绕过来源版本和冲突规则 |
-
-### 4.2 月度策略与生产
-
-| 页面 | 路由 | 主要功能 | 能力边界 |
-| --- | --- | --- | --- |
-| 月度内容矩阵 | `/monthly-matrix` | 查看自然月、内容策略包、预检结果、渠道成品总量和展开后的矩阵任务；批准内容策略包 | 这是 V5 规划主入口；批准后生成中心只能执行，不能反向改变策略字段 |
-| 月度策略工作区 | `/monthly-matrix/strategy` | 选择目标问题、内容类型、渠道、每渠道配额、规则包和知识库，确认版本 | “配额 4 + 两个渠道”表示每个渠道 4 篇，共 8 篇；AI 推荐不会自动保存、批准或绕过证据检查 |
-| 内容类型库 | `/monthly-matrix/content-types` | 从模板创建业务类型、复制、编辑新版本、启用或停用，查看语义匹配建议 | 模板不是不可修改的固定枚举；类型匹配只说明内容适合度，不代表允许生产 |
-| 批量生成中心 | `/monthly-matrix/batch-generation` | 查看后台生成进度、可用正文、自动修复结果和异常状态，预览或编辑正文并人工排程 | 不提供正文生成或人工事实复核按钮，也不能编辑月度目标、渠道或配额；只有缺少主题成立所需关键资料时才产生资料待办 |
-| 正文深链接 | `/v5/drafts/[id]` | 恢复指定正文的预览上下文 | 不作为独立导航或第二套正文工作区；正文仍归属于矩阵任务和生成运行 |
-
-### 4.3 执行、发布与回传
-
-| 页面 | 路由 | 主要功能 | 能力边界 |
-| --- | --- | --- | --- |
-| 当日执行 | `/daily-execution` | 按昨日、今日、明日查看已批准内容的发布任务、状态和失败接管入口 | 只处理执行，不创建规划或修改月度策略；未排程内容应返回批量生成中心 |
-| 数据回传 | `/publish` | 将渠道数据匹配到已发布文章，导入或手动补录阅读、点赞等指标 | 不负责发布确认和 URL 创建；缺少正式 URL 时不能稳定匹配渠道数据 |
-| 博客候选池 | `/blog-candidates` | 接收博客监控产生的候选主题，确认、标记规划、移出或导出清单 | 当前仍包含历史兼容任务承接逻辑，不是新的 V5 规划真源；正式内容必须回到 MonthlyPlan 审批链路 |
-
-### 4.4 观察、复盘与官网审计
-
-| 页面 | 路由 | 主要功能 | 能力边界 |
-| --- | --- | --- | --- |
-| 官网博客监控 | `/blog-monitor` | 同步博客、查看文章表现和内容诊断 | 监控结果是规划信号，不自动生成正式矩阵任务 |
-| 官网审计 | `/blog-monitor?tab=site-audit` | 检查技术、Schema、内容和可引用性，维护发现项、整改和复审 | 不建立独立导航或复盘周期；未配置 Runner 时不填充模拟问题 |
-| AI 前台测试 | `/ai-front-test` | 创建立即执行的单次采集任务，查看回答与引用证据，任选两次任务对比，人工确认缺口去向 | 不创建固定日期自动采集计划；观察结果不能自动升级为事实、Claim 或月度任务 |
-| 采集环境 | `/ai-front-test/environment` | 查看浏览器伴侣、本地 Runner 和平台适配器状态，提供可执行恢复建议 | 服务端不模拟登录；不上传 Cookie、密码、Token、自动填充信息或与任务无关的页面内容 |
-| 月度复盘 | `/monthly-review` | 按目标问题关联 MonthlyPlan、已发布内容、指标和 AI 回答，形成下月建议 | 只创建待审批 Proposal；不回写已批准策略包，不重新计算渠道配额 |
-
-### 4.5 配置与系统设置
-
-| 页面 | 路由 | 主要功能 | 能力边界 |
-| --- | --- | --- | --- |
-| 配置管理 | `/configuration` | 管理模型状态、文章表达预设、发布连接、前台测试连接、版本和调用日志 | 页面只显示配置状态和缺失项，不回显密钥；表达预设是表单化约束，不允许普通用户直接编辑完整 Prompt |
-| 工作台设置 | `/settings` | 设置默认知识库、产品表达规则包、渠道、产能和数据来源等长期默认值 | 当前页面包含部分历史默认设置，不能把临时执行配置反写成 MonthlyPlan 真源 |
-
-## 5. 兼容入口
-
-V5 已把重复入口收敛到正式页面：
-
-| 旧入口职责 | 当前去向 |
-| --- | --- |
-| 独立策略入口 | `/monthly-matrix` 或 `/monthly-matrix/strategy` |
-| 顶层批量生成、异常和独立排程入口 | `/monthly-matrix/batch-generation` |
-| 嵌套日期执行入口 | `/daily-execution` |
-| 旧问题词池入口 | `/questions-keywords` |
-| 旧 AI 配置与连接入口 | `/configuration` 及其连接页签 |
-
-仓库仍保留少量 V4 页面和 API 以支持迁移与回归测试。它们不是 V5 规划或复盘真源，不应在新功能中继续扩展，也不应与 `MonthlyPlan`、`MonthlyReview` 建立第二套并行业务契约。
-
-## 6. 自动化与人工决策边界
-
-| 系统可以自动完成 | 必须由人确认 |
-| --- | --- |
-| 问题归一化、聚类、去重和关键词维护 | 月度目标问题和业务优先级 |
-| 内容类型语义匹配和待确认建议 | 自定义内容类型版本的启用或停用 |
-| SourceRevision、Claim 提取、权威与时效裁决；无法裁决的冲突自动排除 | 月度内容策略包批准 |
-| 索引、EvidencePack、正文生成、事实检查、无依据段落删除、最多两轮自动修复和技术重试 | 通过补充或更新原始资料改变事实依据；不设置逐条事实复核环节 |
-| 已批准任务的状态流转和可恢复失败处理 | 正式发布前置确认和人工接管 |
-| 回答陈述映射和候选内容/证据缺口 | 观察缺口的业务去向 |
-| 月度数据聚合和下月 Proposal | 新月份 MonthlyPlan 的最终批准 |
-
-### 明确不承诺的能力
-
-- 不承诺在未配置 MySQL、OpenSearch、真实 Embedding Provider、正文 Provider 或可激活来源快照时执行真实生产。
-- 不把本地 fallback、fixture、mock adapter、HTTP 200 或按钮点击当作真实外部成功。
-- 不把平台草稿箱写入等同于正式发布；正式成功需要平台返回结果、内容 ID、公开 URL 或可验证状态。
-- 不绕过验证码、账号确认、平台风控、发布审核或人工接管。
-- 不在本地 JSON 模式下承诺多用户高并发、跨实例一致性或生产级恢复能力。
-- 不允许 Workflow Agent 自主批准规则、策略、风险例外或正式发布。
-- 不允许 AI 前台测试上传浏览器凭证、完整会话或非目标页面内容。
-- 不根据两次采集直接输出趋势结论；采集条件不一致时必须显示差异警告。
-
-## 7. 访问与安全边界
-
-当前工作台按单工作区用户运行，全部导航和业务操作直接开放，不再维护应用内角色、角色切换或按角色返回 403 的逻辑。`actorId`、操作原因和版本记录继续用于审计，不承担授权判断。
-
-公网或多人部署必须在应用外接入真实身份认证与访问控制。Prompt 原文、密钥、原始模型 trace 和内部评分仍不在普通业务页面展示。
-
-## 8. 数据与真实状态
-
-当前存在三类数据来源：
-
-1. V5 领域 Repository：问题、关键词、知识工作区、内容类型、月度策略、生成、观察和复盘契约。
-2. MySQL 与外部索引：用于正式月度、知识、RAG、EvidencePack 和正文生产，需显式配置。
-3. 本地 JSON 与隔离 fixture：用于单机试运行、兼容页面和 smoke，不代表真实生产数据。
-
-数据标签必须保持明确：
-
-- `real`：真实外部或生产数据。
-- `imported`：人工或文件导入数据。
-- `demo` / `mock`：演示与测试数据。
-- `pending_config`：缺少真实配置，当前不可执行。
-- `local_fallback`：本地可继续，但不能等同外部 Provider 成功。
-
-默认本地状态文件和 smoke 状态文件已由 `.gitignore` 管理，不应提交到 GitHub。
-
-## 9. 外部能力配置
-
-真实值只能存放在 `.env.local` 或部署平台 Secret Manager。README、Git、日志、截图和聊天记录中不得出现密钥值。
-
-配置分为：
-
-- MySQL 与工作台存储。
-- 内容生成和 Embedding Provider。
-- 知识抓取、解析、OpenSearch 和 RAG。
-- 微信草稿桥接及其他平台发布适配器。
-- 浏览器伴侣、本地 Capture Runner 和 AI 平台适配器。
-- 日志、CDN、渠道指标和 Pipeline Worker。
-
-配置诊断入口：
-
-```text
-GET /api/runtime-config/status
-GET /api/config-diagnostics
-GET /api/ai-governance
-GET /api/v5/configuration/status
-```
-
-这些接口只返回能力状态、缺失字段名和业务可读错误，不返回配置值。
-
-### 正式 RAG 与正文生产
-
-生产环境需要同时满足：MySQL 可写、OpenSearch 可用、Embedding Provider 返回真实向量、正文 Provider 可调用，以及 Scheduler 持续运行四类 V5 Worker。任一条件缺失时任务保持 `pending_config` 并等待自动恢复，不消耗正常失败重试次数。
-
-端到端测试中的确定性向量和模型适配器只用于验证裁决、失效与追溯语义，不会进入正式索引或正文。
-
-### 可选：MySQL
-
-```powershell
-npm.cmd run check:mysql
-node scripts/init-v5-monthly-schema.mjs --plan
-npm.cmd run init:mysql
-```
-
-数据库迁移必须先执行计划检查并准备备份。禁止在未确认数据归属时启用任何删除 V4 数据的参数。
-
-### 可选：AI 前台采集
-
-```powershell
-npm.cmd run capture-runner:start
-```
-
-浏览器伴侣代码位于 `browser-extension/`，本地 Runner 位于 `capture-runner/`。Runner 只绑定本机回环地址；平台登录由用户在浏览器中完成，服务端不保存账号凭证。
-
-## 10. 验证与测试
-
-### 基础验证
+### 常用验证
 
 ```powershell
 npm.cmd run typecheck
 npm.cmd run validate:structure
-npm.cmd run smoke:interactions
 npm.cmd run build
-```
-
-### V5 契约
-
-```powershell
-npm.cmd run test:v5-foundation
-npm.cmd run test:v5-monthly-production
-npm.cmd run test:v5-article-types
-npm.cmd run test:v5-observation
-npm.cmd run test:v5-rag
-npm.cmd run test:v5-knowledge-e2e
-npm.cmd run test:v5-single-article:contracts
-```
-
-### 页面与工作流
-
-页面 smoke 需要已有本地服务：
-
-```powershell
-npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
-npm.cmd run smoke:pages -- --base-url=http://127.0.0.1:3047
-```
-
-隔离 smoke 会使用独立状态文件和临时服务：
-
-```powershell
+npm.cmd run smoke:pages
 npm.cmd run smoke:workflow
-npm.cmd run smoke:workflow:isolated
-npm.cmd run smoke:browser:v5
-npm.cmd run smoke:browser:content:isolated
 ```
 
-`smoke:workflow` 本身使用隔离 runner；保留显式 `:isolated` 命令用于脚本契约和定向调用。默认优先使用隔离 smoke。带 `:main` 的脚本会直接连接已有服务或主状态，日常开发不要用它们替代隔离验证。
+浏览器验收使用隔离状态文件的脚本，例如 `npm.cmd run smoke:browser:v5`；不要同时启动多个共用 `.next` 目录的 Next.js 服务。
 
-## 11. 项目结构
+## 工作台页面结构
 
-| 目录 | 职责 |
+### 总览与基础配置
+
+| 页面 | 路径 | 用途 |
+| --- | --- | --- |
+| 总览 | `/` | 查看月度矩阵、生产进度、异常、回传和复盘入口；只读导航，不修改策略 |
+| 问题与关键词 | `/questions-keywords` | 维护问题池、关键词和月度目标问题 |
+| 知识库 | `/knowledge`、`/knowledge/[id]` | 创建工作区、查看材料、理解结果和治理待办 |
+| 文档/URL 导入 | `/knowledge/import/document`、`/knowledge/import/url` | 导入 Markdown、TXT、PDF、DOCX 或 URL 来源 |
+| 规则包与索引 | `/knowledge/rule-packages`、`/knowledge/vectorize` | 查看规则包、索引状态和诊断；正式索引由后台链路负责 |
+| 配置 | `/configuration`、`/settings` | 查看 Provider、表达规范、渠道和默认值状态 |
+
+### 月度计划与生产
+
+| 页面 | 路径 | 用途 |
+| --- | --- | --- |
+| 月度矩阵 | `/monthly-matrix` | 查看自然月、策略包、预检、渠道配额和正式任务，完成策略批准 |
+| 策略配置 | `/monthly-matrix/strategy` | 选择问题、文章类型、渠道、配额、规则包和知识库，确认版本 |
+| 文章类型 | `/monthly-matrix/content-types` | 创建、复制、编辑、启停文章类型版本 |
+| 批量生成中心 | `/monthly-matrix/batch-generation` | 查看后台生成、证据包、正文、自动修复和人工排程 |
+| 正文详情 | `/v5/drafts/[id]`、`/drafts/[taskId]` | 查看或编辑指定任务正文与证据上下文 |
+| 当日执行 | `/daily-execution` | 按日期查看已批准任务、执行状态和失败接管 |
+| 月度复盘 | `/monthly-review` | 汇总问题、计划、发布结果、指标并形成下月 Proposal |
+
+### 发布、观察与扩展能力
+
+| 页面 | 路径 | 用途 |
+| --- | --- | --- |
+| 发布与回传 | `/publish`、`/publish-schedule`、`/publish-schedule/daily-execution` | 管理排期、发布结果和渠道指标回传 |
+| 博客候选/监控 | `/blog-candidates`、`/blog-monitor` | 管理候选主题、官网审计和博客表现观察 |
+| AI 前台测试 | `/ai-front-test`、`/ai-front-test/environment` | 创建采集任务、查看回答/引用/对比和环境诊断 |
+| 自由生产 | `/free-production`、`/free-production/tasks` | 处理非月度矩阵的自由内容生产；不改写月度计划 |
+| 产品与研究 | `/products`、`/products/[productId]/research` | 管理产品、研究项目和 GEO 研究结果 |
+| 兼容入口 | `/today`、`/batch-generation`、`/monthly-plan` 等 | 历史入口或跳转兼容，不建立第二套规划/复盘周期 |
+
+## 各能力边界
+
+### 系统自动完成
+
+- 问题归一化、聚类、去重和关键词维护建议。
+- 来源版本、Claim 提取、权威性/时效性裁决、索引、EvidencePack 和证据引用映射。
+- 文章类型语义匹配建议、正文生成、事实校验、无依据段落剔除和有限次数自动修复。
+- 已批准任务的状态流转、排程执行、发布结果回传和月度指标聚合。
+- 前台采集任务的执行、回答/引用保存、差异对比和缺口记录。
+
+### 必须由人确认
+
+- 目标问题、产品优先级、文章类型版本和月度策略包。
+- 规则包/Claim 的审核、冲突裁决、G6 准入和生产池激活。
+- 正式内容的最终编辑、排期、外部平台风险接管和正式发布。
+- 下月 Proposal 是否转为新的 `MonthlyPlan`。
+
+### 明确不承诺
+
+- 未配置真实 MySQL、OpenSearch、Embedding/正文 Provider 时，不承诺正式生产；状态应保持 `pending_config` 或 `failed`。
+- 本地 fixture、mock adapter、HTTP 200、草稿箱写入不等于外部平台正式发布。
+- 不伪造平台文章 ID、公开 URL、引用、采集结果或审批记录。
+- 不在工作台内保存或展示密钥，不上传浏览器 Cookie/Token，不绕过验证码、二次确认或人工接管。
+- 本地 JSON 适合单机开发和 smoke，不等同于多用户并发、跨实例一致性或生产恢复能力。
+
+## 用户工作流
+
+```text
+目标问题
+  -> 正式产品/知识与 active 规则包
+  -> G6 人工准入
+  -> MonthlyPlan 与文章类型匹配
+  -> 月度策略包预检、批准、版本冻结
+  -> 正式矩阵任务
+  -> RAG EvidencePack 与正文生成
+  -> 人工编辑和排期
+  -> 当日执行/外部发布确认
+  -> URL 与渠道指标回传
+  -> AI 前台观察、官网审计
+  -> MonthlyReview 与下月 Proposal
+```
+
+推荐操作顺序：
+
+1. 在 `/questions-keywords` 确认当月问题和版本。
+2. 在 `/knowledge` 导入并治理可信材料，确认知识库和规则包可用。
+3. 在 `/monthly-matrix/content-types` 确认文章类型版本。
+4. 在 `/monthly-matrix/strategy` 配置问题、类型、渠道和配额，完成预检后批准。
+5. 在 `/monthly-matrix` 查看正式矩阵；在批量生成中心查看证据和正文。
+6. 人工编辑、排期，在 `/daily-execution` 执行；外部平台发布后回填可验证 URL 和指标。
+7. 在 `/monthly-review` 复盘并人工决定是否采用下月 Proposal。
+
+资料导入后的 RAG 后台链路通常为：
+
+```text
+SourceAsset/SourceRevision -> Claim -> SourceSnapshot/Manifest
+-> OpenSearch index -> EvidencePack -> DraftVersion -> fact validation
+```
+
+## 团队协作说明
+
+- `main` 是集成分支；功能开发使用短生命周期分支和 Pull Request，提交说明写清影响范围与验证命令。
+- 任何涉及 `MonthlyPlan`、`MonthlyReview`、`monthStart`、`monthEnd`、`monthlyPlanId` 的改动，必须同步更新契约、API、页面、测试和文档；禁止引入 weekly planning/review 命名。
+- 页面改动需同时检查桌面/移动端 DOM、可访问性、加载/空状态和 `pending_config`/`manual_takeover_required`/`failed` 状态。
+- 领域逻辑放在 `src/lib` 或 `src/lib/v5`，不要把业务规则散落在页面组件；外部平台通过 adapter/bridge 接入。
+- 测试数据必须标注 `demo`、`mock`、`imported`、`real`、`pending_config` 或 `local_fallback`，不得把演示状态当作生产事实。
+- 提交前至少运行 `npm.cmd run typecheck` 与 `npm.cmd run validate:structure`；涉及页面或流程时追加对应 smoke/test。
+- 不提交 `.env.local`、凭证、Cookie、Token、私有链接、运行时状态和临时文件。发现敏感信息立即撤销并轮换，而不是继续传播。
+
+## 关键方案文档索引
+
+| 文档 | 说明 |
 | --- | --- |
-| `src/app/` | 页面、布局和 Next.js Route Handlers |
-| `src/components/` | 业务组件和通用 UI |
-| `src/lib/v5/` | V5 问题、知识、月度、生成、观察、复盘契约与 Service |
-| `src/lib/` | 权限、运行配置、兼容领域和发布适配器 |
-| `database/` | Schema 与 migrations |
-| `workers/` | RAG、博客、日志、渠道指标和 Pipeline Worker |
-| `scripts/` | 初始化、诊断、结构检查、契约测试和 smoke |
-| `browser-extension/` | AI 前台测试浏览器伴侣 |
-| `capture-runner/` | 本地采集任务 Runner |
-| `data/` | 本地状态和测试夹具；生产数据不应依赖此目录 |
-| `docs/` | 使用说明、方案、阶段记录和 V5 设计依据 |
+| [`V5_PRODUCTION_USER_FLOW_RUNBOOK.md`](./V5_PRODUCTION_USER_FLOW_RUNBOOK.md) | 正式生产链路、页面顺序、治理 API 和人工审批边界 |
+| [`V5_BACKEND_INTEGRATION.md`](./V5_BACKEND_INTEGRATION.md) | 后端、MySQL、RAG、Provider 和运行时集成说明 |
+| [`docs/usage.md`](./docs/usage.md) | 本地启动、配置诊断、常用验证和渠道接入说明 |
+| [`docs/方案与规划/分支二-月度策略与批量生产开发文档.md`](./docs/方案与规划/分支二-月度策略与批量生产开发文档.md) | 月度策略、矩阵和批量生产方案 |
+| [`docs/方案与规划/2026-07-24-v5-automatic-knowledge-production.md`](./docs/方案与规划/2026-07-24-v5-automatic-knowledge-production.md) | 自动知识生产、Evidence Gate 和 RAG 链路 |
+| [`docs/方案与规划/2026-07-16-v5-real-rag-knowledge-production-integration-plan.md`](./docs/方案与规划/2026-07-16-v5-real-rag-knowledge-production-integration-plan.md) | 真实 RAG 生产集成计划与验收边界 |
+| [`docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md`](./docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md) | GEO 研究 Agent 方案 |
+| [`docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md`](./docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md) | 微信、CSDN、掘金、知乎草稿/发布适配和配置边界 |
+| [`docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md`](./docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md) | 公众号排版与正式 HTML 链路 |
+| [`docs/方案与规划/v5-ui-phase-status.md`](./docs/方案与规划/v5-ui-phase-status.md) | V5 UI 阶段状态与已知缺口 |
 
-## 12. 部署与安全
+## 许可与数据安全
 
-生产构建：
-
-```powershell
-npm.cmd run typecheck
-npm.cmd run validate:structure
-npm.cmd run build
-npm.cmd run start -- --hostname 0.0.0.0 --port 3047
-```
-
-生产环境至少需要：
-
-1. HTTPS 反向代理和统一身份认证。
-2. Secret Manager、最小权限数据库账号和备份策略。
-3. Web、Worker、Scheduler 分离运行；Scheduler 必须持续驱动 Source Import、Knowledge Refresh、RAG Index 和 Content Production Worker。
-4. 外部调用超时、重试上限、幂等键、费用监控和失败告警。
-5. 发布任务的单任务互斥、人工接管和可验证结果。
-6. 原始采集工件的脱敏、保留周期、删除审计和访问授权。
-
-禁止提交或公开：
-
-- `.env`、`.env.local` 和任何真实密钥内容。
-- Token、Cookie、私有请求头、浏览器 profile 和登录会话。
-- 客户资料、未公开产品事实、原始模型 trace 和私有知识库正文。
-- 运行日志、临时状态、截图中的账号信息和未脱敏导出物。
-
-## 13. 相关文档
-
-- `AGENTS.md`：项目最高优先级业务、命名、验证与安全规则。
-- `docs/usage.md`：运行、smoke 和专项链路说明。
-- `docs/方案与规划/2026-07-24-v5-automatic-knowledge-production.md`：自动知识生产、事实裁决、EvidencePack 失效和端到端验收说明。
+仓库当前用于 JOTO GTM 工作台研发与内部协作。外部部署前请补齐身份认证、访问控制、审计、密钥托管、数据库备份和渠道合规审核；正式发布始终以平台可验证结果和人工确认作为完成条件。
