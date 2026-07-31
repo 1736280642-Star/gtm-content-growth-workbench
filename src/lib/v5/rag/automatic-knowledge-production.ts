@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { V5AuthorityLevel, V5SourceLocator } from "../knowledge-governance-contracts";
 
-export const AUTOMATIC_KNOWLEDGE_POLICY_VERSION = "automatic-knowledge-policy@1";
+export const AUTOMATIC_KNOWLEDGE_POLICY_VERSION = "automatic-knowledge-policy@2";
 export const AUTOMATIC_CLAIM_EXTRACTOR_VERSION = "automatic-markdown-claim-extractor@1";
 
 export interface AutomaticKnowledgeDocument {

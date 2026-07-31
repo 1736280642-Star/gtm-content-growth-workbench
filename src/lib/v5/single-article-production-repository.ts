@@ -21,8 +21,6 @@ import type {
 } from "./single-article-contracts";
 import type { BatchQueueItem } from "./monthly-workspace-contracts";
 
-export const SINGLE_ARTICLE_SCOPE = "single_article_acceptance";
-
 export interface FormalGenerationContext {
   taskId: string;
   taskVersion: number;
@@ -125,8 +123,8 @@ function mapDraft(row: RowDataPacket): FormalDraftVersion {
   };
 }
 
-export function singleArticleRequestHash(taskId: string) {
-  return hashV5GovernancePayload({ operation: "v5_single_article_prepare_and_generate_v1", taskId });
+export function singleArticleRequestHash(taskId: string, taskVersion: number) {
+  return hashV5GovernancePayload({ operation: "v5_single_article_prepare_and_generate_v1", taskId, taskVersion });
 }
 
 export async function claimSingleArticleOperation(input: {
@@ -134,15 +132,21 @@ export async function claimSingleArticleOperation(input: {
   idempotencyKey: string;
   actor: SingleArticleActor;
 }) {
-  const requestHash = singleArticleRequestHash(input.taskId);
   return withV5GovernanceTransaction(async (connection) => {
+    const [taskRows] = await connection.query<RowDataPacket[]>(
+      "SELECT version FROM content_matrix_item WHERE id = ? FOR UPDATE",
+      [input.taskId]
+    );
+    if (!taskRows[0]) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式矩阵项不存在。", 404, "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
+    const taskVersion = Number(taskRows[0].version);
+    const requestHash = singleArticleRequestHash(input.taskId, taskVersion);
     const operationId = `single-op-${randomUUID()}`;
     const correlationId = operationId;
     const [inserted] = await connection.query<ResultSetHeader>(
       `INSERT IGNORE INTO single_article_operation
-       (id, task_id, idempotency_key, request_hash, correlation_id, status, actor_id, actor_role, audit_reason)
-       VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
-      [operationId, input.taskId, input.idempotencyKey, requestHash, correlationId, input.actor.actorId, input.actor.actorRole, input.actor.auditReason]
+       (id, task_id, task_version, idempotency_key, request_hash, correlation_id, status, actor_id, actor_role, audit_reason)
+       VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+      [operationId, input.taskId, taskVersion, input.idempotencyKey, requestHash, correlationId, input.actor.actorId, input.actor.actorRole, input.actor.auditReason]
     );
     const [rows] = await connection.query<RowDataPacket[]>(
       "SELECT * FROM single_article_operation WHERE task_id = ? AND idempotency_key = ? FOR UPDATE",
@@ -159,7 +163,7 @@ export async function claimSingleArticleOperation(input: {
         eventType: "single_article_operation_started",
         objectType: "single_article_operation",
         objectId: String(row.id),
-        afterSummary: { taskId: input.taskId, status: "running" },
+        afterSummary: { taskId: input.taskId, taskVersion, status: "running" },
         correlationId: String(row.correlation_id)
       });
     }
@@ -233,11 +237,11 @@ export async function readFormalGenerationContext(taskId: string): Promise<Forma
      LEFT JOIN prompt_group_version pgv ON pgv.id = i.prompt_group_version_id
      LEFT JOIN channel_rule_version crv ON crv.id = i.channel_rule_version_id
      LEFT JOIN rule_package_version r ON r.id = i.rule_package_version_id
-     WHERE i.id = ? AND i.production_scope = ? LIMIT 1`,
-    [taskId, SINGLE_ARTICLE_SCOPE]
+     WHERE i.id = ? LIMIT 1`,
+    [taskId]
   );
   const row = rows[0];
-  if (!row) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式单篇矩阵项不存在。", 404, "先运行单篇 Bootstrap，并确认 MySQL 中存在 Pharaoh Command 正式任务。");
+  if (!row) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式矩阵项不存在。", 404, "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
   const ready = String(row.prompt_group_status) === "approved"
     && String(row.prompt_version_status) === "approved"
     && String(row.active_version_id) === String(row.prompt_group_version_id)
@@ -471,7 +475,8 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
     `SELECT i.*, p.plan_month, pe.display_name AS product_display_name, pe.canonical_name AS product_canonical_name,
       r.version AS rule_version, f.decision AS evidence_decision, f.evidence_items,
       g.id AS generation_run_id, g.status AS generation_status, g.hard_rule_result, g.failure_message, g.next_action,
-      d.id AS draft_version_id
+      d.id AS draft_version_id, pr.status AS publish_result_status, pr.public_url, pr.failure_reason AS publish_failure_reason,
+      pr.metrics AS publish_metrics, pr.version AS publish_result_version
      FROM content_matrix_item i
      JOIN monthly_plan p ON p.id = i.monthly_plan_id
      LEFT JOIN product_entity pe ON pe.id = i.product_id
@@ -483,9 +488,10 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
      LEFT JOIN draft_version d ON d.id = (
        SELECT d2.id FROM draft_version d2 WHERE d2.matrix_item_id = i.id AND d2.test_only = FALSE AND d2.copy_allowed = TRUE ORDER BY d2.created_at DESC LIMIT 1
      )
-     WHERE i.production_scope = ? AND p.plan_month = ?
-     ORDER BY i.publish_date, i.created_at LIMIT 1`,
-    [SINGLE_ARTICLE_SCOPE, month]
+     LEFT JOIN content_publish_result pr ON pr.matrix_item_id = i.id
+     WHERE p.plan_month = ?
+     ORDER BY i.publish_date, i.publish_time, i.created_at`,
+    [month]
   );
   return rows.map((row) => {
     const decision = row.evidence_decision ? String(row.evidence_decision) : "";
@@ -501,11 +507,30 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
       : decision === "needs_review" ? "needs_review"
       : decision === "blocked" || decision === "needs_material" ? "blocked"
       : "not_created";
-    const queueGenerationStatus: BatchQueueItem["generationStatus"] = generationStatus === "running" ? "generating"
+    const publishResultStatus = row.publish_result_status ? String(row.publish_result_status) : "";
+    const matrixStatus = publishResultStatus === "published" ? "published" : publishResultStatus === "failed" ? "publish_failed" : String(row.status);
+    const queueGenerationStatus: BatchQueueItem["generationStatus"] = generationStatus === "running" || matrixStatus === "generating" ? "generating"
       : generationStatus === "completed" && draftId ? "generated"
       : generationStatus === "failed" || generationStatus === "pending_config" ? "provider_failed"
       : "pending";
-    const displayStatus: BatchQueueItem["displayStatus"] = draftId ? "qualified" : queueGenerationStatus === "generating" ? "generating" : finalEvidenceGate === "ready" ? "ready" : finalEvidenceGate === "blocked" ? "exception" : "preparing";
+    const scheduleStatus: BatchQueueItem["scheduleStatus"] = ["scheduled", "published", "publish_failed"].includes(matrixStatus) ? "active" : "unscheduled";
+    const displayStatus: BatchQueueItem["displayStatus"] = matrixStatus === "published" ? "published"
+      : matrixStatus === "publish_failed" ? "publish_failed"
+      : scheduleStatus === "active" ? "scheduled"
+      : draftId ? "qualified"
+      : queueGenerationStatus === "generating" ? "generating"
+      : finalEvidenceGate === "ready" ? "ready"
+      : finalEvidenceGate === "blocked" ? "exception"
+      : "preparing";
+    const scheduleSource = row.scheduled_at || row.publish_date;
+    const scheduleDate = scheduleSource instanceof Date
+      ? scheduleSource.toISOString().slice(0, 10)
+      : scheduleSource ? String(scheduleSource).slice(0, 10) : undefined;
+    const scheduleTime = row.scheduled_at instanceof Date
+      ? row.scheduled_at.toISOString().slice(11, 16)
+      : row.publish_time ? String(row.publish_time).slice(0, 5) : undefined;
+    const metrics = parseV5Json<Record<string, number | string>>(row.publish_metrics, {});
+    const metricSummary = Object.entries(metrics).map(([key, value]) => `${key}: ${value}`).join("；") || undefined;
     return {
       id: String(row.id), monthlyPlanId: String(row.monthly_plan_id), matrixVersionId: String(row.matrix_version_id), matrixItemId: String(row.id),
       title: String(row.title), primaryDistilledTerm: String(row.primary_distilled_term_id || "未设置"), priority: "P0" as const,
@@ -516,10 +541,14 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
       claimCount: evidenceItems.length, generationStatus: queueGenerationStatus,
       hardRuleStatus: hardRuleResult.passed ? "passed" : generationStatus === "failed" ? "blocked" : "pending",
       qualityResult: hardRuleResult.passed ? "passed" : generationStatus === "failed" ? "exception" : "pending",
-      scheduleStatus: "unscheduled" as const, prepublishConfirmed: false, displayStatus,
+      scheduleStatus, scheduleDate, scheduleTime, platformAccount: row.platform_account ? String(row.platform_account) : undefined,
+      prepublishConfirmed: Boolean(draftId), displayStatus,
       formal: true, evidencePackId: row.final_evidence_pack_id ? String(row.final_evidence_pack_id) : undefined,
-      draftId, failureReason: row.failure_message ? String(row.failure_message) : undefined,
-      nextAction: row.next_action ? String(row.next_action) : undefined
+      draftId, failureReason: row.publish_failure_reason ? String(row.publish_failure_reason) : row.failure_message ? String(row.failure_message) : undefined,
+      nextAction: row.next_action ? String(row.next_action) : undefined,
+      publishResultVersion: row.publish_result_version === null || row.publish_result_version === undefined ? 0 : Number(row.publish_result_version),
+      publicUrl: row.public_url ? String(row.public_url) : undefined,
+      metricSummary
     };
   });
 }

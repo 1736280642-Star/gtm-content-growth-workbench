@@ -11,13 +11,18 @@ export interface RagRecallPools {
 export function inferEvidenceRoles(chunk: RagKnowledgeChunk) {
   const roles = new Set<string>();
   if (chunk.semanticType === "limitation_chunk" || chunk.limitations.length) roles.add("human_boundary");
-  if (chunk.semanticType === "official_citation") roles.add("official_citation");
+  if (chunk.semanticType === "official_citation"
+    || (["A1", "A2"].includes(chunk.authorityLevel) && Boolean(chunk.originalQuote.trim())
+      && (chunk.sourceLocator.headingPath.length > 0 || chunk.sourceLocator.paragraphIndex !== undefined || Boolean(chunk.sourceLocator.characterRange)))) {
+    roles.add("official_citation");
+  }
   if (chunk.semanticType === "claim_chunk" && chunk.supportMode !== "background_only") roles.add("product_mechanism");
   if (["release", "change_history", "launch_or_release_fact"].includes(chunk.semanticType)) roles.add("launch_or_release_fact");
   if (["method_step", "integration", "deployment", "faq"].includes(chunk.semanticType)) roles.add("method_step");
   if (chunk.semanticType === "first_person_experience") roles.add("first_person_experience");
   if (chunk.semanticType === "industry_background") roles.add("trend_signal");
-  if (chunk.scenarioTags.length || chunk.problemTags.length || chunk.supportMode === "background_only") roles.add("problem_context");
+  if (chunk.scenarioTags.length || chunk.problemTags.length || chunk.supportMode === "background_only"
+    || /问题|痛点|场景|挑战|需求|目标|适合/.test(`${chunk.summary}\n${chunk.content}`)) roles.add("problem_context");
   return [...roles];
 }
 
@@ -60,6 +65,7 @@ export function runHybridRetrieval(input: { request: RagRetrievalRequest; route:
 
   const candidates = [...byChunk.values()];
   for (const candidate of candidates) {
+    candidate.evidenceRoles = Array.from(new Set([...candidate.evidenceRoles, ...inferEvidenceRoles(candidate.chunk)]));
     candidate.exclusionReasons = hardFilter(candidate.chunk, request, route);
     const routeMatch = route.requiredSemanticTypes.includes(candidate.chunk.semanticType) ? 0.18 : 0;
     const limitationBonus = candidate.chunk.semanticType === "limitation_chunk" ? 0.16 : 0;
@@ -73,19 +79,28 @@ export function runHybridRetrieval(input: { request: RagRetrievalRequest; route:
   const clusterCount = new Map<string, number>();
   const sourceCount = new Map<string, number>();
   const selected: RagRetrievalCandidate[] = [];
-  for (const candidate of eligible) {
+  const select = (candidate: RagRetrievalCandidate) => {
+    if (candidate.selected) return false;
     if ((clusterCount.get(candidate.chunk.duplicateClusterId) || 0) >= route.duplicateClusterLimit) {
       candidate.exclusionReasons.push("duplicate_cluster_quota");
-      continue;
+      return false;
     }
     if ((sourceCount.get(candidate.chunk.sourceId) || 0) >= route.sourcePageLimit) {
       candidate.exclusionReasons.push("source_page_quota");
-      continue;
+      return false;
     }
     candidate.selected = true;
     selected.push(candidate);
     clusterCount.set(candidate.chunk.duplicateClusterId, (clusterCount.get(candidate.chunk.duplicateClusterId) || 0) + 1);
     sourceCount.set(candidate.chunk.sourceId, (sourceCount.get(candidate.chunk.sourceId) || 0) + 1);
+    return true;
+  };
+  for (const role of route.requiredEvidenceRoles) {
+    const candidate = eligible.find((item) => !item.selected && item.evidenceRoles.includes(role));
+    if (candidate) select(candidate);
+  }
+  for (const candidate of eligible) {
+    select(candidate);
     if (selected.length >= route.candidateLimits.final) break;
   }
   const selectedRoles = new Set(selected.flatMap((candidate) => candidate.evidenceRoles));

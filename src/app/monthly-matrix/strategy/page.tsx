@@ -3,6 +3,8 @@
 import { ArrowLeftOutlined, BookOutlined } from "@ant-design/icons";
 import { Alert, Button, Space, Spin, Tag } from "antd";
 import Link from "next/link";
+import { Suspense } from "react";
+import { GeoMonthlyStrategyHandoff } from "@/components/geo/GeoMonthlyStrategyHandoff";
 import { MonthlyPlanConfigPanel } from "@/components/MonthlyPlanConfigPanel";
 import { PageHeader } from "@/components/PageHeader";
 import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
@@ -24,6 +26,7 @@ export default function MonthlyStrategyWorkspacePage() {
       />
       {error ? <Alert showIcon type="error" message="月度策略工作区读取失败" description={error} /> : null}
       {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取月度策略配置</span></div> : null}
+      <Suspense fallback={null}><GeoMonthlyStrategyHandoff /></Suspense>
       <MonthlyPlanConfigPanel
         locked={locked}
         value={workspace?.draftPlan || loadingPlan}

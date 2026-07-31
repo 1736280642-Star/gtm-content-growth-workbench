@@ -18,6 +18,7 @@ import {
   extractAutomaticClaims,
   governAutomaticClaims
 } from "./automatic-knowledge-production";
+import { buildManagedSourceRevisionId } from "./managed-content-reference";
 
 export interface RagSourceImportWriteResult {
   replayed: boolean;
@@ -53,37 +54,48 @@ function groupByRegistry(candidates: RagSourceImportPreparedCandidate[]) {
 
 async function assertHumanGovernancePrerequisites(
   connection: Parameters<Parameters<typeof withV5GovernanceTransaction>[0]>[0],
-  candidates: RagSourceImportPreparedCandidate[]
+  candidates: RagSourceImportPreparedCandidate[],
+  actor: V5GovernanceActor
 ) {
-  const pairs = new Map<string, { productId: string; productName: string; knowledgeBaseId: string; automatic: boolean }>();
+  const pairs = new Map<string, { productId: string; productName: string; knowledgeBaseId: string; knowledgeBaseName?: string; automatic: boolean; managed: boolean }>();
   for (const candidate of candidates) {
     pairs.set(`${candidate.productId}:${candidate.knowledgeBaseId}`, {
       productId: candidate.productId,
       productName: candidate.productName,
       knowledgeBaseId: candidate.knowledgeBaseId,
-      automatic: candidate.governanceMode === "automatic_policy"
+      knowledgeBaseName: candidate.knowledgeBaseName,
+      automatic: candidate.governanceMode === "automatic_policy",
+      managed: Boolean(candidate.managedContent)
     });
   }
-  for (const { productId, productName, knowledgeBaseId, automatic } of pairs.values()) {
+  for (const { productId, productName, knowledgeBaseId, knowledgeBaseName, automatic, managed } of pairs.values()) {
     if (automatic) {
+      const confirmedBy = managed ? actor.actorId : AUTOMATIC_KNOWLEDGE_POLICY_VERSION;
       await connection.query(
         `INSERT INTO knowledge_base (id, name, type, trust_level, status, update_mode, usage_scope)
-         VALUES (?, ?, 'trusted_markdown_bundle', 'official', 'active', 'automatic', 'V5 automatic knowledge production')
-         ON DUPLICATE KEY UPDATE name = VALUES(name), trust_level = 'official', status = 'active', update_mode = 'automatic'`,
-        [knowledgeBaseId, `${productName} 事实库`]
+         VALUES (?, ?, ?, ?, 'active', ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), status = 'active', update_mode = VALUES(update_mode), usage_scope = VALUES(usage_scope)`,
+        [
+          knowledgeBaseId,
+          knowledgeBaseName || `${productName} 事实库`,
+          managed ? "workbench_managed_source" : "trusted_markdown_bundle",
+          managed ? "user_confirmed" : "official",
+          managed ? "workbench_upload" : "automatic",
+          managed ? "Managed by the V5 workbench import pipeline" : "V5 automatic knowledge production"
+        ]
       );
       await connection.query(
         `INSERT INTO product_entity (id, canonical_name, display_name, aliases, status, confirmed_by, confirmed_at)
-         VALUES (?, ?, ?, ?, 'active', 'automatic-knowledge-policy@1', NOW())
-         ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), status = 'active'`,
-        [productId, productId, productName, stringifyV5Json([productName])]
+         VALUES (?, ?, ?, ?, 'active', ?, NOW())
+         ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), status = 'active', confirmed_by = COALESCE(confirmed_by, VALUES(confirmed_by)), confirmed_at = COALESCE(confirmed_at, NOW())`,
+        [productId, productId, productName, stringifyV5Json([productName]), confirmedBy]
       );
       await connection.query(
         `INSERT INTO knowledge_base_product_link
-          (id, knowledge_base_id, product_id, relation_type, status, confirmed_by, confirmed_at)
-         VALUES (?, ?, ?, 'supporting', 'active', 'automatic-knowledge-policy@1', NOW())
-         ON DUPLICATE KEY UPDATE status = 'active', confirmed_by = VALUES(confirmed_by), confirmed_at = VALUES(confirmed_at)`,
-        [stableId("kbp-", `${knowledgeBaseId}:${productId}`, 32), knowledgeBaseId, productId]
+         (id, knowledge_base_id, product_id, relation_type, status, confirmed_by, confirmed_at)
+         VALUES (?, ?, ?, 'supporting', 'active', ?, NOW())
+         ON DUPLICATE KEY UPDATE status = 'active', confirmed_by = COALESCE(confirmed_by, VALUES(confirmed_by)), confirmed_at = COALESCE(confirmed_at, NOW())`,
+        [stableId("kbp-", `${knowledgeBaseId}:${productId}`, 32), knowledgeBaseId, productId, confirmedBy]
       );
     }
     const [knowledgeBaseRows] = await connection.query<RowDataPacket[]>(
@@ -131,6 +143,7 @@ export async function writeRagSourceImport(input: {
   plan: RagSourceImportExecutionPlan;
   idempotencyKey: string;
   actor: V5GovernanceActor;
+  deferAutomaticClaims?: boolean;
 }): Promise<RagSourceImportWriteResult> {
   if (!input.plan.candidates.length) {
     throw new V5GovernanceRepositoryError("empty_import_plan", "Source Import 没有可写入候选。", 400);
@@ -139,9 +152,10 @@ export async function writeRagSourceImport(input: {
     throw new V5GovernanceRepositoryError("invalid_actor", "Source Import 缺少操作者、角色或审计原因。", 400);
   }
   const automaticCandidates = input.plan.candidates.filter((candidate) => candidate.writeStatus === "approved_for_claim_extraction" && candidate.normalizedTextRef);
-  const automaticClaims = governAutomaticClaims((await Promise.all(automaticCandidates.map(async (candidate) => {
-    const markdown = await readFile(candidate.normalizedTextRef, "utf8");
-    const sourceRevisionId = stableId("src-rev-", `${candidate.sourceId}:${candidate.contentHash}`, 40);
+  const claimExtractionCandidates = input.deferAutomaticClaims ? [] : automaticCandidates;
+  const automaticClaims = governAutomaticClaims((await Promise.all(claimExtractionCandidates.map(async (candidate) => {
+    const markdown = candidate.managedContent?.normalizedText || await readFile(candidate.normalizedTextRef, "utf8");
+    const sourceRevisionId = buildManagedSourceRevisionId(candidate.sourceId, candidate.contentHash);
     return extractAutomaticClaims({
       sourceId: candidate.sourceId,
       productId: candidate.productId,
@@ -187,7 +201,7 @@ export async function writeRagSourceImport(input: {
         batchIds: []
       };
     }
-    await assertHumanGovernancePrerequisites(connection, input.plan.candidates);
+    await assertHumanGovernancePrerequisites(connection, input.plan.candidates, input.actor);
 
     const importId = stableId("rag-import-", `${input.idempotencyKey}:${input.plan.planHash}`, 24);
     const result: RagSourceImportWriteResult = {
@@ -213,27 +227,29 @@ export async function writeRagSourceImport(input: {
       const batchId = stableId("ing-rag-", `${input.idempotencyKey}:${registryId}`, 24);
       const batchIdempotencyKey = `${input.idempotencyKey}:${stableId("", registryId, 12)}`.slice(0, 128);
       const automaticBatch = candidates.every((candidate) => candidate.writeStatus === "approved_for_claim_extraction");
+      const automaticGovernanceCompleted = automaticBatch && !input.deferAutomaticClaims;
       result.batchIds.push(batchId);
       await connection.query(
         `INSERT INTO ingestion_batch
           (id, idempotency_key, purpose, target_knowledge_base_id, target_product_id, status, current_gate, source_count,
            success_count, isolated_count, pending_review_count, parser_version, classifier_version, extractor_version, requested_by)
-         VALUES (?, ?, 'v5_real_rag_fixed_source_import', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE id = VALUES(id)`,
         [
           batchId,
           batchIdempotencyKey,
+          candidates.some((candidate) => candidate.managedContent) ? "v5_workbench_managed_source_import" : "v5_real_rag_fixed_source_import",
           first.knowledgeBaseId,
           first.productId,
-          automaticBatch ? "completed" : "awaiting_entity_review",
-          automaticBatch ? "G6" : "G1",
+          automaticGovernanceCompleted ? "completed" : automaticBatch ? "queued_for_claim_extraction" : "awaiting_entity_review",
+          automaticGovernanceCompleted ? "G6" : "G1",
           candidates.length,
-          automaticBatch ? candidates.length : 0,
+          automaticGovernanceCompleted ? candidates.length : 0,
           candidates.filter((candidate) => candidate.writeStatus === "isolated").length,
           candidates.filter((candidate) => candidate.writeStatus === "review_required").length,
           input.plan.importVersion,
           input.plan.importVersion,
-          automaticBatch ? AUTOMATIC_CLAIM_EXTRACTOR_VERSION : null,
+          automaticGovernanceCompleted ? AUTOMATIC_CLAIM_EXTRACTOR_VERSION : null,
           input.actor.actorId
         ]
       );
@@ -266,11 +282,12 @@ export async function writeRagSourceImport(input: {
                title, canonical_url, file_name, mime_type, language, content_hash, raw_asset_ref, normalized_text_ref, captured_at, source_updated_at,
                product_candidates, classification_confidence, classification_reasons, status, quality_flags, monthly_support,
                safety_status, safety_risk_types, isolated_reason, created_by)
-             VALUES (?, ?, ?, 'batch_manifest', ?, ?, ?, ?, ?, ?, ?, ?, 'zh-CN', ?, ?, ?, NOW(), ?, ?, 0.9000, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'zh-CN', ?, ?, ?, NOW(), ?, ?, 0.9000, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               candidate.sourceId,
               batchId,
               candidate.knowledgeBaseId,
+              candidate.managedContent ? (candidate.canonicalUrl ? "url" : "file") : "batch_manifest",
               candidate.documentType,
               candidate.authorityLevel,
               candidate.lifecycleStatus,
@@ -278,7 +295,7 @@ export async function writeRagSourceImport(input: {
               candidate.title,
               candidate.canonicalUrl || null,
               candidate.relativePath,
-              candidate.normalizedTextRef ? "text/markdown" : "application/octet-stream",
+              candidate.managedContent?.mimeType || (candidate.normalizedTextRef ? "text/markdown" : "application/octet-stream"),
               candidate.contentHash,
               candidate.rawAssetRef || candidate.absolutePath,
               candidate.normalizedTextRef || null,
@@ -310,7 +327,7 @@ export async function writeRagSourceImport(input: {
               candidate.title,
               candidate.canonicalUrl || null,
               candidate.relativePath,
-              candidate.normalizedTextRef ? "text/markdown" : "application/octet-stream",
+              candidate.managedContent?.mimeType || (candidate.normalizedTextRef ? "text/markdown" : "application/octet-stream"),
               candidate.contentHash,
               candidate.rawAssetRef || candidate.absolutePath,
               candidate.normalizedTextRef || null,
@@ -347,14 +364,15 @@ export async function writeRagSourceImport(input: {
             "SELECT id FROM source_revision WHERE source_id = ? AND content_hash = ? LIMIT 1",
             [candidate.sourceId, candidate.contentHash]
           );
-          if (revisionRows[0]) {
+          let sourceRevisionId = revisionRows[0] ? String(revisionRows[0].id) : undefined;
+          if (sourceRevisionId) {
             result.reusedRevisions += 1;
           } else {
             const [latestRows] = await connection.query<RowDataPacket[]>(
               "SELECT id, revision_number FROM source_revision WHERE source_id = ? ORDER BY revision_number DESC LIMIT 1",
               [candidate.sourceId]
             );
-            const sourceRevisionId = stableId("src-rev-", `${candidate.sourceId}:${candidate.contentHash}`, 40);
+            sourceRevisionId = buildManagedSourceRevisionId(candidate.sourceId, candidate.contentHash);
             await connection.query(
               `INSERT INTO source_revision
                 (id, source_id, revision_number, content_hash, raw_asset_ref, normalized_text_ref, title_snapshot,
@@ -421,12 +439,35 @@ export async function writeRagSourceImport(input: {
               ]
             );
           }
+          if (candidate.managedContent && sourceRevisionId) {
+            const rawContent = candidate.managedContent.rawContent || null;
+            await connection.query(
+              `INSERT INTO source_revision_content
+                (source_revision_id, content_hash, normalized_text, raw_content, mime_type, original_file_name,
+                 normalized_length, raw_length, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE normalized_text = VALUES(normalized_text), raw_content = COALESCE(VALUES(raw_content), raw_content),
+                 mime_type = VALUES(mime_type), original_file_name = VALUES(original_file_name),
+                 normalized_length = VALUES(normalized_length), raw_length = GREATEST(raw_length, VALUES(raw_length))`,
+              [
+                sourceRevisionId,
+                candidate.contentHash,
+                candidate.managedContent.normalizedText,
+                rawContent,
+                candidate.managedContent.mimeType || "text/markdown",
+                candidate.managedContent.originalFileName || candidate.relativePath,
+                candidate.managedContent.normalizedText.length,
+                rawContent?.length || 0,
+                input.actor.actorId
+              ]
+            );
+          }
         }
       }
 
       await writeV5GovernanceAudit(connection, {
         ...input.actor,
-        eventType: "rag_fixed_source_registry_imported",
+        eventType: candidates.some((candidate) => candidate.managedContent) ? "workbench_managed_sources_imported" : "rag_fixed_source_registry_imported",
         objectType: "ingestion_batch",
         objectId: batchId,
         relatedSourceIds: candidates.map((candidate) => candidate.sourceId),
@@ -435,23 +476,23 @@ export async function writeRagSourceImport(input: {
           productId: first.productId,
           knowledgeBaseId: first.knowledgeBaseId,
           sourceCount: candidates.length,
-          status: automaticBatch ? "completed" : "awaiting_entity_review",
-          claimCreated: automaticBatch,
+          status: automaticGovernanceCompleted ? "completed" : automaticBatch ? "queued_for_claim_extraction" : "awaiting_entity_review",
+          claimCreated: automaticGovernanceCompleted,
           manifestCreated: false
         },
         correlationId: importId
       });
     }
 
-    for (const candidate of automaticCandidates) {
-      const currentRevisionId = stableId("src-rev-", `${candidate.sourceId}:${candidate.contentHash}`, 40);
+    for (const candidate of claimExtractionCandidates) {
+      const currentRevisionId = buildManagedSourceRevisionId(candidate.sourceId, candidate.contentHash);
       await connection.query(
         `UPDATE product_claim SET review_status = 'superseded'
          WHERE source_id = ? AND source_revision_id <> ? AND review_status IN ('supported', 'conditional', 'candidate')`,
         [candidate.sourceId, currentRevisionId]
       );
     }
-    const candidateBySource = new Map(automaticCandidates.map((candidate) => [candidate.sourceId, candidate]));
+    const candidateBySource = new Map(claimExtractionCandidates.map((candidate) => [candidate.sourceId, candidate]));
     for (const claim of automaticClaims) {
       const candidate = candidateBySource.get(claim.sourceId);
       if (!candidate) continue;
@@ -504,7 +545,7 @@ export async function writeRagSourceImport(input: {
         );
       }
     }
-    for (const productId of new Set(automaticCandidates.map((candidate) => candidate.productId))) {
+    for (const productId of new Set(claimExtractionCandidates.map((candidate) => candidate.productId))) {
       await connection.query(
         `UPDATE claim_conflict c
          SET status = 'resolved', resolution = ?
@@ -523,7 +564,9 @@ export async function writeRagSourceImport(input: {
       requestHash,
       resourceType: "rag_source_import",
       resourceId: importId,
-      responseStatus: input.plan.summary.reviewRequired ? "awaiting_human_governance" : "automatic_governance_completed",
+      responseStatus: input.deferAutomaticClaims
+        ? "queued_for_claim_extraction"
+        : input.plan.summary.reviewRequired ? "awaiting_human_governance" : "automatic_governance_completed",
       responseSummary: result
     });
     return result;

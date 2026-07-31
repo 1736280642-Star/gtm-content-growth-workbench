@@ -302,7 +302,7 @@ export default function BlogCandidatesPage() {
     }
 
     return (
-      <Link href="/monthly-plan">
+      <Link href="/monthly-matrix">
         <Button size="small">看月度计划</Button>
       </Link>
     );

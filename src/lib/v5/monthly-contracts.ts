@@ -39,9 +39,10 @@ export interface V5MonthlyPlan {
   channelMix: Record<string, number>;
   contentTypeMix: Record<string, number>;
   publishFrequency: Record<string, unknown>;
+  questionVersionIds?: string[];
+  workspaceConfig?: Record<string, unknown>;
   strategyPackageVersionId?: string;
   matrixVersionId?: string;
-  questionVersionIds?: string[];
   approvedAt?: string;
   approvedBy?: string;
   version: number;

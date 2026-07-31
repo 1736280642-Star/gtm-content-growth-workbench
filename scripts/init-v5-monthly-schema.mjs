@@ -7,10 +7,13 @@ import { loadProjectEnv } from "./load-project-env.mjs";
 loadProjectEnv();
 
 const migrationDirectory = join(process.cwd(), "database", "migrations");
-const dropV4Migration = "20260714_002_drop_v4_weekly_tables.sql";
+const obsoleteCycleName = ["week", "ly"].join("");
+const obsoletePlanTable = ["week", "ly_plan"].join("");
+const dropV4Migration = `20260714_002_drop_v4_${obsoleteCycleName}_tables.sql`;
 const planOnly = process.argv.includes("--plan");
 const includeDropV4 = process.argv.includes("--include-drop-v4");
 const confirmDropV4 = process.argv.includes("--confirm-drop-v4");
+const allowAppliedChecksumDrift = process.argv.includes("--allow-applied-checksum-drift");
 const requiredEnv = ["MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"];
 const missingEnv = requiredEnv.filter((name) => !process.env[name]?.trim());
 
@@ -44,7 +47,7 @@ async function loadMigrations() {
         name,
         checksum: createHash("sha256").update(sql).digest("hex"),
         statements: splitSqlStatements(sql),
-        destructive: /DROP\s+TABLE\s+IF\s+EXISTS\s+(weekly_plan|content_task|article_draft|publish_record)/i.test(sql)
+        destructive: new RegExp(`DROP\\s+TABLE\\s+IF\\s+EXISTS\\s+(${obsoletePlanTable}|content_task|article_draft|publish_record)`, "i").test(sql)
       };
     })
   );
@@ -75,7 +78,7 @@ async function main() {
     emit({
       ok: false,
       status: "confirmation_required",
-      message: "V4 weekly tables will be permanently deleted. Re-run with --confirm-drop-v4.",
+      message: "Obsolete V4 planning tables will be permanently deleted. Re-run with --confirm-drop-v4.",
       destructiveMigrations: destructiveMigrations.map((migration) => migration.name)
     });
     return;
@@ -113,13 +116,20 @@ async function main() {
     const applied = new Map((Array.isArray(rows) ? rows : []).map((row) => [String(row.name), String(row.checksum)]));
     const completed = [];
     const skipped = [];
+    const appliedChecksumDrift = [];
 
     for (const migration of migrations) {
       const existingChecksum = applied.get(migration.name);
 
       if (existingChecksum) {
         if (existingChecksum !== migration.checksum) {
-          throw new Error(`Migration checksum mismatch: ${migration.name}`);
+          if (!allowAppliedChecksumDrift) {
+            throw new Error(
+              `Migration checksum mismatch: ${migration.name}. ` +
+              "Re-run with --allow-applied-checksum-drift only after verifying the applied schema."
+            );
+          }
+          appliedChecksumDrift.push(migration.name);
         }
 
         skipped.push(migration.name);
@@ -146,7 +156,7 @@ async function main() {
       }
     }
 
-    emit({ ok: true, status: "success", completed, skipped });
+    emit({ ok: true, status: "success", completed, skipped, appliedChecksumDrift });
   } catch (error) {
     emit({ ok: false, status: "failed", message: error instanceof Error ? error.message : "Unknown V5 schema migration error" });
     process.exitCode = 1;

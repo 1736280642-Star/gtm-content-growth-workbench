@@ -1,4 +1,5 @@
-import { getCurrentWeeklyTasks, readWorkbenchState, type WorkbenchState } from "@/lib/workbench-store";
+import { readWorkbenchState, type WorkbenchState } from "@/lib/workbench-store";
+import { getDateTextInTimeZone } from "@/lib/date-utils";
 import type { KnowledgeBase, KnowledgeChunk, KnowledgeSource } from "@/lib/types";
 import { NextResponse } from "next/server";
 
@@ -47,19 +48,22 @@ function summarizeKnowledgeBase(knowledgeBase: KnowledgeBase): KnowledgeBase {
 }
 
 function getClientDashboardSummary(state: WorkbenchState) {
-  const weeklyTasks = getCurrentWeeklyTasks(state);
-  const weeklyTaskIds = new Set(weeklyTasks.map((task) => task.id));
-  const weeklyDraftIds = new Set(state.drafts.filter((draft) => weeklyTaskIds.has(draft.taskId)).map((draft) => draft.id));
-  const weeklyPublishRecords = state.publishRecords.filter((record) => weeklyDraftIds.has(record.draftId));
-  const generated = weeklyTasks.filter((task) => ["generated", "pending_review", "approved", "queued", "published", "url_filled"].includes(task.status)).length;
-  const approved = weeklyTasks.filter((task) => ["approved", "queued", "published", "url_filled"].includes(task.status)).length;
-  const published = weeklyPublishRecords.filter((record) => ["published", "url_filled"].includes(record.publishStatus)).length;
-  const pendingUrl = weeklyPublishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
+  const monthStart = `${getDateTextInTimeZone().slice(0, 7)}-01`;
+  const [year, month] = monthStart.split("-").map(Number);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const currentMonthTasks = state.tasks.filter((task) => task.publishDate >= monthStart && task.publishDate <= monthEnd);
+  const taskIds = new Set(currentMonthTasks.map((task) => task.id));
+  const draftIds = new Set(state.drafts.filter((draft) => taskIds.has(draft.taskId)).map((draft) => draft.id));
+  const publishRecords = state.publishRecords.filter((record) => draftIds.has(record.draftId));
+  const generated = currentMonthTasks.filter((task) => ["generated", "pending_review", "approved", "queued", "published", "url_filled"].includes(task.status)).length;
+  const approved = currentMonthTasks.filter((task) => ["approved", "queued", "published", "url_filled"].includes(task.status)).length;
+  const published = publishRecords.filter((record) => ["published", "url_filled"].includes(record.publishStatus)).length;
+  const pendingUrl = publishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
 
   return {
-    weeklyPlan: state.weeklyPlan,
+    period: { monthStart, monthEnd },
     metrics: {
-      targetTotal: state.weeklyPlan.targetTotalCount,
+      targetTotal: currentMonthTasks.length,
       generated,
       approved,
       published,

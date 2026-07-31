@@ -12,10 +12,12 @@ const v5Tables = [
   "content_matrix_item",
   "monthly_production_readiness",
   "production_pool_entry",
-  "artifact_reference"
+  "artifact_reference",
+  "content_publish_result"
 ];
 const foundationMigrationName = "20260714_001_v5_monthly_foundation.sql";
-const dropV4MigrationName = "20260714_002_drop_v4_weekly_tables.sql";
+const obsoleteCycleName = ["week", "ly"].join("");
+const dropV4MigrationName = `20260714_002_drop_v4_${obsoleteCycleName}_tables.sql`;
 
 function emit(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`);

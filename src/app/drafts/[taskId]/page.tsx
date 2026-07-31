@@ -398,7 +398,7 @@ export default function DraftReviewPage({ params }: { params: { taskId: string }
             title="当前任务还没有草稿"
             description="请先在今日发布页勾选任务并批量生成正文。"
             action={
-              <Link href="/today">
+              <Link href="/daily-execution">
                 <Button type="primary">去今日发布</Button>
               </Link>
             }
@@ -440,7 +440,7 @@ export default function DraftReviewPage({ params }: { params: { taskId: string }
                 阻断 {draft.qaResult.blockers.length} / 提醒 {draft.qaResult.warnings.length} / 高风险 {visibleFailedSegments.length}
               </div>
             </div>
-            <Link href="/today">
+            <Link href="/daily-execution">
               <Button>返回今日发布</Button>
             </Link>
             <Button loading={saving} onClick={handleSaveAndQa}>

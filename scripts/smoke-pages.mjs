@@ -1,14 +1,11 @@
 const DEFAULT_BASE_URL = "http://127.0.0.1:3000";
-
 const args = process.argv.slice(2);
 const baseUrlArg = args.find((arg) => arg.startsWith("--base-url="));
 const baseUrl = (baseUrlArg ? baseUrlArg.split("=").slice(1).join("=") : DEFAULT_BASE_URL).replace(/\/$/, "");
 
 async function resolveCurrentRole() {
   try {
-    const response = await fetch(`${baseUrl}/api/workbench-state`, {
-      headers: { accept: "application/json" }
-    });
+    const response = await fetch(`${baseUrl}/api/workbench-state`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(15000) });
     const body = await response.json();
     return body.state?.workspaceSetting?.currentRole;
   } catch {
@@ -18,14 +15,11 @@ async function resolveCurrentRole() {
 
 async function setCurrentRole(currentRole) {
   if (!currentRole) return;
-
   await fetch(`${baseUrl}/api/workspace-settings`, {
     method: "PATCH",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ currentRole })
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ currentRole }),
+    signal: AbortSignal.timeout(15000)
   });
 }
 
@@ -38,7 +32,8 @@ const targets = [
   { name: "monthly_matrix_strategy_page", path: "/monthly-matrix/strategy", expect: "月度策略工作区" },
   { name: "article_type_library_page", path: "/monthly-matrix/content-types", expect: "内容类型库" },
   { name: "monthly_matrix_batch_generation_page", path: "/monthly-matrix/batch-generation", expect: "批量生成中心" },
-  { name: "monthly_strategy_compat_page", path: "/monthly-strategy", expectRedirect: "/monthly-matrix" },
+  { name: "free_content_production_page", path: "/free-production", expect: "自由内容生产" },
+  { name: "monthly_strategy_compat_page", path: "/monthly-strategy", expectRedirect: "/monthly-matrix#strategy-package" },
   { name: "batch_generation_compat_page", path: "/batch-generation", expectRedirect: "/monthly-matrix/batch-generation" },
   { name: "exceptions_compat_page", path: "/exceptions", expectRedirect: "/monthly-matrix/batch-generation" },
   { name: "publish_schedule_compat_page", path: "/publish-schedule", expectRedirect: "/monthly-matrix/batch-generation#schedule" },
@@ -47,13 +42,12 @@ const targets = [
   { name: "ai_front_test_page", path: "/ai-front-test", expect: "AI 前台测试" },
   { name: "ai_front_test_environment_page", path: "/ai-front-test/environment", expect: "采集环境" },
   { name: "monthly_review_page", path: "/monthly-review", expect: "月度复盘" },
-  { name: "weekly_plan_page", path: "/weekly-plan", expect: "周计划" },
-  { name: "today_page", path: "/today", expect: "今日发布" },
+  { name: "monthly_plan_compat_page", path: "/monthly-plan", expectRedirect: "/monthly-matrix" },
+  { name: "today_compat_page", path: "/today", expectRedirect: "/daily-execution" },
   { name: "publish_page", path: "/publish", expect: "数据回传" },
   { name: "blog_monitor_page", path: "/blog-monitor", expect: "官网博客监控" },
   { name: "site_audit_tab_page", path: "/blog-monitor?tab=site-audit", expect: "官网审计" },
   { name: "blog_candidates_page", path: "/blog-candidates", expect: "博客候选池" },
-  { name: "weekly_report_page", path: "/weekly-report", expect: "周度复盘" },
   { name: "knowledge_page", path: "/knowledge", expect: "知识库" },
   { name: "knowledge_detail_page", path: "/knowledge/kb-adp-service", expect: "JOTO 腾讯云 ADP 服务能力" },
   { name: "questions_keywords_page", path: "/questions-keywords", expect: "问题与关键词池" },
@@ -72,29 +66,24 @@ const targets = [
   { name: "v5_knowledge_api", path: "/api/v5/knowledge-bases", expect: "knowledgeBaseId" },
   { name: "v5_expression_profiles_api", path: "/api/v5/article-expression-profiles", expect: "structureModules" },
   { name: "v5_configuration_status_api", path: "/api/v5/configuration/status", expect: "publish_connection" },
-  { name: "runtime_config_api", path: "/api/runtime-config/status", expect: "capabilities" },
-  { name: "config_diagnostics_api", path: "/api/config-diagnostics", expect: "results" },
-  { name: "weekly_report_api", path: "/api/weekly-reports/2026-06-17", expect: "executiveSummary" },
-  { name: "weekly_report_markdown_export_api", path: "/api/weekly-reports/2026-06-17/export", expect: "JOTO GTM 周报" }
+  { name: "runtime_config_api", path: "/api/runtime-config/status", expect: "capabilities" }
 ];
 
 async function checkTarget(target) {
   const response = await fetch(`${baseUrl}${target.path}`, {
     redirect: target.expectRedirect ? "manual" : "follow",
-    headers: {
-      accept: target.path.startsWith("/api/") ? "application/json" : "text/html"
-    }
+    headers: { accept: target.path.startsWith("/api/") ? "application/json" : "text/html" },
+    signal: AbortSignal.timeout(30000)
   });
-  const text = await response.text();
+  const body = await response.text();
   const isApi = target.path.startsWith("/api/");
   const redirectLocation = response.headers.get("location");
   const redirectOk = target.expectRedirect
-    ? [301, 302, 303, 307, 308].includes(response.status)
-      && (redirectLocation === target.expectRedirect || text.includes(target.expectRedirect))
+    ? [301, 302, 303, 307, 308].includes(response.status) && (redirectLocation === target.expectRedirect || body.includes(target.expectRedirect))
     : undefined;
-  const hasExpectedApiBody = text.includes(target.expect);
-  const hasHtmlShell = text.includes("<html") || text.includes("__next");
-  const ok = target.expectRedirect ? redirectOk : response.ok && (isApi ? hasExpectedApiBody : hasHtmlShell);
+  const ok = target.expectRedirect
+    ? redirectOk
+    : response.ok && (isApi ? body.includes(target.expect) : body.includes("<html") || body.includes("__next"));
 
   return {
     name: target.name,
@@ -103,53 +92,26 @@ async function checkTarget(target) {
       ? redirectOk
         ? `http ${response.status}, redirect ${target.expectRedirect}`
         : `http ${response.status}, expected redirect ${target.expectRedirect}, actual ${redirectLocation || "none"}`
-      : response.ok
-      ? ok
-        ? isApi
-          ? `http ${response.status}`
-          : `http ${response.status}, html shell`
-        : isApi
-          ? `http ${response.status}, missing ${target.expect}`
-          : `http ${response.status}, missing html shell`
-      : `http ${response.status}`
+      : ok
+        ? `http ${response.status}`
+        : `http ${response.status}, missing ${isApi ? target.expect : "html shell"}`
   };
 }
 
 const results = [];
-
 try {
-  for (const target of targets) {
+  const settled = await Promise.all(targets.map(async (target) => {
     try {
-      results.push(await checkTarget(target));
+      return await checkTarget(target);
     } catch (error) {
-      results.push({
-        name: target.name,
-        ok: false,
-        detail: error instanceof Error ? error.message : String(error)
-      });
+      return { name: target.name, ok: false, detail: error instanceof Error ? error.message : String(error) };
     }
-  }
+  }));
+  results.push(...settled);
 } finally {
   await setCurrentRole(previousRole);
 }
 
 const failed = results.filter((item) => !item.ok);
-
-console.log(
-  JSON.stringify(
-    {
-      script: "smoke-pages",
-      baseUrl,
-      status: failed.length ? "failed" : "success",
-      passed: results.length - failed.length,
-      failed: failed.length,
-      results
-    },
-    null,
-    2
-  )
-);
-
-if (failed.length) {
-  process.exitCode = 1;
-}
+console.log(JSON.stringify({ script: "smoke-pages", baseUrl, status: failed.length ? "failed" : "passed", passed: results.length - failed.length, failed: failed.length, results }, null, 2));
+process.exitCode = failed.length ? 1 : 0;

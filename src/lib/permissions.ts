@@ -9,24 +9,25 @@ export const workspaceRoleLabels: Record<WorkspaceRole, string> = {
 };
 
 export const workspaceRouteLabels: Record<string, string> = {
+  "/products": "产品与 GEO 调研",
   "/": "首页",
   "/monthly-strategy": "月度策略包（已并入月度内容矩阵）",
   "/monthly-matrix": "月度内容矩阵",
   "/monthly-matrix/strategy": "月度策略工作区",
   "/monthly-matrix/content-types": "内容类型库",
   "/monthly-matrix/batch-generation": "批量生成中心",
+  "/free-production": "自由内容生产",
+  "/monthly-plan": "月度内容矩阵（兼容入口）",
   "/batch-generation": "批量生成中心",
   "/exceptions": "异常拦截（已并入批量生成中心）",
   "/publish-schedule": "人工排程（已并入批量生成中心）",
   "/publish-schedule/daily-execution": "当日执行",
   "/daily-execution": "当日执行",
+  "/today": "当日执行（兼容入口）",
   "/monthly-review": "月度复盘",
   "/ai-front-test": "AI 前台测试",
   "/v5/drafts": "正式 Markdown 正文",
-  "/weekly-plan": "周计划",
-  "/today": "今日发布",
   "/publish": "数据回传",
-  "/weekly-report": "周度复盘",
   "/knowledge": "知识库",
   "/questions-keywords": "问题与关键词池",
   "/distilled-terms": "问题与关键词池（兼容入口）",
@@ -39,20 +40,18 @@ export const workspaceRouteLabels: Record<string, string> = {
 };
 
 const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
-  content_publisher: ["/", "/today", "/publish", "/weekly-plan", "/weekly-report", "/settings"],
-  content_growth: ["/", "/monthly-review", "/ai-front-test", "/weekly-plan", "/weekly-report", "/questions-keywords", "/blog-monitor", "/blog-candidates", "/settings"],
+  content_publisher: ["/", "/free-production", "/monthly-matrix/batch-generation", "/daily-execution", "/publish", "/monthly-review", "/settings"],
+  content_growth: ["/", "/products", "/monthly-matrix", "/free-production", "/monthly-review", "/ai-front-test", "/questions-keywords", "/blog-monitor", "/blog-candidates", "/settings"],
   workbench_operator: [
     "/",
+    "/products",
     "/monthly-matrix",
-    "/batch-generation",
+    "/free-production",
     "/daily-execution",
     "/monthly-review",
     "/ai-front-test",
     "/v5/drafts",
-    "/weekly-plan",
-    "/today",
     "/publish",
-    "/weekly-report",
     "/knowledge",
     "/questions-keywords",
     "/blog-monitor",
@@ -60,19 +59,17 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
     "/configuration",
     "/settings"
   ],
-  knowledge_manager: ["/", "/knowledge", "/questions-keywords", "/weekly-report", "/settings"],
+  knowledge_manager: ["/", "/products", "/knowledge", "/questions-keywords", "/monthly-review", "/settings"],
   developer_admin: [
     "/",
+    "/products",
     "/monthly-matrix",
-    "/batch-generation",
+    "/free-production",
     "/daily-execution",
     "/monthly-review",
     "/ai-front-test",
     "/v5/drafts",
-    "/weekly-plan",
-    "/today",
     "/publish",
-    "/weekly-report",
     "/knowledge",
     "/questions-keywords",
     "/blog-monitor",
@@ -83,9 +80,9 @@ const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
 };
 
 const roleDefaultRoutes: Record<WorkspaceRole, string> = {
-  content_publisher: "/today",
-  content_growth: "/weekly-report",
-  workbench_operator: "/weekly-report",
+  content_publisher: "/daily-execution",
+  content_growth: "/monthly-review",
+  workbench_operator: "/monthly-matrix",
   knowledge_manager: "/knowledge",
   developer_admin: "/configuration"
 };
@@ -119,6 +116,6 @@ export function canManageProductExpressionRules(role: WorkspaceRole) {
   return role === "knowledge_manager" || role === "workbench_operator" || role === "developer_admin";
 }
 
-export function canManageWeeklyReportSuggestions(role: WorkspaceRole) {
+export function canManageMonthlyReviewProposals(role: WorkspaceRole) {
   return role === "content_growth" || role === "workbench_operator" || role === "developer_admin";
 }

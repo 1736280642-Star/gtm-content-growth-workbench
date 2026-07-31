@@ -9,17 +9,11 @@ export default function KnowledgeImportPage() {
     <>
       <PageHeader
         title="内容导入"
-        subtitle="先选择资料来源，再进入对应导入子页面；解析预览、保存和向量化分步完成。"
+        subtitle="选择资料来源后，系统会托管正文并自动完成治理、向量化与索引。"
         actions={
           <Space>
             <Link href="/knowledge">
               <Button>返回知识库列表</Button>
-            </Link>
-            <Link href="/knowledge/vectorize">
-              <Button>切片与向量化</Button>
-            </Link>
-            <Link href="/knowledge/rule-packages">
-              <Button>产品表达规则包</Button>
             </Link>
           </Space>
         }
@@ -35,7 +29,7 @@ export default function KnowledgeImportPage() {
           }
         >
           <Typography.Paragraph>
-            适合官网博客、产品页、帮助文档和外部资料。支持一行一个 URL，解析为 Markdown 预览后保存为待向量化知识库。
+            适合官网博客、产品页、帮助文档和外部资料。服务端解析正文并保存到 MySQL，随后自动创建治理与索引任务。
           </Typography.Paragraph>
           <Steps
             size="small"
@@ -44,7 +38,7 @@ export default function KnowledgeImportPage() {
               { title: "填写知识库信息" },
               { title: "粘贴多个 URL" },
               { title: "解析为 Markdown" },
-              { title: "保存为待向量化" }
+              { title: "托管并自动索引" }
             ]}
           />
         </Card>
@@ -67,7 +61,7 @@ export default function KnowledgeImportPage() {
               { title: "填写知识库信息" },
               { title: "上传多份文档" },
               { title: "解析并预览 Markdown" },
-              { title: "保存为待向量化" }
+              { title: "托管并自动索引" }
             ]}
           />
         </Card>

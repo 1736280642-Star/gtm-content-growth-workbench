@@ -132,3 +132,24 @@ test("schedule mutation only accepts available tasks and does not edit strategy 
   assert.match(schedule, /日期、时间、平台账号和发布方式由排程决定，不会修改已批准策略/);
   assert.match(legacy, /redirect\("\/monthly-matrix\/batch-generation"\)/);
 });
+
+test("formal monthly closure persists plan, matrix, schedule, publish result and review reference", async () => {
+  const [migration, service, repository, publishRoute, dailyPage, observationAdapter] = await Promise.all([
+    readFile("database/migrations/20260727_012_v5_monthly_execution_closure.sql", "utf8"),
+    readFile("src/lib/v5/monthly-service.ts", "utf8"),
+    readFile("src/lib/v5/monthly-execution-repository.ts", "utf8"),
+    readFile("src/app/api/v5/content-tasks/[taskId]/publish-result/route.ts", "utf8"),
+    readFile("src/app/daily-execution/page.tsx", "utf8"),
+    readFile("src/lib/v5/observation-reference-adapter.ts", "utf8")
+  ]);
+  assert.match(migration, /workspace_config JSON/);
+  assert.match(migration, /content_publish_result/);
+  assert.match(service, /persistFormalMonthlyPlan/);
+  assert.match(service, /persistFormalApprovedStrategy/);
+  assert.match(repository, /scheduleFormalProductionTask/);
+  assert.match(repository, /saveFormalPublishResult/);
+  assert.match(publishRoute, /saveV5PublishResult/);
+  assert.match(dailyPage, /回填结果/);
+  assert.doesNotMatch(dailyPage, /v5-ui-mock-data/);
+  assert.match(observationAdapter, /readFormalObservationRows/);
+});

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { RowDataPacket } from "mysql2/promise";
-import { getV5GovernancePool, parseV5Json, stringifyV5Json, withV5GovernanceTransaction } from "../knowledge-governance-repository";
+import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { getV5GovernancePool, parseV5Json, stringifyV5Json, withV5GovernanceTransaction, writeV5GovernanceAudit, type V5GovernanceActor } from "../knowledge-governance-repository";
 import type { RagJobStatus } from "./contracts";
+import { assertRagJobTransition } from "./state-machines";
 
 export interface RagIndexJobRecord { jobId: string; jobType: string; indexSnapshotId?: string; productId?: string; status: RagJobStatus; payload: Record<string, unknown>; attempt: number; maxAttempts: number; }
 
@@ -43,4 +44,48 @@ export async function finishRagJob(input: { jobId: string; workerId: string; sta
     [input.status, input.failureCode || null, input.failureMessage || null, input.status, input.status, input.status, input.status, input.jobId, input.workerId]
   );
   return result;
+}
+
+export async function readRagJobsForSnapshot(indexSnapshotId: string): Promise<RagIndexJobRecord[]> {
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    "SELECT * FROM rag_index_job WHERE index_snapshot_id = ? ORDER BY created_at",
+    [indexSnapshotId]
+  );
+  return rows.map((row) => ({
+    jobId: String(row.id),
+    jobType: String(row.job_type),
+    indexSnapshotId: row.index_snapshot_id ? String(row.index_snapshot_id) : undefined,
+    productId: row.product_id ? String(row.product_id) : undefined,
+    status: String(row.status) as RagJobStatus,
+    payload: parseV5Json(row.payload, {}),
+    attempt: Number(row.attempt),
+    maxAttempts: Number(row.max_attempts)
+  }));
+}
+
+export async function cancelRagJob(input: { jobId: string; expectedStatus: RagJobStatus; actor: V5GovernanceActor; reasonCode: string }) {
+  assertRagJobTransition(input.expectedStatus, "cancelled");
+  return withV5GovernanceTransaction(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>("SELECT * FROM rag_index_job WHERE id = ? FOR UPDATE", [input.jobId]);
+    const row = rows[0];
+    if (!row || String(row.status) !== input.expectedStatus) throw new Error("RAG Job 状态已变化，请刷新后重试。");
+    const [updated] = await connection.query<ResultSetHeader>(
+      `UPDATE rag_index_job
+       SET status = 'cancelled', failure_code = ?, failure_message = ?, completed_at = NOW(),
+           lease_owner = NULL, lease_expires_at = NULL, row_version = row_version + 1
+       WHERE id = ? AND status = ?`,
+      [input.reasonCode, input.actor.auditReason, input.jobId, input.expectedStatus]
+    );
+    if (updated.affectedRows !== 1) throw new Error("RAG Job 状态已变化，请刷新后重试。");
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "rag_job_cancelled",
+      objectType: "rag_index_job",
+      objectId: input.jobId,
+      beforeSummary: { status: input.expectedStatus },
+      afterSummary: { status: "cancelled", reasonCode: input.reasonCode },
+      correlationId: input.jobId
+    });
+    return { jobId: input.jobId, status: "cancelled" as const };
+  });
 }

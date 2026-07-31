@@ -140,5 +140,5 @@ npm.cmd run worker:v5-rag:index
 
 - 未连接真实 MySQL，迁移和 SQL 只完成类型、结构与静态/运行时边界验证，尚未做真实数据库执行验证。
 - 未连接 OpenSearch 和 Embedding Provider，未产生真实向量、Chunk 索引或检索结果。
-- `build` 中 `today` 和 `weekly-plan` 的 React Hook warning 为既有范围外问题，本轮未修改对应页面。
+- 旧日期执行入口已经收敛为兼容跳转；当前构建不再依赖已退役的规划页面。
 - 原始完整 RAG goal 尚未完成；本报告只代表单产品代码交接就绪。

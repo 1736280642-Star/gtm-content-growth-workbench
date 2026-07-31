@@ -10,13 +10,23 @@ RUNNER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RUNNER_ROOT))
 
 from joto_arcs_runner.ledger import PublishLedger
-from joto_arcs_runner.platforms import has_security_challenge, profile_dir
+from joto_arcs_runner.platforms import (
+    PLATFORM_CONFIG,
+    BrowserPublisher,
+    _editor_url,
+    _element_is_selected,
+    _record_status,
+    _verify_juejin_draft_api,
+    has_security_challenge,
+    profile_dir,
+)
 from joto_arcs_runner.server import RunnerService, expected_idempotency_key, validate_publish_payload
 
 
 class FakePublisher:
     def __init__(self):
         self.publish_calls = 0
+        self.verify_payload = None
 
     def check_auth(self, platform):
         return {"authenticated": True, "status": "ready"}
@@ -26,7 +36,14 @@ class FakePublisher:
         return {"ok": True, "status": "published_verified", "publishStatus": "confirmed", "publicUrl": "https://example.com/public"}
 
     def verify(self, platform, payload):
+        self.verify_payload = payload
         return {"ok": True, "status": "published_verified", "publishStatus": "confirmed", "publicUrl": "https://example.com/public"}
+
+
+class ResumePublisher(FakePublisher):
+    def publish(self, platform, value):
+        self.publish_calls += 1
+        return {"ok": True, "status": "published_verified", "publishStatus": "confirmed", "publicUrl": "https://example.com/resumed"}
 
 
 def payload():
@@ -36,6 +53,10 @@ def payload():
         "contentHash": "a" * 64,
         "title": "Test title",
         "markdown": "Test markdown body",
+        "externalDraftId": "123456",
+        "editorUrl": "https://editor.csdn.net/md?articleId=123456",
+        "categoryId": "人工智能",
+        "tagIds": ["AI"],
     }
     value["idempotencyKey"] = hashlib.sha256(f"{value['scheduleId']}:{value['platform']}:{value['contentHash']}".encode("utf-8")).hexdigest()
     return value
@@ -61,10 +82,399 @@ class RunnerContractTest(unittest.TestCase):
             self.assertTrue(second["duplicateProtected"])
             self.assertEqual(publisher.publish_calls, 1)
 
+    def test_in_progress_duplicate_is_unconfirmed_and_never_submitted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            value = payload()
+            ledger = PublishLedger(Path(directory) / "ledger.json")
+            ledger.begin(value["idempotencyKey"], {"platform": value["platform"], "title": value["title"]})
+            service = RunnerService(ledger, FakePublisher())
+            status, result = service.publish(value)
+            self.assertEqual(status, 409)
+            self.assertEqual(result["failureCode"], "publish_action_unconfirmed")
+            self.assertNotEqual(result.get("publishStatus"), "submitted")
+
+    def test_payload_failure_can_resume_the_same_platform_draft(self):
+        with tempfile.TemporaryDirectory() as directory:
+            value = payload()
+            ledger = PublishLedger(Path(directory) / "ledger.json")
+            ledger.begin(value["idempotencyKey"], {
+                "platform": value["platform"],
+                "title": value["title"],
+                "externalDraftId": value["externalDraftId"],
+                "editorUrl": value["editorUrl"],
+            })
+            ledger.complete(value["idempotencyKey"], {
+                "ok": False,
+                "status": "failed",
+                "publishStatus": "failed",
+                "failureCode": "payload_invalid",
+            })
+            publisher = ResumePublisher()
+            status, result = RunnerService(ledger, publisher).publish(value)
+            self.assertEqual(status, 200)
+            self.assertTrue(result["ok"])
+            self.assertEqual(publisher.publish_calls, 1)
+
+    def test_editor_structure_failure_can_resume_the_same_platform_draft(self):
+        with tempfile.TemporaryDirectory() as directory:
+            value = payload()
+            ledger = PublishLedger(Path(directory) / "ledger.json")
+            ledger.begin(value["idempotencyKey"], {
+                "platform": value["platform"],
+                "title": value["title"],
+                "externalDraftId": value["externalDraftId"],
+                "editorUrl": value["editorUrl"],
+            })
+            ledger.complete(value["idempotencyKey"], {
+                "ok": False,
+                "status": "failed",
+                "publishStatus": "failed",
+                "failureCode": "adapter_failed",
+                "failureReason": "csdn 编辑器结构已变化，未找到标题或正文输入区。",
+            })
+            publisher = ResumePublisher()
+            status, result = RunnerService(ledger, publisher).publish(value)
+            self.assertEqual(status, 200)
+            self.assertTrue(result["ok"])
+            self.assertEqual(publisher.publish_calls, 1)
+
+    def test_csdn_missing_final_button_can_resume_the_same_settings_draft(self):
+        with tempfile.TemporaryDirectory() as directory:
+            value = payload()
+            ledger = PublishLedger(Path(directory) / "ledger.json")
+            ledger.begin(value["idempotencyKey"], {
+                "platform": value["platform"],
+                "title": value["title"],
+                "externalDraftId": value["externalDraftId"],
+                "editorUrl": value["editorUrl"],
+            })
+            ledger.complete(value["idempotencyKey"], {
+                "ok": False,
+                "status": "pending_verify",
+                "publishStatus": "failed",
+                "failureCode": "publish_action_unconfirmed",
+                "failureReason": "csdn 第一层发布已点击，但最终确认弹窗或确认按钮未出现。",
+            })
+            publisher = ResumePublisher()
+            status, result = RunnerService(ledger, publisher).publish(value)
+            self.assertEqual(status, 200)
+            self.assertTrue(result["ok"])
+            self.assertEqual(publisher.publish_calls, 1)
+
+    def test_csdn_current_editor_content_selector_is_supported(self):
+        self.assertIn("css:pre.editor__inner[contenteditable='true']", PLATFORM_CONFIG["csdn"]["content"])
+        self.assertTrue(any(" el-tag " in selector for selector in PLATFORM_CONFIG["csdn"]["tag_selected"]))
+        self.assertTrue(any(" btn-b-red " in selector for selector in PLATFORM_CONFIG["csdn"]["confirm"]))
+
+    def test_csdn_opens_publish_settings_before_validating_tags(self):
+        source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
+        settings_open = source.index('if platform in {"csdn", "juejin"}:', source.index("def publish("))
+        tag_validation = source.index('if platform in {"csdn", "juejin"}:', settings_open + 1)
+        final_confirmation = source.index('confirm = _first(tab, config["confirm"]')
+        self.assertLess(settings_open, tag_validation)
+        self.assertLess(tag_validation, final_confirmation)
+
+    def test_hybrid_payload_requires_the_platform_draft(self):
+        value = payload()
+        value.pop("externalDraftId")
+        self.assertIn("externalDraftId", validate_publish_payload(value))
+
+    def test_csdn_category_is_optional_but_tags_are_required(self):
+        value = payload()
+        value.pop("categoryId")
+        self.assertIsNone(validate_publish_payload(value))
+        value.pop("tagIds")
+        self.assertIn("tagIds", validate_publish_payload(value))
+
+    def test_juejin_category_remains_required(self):
+        value = payload()
+        value["platform"] = "juejin"
+        value["editorUrl"] = "https://juejin.cn/editor/drafts/123456"
+        value.pop("categoryId")
+        value["idempotencyKey"] = expected_idempotency_key(value)
+        self.assertIn("categoryId", validate_publish_payload(value))
+
+    def test_juejin_tag_selectors_are_scoped_away_from_category_choices(self):
+        config = PLATFORM_CONFIG["juejin"]
+        self.assertIn("css:.tag-input.select input.byte-select__input", config["tag_input"])
+        self.assertTrue(any("byte-select-option" in selector for selector in config["tag_option"]))
+        self.assertTrue(any("添加标签" in selector and "byte-select__tag" in selector for selector in config["tag_selected"]))
+
+    def test_juejin_opens_publish_settings_before_category_and_tag_selection(self):
+        source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
+        publish_settings = source.index('if platform in {"csdn", "juejin"}:', source.index("def publish("))
+        category_selection = source.index('category = (', publish_settings)
+        tag_selection = source.index('tags = payload.get("tagIds")', category_selection)
+        final_confirmation = source.index('confirm = _first(tab, config["confirm"]', tag_selection)
+        self.assertLess(publish_settings, category_selection)
+        self.assertLess(category_selection, tag_selection)
+        self.assertLess(tag_selection, final_confirmation)
+
+    def test_juejin_final_publish_captures_platform_api_result_without_logging_credentials(self):
+        source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
+        self.assertIn('tab.listen.start("content_api/v1/article/publish")', source)
+        self.assertIn('"diagnosticSummary": "publish_api_confirmed_article"', source)
+        self.assertNotIn("publish_packet.request.headers", source)
+
+    def test_juejin_draft_api_reads_nested_article_id(self):
+        class DetailResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self):
+                return b'{"err_no":0,"data":{"article_draft":{"article_id":"7668120258260074548"}}}'
+
+        class PublicResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"JUEJIN_COOKIE": "passport_csrf_token=test"}, clear=False):
+            with patch("joto_arcs_runner.platforms.urlopen", side_effect=[DetailResponse(), PublicResponse()]):
+                result = _verify_juejin_draft_api({"externalDraftId": "draft-1"})
+        self.assertEqual(result["status"], "published_verified")
+        self.assertEqual(result["platformArticleId"], "7668120258260074548")
+
+    def test_juejin_article_id_stays_pending_until_public_url_is_reachable(self):
+        class DetailResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self):
+                return b'{"err_no":0,"data":{"article_draft":{"article_id":"7668120258260074548"}}}'
+
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"JUEJIN_COOKIE": "passport_csrf_token=test"}, clear=False):
+            with patch("joto_arcs_runner.platforms.urlopen", side_effect=[DetailResponse(), RuntimeError("not public")]):
+                result = _verify_juejin_draft_api({"externalDraftId": "draft-1"})
+        self.assertEqual(result["status"], "published_pending_url")
+        self.assertEqual(result["publishStatus"], "pending_review")
+        self.assertNotIn("publicUrl", result)
+
+    def test_editor_url_must_open_the_same_approved_draft(self):
+        value = payload()
+        self.assertEqual(_editor_url("csdn", value, PLATFORM_CONFIG["csdn"]), value["editorUrl"])
+        value["editorUrl"] = "https://example.com/md?articleId=123456"
+        with self.assertRaises(ValueError):
+            _editor_url("csdn", value, PLATFORM_CONFIG["csdn"])
+
+    def test_verify_reuses_draft_identity_from_ledger(self):
+        with tempfile.TemporaryDirectory() as directory:
+            publisher = FakePublisher()
+            service = RunnerService(PublishLedger(Path(directory) / "ledger.json"), publisher)
+            value = payload()
+            service.publish(value)
+            service.verify({"idempotencyKey": value["idempotencyKey"]})
+            self.assertEqual(publisher.verify_payload["externalDraftId"], value["externalDraftId"])
+
+    def test_selected_state_and_record_status_are_explicit(self):
+        class Element:
+            def __init__(self, values):
+                self.values = values
+
+            def attr(self, name):
+                return self.values.get(name)
+
+        self.assertTrue(_element_is_selected(Element({"aria-selected": "true"})))
+        self.assertFalse(_element_is_selected(Element({"class": "tag option"})))
+        self.assertEqual(_record_status("Test title 审核中", PLATFORM_CONFIG["csdn"]), "pending_review")
+        self.assertIsNone(_record_status("Test title 草稿", PLATFORM_CONFIG["csdn"]))
+
+    def test_page_level_review_text_without_matching_title_is_unconfirmed(self):
+        class Body:
+            text = "其他文章 审核中"
+
+        class Tab:
+            url = "https://mp.csdn.net/mp_blog/manage/article"
+
+            def get(self, url):
+                self.url = url
+
+            def ele(self, selector, timeout=1):
+                return Body() if selector == "tag:body" else None
+
+        result = BrowserPublisher()._verify_tab("csdn", Tab(), payload())
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["failureCode"], "publish_action_unconfirmed")
+        self.assertNotEqual(result.get("publishStatus"), "submitted")
+
+    def test_matching_review_record_requires_and_returns_a_record_id(self):
+        class Body:
+            text = "Test title 审核中"
+
+        class Record:
+            text = "Test title 审核中"
+
+            def ele(self, selector, timeout=1):
+                return None
+
+        class Title:
+            tag = "a"
+            text = "Test title"
+
+            def ele(self, selector, timeout=1):
+                return Record()
+
+            def attr(self, name):
+                return ""
+
+        class Tab:
+            url = "https://mp.csdn.net/mp_blog/manage/article"
+
+            def get(self, url):
+                self.url = url
+
+            def ele(self, selector, timeout=1):
+                if selector == "tag:body":
+                    return Body()
+                if "normalize-space" in selector:
+                    return Title()
+                return None
+
+        result = BrowserPublisher()._verify_tab("csdn", Tab(), payload())
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["publishStatus"], "pending_review")
+        self.assertEqual(result["externalTaskId"], payload()["externalDraftId"])
+        self.assertNotIn("platformArticleId", result)
+
+    def test_matching_zhihu_title_uses_ancestor_public_link_as_publish_evidence(self):
+        class Body:
+            text = "文章管理 草稿"
+
+        class Record:
+            text = "Test title"
+
+            def ele(self, selector, timeout=1):
+                return None
+
+        class Anchor:
+            def attr(self, name):
+                return "https://zhuanlan.zhihu.com/p/987654321"
+
+        class Title:
+            tag = "div"
+            text = "Test title"
+
+            def ele(self, selector, timeout=1):
+                if "creationmanage-creationcard" in selector:
+                    return Record()
+                if "ancestor-or-self::a" in selector:
+                    return Anchor()
+                return None
+
+        class Tab:
+            url = "https://www.zhihu.com/creator/manage/creation/article"
+
+            def get(self, url):
+                self.url = url
+
+            def ele(self, selector, timeout=1):
+                if selector == "tag:body":
+                    return Body()
+                if "normalize-space" in selector:
+                    return Title()
+                return None
+
+        result = BrowserPublisher()._verify_tab("zhihu", Tab(), payload())
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["publishStatus"], "confirmed")
+        self.assertEqual(result["platformArticleId"], "987654321")
+        self.assertEqual(result["diagnosticSummary"], "creator_record_public_article")
+
+    def test_matching_csdn_title_uses_current_record_public_link_as_publish_evidence(self):
+        class Body:
+            text = "文章管理"
+
+        class Anchor:
+            def attr(self, name):
+                return "https://blog.csdn.net/example/article/details/163328639"
+
+        class Record:
+            text = "Test title 原创 2026-07-30"
+
+            def ele(self, selector, timeout=1):
+                if "blog.csdn.net" in selector:
+                    return Anchor()
+                return None
+
+        class Title:
+            tag = "a"
+            text = "Test title"
+
+            def ele(self, selector, timeout=1):
+                if "article-list-item-mp" in selector:
+                    return Record()
+                return None
+
+            def attr(self, name):
+                return "https://editor.csdn.net/md/?articleId=123456"
+
+        class Tab:
+            url = "https://mp.csdn.net/mp_blog/manage/article"
+
+            def get(self, url):
+                self.url = url
+
+            def ele(self, selector, timeout=1):
+                if selector == "tag:body":
+                    return Body()
+                if "normalize-space" in selector:
+                    return Title()
+                return None
+
+        result = BrowserPublisher()._verify_tab("csdn", Tab(), payload())
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["publishStatus"], "confirmed")
+        self.assertEqual(result["platformArticleId"], "163328639")
+        self.assertEqual(result["diagnosticSummary"], "creator_record_public_article")
+
+    def test_final_confirmation_is_not_optional(self):
+        source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
+        self.assertNotIn('_click_optional(tab, config["confirm"]', source)
+        self.assertIn('confirm = _first(tab, config["confirm"]', source)
+
     def test_security_challenge_detection(self):
         self.assertTrue(has_security_challenge("请完成手机号验证"))
         self.assertTrue(has_security_challenge("CAPTCHA required"))
         self.assertFalse(has_security_challenge("文章已发布"))
+
+    def test_auth_check_reports_browser_failure_type(self):
+        class FailingTab:
+            url = ""
+
+            def get(self, _url):
+                raise RuntimeError("private details must not be returned")
+
+            def ele(self, _selector, timeout=1):
+                return None
+
+            def close(self):
+                return None
+
+        class Browser:
+            def new_tab(self):
+                return FailingTab()
+
+            def quit(self):
+                return None
+
+        from unittest.mock import patch
+        with patch("joto_arcs_runner.platforms._browser", return_value=Browser()):
+            result = BrowserPublisher().check_auth("zhihu")
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("RuntimeError", result["message"])
+        self.assertNotIn("private details", result["message"])
 
     def test_profiles_are_outside_repository(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -2,6 +2,7 @@
 
 import {
   ApiOutlined,
+  AppstoreOutlined,
   BarChartOutlined,
   BookOutlined,
   CalendarOutlined,
@@ -9,6 +10,7 @@ import {
   DashboardOutlined,
   FileSearchOutlined,
   ExperimentOutlined,
+  FormOutlined,
   QuestionCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -47,8 +49,10 @@ const contentStyle: CSSProperties = {
 };
 
 const navItems = [
+  { key: "/products", icon: <AppstoreOutlined />, label: <Link href="/products">产品与 GEO 调研</Link> },
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
+  { key: "/free-production", icon: <FormOutlined />, label: <Link href="/free-production">自由内容生产</Link> },
   { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
   { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },
   { key: "/questions-keywords", icon: <QuestionCircleOutlined />, label: <Link href="/questions-keywords">问题与关键词池</Link> },
@@ -137,7 +141,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             justifyContent: "space-between"
           }}
         >
-          <Typography.Text strong>{"月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 月度复盘 -> AI 前台测试"}</Typography.Text>
+          <Typography.Text strong>{"产品 GEO 准入 -> 月度内容矩阵 -> 人工排程 -> 当日执行 -> 月度复盘 -> AI 前台测试"}</Typography.Text>
           <Space>
             <Tag color="blue">{workspaceRoleLabels[workspaceSetting.currentRole]}</Tag>
             <Typography.Text type="secondary">AI 可控、效果可评估、复盘能回流</Typography.Text>

@@ -1,5 +1,5 @@
 import type { RagKnowledgeChunk, RagNamespace, RagRetrievalRequest } from "./contracts";
-import { RagInfrastructureError, getRagInfrastructureStatus } from "./infrastructure";
+import { RagInfrastructureError, getOpenSearchAuthorizationHeader, getRagInfrastructureStatus } from "./infrastructure";
 
 export interface RagOpenSearchHit {
   chunk: RagKnowledgeChunk;
@@ -23,12 +23,6 @@ function safeIndexPart(value: string) {
 
 export function buildRagIndexName(namespace: RagNamespace, productId: string, language: string, indexVersion: string) {
   return ["v5-rag", namespace, productId, language, indexVersion].map(safeIndexPart).join("-");
-}
-
-function authHeader() {
-  const username = process.env.OPENSEARCH_USERNAME?.trim() || "";
-  const password = process.env.OPENSEARCH_PASSWORD?.trim() || "";
-  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
 function requestTimeoutMs() {
@@ -60,9 +54,10 @@ export class HttpRagOpenSearchAdapter implements RagOpenSearchAdapter {
     if (status.opensearch.status !== "ready") {
       throw new RagInfrastructureError("pending_config", "OpenSearch 尚未配置。", status.opensearch.missingConfig);
     }
+    const authorization = getOpenSearchAuthorizationHeader();
     const response = await fetch(`${process.env.OPENSEARCH_URL!.replace(/\/$/, "")}/${path.replace(/^\//, "")}`, {
       ...init,
-      headers: { authorization: authHeader(), "content-type": "application/json", ...init.headers },
+      headers: { ...(authorization ? { authorization } : {}), "content-type": "application/json", ...init.headers },
       signal: init.signal || AbortSignal.timeout(requestTimeoutMs())
     });
     const body = await response.text();

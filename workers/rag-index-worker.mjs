@@ -3,14 +3,15 @@ import { loadProjectEnv } from "../scripts/load-project-env.mjs";
 
 loadProjectEnv();
 
-const [jobRepository, indexBuildService, infrastructureModule, ragRepository, evaluationModule, ragService, refreshRepository] = await Promise.all([
+const [jobRepository, indexBuildService, infrastructureModule, ragRepository, evaluationModule, ragService, refreshRepository, governanceRepository] = await Promise.all([
   import("../src/lib/v5/rag/job-repository.ts"),
   import("../src/lib/v5/rag/index-build-service.ts"),
   import("../src/lib/v5/rag/infrastructure.ts"),
   import("../src/lib/v5/rag/rag-repository.ts"),
   import("../src/lib/v5/rag/automatic-index-evaluation-service.ts"),
   import("../src/lib/v5/rag/rag-service.ts"),
-  import("../src/lib/v5/rag/knowledge-refresh-repository.ts")
+  import("../src/lib/v5/rag/knowledge-refresh-repository.ts"),
+  import("../src/lib/v5/knowledge-governance-repository.ts")
 ]);
 const { leaseNextRagJob, finishRagJob } = jobRepository;
 const { runRagIndexBuild } = indexBuildService;
@@ -19,6 +20,7 @@ const { readRagIndexSnapshotRecord, transitionRagIndexSnapshotRecord } = ragRepo
 const { evaluateAutomaticRagIndexSnapshot } = evaluationModule;
 const { validateRagIndexSnapshot, activateRagIndexSnapshot } = ragService;
 const { releaseAutomaticKnowledgeTasksRecord } = refreshRepository;
+const { getV5GovernancePool } = governanceRepository;
 
 const workerId = `rag-index-worker-${process.pid}-${randomUUID()}`;
 const configuredLeaseSeconds = Number(process.env.RAG_JOB_LEASE_SECONDS);
@@ -96,4 +98,6 @@ try {
   const details = error instanceof RagInfrastructureError ? error.missingConfig : undefined;
   console.error(JSON.stringify({ status: pending ? "pending_config" : "failed", code: failureCode, ...(details ? { details } : {}) }));
   process.exitCode = pending ? 2 : 1;
+} finally {
+  await getV5GovernancePool().end();
 }

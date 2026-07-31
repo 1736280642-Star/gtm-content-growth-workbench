@@ -9,6 +9,7 @@ export interface RagIndexBuildSource {
   source: V5SourceAsset;
   revision: V5SourceRevision;
   claims: V5ProductClaim[];
+  blockedClaims: V5ProductClaim[];
 }
 
 function iso(value: unknown) { return value instanceof Date ? value.toISOString() : value ? String(value) : undefined; }
@@ -29,6 +30,9 @@ export async function readRagIndexBuildContext(indexSnapshotId: string) {
   const [claimRows] = manifest.approvedClaimIds.length
     ? await pool.query<RowDataPacket[]>("SELECT * FROM product_claim WHERE id IN (?) AND product_id = ? AND review_status IN ('supported','conditional')", [manifest.approvedClaimIds, manifest.productId])
     : [[] as unknown as RowDataPacket[]];
+  const [blockedClaimRows] = manifest.blockedClaimIds.length
+    ? await pool.query<RowDataPacket[]>("SELECT * FROM product_claim WHERE id IN (?) AND product_id = ?", [manifest.blockedClaimIds, manifest.productId])
+    : [[] as unknown as RowDataPacket[]];
   const [productRows] = await pool.query<RowDataPacket[]>("SELECT canonical_name, display_name FROM product_entity WHERE id = ? LIMIT 1", [manifest.productId]);
   const [ruleRows] = await pool.query<RowDataPacket[]>(
     "SELECT id FROM rule_package_version WHERE id = ? AND product_id = ? AND status = 'active' AND immutable_at IS NOT NULL LIMIT 1",
@@ -47,11 +51,23 @@ export async function readRagIndexBuildContext(indexSnapshotId: string) {
     items.push(claim);
     claimsByRevision.set(claim.sourceRevisionId, items);
   });
+  const blockedClaimsByRevision = new Map<string, V5ProductClaim[]>();
+  blockedClaimRows.forEach((row) => {
+    const claim = mapClaim(row);
+    const items = blockedClaimsByRevision.get(claim.sourceRevisionId) || [];
+    items.push(claim);
+    blockedClaimsByRevision.set(claim.sourceRevisionId, items);
+  });
   const sources: RagIndexBuildSource[] = revisionRows.map((row) => {
     const revision = mapRevision(row);
     const source = sourceById.get(revision.sourceId);
     if (!source) throw new Error(`SourceAsset ${revision.sourceId} 不存在。`);
-    return { source, revision, claims: claimsByRevision.get(revision.sourceRevisionId) || [] };
+    return {
+      source,
+      revision,
+      claims: claimsByRevision.get(revision.sourceRevisionId) || [],
+      blockedClaims: blockedClaimsByRevision.get(revision.sourceRevisionId) || []
+    };
   });
   return {
     snapshot,

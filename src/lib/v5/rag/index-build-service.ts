@@ -4,7 +4,7 @@ import { buildClaimAwareChunks } from "./chunking-service";
 import { getRagInfrastructureStatus, RagInfrastructureError } from "./infrastructure";
 import { persistRagIndexBuild, readRagIndexBuildContext } from "./index-build-repository";
 import { HttpRagOpenSearchAdapter } from "./opensearch-adapter";
-import { LocalRagRawAssetStore, type RagRawAssetStore } from "./raw-asset-store";
+import { DefaultRagRawAssetStore, type RagRawAssetStore } from "./raw-asset-store";
 import type { RagKnowledgeChunk } from "./contracts";
 
 export interface RagIndexBuildResult {
@@ -21,6 +21,10 @@ export interface RagIndexBuildResult {
 function boundedPositiveInteger(value: string | undefined, fallback: number, maximum: number) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? Math.min(maximum, parsed) : fallback;
+}
+
+function embeddingBatchMaximum(provider: KnowledgeEmbeddingModelProvider) {
+  return provider === "qwen_embedding" ? 10 : 32;
 }
 
 export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { rawAssetStore?: RagRawAssetStore; openSearch?: HttpRagOpenSearchAdapter } = {}): Promise<RagIndexBuildResult> {
@@ -42,7 +46,7 @@ export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { 
   const missingClaimIds = context.manifest.approvedClaimIds.filter((id) => !loadedClaimIds.has(id));
   if (missingClaimIds.length) throw new Error(`Manifest 中有 ${missingClaimIds.length} 条已批准 Claim 无法加载。`);
 
-  const store = dependencies.rawAssetStore || new LocalRagRawAssetStore();
+  const store = dependencies.rawAssetStore || new DefaultRagRawAssetStore();
   const chunks: RagKnowledgeChunk[] = [];
   const reviewRequired: RagKnowledgeChunk[] = [];
   const qualityIssues: Array<{ chunkId: string; codes: string[] }> = [];
@@ -68,6 +72,7 @@ export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { 
       normalizedMarkdown: markdown,
       approvedClaims: item.claims,
       blockedClaimIds: context.manifest.blockedClaimIds,
+      blockedClaims: item.blockedClaims,
       unresolvedConflictIds: context.manifest.unresolvedConflictIds,
       chunkerVersion: context.snapshot.chunkerVersion
     });
@@ -79,7 +84,8 @@ export async function runRagIndexBuild(indexSnapshotId: string, dependencies: { 
   const provider = infrastructure.embedding.provider as KnowledgeEmbeddingModelProvider;
   const vectors = new Map<string, number[]>();
   let model = infrastructure.embedding.model || "";
-  const batchSize = boundedPositiveInteger(process.env.RAG_EMBEDDING_BATCH_SIZE, 32, 64);
+  const providerBatchMaximum = embeddingBatchMaximum(provider);
+  const batchSize = boundedPositiveInteger(process.env.RAG_EMBEDDING_BATCH_SIZE, providerBatchMaximum, providerBatchMaximum);
   for (let start = 0; start < chunks.length; start += batchSize) {
     const batch = chunks.slice(start, start + batchSize);
     const result = await callEmbeddingProvider({ provider, input: batch.map((chunk) => `${chunk.chunkTitle}\n${chunk.summary}\n${chunk.content}`) });

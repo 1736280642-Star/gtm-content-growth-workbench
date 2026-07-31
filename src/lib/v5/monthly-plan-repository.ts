@@ -33,6 +33,8 @@ function mapMonthlyPlan(row: RowDataPacket): V5MonthlyPlan {
     channelMix: parseV5Json<Record<string, number>>(row.channel_mix, {}),
     contentTypeMix: parseV5Json<Record<string, number>>(row.content_type_mix, {}),
     publishFrequency: parseV5Json<Record<string, unknown>>(row.publish_frequency, {}),
+    questionVersionIds: parseV5Json<string[]>(row.question_version_ids, []),
+    workspaceConfig: parseV5Json<Record<string, unknown>>(row.workspace_config, {}),
     strategyPackageVersionId: row.strategy_package_version_id ? String(row.strategy_package_version_id) : undefined,
     matrixVersionId: row.matrix_version_id ? String(row.matrix_version_id) : undefined,
     approvedAt: asDate(row.approved_at),

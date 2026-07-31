@@ -27,6 +27,44 @@ interface FormalProviderOutput {
   factTraces: FactTrace[];
 }
 
+function sentencePunctuation(value: string) {
+  const trimmed = value.trim().replace(/[。！？!?；;：:]+$/u, "");
+  return trimmed ? `${trimmed}。` : "";
+}
+
+export function buildDeterministicEvidenceFallback(pack: RagFinalEvidencePack, title: string): FormalProviderOutput | undefined {
+  const eligible = pack.evidenceItems.filter((item) => item.primaryClaimId && item.originalQuote.trim() && !item.originalQuote.includes("\n"));
+  const boundary = eligible.find((item) => item.conditions.length || item.limitations.length || item.allowedUsage.includes("human_boundary"));
+  const selected = [...(boundary ? [boundary] : []), ...eligible.filter((item) => item !== boundary)].slice(0, 10);
+  if (selected.length < 8 || !boundary) return undefined;
+  const facts = selected.map((item) => {
+    const base = sentencePunctuation(item.normalizedClaim || item.summary);
+    const boundaries = [...item.conditions, ...item.limitations];
+    const sentence = boundaries.length
+      ? sentencePunctuation(`${base.replace(/。$/u, "")}；适用边界：${boundaries.join("；")}`)
+      : base;
+    return {
+      item,
+      sentence,
+      trace: {
+        sentence,
+        evidenceItemId: item.evidenceItemId,
+        claimId: item.primaryClaimId!,
+        sourceRevisionId: item.sourceRevisionId,
+        originalQuote: item.originalQuote,
+        sourceLocator: item.sourceLocator
+      } satisfies FactTrace
+    };
+  });
+  const ordinaryFacts = facts.filter(({ item }) => item !== boundary);
+  const boundaryFacts = facts.filter(({ item }) => item === boundary);
+  const render = ({ item, sentence }: typeof facts[number]) => `- ${sentence}\n> 原文：${item.originalQuote}`;
+  return {
+    markdown: [`# ${title}`, "## 已证实信息", ...ordinaryFacts.map(render), "## 适用边界与说明", ...boundaryFacts.map(render)].join("\n\n"),
+    factTraces: facts.map(({ trace }) => trace)
+  };
+}
+
 const explicitRuleFields = ["text", "description", "action", "pattern", "value", "label"] as const;
 
 export function extractRuleTexts(value: unknown): string[] {
@@ -316,6 +354,38 @@ export async function generateFormalArticle(input: {
       automaticRepairCount += 1;
       repairPrompt = `${userPrompt}\n\n系统自动检查发现以下可修复问题：\n${lastBlockers.join("\n")}\n请在不增加任何新事实、不改变冻结标题和证据绑定的前提下重写完整 JSON。`;
     }
+  }
+
+  const fallbackOutput = buildDeterministicEvidenceFallback(input.pack, title);
+  if (fallbackOutput) {
+    const fallbackValidation = validateFormalProviderOutput({
+      output: fallbackOutput,
+      title,
+      evidenceItems: input.pack.evidenceItems,
+      blockedRuleTexts: [...blockedExpressions, ...prohibitedPatterns],
+      requiredFormatTexts: requiredFormat,
+      checkedRuleCount
+    });
+    if (fallbackValidation.passed) {
+      const hardRuleResult: HardRuleResult = {
+        ...fallbackValidation,
+        technicalRetryCount,
+        automaticRepairCount: automaticRepairCount + 1
+      };
+      return completeFormalGeneration({
+        operationId: input.operationId,
+        generationRunId,
+        pack: input.pack,
+        context: input.context,
+        title,
+        markdown: fallbackOutput.markdown,
+        factTraces: fallbackOutput.factTraces,
+        hardRuleResult,
+        providerModel: `${lastModel || provider}-evidence-fallback`,
+        actor: input.actor
+      });
+    }
+    lastBlockers = fallbackValidation.blockers;
   }
 
   const hardRuleFailure = failure("hard_rule_blocked", "正文经两轮自动修复后仍未通过，系统将保留上一份可用正文并记录本次运行。", "不需要逐条重试；系统会在批次恢复时重新处理。");

@@ -8,9 +8,9 @@
 
 ## 2. 当前结论
 
-当前版本按 V4 工作流边界继续收敛：周计划只做标题级计划预览，今日发布负责批量生成、确认发布和 URL 回填，草稿预览负责人工修改与 AI 二次质检，数据回传只负责渠道指标导入。博客监控优先展示诊断，周度复盘保留既有迁移回归能力。V5 基础能力新增“问题与关键词池”、简化知识工作区和“配置管理”，底层治理对象默认隐藏。
+当前版本已经收敛到单一月度业务周期：`MonthlyPlan -> 日期执行 -> 发布与指标 -> MonthlyReview -> 下月 Proposal`。月度内容矩阵是唯一计划真源；当日执行只负责日期视图下的发布动作，数据回传只负责渠道指标，月度复盘负责形成下月候选。旧执行入口仅保留为兼容跳转，不再承载独立计划或复盘能力。
 
-在 V5 月度页面分支中，月度内容矩阵是后续唯一月度计划真源。V5 生产界面收敛为：`月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 数据回传`。内容策略包的创建、配置、生产预检和批准全部在月度内容矩阵完成；批量生成中心位于其子路由，只保留“内容”和“排程”两个页签。
+V5 生产界面收敛为：`月度内容矩阵 -> 批量生成与人工排程 -> 当日执行 -> 数据回传 -> 月度复盘`。内容策略包的创建、配置、生产预检和批准全部在月度内容矩阵完成；批量生成中心位于其子路由，只保留“内容”和“排程”两个页签。
 
 用户只配置目标问题、内容类型、每渠道配额、渠道、产品表达规则包和知识库。内容类型统一承载类型语义、结构、CTA、篇幅、风格、证据偏好和渠道提示；用户可在 `/monthly-matrix/content-types` 创建、复制、编辑新版本和停用类型。月度策略在 `/monthly-matrix/strategy` 通过 AI 多标签语义匹配给出推荐理由，用户接受、排除或手动加入后冻结内容类型版本与 Prompt 约束快照。Provider 未配置时显示 `pending_config`，仍可走人工选择路径。渠道成品数按每个渠道分别计算，例如官网和知乎各 4 篇等于 8 篇渠道成品。系统在后台承担事实依据、公开范围、禁止表达、结构和渠道适配检查，并自动修复或恢复技术失败；语义匹配不能绕过 Evidence Gate。只有缺少文章主题成立所需关键事实时才显示“待补资料”并打开知识库待处理事项。正文从任务行抽屉预览和按需编辑，不再使用独立正文导航页。
 
@@ -82,22 +82,22 @@ npm.cmd run test:v5-single-article -- --base-url=http://127.0.0.1:3077
 
 运行边界：
 
-- 不使用 `20260714_002_drop_v4_weekly_tables.sql`，也不得添加 `--include-drop-v4` 或 `--confirm-drop-v4`。
+- 不执行 V4 破坏性删除迁移，也不得添加 `--include-drop-v4` 或 `--confirm-drop-v4`。
 - 不从聊天、日志或文档读取和输出任何密钥值；只允许检查配置项是否存在。
 - 缺少 MySQL、OpenSearch、Embedding 或正式正文 Provider 时，结果必须保持 `pending_config`。
 - `EvidencePreview` 会改变矩阵项版本，因此该单篇编排直接使用 `Retrieval -> Final EvidencePack`，避免冻结时出现任务版本漂移；父进程 RAG 核心代码保持不变。
 
-### 3.4 V4 保留能力与迁移期真实执行
+### 3.4 兼容入口与真实执行
 
-博客监控、工作台设置和数据回传继续保持 V4 页面与功能。旧周计划、今日发布和周度复盘路由仅用于迁移回归，在真实 V5 后端接通前仍承载现有执行能力。
+博客监控、工作台设置和数据回传继续保留现有能力。兼容入口只负责跳转到月度主链路，不再保留第二套计划真源或复盘周期。
 
 1. 进入“知识库”，先在列表查看资料状态；点击“导入资料”进入内容导入子页面，按 URL 或文档分别导入。
 2. URL 导入支持一行一个 URL，解析为 Markdown 预览后保存为待向量化；文档导入会调用服务端解析器，把 Markdown/TXT、PDF、Word(docx) 转为 Markdown 预览。旧版 `.doc` 需先转换成 `.docx`，不会伪装成已解析正文。
 3. 进入知识库“编辑详情”，在详情页内编辑基础信息、追加 URL 或补充文本，并查看内容预览、切片与向量化记录、关联蒸馏词和更新记录。
 4. 进入“切片与向量化”，选择待向量化知识库和策略；如果没有真实 Embedding 配置，系统显示 `pending_config`，不会写入伪向量。
 5. 进入“产品表达规则包”，从已有知识库生成允许表达、禁止表达和边界提示；草稿必须人工确认后才生效。
-6. 进入“工作台设置”，继续维护 V4 默认产品、渠道、知识库和规则包配置。
-7. 迁移回归需要真实执行时，直接访问 `/weekly-plan`、`/today` 和 `/weekly-report`，现有接口和数据行为不变。
+6. 进入“工作台设置”，维护默认产品、渠道、知识库和规则包配置。
+7. 旧书签 `/monthly-plan` 和 `/today` 会分别跳转到 `/monthly-matrix` 和 `/daily-execution`。
 8. 进入“数据回传”，导入渠道数据表或手动补录阅读、点赞、收藏、评论、分享等指标。
 9. 进入“博客监控”，先看诊断摘要、问题分布和优先动作，再看博客明细。
 
@@ -225,11 +225,11 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 3. “微信公众号草稿”为就绪后，在今日发布页发送一篇平台草稿。
 4. 公众号后台草稿箱出现草稿后，人工预览、发布，再回工作台回填正式 URL。
 
-微信跑通后再逐个接入 CSDN、掘金、知乎。当前 bridge 已补入三类平台草稿 adapter；未配置 Cookie、标签或平台 headers 时应显示 `pending_config` / `auth_required`，不应标记为真实草稿成功。
+微信跑通后再逐个接入 CSDN、掘金、知乎。当前正式发布链路为：微信使用官方 API；CSDN、掘金由 bridge 幂等创建平台草稿，再把同一草稿 ID 交给专用浏览器完成正式发布；知乎由专用浏览器完整发布。未配置 Cookie、分类、标签或登录态时应显示 `pending_config` / `auth_required`，不应进入发布点击。
 
 ### CSDN / 掘金 / 知乎草稿 adapter
 
-当前 bridge 已按 `CSDN -> 掘金 -> 知乎` 顺序补入 adapter。三者仍然只创建草稿，不自动发布；如果平台接口或登录态失效，工作台会记录失败原因，发布记录仍保持 `queued`，等待人工处理。
+当前 bridge 已按 `CSDN -> 掘金 -> 知乎` 顺序补入 adapter。CSDN、掘金在正式发布模式下使用“草稿 API + 指定草稿浏览器发布”；知乎使用浏览器完整发布。验证码、手机确认和安全挑战进入 `manual_takeover_required`；页面改版、找不到最终确认按钮或后台找不到同标题文章时进入 `publish_action_unconfirmed`，绝不返回 `submitted` 伪成功。
 
 配置顺序建议：
 
@@ -246,6 +246,7 @@ CSDN_AUTH_CHECK_URL=
 # 掘金
 JUEJIN_COOKIE=
 JUEJIN_TAG_IDS=
+JUEJIN_TAG_LABELS=
 JUEJIN_CATEGORY_ID=
 JUEJIN_CSRF_TOKEN=
 JUEJIN_UUID=
@@ -269,8 +270,8 @@ ZHIHU_AUTH_CHECK_URL=
 
 最短路径：
 
-1. CSDN 先只补 `CSDN_COOKIE`，如接口返回鉴权或签名错误，再从浏览器请求里补 `CSDN_HEADERS_JSON` 或覆盖 `CSDN_DRAFT_API_URL`。
-2. 掘金至少补 `JUEJIN_COOKIE` 和 `JUEJIN_TAG_IDS`，标签 ID 用英文逗号分隔；分类可先用默认值，后续再补 `JUEJIN_CATEGORY_ID`。
+1. CSDN 至少补 `CSDN_COOKIE`、`CSDN_TAGS`、`CSDN_API_GATEWAY_KEY` 和 `CSDN_API_GATEWAY_SIGNING_KEY`；`CSDN_CATEGORIES` 可选，签名由 bridge 按请求动态生成。
+2. 掘金至少补 `JUEJIN_COOKIE`、`JUEJIN_TAG_IDS`、`JUEJIN_TAG_LABELS`、`JUEJIN_CATEGORY_ID` 和 `JUEJIN_CATEGORY_LABEL`；ID 用于草稿 API，可见名称用于浏览器搜索并确认选中态。
 3. 知乎先补 `ZHIHU_COOKIE`，必要时补 `ZHIHU_XSRF_TOKEN`；如果知乎写作接口要求额外风控头，再用 `ZHIHU_HEADERS_JSON` 覆盖。
 
 注意：Cookie、csrf token 和 headers 都属于敏感配置，只写入本机 `.env.local`，不要粘贴到聊天或文档。平台接口如果发生变更，优先通过 `*_DRAFT_API_URL`、`*_HEADERS_JSON`、`*_DRAFT_PAYLOAD_JSON` 做配置覆盖，不先改业务页面。
@@ -307,7 +308,7 @@ GET  /api/publish-schedules
 4. `publishing`：适配器正在执行。
 5. `published_verified`：平台返回正式发布且可验证结果。
 6. `published_pending_url`：正式发布已确认，但公开 URL 等待后续 CSV 或人工回填。
-7. `pending_verify`：发布动作完成，但平台仍在审核或待验证。
+7. `pending_verify`：发布动作尚未形成可确认结果，只允许后台复验，不允许重复建稿或重复点击。
 8. `manual_takeover_required`：验证码、手机确认、安全挑战等需要人工处理。
 9. `failed`：执行或验证失败。
 
@@ -315,6 +316,12 @@ GET  /api/publish-schedules
 
 ```text
 DIRECT_PUBLISH_ENABLED=true
+```
+
+启动常驻到期排程 Worker：
+
+```powershell
+npm.cmd run worker:direct-publish -- --base-url http://127.0.0.1:3000 --interval-seconds 30
 ```
 
 真实模式下缺少微信公众号 AppID、AppSecret、封面 media_id，或缺少掘金 / CSDN / 知乎登录态、分类、标签等配置时，系统只返回 `pending_config` / `auth_required` / `manual_takeover_required`，不会伪造平台文章 ID 或公开 URL。
@@ -347,14 +354,14 @@ npm.cmd run smoke:workflow:isolated
 
 说明：
 
-1. `smoke:pages` 检查主要页面、只读 API 和周报 Markdown 导出 API 是否可访问。
-2. `smoke:interactions` 检查页面职责合约，包括今日发布、数据回传、GEO 诊断、博客诊断、知识库导入/详情/向量化/规则包和周报矩阵。
+1. `smoke:pages` 检查月度主页面、兼容跳转和只读 API 是否可访问。
+2. `smoke:interactions` 检查月度矩阵、当日执行、月度复盘、托管知识导入及维护文件中的周期命名约束。
 3. `smoke:workflow` 默认临时启动独立服务，使用 `data/workbench-smoke-state.json`，不写入主状态 `data/workbench-state.json`；隔离 smoke 默认把 AI Provider 超时收敛到 2 秒，用于验证 fallback 链路，不代表真实生产 Provider 超时配置。
 4. `smoke:browser` 使用系统 Chrome 跑完整浏览器验收，默认使用隔离状态文件，不写入主状态。
 5. `smoke:browser:roles` 只检查角色受限态和普通业务页字段边界，默认使用隔离状态文件。
-6. `smoke:browser:content` 检查周计划、今日 Brief、规则包、蒸馏词、GEO 缺口和周报建议的浏览器链路，默认写入 `data/workbench-browser-smoke-state.json`。
-7. `smoke:browser:responsive` 只检查周计划展开、草稿质检、周报抽屉和 GEO 详情的移动端 DOM。
-8. `smoke:browser:publish` 只检查今日发布的平台草稿创建、人工发布确认、URL 回填和状态刷新。
+6. `smoke:browser:content` 检查月度矩阵、月度策略、批量生成、当日执行和知识库的浏览器链路，默认写入 `data/workbench-browser-smoke-state.json`。
+7. `smoke:browser:responsive` 检查批量生成、当日执行、月度复盘、问题池、知识库和配置管理的移动端 DOM。
+8. `smoke:browser:publish` 检查当日执行、数据回传和月度复盘的发布闭环页面。
 9. `smoke:browser:v5` 只检查月度内容矩阵、月度配置弹窗、批量生成中心、当日执行和月度复盘的桌面/移动端 DOM，使用独立状态文件和构建目录。
 10. `smoke:workflow:isolated` 保留为兼容入口，与默认 `smoke:workflow` 一样使用隔离状态。
 11. 只有显式运行 `smoke:workflow:main` 或 `smoke:browser:*:main` 时，才会写入 `data/workbench-state.json`；日常开发不要使用这些主状态入口。

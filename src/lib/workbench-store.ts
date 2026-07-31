@@ -4,18 +4,16 @@ import {
   drafts as seedDrafts,
   knowledgeBases as seedKnowledgeBases,
   publishRecords as seedPublishRecords,
-  tasks as seedTasks,
-  weeklyPlan as seedWeeklyPlan
+  tasks as seedTasks
 } from "./demo-data";
 import { lookup } from "node:dns/promises";
 import { callAiProvider, type AiProviderKey } from "./ai-provider";
 import { loadBlogArticles } from "./blog-sync-adapter";
 import { importChannelMetrics } from "./channel-metrics-adapter";
-import { addDateDays, getCurrentWorkbenchWeek, getWeekdayLabel, isDateInWeek } from "./date-utils";
+import { getDateTextInTimeZone } from "./date-utils";
 import { callEmbeddingProvider } from "./embedding-provider";
 import { channelDistributionTargets, channelLabels, distributionPlatformLabels, productLabels } from "./labels";
 import { parseBotLogInput } from "./log-import-adapter";
-import { canViewAiGovernance } from "./permissions";
 import { buildPublishIdempotencyKey, hashDirectPublishContent } from "./publish-idempotency";
 import { coerceDirectPublishPlatform, getPublishAdapter } from "./publish-adapters";
 import { getPromptTemplate, promptTemplates } from "./prompt-templates";
@@ -71,18 +69,8 @@ import type {
   PublishSchedule,
   PublishScheduleStatus,
   TaskStatus,
-  WeeklyPublishMatrixDay,
   WorkspaceRole,
-  WorkspaceSetting,
-  WeeklyPlan,
-  WeeklyPlanGenerationSignal,
-  WeeklyPlanGenerationSource,
-  WeeklyPlanQualityFeedback,
-  WeeklyPlanQualitySignal,
-  WeeklyRecommendationOutcome,
-  WeeklyReportDistilledTermMatrixRow,
-  WeeklyReportSnapshot,
-  WeeklyReportSuggestionDecision
+  WorkspaceSetting
 } from "./types";
 import { checkWechatsyncAuth, getWechatsyncRuntimeStatus, sendWechatsyncDraft } from "./wechatsync-client";
 
@@ -94,7 +82,7 @@ export interface WorkbenchAuditEvent {
 }
 
 export interface PipelineStepResult {
-  name: "sync_blog" | "import_log" | "import_channel_metrics" | "read_weekly_report";
+  name: "sync_blog" | "import_log" | "import_channel_metrics";
   ok: boolean;
   status: WorkflowResult<unknown>["status"] | "success";
   message: string;
@@ -108,7 +96,7 @@ export interface PipelineRunRecord {
   startedAt: string;
   finishedAt: string;
   steps: PipelineStepResult[];
-  week: string;
+  month: string;
   summary?: ReturnType<typeof getDashboardSummary>;
 }
 
@@ -118,7 +106,6 @@ export interface WorkbenchState {
     statePath: string;
     initializedAt: string;
   };
-  weeklyPlan: WeeklyPlan;
   workspaceSetting: WorkspaceSetting;
   tasks: ContentTask[];
   drafts: ArticleDraft[];
@@ -134,45 +121,21 @@ export interface WorkbenchState {
   distilledTermExtractionRules: DistilledTermExtractionRule[];
   distilledTermRuleDrafts: DistilledTermRuleDraft[];
   promptVersions: PromptVersionRecord[];
-  weeklyReportSnapshots: WeeklyReportSnapshot[];
-  weeklyReportSuggestionDecisions: WeeklyReportSuggestionDecision[];
   pipelineRuns: PipelineRunRecord[];
   auditLog: WorkbenchAuditEvent[];
-}
-
-interface GenerateWeeklyPlanInput {
-  weekStart?: string;
-  weekEnd?: string;
-  days?: number;
-  dailyCount?: number;
-  publishMatrix?: Array<Partial<WeeklyPublishMatrixDay>>;
-  channels?: ChannelKey[];
-  products?: ProductKey[];
-  productPlans?: Array<Partial<ProductPlanConfig>>;
-  generationMode?: "replace_all" | "refresh_product_groups";
-}
-
-interface PublishMatrixIssue {
-  code: "empty_total" | "single_day_too_high" | "locked_ai_suggested";
-  level: "error" | "warning";
-  message: string;
-  date?: string;
-  weekday?: string;
 }
 
 interface RunPipelineInput {
   skipBlog?: boolean;
   skipLog?: boolean;
   skipChannelMetrics?: boolean;
-  week?: string;
+  month?: string;
   blog?: Record<string, unknown>;
   log?: Record<string, unknown>;
   channelMetrics?: Record<string, unknown>;
 }
 
 interface SaveWorkspaceSettingInput {
-  defaultWeeklyDays?: number;
-  defaultDailyCount?: number;
   enabledChannels?: ChannelKey[];
   enabledProducts?: ProductKey[];
   productPlans?: Array<Partial<ProductPlanConfig>>;
@@ -407,8 +370,6 @@ function createInitialWorkspaceSetting(): WorkspaceSetting {
 
   return {
     id: "workspace-setting-default",
-    defaultWeeklyDays: 5,
-    defaultDailyCount: 3,
     enabledChannels: ["wechat", "csdn", "juejin", "zhihu_toutiao_general"],
     enabledProducts: ["joto_brand", "weike_guardrails"],
     productPlans,
@@ -484,7 +445,6 @@ export function createInitialWorkbenchState(): WorkbenchState {
       statePath,
       initializedAt: createdAt
     },
-    weeklyPlan: clone(seedWeeklyPlan),
     workspaceSetting: createInitialWorkspaceSetting(),
     tasks: clone(seedTasks),
     drafts: clone(seedDrafts),
@@ -500,8 +460,6 @@ export function createInitialWorkbenchState(): WorkbenchState {
     distilledTermExtractionRules: normalizeDistilledTermExtractionRules(),
     distilledTermRuleDrafts: [],
     promptVersions: createInitialPromptVersions(),
-    weeklyReportSnapshots: [],
-    weeklyReportSuggestionDecisions: [],
     pipelineRuns: [],
     auditLog: [
       {
@@ -522,25 +480,24 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
   const legacyPlatformKey = ["geo", "Platforms"].join("");
   const legacyGeoPipelineStep = ["run", "geo", "tests"].join("_");
   const legacyCandidatePrefix = ["geo", "://", "result/"].join("");
+  const retiredPlanKey = ["week", "lyPlan"].join("");
+  const retiredReportSnapshotsKey = ["week", "lyReportSnapshots"].join("");
+  const retiredReportDecisionsKey = ["week", "lyReportSuggestionDecisions"].join("");
+  const retiredDefaultDaysKey = ["default", "Week", "lyDays"].join("");
+  const retiredDailyCountKey = ["default", "DailyCount"].join("");
 
   delete sanitizedValue[legacyResultKey];
+  delete sanitizedValue[retiredPlanKey];
+  delete sanitizedValue[retiredReportSnapshotsKey];
+  delete sanitizedValue[retiredReportDecisionsKey];
   delete sanitizedSetting[legacyPlatformKey];
+  delete sanitizedSetting[retiredDefaultDaysKey];
+  delete sanitizedSetting[retiredDailyCountKey];
   const rawTasks = value.tasks || base.tasks;
-  const rawWeeklyPlan = value.weeklyPlan || base.weeklyPlan;
   const rawWorkspaceSetting = value.workspaceSetting || base.workspaceSetting;
   const normalizedChannels = coerceChannels(rawWorkspaceSetting.enabledChannels) || base.workspaceSetting.enabledChannels;
   const normalizedProducts = coerceProducts(rawWorkspaceSetting.enabledProducts) || base.workspaceSetting.enabledProducts;
   const normalizedProductPlans = normalizeProductPlans(rawWorkspaceSetting.productPlans, normalizedProducts, normalizedChannels);
-  const fallbackDailyCount = rawWeeklyPlan.targetTotalCount ? Math.max(1, Math.ceil(rawWeeklyPlan.targetTotalCount / 5)) : 0;
-  const publishMatrix =
-    rawWeeklyPlan.publishMatrix?.length
-      ? normalizePublishMatrix({ publishMatrix: rawWeeklyPlan.publishMatrix, days: 7, dailyCount: fallbackDailyCount }, rawWeeklyPlan.weekStart)
-      : createDefaultPublishMatrix(rawWeeklyPlan.weekStart, 5, fallbackDailyCount).map((item) => {
-          const plannedCount = rawTasks.filter((task) => task.publishDate === item.date).length;
-
-          return plannedCount ? { ...item, plannedCount, paused: false } : item;
-        });
-
   const normalizedDrafts = value.drafts || base.drafts;
   const normalizedPublishRecords = value.publishRecords || base.publishRecords;
   const normalizedPlatformDraftVariants = normalizePlatformDraftVariants(value.platformDraftVariants || base.platformDraftVariants);
@@ -557,12 +514,6 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
       storage: "local_json",
       statePath
     },
-    weeklyPlan: {
-      ...rawWeeklyPlan,
-      targetTotalCount: publishMatrix.reduce((sum, item) => sum + item.plannedCount, 0) || rawWeeklyPlan.targetTotalCount,
-      publishMatrix,
-      productPlans: normalizeProductPlans(rawWeeklyPlan.productPlans || normalizedProductPlans, normalizedProducts, normalizedChannels)
-    },
     workspaceSetting: value.workspaceSetting
       ? {
           ...base.workspaceSetting,
@@ -576,7 +527,7 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
       : base.workspaceSetting,
     tasks: rawTasks.map((task) => ({
       ...task,
-      titleReason: task.titleReason || task.qaSummary || "由周计划生成规则给出，用于补强本周内容增长入口。",
+      titleReason: task.titleReason || task.qaSummary || "由月度内容策略给出，用于补强当月内容增长入口。",
       riskNote: task.riskNote || "暂无高风险；确认前仍需检查标题是否过泛、证据是否充足。",
       evidenceNeed:
         task.evidenceNeed ||
@@ -599,84 +550,23 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
     distilledTermExtractionRules: normalizeDistilledTermExtractionRules(value.distilledTermExtractionRules || base.distilledTermExtractionRules),
     distilledTermRuleDrafts: normalizeDistilledTermRuleDrafts(value.distilledTermRuleDrafts || base.distilledTermRuleDrafts),
     promptVersions: normalizePromptVersions(value.promptVersions || base.promptVersions),
-    weeklyReportSnapshots: (value.weeklyReportSnapshots || base.weeklyReportSnapshots).map((snapshot) => {
-      const sanitizedSnapshot = { ...snapshot } as WeeklyReportSnapshot & Record<string, unknown>;
-      delete sanitizedSnapshot[legacyResultKey];
-      return sanitizedSnapshot;
-    }),
-    weeklyReportSuggestionDecisions: value.weeklyReportSuggestionDecisions || base.weeklyReportSuggestionDecisions,
     pipelineRuns: (value.pipelineRuns || base.pipelineRuns).map((run) => ({
       ...run,
+      month:
+        typeof run.month === "string" && /^\d{4}-\d{2}$/.test(run.month)
+          ? run.month
+          : /^\d{4}-\d{2}/.test(run.startedAt)
+            ? run.startedAt.slice(0, 7)
+            : getDateTextInTimeZone().slice(0, 7),
       steps: run.steps.filter((step) => (step.name as string) !== legacyGeoPipelineStep)
     })),
     auditLog: value.auditLog || base.auditLog
   };
 }
 
-function isTaskInWeeklyPlan(task: Pick<ContentTask, "weeklyPlanId" | "publishDate">, weeklyPlan: WeeklyPlan) {
-  return task.weeklyPlanId === weeklyPlan.id || isDateInWeek(task.publishDate, weeklyPlan.weekStart);
-}
-
-export function getCurrentWeeklyTasks(state: Pick<WorkbenchState, "tasks" | "weeklyPlan">) {
-  return state.tasks.filter((task) => isTaskInWeeklyPlan(task, state.weeklyPlan));
-}
-
-function createRolledWeeklyPlan(state: WorkbenchState, weekStart: string): WeeklyPlan {
-  const productPlans = normalizeProductPlans(
-    state.workspaceSetting.productPlans,
-    state.workspaceSetting.enabledProducts,
-    state.workspaceSetting.enabledChannels
-  );
-  const productQuotaTotal = productPlans.filter((plan) => plan.enabled).reduce((sum, plan) => sum + plan.weeklyQuota, 0);
-  const publishMatrix = createDefaultPublishMatrix(weekStart, state.workspaceSetting.defaultWeeklyDays, state.workspaceSetting.defaultDailyCount);
-  const matrixTotal = publishMatrix.reduce((sum, item) => sum + item.plannedCount, 0);
-
-  return {
-    id: `wp-${weekStart}`,
-    weekStart,
-    weekEnd: addDays(weekStart, 6),
-    targetTotalCount: productQuotaTotal || matrixTotal,
-    status: "draft",
-    publishMatrix,
-    productPlans
-  };
-}
-
-function ensureCurrentWeeklyPlan(state: WorkbenchState): { state: WorkbenchState; changed: boolean } {
-  const { today, weekStart } = getCurrentWorkbenchWeek();
-  const furthestPreparedWeekStart = addDays(weekStart, 7);
-  const hasExpiredPlan = today > state.weeklyPlan.weekEnd;
-  const hasInvalidFuturePlan = state.weeklyPlan.weekStart > furthestPreparedWeekStart;
-
-  if (!hasExpiredPlan && !hasInvalidFuturePlan) {
-    return { state, changed: false };
-  }
-
-  const previousWeekStart = state.weeklyPlan.weekStart;
-  const nextState: WorkbenchState = {
-    ...state,
-    weeklyPlan: createRolledWeeklyPlan(state, weekStart)
-  };
-
-  appendAuditEvent(
-    nextState,
-    "weekly_plan_auto_rolled",
-    `Auto rolled active weekly plan from ${previousWeekStart} to ${weekStart}; reason=${hasInvalidFuturePlan ? "invalid_future_week" : "expired_week"}; historical tasks and publish records were preserved.`
-  );
-
-  return { state: nextState, changed: true };
-}
-
 export function readWorkbenchState(): WorkbenchState {
   const repository = getWorkbenchRepository(createInitialWorkbenchState, normalizeWorkbenchState);
-  const state = repository.read();
-  const current = ensureCurrentWeeklyPlan(state);
-
-  if (current.changed) {
-    return repository.write(current.state);
-  }
-
-  return state;
+  return repository.read();
 }
 
 export function writeWorkbenchState(state: WorkbenchState): WorkbenchState {
@@ -783,191 +673,16 @@ function summarizePipelineStep(name: PipelineStepResult["name"], result: Workflo
   };
 }
 
-function addDays(dateText: string, offset: number) {
-  return addDateDays(dateText, offset);
-}
-
-function normalizeReportWeek(value: unknown, fallback: string) {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : fallback;
-}
-
-function getWeekFromWeeklyPlanId(weeklyPlanId: string | undefined) {
-  const match = /^wp-(\d{4}-\d{2}-\d{2})/.exec(weeklyPlanId || "");
-  return match?.[1];
-}
-
-function getTaskSourceWeek(task: Pick<ContentTask, "weeklyPlanId" | "publishDate"> | undefined, fallbackWeek: string) {
-  return getWeekFromWeeklyPlanId(task?.weeklyPlanId) || fallbackWeek;
-}
-
-function buildPublishRecordWeekFields(state: WorkbenchState, draft: Pick<ArticleDraft, "taskId">) {
+function buildPublishRecordPlanFields(state: WorkbenchState, draft: Pick<ArticleDraft, "taskId">) {
   const task = state.tasks.find((item) => item.id === draft.taskId);
 
   return {
-    plannedPublishDate: task?.publishDate,
-    sourceWeek: getTaskSourceWeek(task, state.weeklyPlan.weekStart)
+    plannedPublishDate: task?.publishDate
   };
 }
 
-function createDefaultPublishMatrix(weekStart: string, days: number, dailyCount: number): WeeklyPublishMatrixDay[] {
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = addDays(weekStart, index);
-    const active = index < days;
-
-    return {
-      date,
-      weekday: getWeekdayLabel(date),
-      plannedCount: active ? dailyCount : 0,
-      paused: !active,
-      locked: false,
-      source: "system_default"
-    };
-  });
-}
-
-function normalizePublishMatrix(input: GenerateWeeklyPlanInput, weekStart: string) {
-  const days = clampNumber(input.days, 5, 1, 7);
-  const dailyCount = clampNumber(input.dailyCount, 3, 0, 10);
-  const matrixInput = Array.isArray(input.publishMatrix) ? input.publishMatrix : undefined;
-  const defaultMatrix = createDefaultPublishMatrix(weekStart, days, dailyCount);
-
-  if (!matrixInput?.length) {
-    return defaultMatrix;
-  }
-
-  return defaultMatrix.map((fallback, index) => {
-    const sourceItem = matrixInput.find((item) => item.date === fallback.date) || matrixInput[index] || {};
-    const plannedCount = clampNumber(sourceItem.plannedCount, fallback.plannedCount, 0, 10);
-    const paused = typeof sourceItem.paused === "boolean" ? sourceItem.paused : plannedCount === 0;
-    const locked = typeof sourceItem.locked === "boolean" ? sourceItem.locked : false;
-    const source = sourceItem.source === "manual" || sourceItem.source === "ai_suggested" ? sourceItem.source : fallback.source;
-
-    return {
-      date: typeof sourceItem.date === "string" && sourceItem.date.trim() ? sourceItem.date.trim() : fallback.date,
-      weekday: typeof sourceItem.weekday === "string" && sourceItem.weekday.trim() ? sourceItem.weekday.trim() : fallback.weekday,
-      plannedCount: paused ? 0 : plannedCount,
-      paused,
-      locked,
-      source
-    };
-  });
-}
-
-function getPublishMatrixIssues(matrix: WeeklyPublishMatrixDay[]): PublishMatrixIssue[] {
-  const issues: PublishMatrixIssue[] = [];
-  const activeTotal = matrix.reduce((sum, item) => sum + item.plannedCount, 0);
-
-  if (activeTotal <= 0) {
-    issues.push({
-      code: "empty_total",
-      level: "error",
-      message: "全周发布量不能为 0，请至少保留 1 篇计划。"
-    });
-  }
-
-  for (const item of matrix) {
-    if (!item.paused && item.plannedCount > 5) {
-      issues.push({
-        code: "single_day_too_high",
-        level: "warning",
-        message: `${item.weekday} 单日发布量超过 5 篇，建议确认是否为特殊活动排期。`,
-        date: item.date,
-        weekday: item.weekday
-      });
-    }
-
-    if (item.locked && item.source === "ai_suggested") {
-      issues.push({
-        code: "locked_ai_suggested",
-        level: "warning",
-        message: `${item.weekday} 已锁定但仍显示 AI 建议来源，建议人工确认后再生成。`,
-        date: item.date,
-        weekday: item.weekday
-      });
-    }
-  }
-
-  return issues;
-}
-
-function createWeeklyPlanSignal(
-  key: WeeklyPlanGenerationSignal["key"],
-  label: string,
-  count: number,
-  usedSummary: string,
-  missingSummary: string,
-  status: WeeklyPlanGenerationSignal["status"] = count > 0 ? "used" : "missing"
-): WeeklyPlanGenerationSignal {
-  return {
-    key,
-    label,
-    status,
-    count,
-    summary: count > 0 ? usedSummary : missingSummary
-  };
-}
-
-function buildWeeklyPlanGenerationSource(
-  state: WorkbenchState,
-  template: Pick<PromptVersionRecord, "version">,
-  matrixIssues: PublishMatrixIssue[],
-  mode: WeeklyPlanGenerationSource["mode"] = "local_rule"
-): WeeklyPlanGenerationSource {
-  const enabledKnowledgeCount = state.knowledgeBases.filter((item) => item.status === "enabled").length;
-  const activeRulePackageCount = state.knowledgeBases.filter((item) => item.productExpressionRuleDraft?.status === "active").length;
-  const activeDistilledTermCount = state.distilledTerms.filter((item) => item.status === "active" && item.validationStatus !== "disabled").length;
-  const blogDiagnosisCount = state.blogArticles.filter((item) => item.seoIssueCount > 0 || item.geoResult !== "hit" || item.candidateStatus === "candidate").length;
-  const weeklyReportSuggestionCount = state.weeklyReportSuggestionDecisions.filter((item) => item.status === "adopted" || item.status === "partially_adopted").length;
-
-  return {
-    mode,
-    promptVersion: template.version,
-    generatedAt: nowIso(),
-    matrixIssueCount: matrixIssues.length,
-    signals: [
-      createWeeklyPlanSignal(
-        "knowledge_base",
-        "知识库资料",
-        enabledKnowledgeCount,
-        `已参考 ${enabledKnowledgeCount} 个启用资料，用于补充选题背景和证据方向。`,
-        "暂无启用资料，本次计划主要依赖默认规则和已有配置。"
-      ),
-      createWeeklyPlanSignal(
-        "product_expression",
-        "产品表达规则包",
-        activeRulePackageCount,
-        `已参考 ${activeRulePackageCount} 个生效规则包，用于约束产品表达边界。`,
-        "暂无生效规则包，建议先在知识库详情页确认产品表达规则。"
-      ),
-      createWeeklyPlanSignal(
-        "distilled_terms",
-        "问题与关键词池",
-        activeDistilledTermCount,
-        `已参考 ${activeDistilledTermCount} 个可用蒸馏词，用于分配主蒸馏词和来源问题。`,
-        "暂无可用蒸馏词，标题语义会更依赖默认问题模板。"
-      ),
-      createWeeklyPlanSignal(
-        "blog_diagnosis",
-        "官网博客诊断",
-        blogDiagnosisCount,
-        `发现 ${blogDiagnosisCount} 个博客诊断或候选信号，可用于补内容入口。`,
-        "本次没有可用博客诊断信号。",
-        blogDiagnosisCount > 0 ? "available" : "missing"
-      ),
-      createWeeklyPlanSignal(
-        "weekly_report",
-        "周报建议",
-        weeklyReportSuggestionCount,
-        `已读取 ${weeklyReportSuggestionCount} 条已采纳或部分采纳的周报建议。`,
-        "暂无已采纳的周报建议，本次不使用周报动作信号。",
-        weeklyReportSuggestionCount > 0 ? "available" : "missing"
-      )
-    ]
-  };
-}
-
-interface WeeklyPlanTaskSignal {
-  key: WeeklyPlanGenerationSignal["key"];
+interface TaskSourceSignal {
+  key: ContentTaskTitleSourceAttribution["key"];
   label: string;
   sourceProblem: string;
   summary: string;
@@ -977,68 +692,11 @@ interface WeeklyPlanTaskSignal {
   contentType?: ContentType;
 }
 
-function getWeeklyPlanTaskSignals(state: WorkbenchState): WeeklyPlanTaskSignal[] {
-  const distilledTermSignals = state.distilledTerms
-    .filter((item) => item.status === "active" && item.validationStatus === "auto_validated" && !item.archivedAt)
-    .sort((left, right) => (right.generatedAt || "").localeCompare(left.generatedAt || ""))
-    .slice(0, 8)
-    .map((item): WeeklyPlanTaskSignal => ({
-      key: "distilled_terms",
-      label: "问题与关键词池",
-      sourceProblem: item.sourceQuestion || `围绕蒸馏词「${item.term}」补强用户问题入口。`,
-      summary: item.sourceQuestion
-        ? `来自搜索问题或知识库自动入池：${item.sourceQuestion}`
-        : `来自已入池蒸馏词「${item.term}」，用于分配主蒸馏词和来源问题。`,
-      referenceId: item.id,
-      primaryDistilledTerm: item.term,
-      product: item.product,
-      contentType: item.coveredContentTypes?.[0]
-    }));
-  const weeklyReportSignals = state.weeklyReportSuggestionDecisions
-    .filter((item) => item.status === "adopted" || item.status === "partially_adopted")
-    .slice(0, 6)
-    .map((item): WeeklyPlanTaskSignal => ({
-      key: "weekly_report",
-      label: "周报建议",
-      sourceProblem: item.suggestion,
-      summary: `来自周报建议：${item.suggestion}`,
-      referenceId: item.id
-    }));
-  const blogSignals = state.blogArticles
-    .filter((item) => item.seoIssueCount > 0 || item.geoResult !== "hit" || item.candidateStatus === "candidate")
-    .slice(0, 6)
-    .map((item): WeeklyPlanTaskSignal => ({
-      key: "blog_diagnosis",
-      label: "官网博客诊断",
-      sourceProblem: `官网博客问题：${item.title || item.url}`,
-      summary: item.candidateReason || `官网博客存在 ${item.seoIssueCount} 个 SEO/GEO 问题。`,
-      referenceId: item.id
-    }));
-  const knowledgeSignals = state.knowledgeBases
-    .filter((item) => item.status === "enabled")
-    .slice(0, 4)
-    .map((item): WeeklyPlanTaskSignal => ({
-      key: "knowledge_base",
-      label: "知识库资料",
-      sourceProblem: `知识库资料补强：${item.usageScope || item.name}`,
-      summary: `来自知识库「${item.name}」的资料用途：${item.usageScope || "未填写"}。`,
-      referenceId: item.id
-    }));
-
-  return [...distilledTermSignals, ...weeklyReportSignals, ...blogSignals, ...knowledgeSignals];
-}
-
-function pickWeeklyPlanTaskSignal(state: WorkbenchState, index: number) {
-  const signals = getWeeklyPlanTaskSignals(state);
-  return signals.length ? signals[index % signals.length] : undefined;
-}
-
 function buildContentTaskTitleSourceAttributions(
   state: Pick<WorkbenchState, "knowledgeBases">,
   task: ContentTask,
   input: {
-    matrixDay?: WeeklyPublishMatrixDay;
-    businessSignal?: WeeklyPlanTaskSignal;
+    businessSignal?: TaskSourceSignal;
     promptVersion?: string;
   } = {}
 ): ContentTaskTitleSourceAttribution[] {
@@ -1051,15 +709,6 @@ function buildContentTaskTitleSourceAttributions(
       role: "primary",
       summary: input.businessSignal.summary,
       referenceId: input.businessSignal.referenceId
-    });
-  }
-
-  if (input.matrixDay) {
-    attributions.push({
-      key: "publish_matrix",
-      label: "发布矩阵",
-      role: "primary",
-      summary: `${input.matrixDay.weekday} ${input.matrixDay.date} 计划发布 ${input.matrixDay.plannedCount} 篇${input.matrixDay.locked ? "，该日期已人工锁定" : ""}。`
     });
   }
 
@@ -1115,16 +764,11 @@ function coerceChannels(value: unknown): ChannelKey[] | undefined {
   return channels.length ? channels : undefined;
 }
 
-function getDefaultProductWeeklyQuota(product: ProductKey) {
-  return product === "joto_brand" ? 5 : 10;
-}
-
 function createDefaultProductPlans(products: ProductKey[], channels: ChannelKey[]): ProductPlanConfig[] {
   const fallbackChannels: ChannelKey[] = channels.length ? channels : ["wechat"];
 
   return products.map((product) => ({
     product,
-    weeklyQuota: getDefaultProductWeeklyQuota(product),
     channels: fallbackChannels,
     enabled: true
   }));
@@ -1168,7 +812,6 @@ function normalizeProductPlans(value: unknown, products: ProductKey[], channels:
     const existing = source.find((item) => item && typeof item === "object" && (item as Partial<ProductPlanConfig>).product === product) as Partial<ProductPlanConfig> | undefined;
     const fallback = fallbackPlans.find((item) => item.product === product) || {
       product,
-      weeklyQuota: getDefaultProductWeeklyQuota(product),
       channels,
       enabled: true
     };
@@ -1177,7 +820,6 @@ function normalizeProductPlans(value: unknown, products: ProductKey[], channels:
 
     return {
       product,
-      weeklyQuota: clampNumber(existing?.weeklyQuota, fallback.weeklyQuota, 0, 50),
       channels: planChannels.length ? planChannels : ["wechat"],
       knowledgeBaseIds: knowledgeBaseIds.length ? knowledgeBaseIds : undefined,
       knowledgeBaseId: knowledgeBaseIds[0],
@@ -3296,6 +2938,7 @@ function normalizePublishFailureCode(value: unknown): PublishFailureCode | undef
     "payload_invalid",
     "platform_not_supported",
     "platform_review_pending",
+    "publish_action_unconfirmed",
     "verification_failed",
     "manual_takeover_required",
     "duplicate_protected",
@@ -3832,79 +3475,6 @@ function isMutablePlanTask(task: ContentTask) {
   return ["planned", "rejected"].includes(task.status);
 }
 
-function getActiveProductPlans(input: GenerateWeeklyPlanInput, state: WorkbenchState, channels: ChannelKey[], products: ProductKey[]) {
-  const sourcePlans = input.productPlans?.length ? input.productPlans : state.weeklyPlan.productPlans?.length ? state.weeklyPlan.productPlans : state.workspaceSetting.productPlans;
-  const normalized = normalizeProductPlans(sourcePlans, products, channels);
-  return normalized.filter((plan) => plan.enabled && plan.weeklyQuota > 0 && products.includes(plan.product));
-}
-
-function distributeProductDates(productPlan: ProductPlanConfig, publishMatrix: WeeklyPublishMatrixDay[]) {
-  const activeDays = publishMatrix.filter((item) => !item.paused && item.plannedCount > 0);
-  const dates: WeeklyPublishMatrixDay[] = [];
-
-  if (!activeDays.length) {
-    return dates;
-  }
-
-  for (let index = 0; index < productPlan.weeklyQuota; index += 1) {
-    dates.push(activeDays[index % activeDays.length]);
-  }
-
-  return dates;
-}
-
-function createPlanTaskFromProductPlan(
-  state: WorkbenchState,
-  input: {
-    weekStart: string;
-    productPlan: ProductPlanConfig;
-    matrixDay: WeeklyPublishMatrixDay;
-    index: number;
-    template: PromptVersionRecord;
-  }
-) {
-  const product = input.productPlan.product;
-  const channel = input.productPlan.channels[input.index % input.productPlan.channels.length] || state.workspaceSetting.enabledChannels[0] || "wechat";
-  const rawBusinessSignal = pickWeeklyPlanTaskSignal(state, input.index);
-  const businessSignal = rawBusinessSignal?.product && rawBusinessSignal.product !== product ? undefined : rawBusinessSignal;
-  const contentType = businessSignal?.contentType || coerceContentType(input.index);
-  const planContext = buildTaskPlanContext(product, contentType, businessSignal?.sourceProblem, businessSignal?.primaryDistilledTerm);
-  const knowledgeBaseIds = getBoundKnowledgeBaseIds(input.productPlan);
-  const task: ContentTask = {
-    id: createId("task"),
-    weeklyPlanId: `wp-${input.weekStart}`,
-    publishDate: input.matrixDay.date,
-    channel,
-    product,
-    knowledgeBaseIds: knowledgeBaseIds.length ? knowledgeBaseIds : undefined,
-    knowledgeBaseId: knowledgeBaseIds[0],
-    productExpressionRulePackageId: input.productPlan.productExpressionRulePackageId,
-    title: buildTaskTitle(input.index, contentType),
-    contentType,
-    targetKeywords: planContext.targetKeywords,
-    primaryDistilledTerm: planContext.primaryDistilledTerm,
-    sourceProblem: planContext.sourceProblem,
-    officialLinkTarget: planContext.officialLinkTarget,
-    titleReason: planContext.reason,
-    riskNote: planContext.riskNote,
-    evidenceNeed: planContext.evidenceNeed,
-    confidence: planContext.confidence,
-    locked: input.matrixDay.locked,
-    status: "planned",
-    qaSummary: `${input.template.name} ${input.template.version}，按产品分组配额生成标题级计划。`
-  };
-
-  Object.assign(task, buildPlatformExpressionPreparation(task));
-
-  task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
-    matrixDay: input.matrixDay,
-    businessSignal,
-    promptVersion: input.template.version
-  });
-
-  return task;
-}
-
 function buildRegeneratedTaskTitle(task: ContentTask) {
   return pickTaskTitle(task.contentType, Date.now());
 }
@@ -4201,7 +3771,7 @@ function getDraftGenerationFailureReasons(input: {
       label: "官网链接目标缺失",
       severity: "warning",
       message: "当前任务缺少官网链接目标，正文只能使用默认 jotoai.com。",
-      nextAction: "回到周计划补齐官网链接目标，再重新生成正文。"
+      nextAction: "回到月度内容矩阵补齐官网链接目标，再重新生成正文。"
     });
   }
 
@@ -4211,7 +3781,7 @@ function getDraftGenerationFailureReasons(input: {
       label: "任务结构不完整",
       severity: "blocker",
       message: "当前任务缺少主蒸馏词或目标关键词，正文生成缺少语义锚点。",
-      nextAction: "回到周计划补齐主蒸馏词或重新生成标题。"
+      nextAction: "回到月度内容矩阵补齐主蒸馏词或重新生成标题。"
     });
   }
 
@@ -4637,7 +4207,7 @@ async function createDraftWithProviderFallback(
       `标题：${task.title}`,
       `内容类型：${task.contentType}`,
       `主蒸馏词：${task.primaryDistilledTerm || task.targetKeywords[1] || task.targetKeywords[0]}`,
-      `来源问题：${task.sourceProblem || "本周内容增长计划"}`,
+      `来源问题：${task.sourceProblem || "本月内容增长计划"}`,
       `官网链接目标：${task.officialLinkTarget || "https://jotoai.com"}`,
       `目标关键词：${task.targetKeywords.join("、")}`,
       `证据选择规则：${evidenceTemplate.name} ${evidenceTemplate.version}`,
@@ -4720,23 +4290,36 @@ function updateTaskStatusForDraft(task: ContentTask, draft: ArticleDraft): Conte
   };
 }
 
+function getCurrentMonthRange(dateText = getDateTextInTimeZone()) {
+  const monthStart = `${dateText.slice(0, 7)}-01`;
+  const [year, month] = monthStart.split("-").map(Number);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+
+  return { monthStart, monthEnd };
+}
+
+function getCurrentMonthTasks(state: Pick<WorkbenchState, "tasks">) {
+  const { monthStart, monthEnd } = getCurrentMonthRange();
+  return state.tasks.filter((task) => task.publishDate >= monthStart && task.publishDate <= monthEnd);
+}
+
 export function getDashboardSummary() {
   const state = readWorkbenchState();
-  const weeklyTasks = getCurrentWeeklyTasks(state);
-  const weeklyTaskIds = new Set(weeklyTasks.map((task) => task.id));
-  const weeklyDraftIds = new Set(state.drafts.filter((draft) => weeklyTaskIds.has(draft.taskId)).map((draft) => draft.id));
-  const weeklyPublishRecords = state.publishRecords.filter((record) => weeklyDraftIds.has(record.draftId));
-  const generated = weeklyTasks.filter((task) =>
+  const currentMonthTasks = getCurrentMonthTasks(state);
+  const taskIds = new Set(currentMonthTasks.map((task) => task.id));
+  const draftIds = new Set(state.drafts.filter((draft) => taskIds.has(draft.taskId)).map((draft) => draft.id));
+  const publishRecords = state.publishRecords.filter((record) => draftIds.has(record.draftId));
+  const generated = currentMonthTasks.filter((task) =>
     ["generated", "pending_review", "approved", "queued", "published", "url_filled"].includes(task.status)
   ).length;
-  const approved = weeklyTasks.filter((task) => ["approved", "queued", "published", "url_filled"].includes(task.status)).length;
-  const published = weeklyPublishRecords.filter((record) => ["published", "url_filled"].includes(record.publishStatus)).length;
-  const pendingUrl = weeklyPublishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
+  const approved = currentMonthTasks.filter((task) => ["approved", "queued", "published", "url_filled"].includes(task.status)).length;
+  const published = publishRecords.filter((record) => ["published", "url_filled"].includes(record.publishStatus)).length;
+  const pendingUrl = publishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
 
   return {
-    weeklyPlan: state.weeklyPlan,
+    period: getCurrentMonthRange(),
     metrics: {
-      targetTotal: state.weeklyPlan.targetTotalCount,
+      targetTotal: currentMonthTasks.length,
       generated,
       approved,
       published,
@@ -4744,187 +4327,6 @@ export function getDashboardSummary() {
       aiBotPv: state.botVisits.reduce((sum, item) => sum + item.pv, 0)
     },
     dataSource: state.runtime.storage
-  };
-}
-
-export function generateWeeklyPlan(input: GenerateWeeklyPlanInput = {}) {
-  const state = readWorkbenchState();
-  const template = getActivePromptVersion(state, "weekly_plan_generation");
-  const days = clampNumber(input.days, 5, 1, 7);
-  const dailyCount = clampNumber(input.dailyCount, 3, 1, 10);
-  const channels: ChannelKey[] = input.channels?.length ? input.channels : ["wechat", "csdn", "juejin", "zhihu_toutiao_general"];
-  const products: ProductKey[] = input.products?.length ? input.products : ["joto_brand", "weike_guardrails"];
-  const weekStart = input.weekStart || state.weeklyPlan.weekStart;
-  const weekEnd = input.weekEnd || addDays(weekStart, 6);
-  const publishMatrix = normalizePublishMatrix(input, weekStart);
-  const matrixIssues = getPublishMatrixIssues(publishMatrix);
-  const blockingIssues = matrixIssues.filter((issue) => issue.level === "error");
-  const targetTotalCount = publishMatrix.reduce((sum, item) => sum + item.plannedCount, 0);
-  const productPlans = getActiveProductPlans(input, state, channels, products);
-  const tasks: ContentTask[] = [];
-
-  if (blockingIssues.length) {
-    return {
-      ok: false,
-      status: "pending_input" as const,
-      message: blockingIssues[0].message,
-      data: {
-        publishMatrix,
-        matrixIssues
-      }
-    };
-  }
-
-  if (productPlans.length) {
-    for (const productPlan of productPlans) {
-      const productDates = distributeProductDates(productPlan, publishMatrix);
-
-      for (const matrixDay of productDates) {
-        const index = tasks.length;
-        tasks.push(
-          createPlanTaskFromProductPlan(state, {
-            weekStart,
-            productPlan,
-            matrixDay,
-            index,
-            template
-          })
-        );
-      }
-    }
-  } else {
-    for (const matrixDay of publishMatrix) {
-      if (matrixDay.paused || matrixDay.plannedCount <= 0) {
-        continue;
-      }
-
-      for (let count = 0; count < matrixDay.plannedCount; count += 1) {
-        const index = tasks.length;
-        const productPlan: ProductPlanConfig = {
-          product: products[index % products.length],
-          weeklyQuota: 1,
-          channels,
-          enabled: true
-        };
-        tasks.push(
-          createPlanTaskFromProductPlan(state, {
-            weekStart,
-            productPlan,
-            matrixDay,
-            index,
-            template
-          })
-        );
-      }
-    }
-  }
-
-  const isTargetWeekTask = (task: ContentTask) => task.weeklyPlanId === `wp-${weekStart}` || isDateInWeek(task.publishDate, weekStart);
-  const targetWeekExistingTasks = state.tasks.filter(isTargetWeekTask);
-  const historicalTasks = state.tasks.filter((task) => !isTargetWeekTask(task));
-  const replaceAll = input.generationMode === "replace_all" || !targetWeekExistingTasks.length;
-  const generatedProducts = new Set(tasks.map((task) => task.product));
-  const preservedTasks = replaceAll
-    ? []
-    : targetWeekExistingTasks.filter((task) => !generatedProducts.has(task.product) || !isMutablePlanTask(task));
-  const nextTasks = [...preservedTasks, ...tasks].sort((left, right) => `${left.publishDate}-${left.product}`.localeCompare(`${right.publishDate}-${right.product}`));
-
-  state.weeklyPlan = {
-    id: `wp-${weekStart}`,
-    weekStart,
-    weekEnd,
-    targetTotalCount: productPlans.length ? productPlans.reduce((sum, item) => sum + item.weeklyQuota, 0) : targetTotalCount,
-    status: "draft",
-    publishMatrix,
-    productPlans,
-    generationSource: buildWeeklyPlanGenerationSource(state, template, matrixIssues)
-  };
-  state.tasks = [...historicalTasks, ...nextTasks];
-
-  if (replaceAll) {
-    const targetTaskIds = new Set(targetWeekExistingTasks.map((task) => task.id));
-    const targetDraftIds = new Set(state.drafts.filter((draft) => targetTaskIds.has(draft.taskId)).map((draft) => draft.id));
-    state.drafts = state.drafts.filter((draft) => !targetTaskIds.has(draft.taskId));
-    state.publishRecords = state.publishRecords.filter((record) => !targetDraftIds.has(record.draftId));
-  }
-
-  saveWithEvent(
-    state,
-    "weekly_plan_generated",
-    `Generated ${tasks.length} local-rule content tasks from ${productPlans.length ? "product quota groups" : "publish matrix"}.`
-  );
-
-  return {
-    ok: true,
-    status: "success" as const,
-    weeklyPlan: state.weeklyPlan,
-    tasks: nextTasks,
-    matrixIssues
-  };
-}
-
-export function patchWeeklyPlan(
-  id: string,
-  input: Record<string, unknown>
-): WorkflowResult<{ weeklyPlan: WeeklyPlan; tasks: ContentTask[]; matrixIssues?: PublishMatrixIssue[] }> {
-  const state = readWorkbenchState();
-  const channels = coerceChannels(input.channels);
-  const products = coerceProducts(input.products);
-  const productPlans = normalizeProductPlans(input.productPlans, products || state.workspaceSetting.enabledProducts, channels || state.workspaceSetting.enabledChannels);
-  const nextWeekStart = typeof input.weekStart === "string" ? input.weekStart : state.weeklyPlan.weekStart;
-  const nextWeekEnd = typeof input.weekEnd === "string" ? input.weekEnd : state.weeklyPlan.weekEnd;
-  const nextPublishMatrix = Array.isArray(input.publishMatrix)
-    ? normalizePublishMatrix(
-        {
-          publishMatrix: input.publishMatrix as Array<Partial<WeeklyPublishMatrixDay>>,
-          days: 7,
-          dailyCount: state.workspaceSetting.defaultDailyCount
-        },
-        nextWeekStart
-      )
-    : state.weeklyPlan.publishMatrix;
-  const matrixIssues = nextPublishMatrix?.length ? getPublishMatrixIssues(nextPublishMatrix) : [];
-  const blockingIssues = matrixIssues.filter((issue) => issue.level === "error");
-
-  if (blockingIssues.length) {
-    return {
-      ok: false,
-      status: "failed",
-      message: blockingIssues[0].message,
-      data: {
-        weeklyPlan: state.weeklyPlan,
-        tasks: state.tasks,
-        matrixIssues
-      }
-    };
-  }
-  const matrixTargetTotalCount = nextPublishMatrix?.reduce((sum, item) => sum + item.plannedCount, 0);
-
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
-    id,
-    weekStart: nextWeekStart,
-    weekEnd: nextWeekEnd,
-    targetTotalCount:
-      typeof input.targetTotalCount === "number"
-        ? clampNumber(input.targetTotalCount, state.weeklyPlan.targetTotalCount, 1, 200)
-        : matrixTargetTotalCount || state.weeklyPlan.targetTotalCount,
-    status: typeof input.status === "string" ? (input.status as WeeklyPlan["status"]) : state.weeklyPlan.status,
-    publishMatrix: nextPublishMatrix || state.weeklyPlan.publishMatrix,
-    productPlans: productPlans.length ? productPlans : state.weeklyPlan.productPlans
-  };
-
-  saveWithEvent(state, "weekly_plan_updated", `Updated weekly plan ${id}${nextPublishMatrix ? " publish matrix" : ""}.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: nextPublishMatrix ? "周发布设置已保存，后续生成计划预览会按该矩阵排期。" : "周计划已保存到本地持久化状态。",
-    data: {
-      weeklyPlan: state.weeklyPlan,
-      tasks: state.tasks,
-      matrixIssues
-    }
   };
 }
 
@@ -5111,7 +4513,7 @@ export function confirmContentTasks(
     return {
       ok: false,
       status: "pending_input",
-      message: "没有可确认的计划任务，请先生成周计划或选择计划中任务。",
+      message: "没有可确认的内容任务，请先在月度内容矩阵中生成或选择任务。",
       data: {
         confirmed,
         tasks: state.tasks,
@@ -5121,10 +4523,6 @@ export function confirmContentTasks(
   }
 
   state.tasks = nextTasks;
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
-    status: "confirmed"
-  };
   saveWithEvent(state, "content_tasks_confirmed", `Confirmed ${confirmed} content tasks.`);
 
   return {
@@ -5218,7 +4616,7 @@ export function restoreRejectedContentTask(id: string, input: Record<string, unk
     };
   }
 
-  const restoreReason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : "人工重新入池，继续作为周计划候选。";
+  const restoreReason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : "人工重新入池，继续作为月度内容候选。";
   const records = [...(task.rejectionRecords || [])];
   const lastOpenIndex = [...records].reverse().findIndex((item) => !item.restoredAt);
   const openIndex = lastOpenIndex >= 0 ? records.length - 1 - lastOpenIndex : -1;
@@ -5270,10 +4668,6 @@ export function deleteContentTask(id: string): WorkflowResult<{ taskId: string; 
   }
 
   state.tasks = state.tasks.filter((item) => item.id !== id);
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
-    targetTotalCount: state.tasks.length
-  };
   saveWithEvent(state, "content_task_deleted", `Deleted content task ${id}.`);
 
   return {
@@ -5298,8 +4692,6 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
   const productPlans = normalizeProductPlans(input.productPlans, enabledProducts, enabledChannels);
   const nextSetting: WorkspaceSetting = {
     ...state.workspaceSetting,
-    defaultWeeklyDays: clampNumber(input.defaultWeeklyDays, state.workspaceSetting.defaultWeeklyDays, 1, 7),
-    defaultDailyCount: clampNumber(input.defaultDailyCount, state.workspaceSetting.defaultDailyCount, 1, 10),
     enabledChannels,
     enabledProducts,
     productPlans,
@@ -5323,10 +4715,6 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
   };
 
   state.workspaceSetting = nextSetting;
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
-    productPlans
-  };
   saveWithEvent(state, "workspace_setting_updated", "Workspace setting updated.");
 
   return {
@@ -5341,7 +4729,7 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
 
 export async function createKnowledgeBase(input: Record<string, unknown>): Promise<WorkflowResult<{ knowledgeBase: KnowledgeBase }>> {
   const name = typeof input.name === "string" ? input.name.trim() : "";
-  const usageScope = typeof input.usageScope === "string" ? input.usageScope.trim() : "产品表达、内容生成、GEO 诊断、周报复盘";
+  const usageScope = typeof input.usageScope === "string" ? input.usageScope.trim() : "产品表达、内容生成、GEO 诊断、月度复盘";
   const sourceType = coerceKnowledgeSourceType(input.sourceType, "manual");
   const sourceUrls = collectKnowledgeUrls(input);
   const siteSourceUrl = sourceUrls.find((url) => {
@@ -6617,12 +6005,12 @@ export function approveDraft(id: string): WorkflowResult<{ draft: ArticleDraft; 
   };
   const taskIndex = state.tasks.findIndex((item) => item.id === finalDraft.taskId);
   const existingRecord = state.publishRecords.find((item) => item.draftId === finalDraft.id);
-  const weekFields = buildPublishRecordWeekFields(state, finalDraft);
+  const planFields = buildPublishRecordPlanFields(state, finalDraft);
   const record =
     existingRecord
       ? {
           ...existingRecord,
-          ...weekFields,
+          ...planFields,
           channel: finalDraft.channel,
           title: finalDraft.title
         }
@@ -6632,7 +6020,7 @@ export function approveDraft(id: string): WorkflowResult<{ draft: ArticleDraft; 
           channel: finalDraft.channel,
           title: finalDraft.title,
           publishStatus: "queued",
-          ...weekFields
+          ...planFields
         } satisfies PublishRecord);
 
   state.drafts[draftIndex] = finalDraft;
@@ -6704,7 +6092,7 @@ export function createPublishRecord(input: Record<string, unknown>): WorkflowRes
     channel: draft.channel,
     title: draft.title,
     publishStatus: "queued",
-    ...buildPublishRecordWeekFields(state, draft)
+    ...buildPublishRecordPlanFields(state, draft)
   };
   state.publishRecords.push(record);
   saveWithEvent(state, "publish_record_created", `Created publish record ${record.id}.`);
@@ -7087,7 +6475,7 @@ function findOrCreatePublishRecordForSchedule(state: WorkbenchState, draft: Arti
     channel: draft.channel,
     title: draft.title,
     publishStatus: "queued",
-    ...buildPublishRecordWeekFields(state, draft)
+    ...buildPublishRecordPlanFields(state, draft)
   };
   state.publishRecords.push(record);
   return record;
@@ -7255,7 +6643,47 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
     };
   }
 
-  if (schedule.status !== "scheduled") {
+  const latestAttemptForRetry = schedule.latestAttemptId
+    ? state.publishAttempts.find((item) => item.id === schedule.latestAttemptId)
+    : undefined;
+  const lastPublishAttemptForRetry = [...state.publishAttempts]
+    .reverse()
+    .find((item) =>
+      item.scheduleId === schedule.id &&
+      item.verifyStatus === "not_started" &&
+      item.failureCode === "publish_action_unconfirmed" &&
+      item.failureReason === "csdn 第一层发布已点击，但最终确认弹窗或确认按钮未出现。"
+    );
+  const retryAttemptForRetry =
+    schedule.platform === "csdn" &&
+    schedule.status === "pending_verify" &&
+    lastPublishAttemptForRetry?.failureCode === "publish_action_unconfirmed" &&
+    lastPublishAttemptForRetry.failureReason === "csdn 第一层发布已点击，但最终确认弹窗或确认按钮未出现。"
+      ? lastPublishAttemptForRetry
+      : latestAttemptForRetry;
+  const retryFailureIsBeforePublish = Boolean(
+    retryAttemptForRetry &&
+      (retryAttemptForRetry.failureCode === "payload_invalid" ||
+        (retryAttemptForRetry.failureCode === "adapter_failed" &&
+          retryAttemptForRetry.failureReason === "BrowserConnectError") ||
+        (schedule.platform === "csdn" &&
+          ((retryAttemptForRetry.failureCode === "adapter_failed" &&
+            (retryAttemptForRetry.failureReason?.includes("X-Ca-Key is not exist") ||
+              retryAttemptForRetry.failureReason?.includes("编辑器结构已变化，未找到标题或正文输入区"))) ||
+            (retryAttemptForRetry.failureCode === "publish_action_unconfirmed" &&
+              retryAttemptForRetry.failureReason === "csdn 第一层发布已点击，但最终确认弹窗或确认按钮未出现。"))))
+  );
+  const canRetryBeforePublish = Boolean(
+    (schedule.status === "failed" ||
+      schedule.status === "precheck_failed" ||
+      schedule.status === "publishing" ||
+      (schedule.platform === "csdn" && schedule.status === "pending_verify")) &&
+      retryAttemptForRetry?.verifyStatus === "not_started" &&
+      retryFailureIsBeforePublish &&
+      (retryAttemptForRetry.publishStatus === "failed" || retryAttemptForRetry.publishStatus === undefined)
+  );
+
+  if (schedule.status !== "scheduled" && !canRetryBeforePublish) {
     return {
       ok: false,
       status: "pending_input",
@@ -7442,6 +6870,14 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
   const latestAttempt = schedule.latestAttemptId
     ? state.publishAttempts.find((item) => item.id === schedule.latestAttemptId)
     : undefined;
+  const canVerifyAfterPriorPublishAction = Boolean(
+    schedule.status === "failed" &&
+      state.publishAttempts.some((item) =>
+        item.scheduleId === schedule.id &&
+        item.failureCode === "publish_action_unconfirmed" &&
+        (item.status === "pending_verify" || item.verifyStatus === "pending")
+      )
+  );
 
   if (["published_verified", "published_pending_url"].includes(schedule.status)) {
     return {
@@ -7474,7 +6910,7 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
     };
   }
 
-  if (!latestAttempt || !["pending_verify", "manual_takeover_required", "publishing"].includes(schedule.status)) {
+  if (!latestAttempt || (!["pending_verify", "manual_takeover_required", "publishing"].includes(schedule.status) && !canVerifyAfterPriorPublishAction)) {
     return {
       ok: false,
       status: "pending_input",
@@ -7507,7 +6943,13 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
     mode: latestAttempt.mode,
     authStatus: "ready",
     payloadStatus: "valid",
-    publishStatus: latestAttempt.publishStatus || "submitted",
+    publishStatus:
+      verifyResult.publishStatus ||
+      (verifyResult.status === "published_verified"
+        ? "confirmed"
+        : verifyResult.status === "published_pending_url"
+          ? "pending_review"
+          : latestAttempt.publishStatus || "failed"),
     verifyStatus: verifyResult.verifyStatus,
     platformArticleId: verifyResult.platformArticleId || schedule.platformArticleId,
     externalTaskId: verifyResult.externalTaskId || schedule.externalTaskId,
@@ -7628,15 +7070,14 @@ export function fillPublishUrl(id: string, input: Record<string, unknown>): Work
 
   const currentRecord = state.publishRecords[recordIndex];
   const draft = state.drafts.find((item) => item.id === currentRecord.draftId);
-  const weekFields = draft
-    ? buildPublishRecordWeekFields(state, draft)
+  const planFields = draft
+    ? buildPublishRecordPlanFields(state, draft)
     : {
-        plannedPublishDate: currentRecord.plannedPublishDate,
-        sourceWeek: normalizeReportWeek(input.sourceWeek, currentRecord.sourceWeek || state.weeklyPlan.weekStart)
+        plannedPublishDate: currentRecord.plannedPublishDate
       };
   const record: PublishRecord = {
     ...currentRecord,
-    ...weekFields,
+    ...planFields,
     publishStatus: "url_filled",
     publishedUrl,
     publishedAt: typeof input.publishedAt === "string" ? input.publishedAt : nowIso(),
@@ -7678,15 +7119,14 @@ export function markPublishRecordPublished(id: string, input: Record<string, unk
 
   const currentRecord = state.publishRecords[recordIndex];
   const draft = state.drafts.find((item) => item.id === currentRecord.draftId);
-  const weekFields = draft
-    ? buildPublishRecordWeekFields(state, draft)
+  const planFields = draft
+    ? buildPublishRecordPlanFields(state, draft)
     : {
-        plannedPublishDate: currentRecord.plannedPublishDate,
-        sourceWeek: normalizeReportWeek(input.sourceWeek, currentRecord.sourceWeek || state.weeklyPlan.weekStart)
+        plannedPublishDate: currentRecord.plannedPublishDate
       };
   const record: PublishRecord = {
     ...currentRecord,
-    ...weekFields,
+    ...planFields,
     publishStatus: "published",
     publishedAt: typeof input.publishedAt === "string" ? input.publishedAt : currentRecord.publishedAt || nowIso(),
     notes: typeof input.notes === "string" ? input.notes : currentRecord.notes
@@ -7751,12 +7191,12 @@ export function markContentTaskPublished(taskId: string, input: Record<string, u
     updatedAt: nowIso()
   };
   const existingRecordIndex = state.publishRecords.findIndex((item) => item.draftId === finalDraft.id);
-  const weekFields = buildPublishRecordWeekFields(state, finalDraft);
+  const planFields = buildPublishRecordPlanFields(state, finalDraft);
   const record: PublishRecord =
     existingRecordIndex >= 0
       ? {
           ...state.publishRecords[existingRecordIndex],
-          ...weekFields,
+          ...planFields,
           title: finalDraft.title,
           channel: finalDraft.channel,
           publishStatus: "published",
@@ -7769,7 +7209,7 @@ export function markContentTaskPublished(taskId: string, input: Record<string, u
           channel: finalDraft.channel,
           title: finalDraft.title,
           publishStatus: "published",
-          ...weekFields,
+          ...planFields,
           publishedAt: typeof input.publishedAt === "string" ? input.publishedAt : nowIso(),
           notes: typeof input.notes === "string" ? input.notes : undefined
         };
@@ -7844,7 +7284,7 @@ export function fillContentTaskPublishUrl(taskId: string, input: Record<string, 
 
   const record: PublishRecord = {
     ...state.publishRecords[recordIndex],
-    ...buildPublishRecordWeekFields(state, draft),
+    ...buildPublishRecordPlanFields(state, draft),
     publishStatus: "url_filled",
     publishedUrl,
     publishedAt: typeof input.publishedAt === "string" ? input.publishedAt : state.publishRecords[recordIndex].publishedAt || nowIso(),
@@ -7987,7 +7427,6 @@ export async function syncBlogArticles(input: Record<string, unknown>): Promise<
 
   const existingByUrl = new Map(state.blogArticles.map((article) => [article.url.replace(/\/$/, ""), article]));
   const nextByUrl = new Map(existingByUrl);
-  const sourceWeek = normalizeReportWeek(input.sourceWeek, state.weeklyPlan.weekStart);
 
   for (const article of result.articles) {
     const existing = existingByUrl.get(article.url.replace(/\/$/, ""));
@@ -8003,13 +7442,9 @@ export async function syncBlogArticles(input: Record<string, unknown>): Promise<
           geoResult: existing.geoResult,
           candidateStatus: existing.candidateStatus,
           candidateReason: existing.candidateReason,
-          candidateAddedAt: existing.candidateAddedAt,
-          sourceWeek: article.sourceWeek || sourceWeek
+          candidateAddedAt: existing.candidateAddedAt
         }
-      : {
-          ...article,
-          sourceWeek: article.sourceWeek || sourceWeek
-        }
+      : article
     );
   }
 
@@ -8092,8 +7527,7 @@ export function addBlogArticleToCandidatePool(id: string, input: Record<string, 
     ...article,
     candidateStatus: "candidate",
     candidateReason: typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : fallbackReason,
-    candidateAddedAt: nowIso(),
-    sourceWeek: normalizeReportWeek(input.sourceWeek, state.weeklyPlan.weekStart)
+    candidateAddedAt: nowIso()
   };
 
   state.blogArticles[articleIndex] = nextArticle;
@@ -8130,7 +7564,6 @@ export function updateBlogArticleCandidateStatus(id: string, input: Record<strin
   }
 
   const article = state.blogArticles[articleIndex];
-  const sourceWeek = normalizeReportWeek(input.sourceWeek, state.weeklyPlan.weekStart);
   const nextArticle: BlogArticle = {
     ...article,
     candidateStatus: status,
@@ -8142,8 +7575,7 @@ export function updateBlogArticleCandidateStatus(id: string, input: Record<strin
           : status === "dismissed"
             ? article.candidateReason || "已从候选池移出，暂不处理。"
             : article.candidateReason,
-    candidateAddedAt: (status === "candidate" || status === "planned") && !article.candidateAddedAt ? nowIso() : article.candidateAddedAt,
-    sourceWeek: status === "none" ? article.sourceWeek : sourceWeek
+    candidateAddedAt: (status === "candidate" || status === "planned") && !article.candidateAddedAt ? nowIso() : article.candidateAddedAt
   };
 
   state.blogArticles[articleIndex] = nextArticle;
@@ -8178,8 +7610,7 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
   const planContext = buildTaskPlanContext(product, contentType, article.candidateReason || `官网博客问题：${article.title || article.url}`);
   const task: ContentTask = {
     id: createId("task"),
-    weeklyPlanId: state.weeklyPlan.id,
-    publishDate: typeof input.publishDate === "string" && input.publishDate.trim() ? input.publishDate.trim() : state.weeklyPlan.weekStart,
+    publishDate: typeof input.publishDate === "string" && input.publishDate.trim() ? input.publishDate.trim() : getDateTextInTimeZone(),
     channel,
     product,
     title: `渠道补强：${article.title}`,
@@ -8209,16 +7640,11 @@ export function createContentTaskFromBlogCandidate(id: string, input: Record<str
     ...article,
     candidateStatus: "planned",
     candidateReason: article.candidateReason || "已从博客候选池生成渠道补强任务。",
-    candidateAddedAt: article.candidateAddedAt || nowIso(),
-    sourceWeek: normalizeReportWeek(input.sourceWeek, state.weeklyPlan.weekStart)
+    candidateAddedAt: article.candidateAddedAt || nowIso()
   };
 
   state.blogArticles[articleIndex] = nextArticle;
   state.tasks = [...state.tasks, task];
-  state.weeklyPlan = {
-    ...state.weeklyPlan,
-    targetTotalCount: state.tasks.length
-  };
   saveWithEvent(state, "blog_candidate_content_task_created", `Created content task ${task.id} from blog candidate ${id}.`);
 
   return {
@@ -8283,25 +7709,16 @@ export async function runWorkbenchPipeline(input: RunPipelineInput = {}): Promis
     steps.push(summarizePipelineStep("import_channel_metrics", result));
   }
 
-  const week = typeof input.week === "string" && input.week.trim() ? input.week.trim() : readWorkbenchState().weeklyPlan.weekStart;
-  getWeeklyReport(week);
-  steps.push({
-    name: "read_weekly_report",
-    ok: true,
-    status: "success",
-    message: `已读取 ${week} 周报快照。`,
-    fatal: false
-  });
-
   const fatalSteps = steps.filter((step) => step.fatal);
   const pendingSteps = steps.filter((step) => step.status === "pending_config" || step.status === "pending_input");
+  const month = typeof input.month === "string" && /^\d{4}-\d{2}$/.test(input.month.trim()) ? input.month.trim() : getDateTextInTimeZone().slice(0, 7);
   const run: PipelineRunRecord = {
     id: createId("pipeline"),
     status: fatalSteps.length ? "failed" : pendingSteps.length ? "partial" : "success",
     startedAt,
     finishedAt: nowIso(),
     steps,
-    week,
+    month,
     summary: getDashboardSummary()
   };
   const state = readWorkbenchState();
@@ -8326,7 +7743,7 @@ export function exportPipelineRuns() {
   const state = readWorkbenchState();
   const runs = state.pipelineRuns || [];
   const csv = [
-    "id,status,startedAt,finishedAt,week,stepName,stepStatus,stepMessage,missingConfig",
+    "id,status,startedAt,finishedAt,month,stepName,stepStatus,stepMessage,missingConfig",
     ...runs.flatMap((run) =>
       run.steps.map((step) =>
         [
@@ -8334,7 +7751,7 @@ export function exportPipelineRuns() {
           run.status,
           run.startedAt,
           run.finishedAt,
-          run.week,
+          run.month,
           step.name,
           step.status,
           `"${step.message.replace(/"/g, '""')}"`,
@@ -8352,484 +7769,6 @@ export function exportPipelineRuns() {
       runs,
       csv,
       exportedAt: nowIso()
-    }
-  };
-}
-
-function createInternalBaseline(current: number, healthyThreshold: number) {
-  if (current === 0) return 0;
-  return current >= healthyThreshold ? Math.max(0, current - 6) : Math.min(100, current + 6);
-}
-
-function getWeeklyTasksForReport(state: WorkbenchState, week: string) {
-  const weekEnd = addDays(week, 6);
-
-  return state.tasks.filter((task) => task.publishDate >= week && task.publishDate <= weekEnd);
-}
-
-function isDateInReportWeek(value: string | undefined, week: string) {
-  if (!value) return false;
-  const date = value.slice(0, 10);
-  const weekEnd = addDays(week, 6);
-
-  return date >= week && date <= weekEnd;
-}
-
-function isSameReportWeek(value: string | undefined, week: string) {
-  return Boolean(value && value.slice(0, 10) === week);
-}
-
-function getWeeklyBlogDiagnosticsForReport(state: WorkbenchState, week: string) {
-  return state.blogArticles.filter((article) => isSameReportWeek(article.sourceWeek, week) || (!article.sourceWeek && isDateInReportWeek(article.candidateAddedAt || article.lastCrawledAt, week)));
-}
-
-function getWeeklyPublishRecordsForReport(state: WorkbenchState, week: string) {
-  const weeklyTaskIds = new Set(getWeeklyTasksForReport(state, week).map((task) => task.id));
-  const draftTaskIdByDraftId = new Map(state.drafts.map((draft) => [draft.id, draft.taskId]));
-
-  return state.publishRecords.filter((record) => {
-    if (record.sourceWeek) return isSameReportWeek(record.sourceWeek, week);
-    if (record.plannedPublishDate && isDateInReportWeek(record.plannedPublishDate, week)) return true;
-    const taskId = draftTaskIdByDraftId.get(record.draftId);
-    if (taskId && weeklyTaskIds.has(taskId)) return true;
-    return isDateInReportWeek(record.publishedAt, week);
-  });
-}
-
-function getQualitySignalStatus(count: number, total: number): WeeklyPlanQualitySignal["status"] {
-  if (!count) return "normal";
-  if (total && count / total >= 0.3) return "blocked";
-  return "attention";
-}
-
-function uniqExamples(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean))).slice(0, 3);
-}
-
-function buildWeeklyPlanQualityFeedback(state: WorkbenchState, week: string): WeeklyPlanQualityFeedback {
-  const weeklyTasks = getWeeklyTasksForReport(state, week);
-  const totalPlanItems = weeklyTasks.length;
-  const rejectedTasks = weeklyTasks.filter((task) => task.status === "rejected" || task.rejectionRecords?.length);
-  const riskAcceptedTasks = weeklyTasks.filter((task) => task.riskAcceptanceRecords?.length);
-  const manualEditedTasks = weeklyTasks.filter((task) => task.editRecords?.some((record) => record.source === "manual"));
-  const regeneratedTitleTasks = weeklyTasks.filter((task) => task.editRecords?.some((record) => record.source === "ai_regenerate" && record.field === "title"));
-  const lowConfidencePlannedTasks = weeklyTasks.filter((task) => task.status === "planned" && (task.confidence ?? 1) < 0.65);
-  const reviewRequiredTasks = weeklyTasks.filter((task) => task.status === "planned" && getContentTaskReviewReasons(task).length);
-  const confirmedCount = weeklyTasks.filter((task) =>
-    ["confirmed", "generated", "approved", "queued", "published", "url_filled", "measured"].includes(task.status)
-  ).length;
-
-  const signals: WeeklyPlanQualitySignal[] = [
-    {
-      key: "rejected_titles",
-      label: "标题 / 选题被驳回",
-      count: rejectedTasks.length,
-      status: getQualitySignalStatus(rejectedTasks.length, totalPlanItems),
-      summary: rejectedTasks.length
-        ? "存在被人工驳回的计划项，说明标题、选题或本周目标匹配度需要回流检查。"
-        : "本周没有计划项被驳回。",
-      nextStep: rejectedTasks.length ? "汇总驳回原因，优先检查标题生成规则、产品表达规则包和本周目标输入。" : "继续观察下周驳回率。",
-      examples: uniqExamples(
-        rejectedTasks.flatMap((task) =>
-          (task.rejectionRecords || []).map((record) => `${task.title}：${record.reason}`)
-        )
-      )
-    },
-    {
-      key: "risk_accepted",
-      label: "高风险被人工接受",
-      count: riskAcceptedTasks.length,
-      status: getQualitySignalStatus(riskAcceptedTasks.length, totalPlanItems),
-      summary: riskAcceptedTasks.length
-        ? "存在人工接受风险后确认的计划项，说明部分风险可被业务接受，但原因需要沉淀。"
-        : "本周没有高风险计划项被人工接受。",
-      nextStep: riskAcceptedTasks.length ? "区分证据已补齐、渠道允许、业务上接受三类原因，并回流风险规则。" : "保持风险接受原因记录。",
-      examples: uniqExamples(
-        riskAcceptedTasks.flatMap((task) =>
-          (task.riskAcceptanceRecords || []).map((record) => `${task.title}：${record.note}`)
-        )
-      )
-    },
-    {
-      key: "manual_edits",
-      label: "人工编辑计划字段",
-      count: manualEditedTasks.length,
-      status: getQualitySignalStatus(manualEditedTasks.length, totalPlanItems),
-      summary: manualEditedTasks.length
-        ? "存在人工修改标题、渠道、产品或证据等字段，说明 AI 输入或规则需要校准。"
-        : "本周计划字段没有明显人工编辑记录。",
-      nextStep: manualEditedTasks.length ? "按字段聚合修改原因，优先检查被频繁修改的字段。" : "继续保持轻量编辑留痕。",
-      examples: uniqExamples(
-        manualEditedTasks.flatMap((task) =>
-          (task.editRecords || [])
-            .filter((record) => record.source === "manual")
-            .map((record) => `${task.title}：${record.label}`)
-        )
-      )
-    },
-    {
-      key: "title_regenerated",
-      label: "标题被重新生成",
-      count: regeneratedTitleTasks.length,
-      status: getQualitySignalStatus(regeneratedTitleTasks.length, totalPlanItems),
-      summary: regeneratedTitleTasks.length ? "存在重新生成标题，说明原始标题可读性、渠道适配或点击价值不足。" : "本周没有标题重新生成记录。",
-      nextStep: regeneratedTitleTasks.length ? "对比重生成前后标题，提炼更适合本周目标的标题模式。" : "继续观察重生成率。",
-      examples: uniqExamples(
-        regeneratedTitleTasks.flatMap((task) =>
-          (task.editRecords || [])
-            .filter((record) => record.source === "ai_regenerate" && record.field === "title")
-            .map((record) => `${record.before || task.title} -> ${record.after || task.title}`)
-        )
-      )
-    },
-    {
-      key: "low_confidence_review",
-      label: "未达确认阈值待复核",
-      count: lowConfidencePlannedTasks.length,
-      status: getQualitySignalStatus(lowConfidencePlannedTasks.length, totalPlanItems),
-      summary: lowConfidencePlannedTasks.length ? "仍有计划项未达到自动确认阈值，不能进入批量确认。" : "本周没有未达确认阈值的待复核计划项。",
-      nextStep: lowConfidencePlannedTasks.length ? "补证据、改标题或驳回；不要直接批量确认。" : "保持批量确认阈值。",
-      examples: uniqExamples(lowConfidencePlannedTasks.map((task) => `${task.title}：未达确认阈值`))
-    }
-  ];
-
-  const modelLearningSignals = signals
-    .filter((signal) => signal.count > 0)
-    .map((signal) => `${signal.label} ${signal.count} 条：${signal.nextStep}`);
-
-  return {
-    totalPlanItems,
-    confirmedCount,
-    rejectedCount: rejectedTasks.length,
-    riskAcceptedCount: riskAcceptedTasks.length,
-    manualEditCount: manualEditedTasks.length,
-    regeneratedTitleCount: regeneratedTitleTasks.length,
-    lowConfidencePlannedCount: lowConfidencePlannedTasks.length,
-    reviewRequiredCount: reviewRequiredTasks.length,
-    signals,
-    modelLearningSignals
-  };
-}
-
-function buildRecommendationOutcomes(state: WorkbenchState, week: string): WeeklyRecommendationOutcome[] {
-  const decisions = state.weeklyReportSuggestionDecisions.filter((item) => item.week === week);
-  const weeklyPublishRecords = getWeeklyPublishRecordsForReport(state, week);
-  const weeklyPlanItemCount = getWeeklyTasksForReport(state, week).length || state.weeklyPlan.targetTotalCount;
-  const publishedCount = weeklyPublishRecords.filter((item) => item.publishStatus === "published" || item.publishStatus === "url_filled").length;
-  const dataReturnedCount = weeklyPublishRecords.filter((item) => item.channelMetrics).length;
-  const publishCompletionRate = weeklyPlanItemCount ? Math.round((publishedCount / weeklyPlanItemCount) * 100) : 0;
-  const dataReturnRate = publishedCount ? Math.round((dataReturnedCount / publishedCount) * 100) : 0;
-  const totalViews = weeklyPublishRecords.reduce((sum, item) => sum + (item.channelMetrics?.views || 0), 0);
-  const completionRateDelta = publishCompletionRate - createInternalBaseline(publishCompletionRate, 80);
-  const dataReturnRateDelta = dataReturnRate - createInternalBaseline(dataReturnRate, 80);
-  const channelPerformanceDelta = totalViews ? totalViews - Math.max(0, totalViews - 120) : 0;
-
-  return decisions.map((decision) => {
-    const evaluationStatus =
-      decision.status === "rejected" ? "not_applicable" : publishedCount && dataReturnedCount ? "measured" : "waiting_next_week";
-    const hasPositiveExecutionSignal = completionRateDelta >= 0 && dataReturnRateDelta >= 0;
-    const modelLearningSignal =
-      evaluationStatus === "not_applicable"
-        ? "建议未被采纳，优先学习拒绝原因和适用边界。"
-        : evaluationStatus === "waiting_next_week"
-          ? "建议已处理，等待下一周发布和回传数据后再评估。"
-          : decision.status === "partially_adopted"
-            ? "部分采纳，保留方向但降低自动加量权重。"
-            : hasPositiveExecutionSignal
-              ? "采纳后执行信号正向，可提高相似建议权重。"
-              : "采纳后执行未改善，后续建议需要收敛发布量或补证据。";
-
-    return {
-      id: `recommendation-outcome-${decision.id}`,
-      week,
-      suggestion: decision.suggestion,
-      decisionStatus: decision.status,
-      evaluationStatus,
-      completionRateDelta: evaluationStatus === "measured" ? completionRateDelta : undefined,
-      dataReturnRateDelta: evaluationStatus === "measured" ? dataReturnRateDelta : undefined,
-      channelPerformanceDelta: evaluationStatus === "measured" ? channelPerformanceDelta : undefined,
-      failureReason: decision.status === "rejected" || decision.status === "partially_adopted" ? decision.reason || "未填写原因" : undefined,
-      modelLearningSignal,
-      evaluatedAt: nowIso()
-    };
-  });
-}
-
-function buildWeeklyReportFromState(state: WorkbenchState, week: string) {
-  const weeklyPublishRecords = getWeeklyPublishRecordsForReport(state, week);
-  const weeklyBlogDiagnostics = getWeeklyBlogDiagnosticsForReport(state, week);
-  const planQualityFeedback = buildWeeklyPlanQualityFeedback(state, week);
-  const targetTotalCount = planQualityFeedback.totalPlanItems || state.weeklyPlan.targetTotalCount;
-  const published = weeklyPublishRecords.filter((item) => item.publishStatus !== "queued").length;
-  const botPv = state.botVisits.reduce((sum, item) => sum + item.pv, 0);
-  const distilledTermMatrix: WeeklyReportDistilledTermMatrixRow[] = state.distilledTerms.map((term) => {
-    const relatedTasks = state.tasks.filter((task) => task.primaryDistilledTerm === term.term || task.targetKeywords.includes(term.term));
-    const coveredContentTypes = Array.from(new Set([...relatedTasks.map((task) => task.contentType), ...(term.coveredContentTypes || [])]));
-    const competitorOccupied = Boolean(term.competitorOccupied);
-
-    return {
-      id: term.id,
-      term: term.term,
-      contentCoverage: relatedTasks.length,
-      typeCompleteness: `${coveredContentTypes.length}/5`,
-      geoLift: term.geoLift || 0,
-      competitorOccupied,
-      nextSuggestion:
-        coveredContentTypes.length < 3
-          ? "下周补内容类型，优先 FAQ / 对比 / 案例。"
-          : competitorOccupied
-            ? "补对比和差异化内容，减少竞品占位。"
-            : "保持发布节奏，继续观察内容表现。"
-    };
-  });
-
-  const hasBlogAction = weeklyBlogDiagnostics.some((item) => item.candidateStatus === "candidate" || item.geoResult !== "hit" || item.seoIssueCount > 0);
-  const nextWeekSuggestions = [
-    "继续写已经完成 URL 回填且表现稳定的主题。",
-    ...(hasBlogAction ? ["把本周 SEO 问题较多的官网博客加入候选池，等博客创作职责明确后再处理。"] : []),
-    "先补齐本周未发布、未回填 URL 或未回传数据的任务，再决定是否提高下周发布量。"
-  ];
-
-  return {
-    week,
-    targetTotalCount,
-    executiveSummary: `本周计划 ${targetTotalCount} 篇，已发布 ${published} 篇；AI 访问量 ${botPv}。`,
-    publishRecords: weeklyPublishRecords,
-    blogDiagnostics: weeklyBlogDiagnostics,
-    distilledTerms: state.distilledTerms,
-    distilledTermMatrix,
-    promptTemplates: state.promptVersions,
-    nextWeekSuggestions,
-    nextWeekSuggestionItems: buildNextWeekSuggestionItems(state, week, nextWeekSuggestions),
-    suggestionDecisions: state.weeklyReportSuggestionDecisions.filter((item) => item.week === week),
-    recommendationOutcomes: buildRecommendationOutcomes(state, week),
-    planQualityFeedback,
-    dataSource: state.runtime.storage
-  };
-}
-
-type BuiltWeeklyReport = ReturnType<typeof buildWeeklyReportFromState>;
-
-function createWeeklyReportSnapshot(report: BuiltWeeklyReport): WeeklyReportSnapshot {
-  const {
-    nextWeekSuggestionItems: _nextWeekSuggestionItems,
-    suggestionDecisions: _suggestionDecisions,
-    recommendationOutcomes: _recommendationOutcomes,
-    ...snapshotBase
-  } = report;
-
-  return {
-    ...snapshotBase,
-    createdAt: nowIso()
-  };
-}
-
-function hydrateWeeklyReportSnapshot(state: WorkbenchState, snapshot: WeeklyReportSnapshot) {
-  return {
-    ...snapshot,
-    nextWeekSuggestionItems: buildNextWeekSuggestionItems(state, snapshot.week, snapshot.nextWeekSuggestions),
-    suggestionDecisions: state.weeklyReportSuggestionDecisions.filter((item) => item.week === snapshot.week),
-    recommendationOutcomes: buildRecommendationOutcomes(state, snapshot.week)
-  };
-}
-
-function shouldRefreshWeeklyReportSnapshot(snapshot: WeeklyReportSnapshot, report: BuiltWeeklyReport) {
-  const hasNewPublishRecord = report.publishRecords.some((record) => !snapshot.publishRecords.some((item) => item.id === record.id));
-  const hasNewBlogDiagnostic = report.blogDiagnostics.some((article) => !snapshot.blogDiagnostics.some((item) => item.id === article.id));
-
-  return (
-    hasNewPublishRecord ||
-    hasNewBlogDiagnostic ||
-    report.targetTotalCount > snapshot.targetTotalCount ||
-    report.planQualityFeedback.signals.length > snapshot.planQualityFeedback.signals.length
-  );
-}
-
-export function getWeeklyReport(week: string) {
-  const state = readWorkbenchState();
-  const existingSnapshot = state.weeklyReportSnapshots.find((item) => item.week === week);
-
-  if (existingSnapshot) {
-    const report = buildWeeklyReportFromState(state, week);
-
-    if (shouldRefreshWeeklyReportSnapshot(existingSnapshot, report)) {
-      const snapshot = createWeeklyReportSnapshot(report);
-      state.weeklyReportSnapshots = [snapshot, ...state.weeklyReportSnapshots.filter((item) => item.week !== week)].slice(0, 104);
-      saveWithEvent(state, "weekly_report_snapshot_refreshed", `Refreshed weekly report snapshot for ${week}.`);
-
-      return hydrateWeeklyReportSnapshot(state, snapshot);
-    }
-
-    return hydrateWeeklyReportSnapshot(state, existingSnapshot);
-  }
-
-  const report = buildWeeklyReportFromState(state, week);
-  const snapshot = createWeeklyReportSnapshot(report);
-  state.weeklyReportSnapshots = [snapshot, ...state.weeklyReportSnapshots.filter((item) => item.week !== week)].slice(0, 104);
-  saveWithEvent(state, "weekly_report_snapshot_created", `Created weekly report snapshot for ${week}.`);
-
-  return hydrateWeeklyReportSnapshot(state, snapshot);
-}
-
-type WeeklyReportResponse = ReturnType<typeof getWeeklyReport>;
-
-export function filterWeeklyReportForRole(report: WeeklyReportResponse, role: WorkspaceRole) {
-  if (canViewAiGovernance(role)) {
-    return report;
-  }
-
-  const {
-    promptTemplates: _promptTemplates,
-    suggestionDecisions: _suggestionDecisions,
-    recommendationOutcomes: _recommendationOutcomes,
-    planQualityFeedback: _planQualityFeedback,
-    ...businessReport
-  } = report;
-
-  return businessReport;
-}
-
-export function getWeeklyReportForRole(week: string, role: WorkspaceRole) {
-  return filterWeeklyReportForRole(getWeeklyReport(week), role);
-}
-
-export function createNextWeeklyPlanFromReport(week: string, input: Record<string, unknown> = {}) {
-  const sourceReport = getWeeklyReport(week);
-  const state = readWorkbenchState();
-  const template = getActivePromptVersion(state, "weekly_plan_generation");
-  const nextWeekStart = typeof input.weekStart === "string" && input.weekStart.trim() ? input.weekStart.trim() : addDays(week, 7);
-  const days = clampNumber(input.days, state.workspaceSetting.defaultWeeklyDays, 1, 7);
-  const dailyCount = clampNumber(input.dailyCount, state.workspaceSetting.defaultDailyCount, 1, 10);
-  const channels = coerceChannels(input.channels) || state.workspaceSetting.enabledChannels;
-  const products = coerceProducts(input.products) || state.workspaceSetting.enabledProducts;
-  const suggestions = sourceReport.nextWeekSuggestions.length
-    ? sourceReport.nextWeekSuggestions
-    : ["延续本周表现稳定的主题，并优先补强 GEO 未命中内容。"];
-  const tasks: ContentTask[] = [];
-
-  for (let day = 0; day < days; day += 1) {
-    for (let count = 0; count < dailyCount; count += 1) {
-      const index = tasks.length;
-      const channel = channels[index % channels.length];
-      const product = products[index % products.length];
-      const contentType = coerceContentType(index);
-      const suggestion = suggestions[index % suggestions.length];
-      const businessSignal: WeeklyPlanTaskSignal = {
-        key: "weekly_report",
-        label: "周报建议",
-        sourceProblem: suggestion,
-        summary: `来自周报建议：${suggestion}`,
-        referenceId: createWeeklySuggestionId(week, index % suggestions.length)
-      };
-      const planContext = buildTaskPlanContext(product, contentType, suggestion);
-
-      const task: ContentTask = {
-        id: createId("task"),
-        weeklyPlanId: `wp-${nextWeekStart}`,
-        publishDate: addDays(nextWeekStart, day),
-        channel,
-        product,
-        title: buildTaskTitle(index, contentType),
-        contentType,
-        targetKeywords: [...buildTaskKeywords(product, contentType), "周报建议"],
-        primaryDistilledTerm: planContext.primaryDistilledTerm,
-        sourceProblem: planContext.sourceProblem,
-        officialLinkTarget: planContext.officialLinkTarget,
-        titleReason: planContext.reason,
-        riskNote: planContext.riskNote,
-        evidenceNeed: planContext.evidenceNeed,
-        confidence: planContext.confidence,
-        status: "planned",
-        qaSummary: `来源周报 ${week}：${suggestion}；${template.name} ${template.version}。`
-      };
-      Object.assign(task, buildPlatformExpressionPreparation(task));
-      task.titleSourceAttributions = buildContentTaskTitleSourceAttributions(state, task, {
-        businessSignal,
-        promptVersion: template.version
-      });
-      tasks.push(task);
-    }
-  }
-
-  const nextWeeklyPlanId = `wp-${nextWeekStart}`;
-  state.weeklyPlan = {
-    id: nextWeeklyPlanId,
-    weekStart: nextWeekStart,
-    weekEnd: addDays(nextWeekStart, 6),
-    targetTotalCount: tasks.length,
-    status: "draft",
-    generationSource: buildWeeklyPlanGenerationSource(state, template, [])
-  };
-  state.tasks = [
-    ...state.tasks.filter((task) => task.weeklyPlanId !== nextWeeklyPlanId && !isDateInWeek(task.publishDate, nextWeekStart)),
-    ...tasks
-  ];
-
-  saveWithEvent(state, "next_week_plan_created_from_report", `Created ${tasks.length} planned tasks from weekly report ${week}.`);
-
-  return {
-    ok: true,
-    status: "success" as const,
-    message: `已根据 ${week} 周报生成下周计划草稿。`,
-    data: {
-      sourceWeek: week,
-      weeklyPlan: state.weeklyPlan,
-      tasks,
-      suggestions
-    }
-  };
-}
-
-export function decideWeeklyReportSuggestion(
-  week: string,
-  suggestionId: string,
-  input: Record<string, unknown>
-): WorkflowResult<{ decision: WeeklyReportSuggestionDecision; report: ReturnType<typeof getWeeklyReport> }> {
-  const state = readWorkbenchState();
-  const status = input.status;
-
-  if (status !== "adopted" && status !== "partially_adopted" && status !== "rejected") {
-    return {
-      ok: false,
-      status: "failed",
-      message: "请提供有效的建议处理状态：adopted / partially_adopted / rejected。"
-    };
-  }
-
-  const report = getWeeklyReport(week);
-  const suggestionItem = report.nextWeekSuggestionItems.find((item) => item.id === suggestionId);
-
-  if (!suggestionItem) {
-    return {
-      ok: false,
-      status: "failed",
-      message: `未找到周报建议：${suggestionId}`
-    };
-  }
-
-  const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : undefined;
-  const decision: WeeklyReportSuggestionDecision = {
-    id: suggestionId,
-    week,
-    suggestion: suggestionItem.suggestion,
-    status,
-    reason,
-    decidedAt: nowIso()
-  };
-
-  state.weeklyReportSuggestionDecisions = [
-    decision,
-    ...state.weeklyReportSuggestionDecisions.filter((item) => item.id !== suggestionId)
-  ].slice(0, 200);
-  saveWithEvent(state, "weekly_report_suggestion_decided", `Suggestion ${suggestionId} marked as ${status}.`);
-
-  return {
-    ok: true,
-    status: "success",
-    message: status === "adopted" ? "建议已采纳。" : status === "partially_adopted" ? "建议已标记为部分采纳。" : "建议已拒绝。",
-    data: {
-      decision,
-      report: getWeeklyReport(week)
     }
   };
 }
@@ -9235,126 +8174,6 @@ export function deleteDistilledTerm(id: string): WorkflowResult<{ term: Distille
     message: `蒸馏词「${disabledTerm.term}」已删除。`,
     data: {
       term: disabledTerm
-    }
-  };
-}
-
-function createWeeklySuggestionId(week: string, index: number) {
-  return `weekly-suggestion-${week}-${index + 1}`;
-}
-
-function buildNextWeekSuggestionItems(state: Pick<WorkbenchState, "weeklyReportSuggestionDecisions">, week: string, suggestions: string[]) {
-  return suggestions.map((suggestion, index) => {
-    const id = createWeeklySuggestionId(week, index);
-    const decision = state.weeklyReportSuggestionDecisions.find((item) => item.id === id);
-
-    return {
-      id,
-      suggestion,
-      decisionStatus: decision?.status,
-      decisionReason: decision?.reason,
-      decidedAt: decision?.decidedAt
-    };
-  });
-}
-
-function markdownCell(value: unknown) {
-  const text = value === undefined || value === null || value === "" ? "-" : String(value);
-  return text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
-}
-
-function formatChannelMetrics(record: PublishRecord) {
-  if (!record.channelMetrics) {
-    return "-";
-  }
-
-  const metrics = record.channelMetrics;
-  return [
-    `展现 ${metrics.impressions ?? 0}`,
-    `阅读 ${metrics.views ?? 0}`,
-    `点赞 ${metrics.likes ?? 0}`,
-    `收藏 ${metrics.favorites ?? 0}`,
-    `评论 ${metrics.comments ?? 0}`,
-    `转发 ${metrics.shares ?? 0}`
-  ].join(" / ");
-}
-
-export function exportWeeklyReportMarkdown(week: string) {
-  const report = getWeeklyReport(week);
-  const exportedAt = nowIso();
-  const publishRows = report.publishRecords.length
-    ? report.publishRecords.map((record) =>
-        [
-          markdownCell(channelLabels[record.channel]),
-          markdownCell(record.title),
-          markdownCell(record.publishStatus),
-          markdownCell(record.publishedUrl),
-          markdownCell(formatChannelMetrics(record))
-        ].join(" | ")
-      )
-    : ["- | - | - | - | -"];
-  const blogRows = report.blogDiagnostics.length
-    ? report.blogDiagnostics.map((article) =>
-        [
-          markdownCell(article.title),
-          markdownCell(article.indexedStatus),
-          markdownCell(article.seoIssueCount),
-          markdownCell(article.geoResult),
-          markdownCell(article.candidateStatus || "none")
-        ].join(" | ")
-      )
-    : ["- | - | - | - | -"];
-  const suggestionRows = report.nextWeekSuggestions.map((item, index) => `${index + 1}. ${item}`);
-  let sectionIndex = 1;
-  const markdownParts = [
-    `# JOTO GTM 周报 - ${report.week}`,
-    "",
-    `## ${sectionIndex++}. 管理层摘要`,
-    "",
-    report.executiveSummary,
-    "",
-    `## ${sectionIndex++}. 渠道执行复盘`,
-    "",
-    "| 渠道 | 标题 | 状态 | URL | 指标 |",
-    "|---|---|---|---|---|",
-    ...publishRows,
-    ""
-  ];
-
-  if (report.blogDiagnostics.length) {
-    markdownParts.push(
-      `## ${sectionIndex++}. 官网博客诊断`,
-      "",
-      "| 标题 | 索引状态 | SEO 问题数 | GEO 结果 | 候选状态 |",
-      "|---|---|---|---|---|",
-      ...blogRows,
-      ""
-    );
-  }
-
-  markdownParts.push(
-    `## ${sectionIndex++}. 下周建议`,
-    "",
-    ...suggestionRows,
-    "",
-    `## ${sectionIndex++}. 数据说明`,
-    "",
-    `- 数据来源：${report.dataSource}`,
-    `- 导出时间：${exportedAt}`,
-    "- Demo / imported / real 数据需要按页面标签区分，不要把 Demo 指标当作正式策略判断。"
-  );
-  const markdown = markdownParts.join("\n");
-
-  return {
-    ok: true,
-    status: "success" as const,
-    message: "周报 Markdown 已导出。",
-    data: {
-      week,
-      format: "markdown",
-      markdown,
-      report,
-      exportedAt
     }
   };
 }

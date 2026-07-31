@@ -122,6 +122,9 @@ export interface ProductionDraftSummary {
 export interface ProductionMatrixTask {
   taskId: string;
   monthlyPlanId: string;
+  planningSource?: "geo_strategy" | "free_production";
+  freeProductionBatchId?: string;
+  freeContentExpressionTypeVersionId?: string;
   strategyPackageId: string;
   quotaRuleId: string;
   questionVersionId: string;
@@ -149,6 +152,8 @@ export interface ProductionMatrixTask {
   currentDraft?: ProductionDraftSummary;
   scheduledAt?: string;
   platformAccount?: string;
+  formal?: boolean;
+  formalDraftId?: string;
   updatedAt: string;
 }
 
@@ -222,6 +227,9 @@ export interface BatchQueueItem {
   draftId?: string;
   failureReason?: string;
   nextAction?: string;
+  publishResultVersion?: number;
+  publicUrl?: string;
+  metricSummary?: string;
 }
 
 export interface ExceptionItem {
@@ -388,6 +396,16 @@ export interface ScheduleTaskRequest {
   expectedVersion: number;
   scheduledAt: string;
   platformAccount: string;
+  auditReason: string;
+}
+
+export interface SavePublishResultRequest {
+  expectedVersion: number;
+  status: "published" | "failed" | "manual_takeover";
+  publicUrl?: string;
+  externalContentId?: string;
+  failureReason?: string;
+  metrics: Record<string, number | string>;
   auditReason: string;
 }
 

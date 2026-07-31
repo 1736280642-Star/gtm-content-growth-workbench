@@ -1,4 +1,15 @@
-import { botVisits, publishRecords, tasks, weeklyPlan } from "./demo-data";
+import { botVisits, publishRecords, tasks } from "./demo-data";
+
+function getSeedMonthRange() {
+  const dates = tasks.map((task) => task.publishDate).sort();
+  const month = dates[0]?.slice(0, 7) || new Date().toISOString().slice(0, 7);
+  const [year, monthNumber] = month.split("-").map(Number);
+
+  return {
+    monthStart: `${month}-01`,
+    monthEnd: new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10)
+  };
+}
 
 export function getDashboardSummary() {
   const generated = tasks.filter((task) =>
@@ -9,9 +20,9 @@ export function getDashboardSummary() {
   const pendingUrl = publishRecords.filter((record) => record.publishStatus === "published" && !record.publishedUrl).length;
 
   return {
-    weeklyPlan,
+    period: getSeedMonthRange(),
     metrics: {
-      targetTotal: weeklyPlan.targetTotalCount,
+      targetTotal: tasks.length,
       generated,
       approved,
       published,

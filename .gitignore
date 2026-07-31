@@ -1,4 +1,5 @@
 .next/
+.next-*/
 node_modules/
 dist/
 coverage/
@@ -10,6 +11,9 @@ data/workbench-state.json
 data/workbench-smoke-state.json
 data/workbench-*-state.json
 data/workbench-state.before-*.json
+data/v5-free-production.json
+data/v5-free-content-expression-types.json
+data/free-production-assets/
 artifacts/v5-generation/
 *.log
 *.tsbuildinfo

@@ -36,7 +36,7 @@ V5 的周期、主流程和字段以 00-V5月度内容矩阵统一口径与字�
 用途：
 
 - 定义 MonthlyPlan、MonthlyStrategyPackageVersion、ContentMatrixItem、BatchGenerationRun、PublishSchedule 和 MonthlyReview。
-- 定义旧周计划、周报、Today Publish 和人工发布队列的迁移方式。
+- 定义旧计划、旧复盘记录、Today Publish 和人工发布队列的迁移方式。
 - 定义 `contentType / channel / title / sourceProblem / rulePackageVersionId / draftVersionId` 的跨阶段唯一字段口径。
 
 ### 阶段一：产品表达规则边界
@@ -198,7 +198,7 @@ WorkflowRun 通过 ArtifactReference 引用以上产物，不复制业务真源�
 - 1297 个 Chunk。
 - 知识库、来源、Chunk 和类型分布元数据。
 
-原始导出中的周报复盘等旧字段属于 V4 历史值，迁移时映射到 MonthlyReview 或 WeeklySnapshot，不直接修改快照。
+原始导出中的旧复盘字段属于 V4 历史值，迁移时映射到 MonthlyReview 或月内过程快照，不直接修改快照。
 
 ## 6. 正式实施顺序
 
@@ -231,7 +231,7 @@ WorkflowRun 通过 ArtifactReference 引用以上产物，不复制业务真源�
 数据底座：
 
 - 任一新任务都有 monthlyPlanId、matrixVersionId 和 matrixItemId。
-- 旧 weeklyPlanId 可追溯，但不再作为 V5 新写入真源。
+- 旧计划 ID 可追溯，但不再作为 V5 新写入真源。
 - 迁移支持 dry-run、重复执行和差异报告。
 
 流程：
@@ -253,4 +253,4 @@ WorkflowRun 通过 ArtifactReference 引用以上产物，不复制业务真源�
 
 本文档描述 V5 目标设计，不代表当前 V4 代码已经完成月度迁移。
 
-现有 weekly-plan、today、drafts、publish 和 weekly report 页面应在实施时分别降级或升级为周视图、当日执行、异常稿抽检、发布排程和周过程快照。完成代码迁移前，界面仍可能保留 V4 周度术语，但不得反向覆盖 V5 设计。
+现有旧规划入口、today、drafts 和 publish 页面应在实施时分别退役或升级为月度矩阵、当日执行、异常稿抽检和发布排程。完成代码迁移后，界面不得保留第二套周期术语或反向覆盖 V5 设计。

@@ -10,6 +10,7 @@ const files = Object.fromEntries(await Promise.all([
   "src/lib/v5/article-expression-contracts.ts",
   "src/lib/v5/article-expression-service.ts",
   "src/lib/v5/foundation-repository.ts",
+  "src/lib/v5/monthly-service.ts",
   "src/lib/v5/monthly-contracts.ts",
   "data/v5-foundation-state.json",
   "src/app/questions-keywords/page.tsx",
@@ -29,12 +30,14 @@ test("question availability uses only knowledge readiness and question-pool conf
   assert.doesNotMatch(files["src/lib/v5/question-contracts.ts"], /pending_approval|manual_enable|roleAssignment/);
 });
 
-test("question fixture covers ready, missing-knowledge and conflicting states without a question confidence field", () => {
+test("question fixture keeps question status consistent with conflict resolution without a confidence field", () => {
   const fixture = JSON.parse(files["data/v5-foundation-state.json"]);
   const byId = new Map(fixture.questions.map((item) => [item.questionId, item]));
+  const ownershipConflict = fixture.decisionExceptions.find((item) => item.questionId === "question-adp-ownership");
   assert.equal(byId.get("question-adp-provider").status, "available");
   assert.equal(byId.get("question-workbuddy-scenes").status, "observing");
-  assert.equal(byId.get("question-adp-ownership").status, "decision_required");
+  assert.ok(ownershipConflict);
+  assert.equal(byId.get("question-adp-ownership").status, ownershipConflict.status === "open" ? "decision_required" : "available");
   for (const question of fixture.questions) assert.equal(Object.hasOwn(question, "confidence"), false);
 });
 
@@ -50,8 +53,14 @@ test("automatic writes retain source, algorithm, confidence and audit", () => {
 
 test("monthly selection freezes the current question version", () => {
   const service = files["src/lib/v5/question-service.ts"];
+  const monthlyService = files["src/lib/v5/monthly-service.ts"];
   assert.match(service, /questionVersionId: question\.currentVersionId/);
   assert.match(service, /if \(existing\) \{\s+locks\.push\(existing\)/);
+  assert.match(monthlyService, /readV5FoundationSnapshot/);
+  assert.match(monthlyService, /monthlyQuestionLocks\.filter\(\(lock\) => lock\.month === month\)/);
+  assert.match(monthlyService, /questionVersionId: version\.questionVersionId/);
+  assert.match(monthlyService, /status: "frozen" as const/);
+  assert.match(monthlyService, /source: "v5_formal" as const/);
   assert.match(files["src/lib/v5/monthly-contracts.ts"], /questionVersionIds\?: string\[\]/);
   assert.match(files["src/lib/v5/monthly-contracts.ts"], /questionVersionId\?: string/);
 });

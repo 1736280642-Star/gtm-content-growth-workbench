@@ -31,7 +31,7 @@ test("hybrid retrieval enforces duplicate quota and reports missing evidence rol
 
 test("required evidence roles are derived from governed chunk semantics", () => {
   const { inferEvidenceRoles } = load("src/lib/v5/rag/retrieval-service.ts");
-  assert.deepEqual(inferEvidenceRoles(chunk("limit", { semanticType: "limitation_chunk", limitations: ["需人工确认"] })).sort(), ["human_boundary"].sort());
+  assert.deepEqual(inferEvidenceRoles(chunk("limit", { semanticType: "limitation_chunk", limitations: ["需人工确认"] })).sort(), ["human_boundary", "official_citation"].sort());
   assert.equal(inferEvidenceRoles(chunk("citation", { semanticType: "official_citation" })).includes("official_citation"), true);
   assert.equal(inferEvidenceRoles(chunk("step", { semanticType: "method_step" })).includes("method_step"), true);
 });

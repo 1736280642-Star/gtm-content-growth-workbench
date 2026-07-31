@@ -18,7 +18,7 @@ const AUTOMATIC_CONTENT_TYPES = [
   "implicit_tool_guide",
   "implicit_trend_judgment"
 ];
-const AUTOMATIC_CHANNELS = ["wechat"];
+const AUTOMATIC_CHANNELS = ["wechat", "csdn", "juejin", "zhihu_toutiao_general"];
 
 function hashSorted(values: string[]) {
   return createHash("sha256").update([...new Set(values)].sort().join("\n")).digest("hex");
@@ -30,6 +30,12 @@ function stableId(prefix: string, value: string, length = 32) {
 
 function iso(value: unknown) {
   return value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
+}
+
+function hasUnqualifiedMetric(row: RowDataPacket) {
+  const text = `${String(row.normalized_claim || "")}\n${String(row.original_quote || "")}`;
+  const conditions = parseV5Json<string[]>(row.conditions, []);
+  return /\d+(?:\.\d+)?\s*(?:%|ms|秒|分钟|小时|天|次|倍|GB|MB|元)/i.test(text) && conditions.length === 0;
 }
 
 export interface AutomaticKnowledgeRefreshContext {
@@ -60,7 +66,7 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
     );
     if (!productRows[0]) throw new V5GovernanceRepositoryError("product_not_found", "Automatic knowledge product is not active.", 404);
 
-    const [claimRows] = await connection.query<RowDataPacket[]>(
+    const [rawClaimRows] = await connection.query<RowDataPacket[]>(
       `SELECT pc.id, pc.normalized_claim, pc.original_quote, pc.source_id, pc.source_revision_id, pc.review_status,
               pc.support_mode, pc.conditions, pc.limitations, pc.authority_level, pc.source_locator,
               sr.content_hash, sr.source_updated_at, sa.batch_id, sa.primary_knowledge_base_id
@@ -79,6 +85,26 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
        ORDER BY pc.id`,
       [productId]
     );
+    const rejectedMetricRows = rawClaimRows.filter(hasUnqualifiedMetric);
+    for (const row of rejectedMetricRows) {
+      await connection.query(
+        `UPDATE product_claim
+         SET review_status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), row_version = row_version + 1
+         WHERE id = ? AND review_status IN ('supported','conditional')`,
+        [actor.actorId, String(row.id)]
+      );
+      await writeV5GovernanceAudit(connection, {
+        ...actor,
+        eventType: "automatic_claim_rejected_missing_metric_context",
+        objectType: "product_claim",
+        objectId: String(row.id),
+        relatedSourceIds: [String(row.source_id)],
+        beforeSummary: { reviewStatus: String(row.review_status) },
+        afterSummary: { reviewStatus: "rejected", reasonCode: "metric_without_conditions" },
+        correlationId: String(row.id)
+      });
+    }
+    const claimRows = rawClaimRows.filter((row) => !hasUnqualifiedMetric(row));
     if (!claimRows.length) {
       throw new V5GovernanceRepositoryError("approved_claim_missing", "No current supported claims are available for automatic refresh.", 409);
     }
@@ -147,11 +173,6 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
     );
     const storedRulePackageId = String(packageRows[0].id);
     const previousRuleVersionId = packageRows[0].active_version_id ? String(packageRows[0].active_version_id) : undefined;
-    const rulePackageVersionId = stableId("rule-version-auto-", `${productId}:${sourceSnapshotHash}:${claimSetHash}`, 36);
-    const [versionRows] = await connection.query<RowDataPacket[]>(
-      "SELECT id, status FROM rule_package_version WHERE id = ? LIMIT 1 FOR UPDATE",
-      [rulePackageVersionId]
-    );
     const productName = String(productRows[0].display_name || productRows[0].canonical_name || productId);
     const supportedExpressions = claimRows
       .filter((row) => String(row.review_status) === "supported")
@@ -170,14 +191,24 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
       reason: String(row.review_status),
       conflictGroupId: row.conflict_group_id ? String(row.conflict_group_id) : undefined
     }));
+    const maxMonthlyQuota = Math.max(31, Math.min(100, claimRows.length));
     const matrixScope = {
       allowedContentTypes: AUTOMATIC_CONTENT_TYPES,
       conditionalContentTypes: conditionalExpressions.length ? AUTOMATIC_CONTENT_TYPES : [],
       blockedContentTypes: [],
       allowedChannels: AUTOMATIC_CHANNELS,
       requiredEvidenceRoles: ["product_mechanism", "human_boundary", "official_citation"],
-      maxMonthlyQuota: 31
+      maxMonthlyQuota
     };
+    const rulePackageVersionId = stableId(
+      "rule-version-auto-",
+      `${productId}:${sourceSnapshotHash}:${claimSetHash}:${AUTOMATIC_KNOWLEDGE_POLICY_VERSION}:${hashSorted([JSON.stringify(matrixScope)])}`,
+      36
+    );
+    const [versionRows] = await connection.query<RowDataPacket[]>(
+      "SELECT id, status FROM rule_package_version WHERE id = ? LIMIT 1 FOR UPDATE",
+      [rulePackageVersionId]
+    );
 
     if (previousRuleVersionId && previousRuleVersionId !== rulePackageVersionId) {
       await connection.query(
@@ -198,7 +229,7 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
           rulePackageVersionId,
           storedRulePackageId,
           productId,
-          `auto-${sourceSnapshotHash.slice(0, 20)}`,
+          `auto-${sourceSnapshotHash.slice(0, 12)}-${claimSetHash.slice(0, 8)}`,
           stringifyV5Json([]),
           previousRuleVersionId || null,
           stringifyV5Json(sourceBatchIds),
@@ -255,7 +286,7 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
         (id, product_id, rule_package_version_id, source_snapshot_id, source_snapshot_hash, monthly_production_ready,
          allowed_content_types, conditional_content_types, blocked_content_types, allowed_channels, required_evidence_roles,
          evidence_gap_ids, max_monthly_quota, reason_codes, status, evaluated_at, evaluator_version, approved_at, approved_by, version)
-       VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?, 31, ?, 'approved', NOW(), ?, NOW(), ?, 1)
+       VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', NOW(), ?, NOW(), ?, 1)
        ON DUPLICATE KEY UPDATE source_snapshot_id = VALUES(source_snapshot_id), source_snapshot_hash = VALUES(source_snapshot_hash),
          monthly_production_ready = TRUE, allowed_content_types = VALUES(allowed_content_types),
          conditional_content_types = VALUES(conditional_content_types), blocked_content_types = VALUES(blocked_content_types),
@@ -275,6 +306,7 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
         stringifyV5Json(AUTOMATIC_CHANNELS),
         stringifyV5Json(matrixScope.requiredEvidenceRoles),
         stringifyV5Json([]),
+        maxMonthlyQuota,
         stringifyV5Json(conditionalExpressions.length ? ["conditional_claims_require_limitations"] : []),
         AUTOMATIC_KNOWLEDGE_POLICY_VERSION,
         actor.actorId

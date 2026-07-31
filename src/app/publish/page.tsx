@@ -77,7 +77,7 @@ function getDataReturnActionText(record: PublishRecord) {
     return "发布记录失败，先回今日发布核对状态，再导入指标。";
   }
 
-  return "渠道指标已匹配，可进入周度复盘。";
+  return "渠道指标已匹配，可进入月度复盘。";
 }
 
 export default function PublishPage() {
@@ -247,14 +247,14 @@ export default function PublishPage() {
 
     if (status === "matched") {
       return (
-        <Link href="/weekly-report">
-          <Button size="small">去周报</Button>
+        <Link href="/monthly-review">
+          <Button size="small">去月度复盘</Button>
         </Link>
       );
     }
 
     return (
-      <Link href="/today">
+      <Link href="/daily-execution">
         <Button size="small">{status === "missing_url" ? "回填 URL" : "回今日发布"}</Button>
       </Link>
     );
@@ -269,7 +269,7 @@ export default function PublishPage() {
         actions={
           <>
             <Button onClick={handleCopyTemplate}>下载模板</Button>
-            <Link href="/today">
+            <Link href="/daily-execution">
               <Button>回今日发布</Button>
             </Link>
           </>
@@ -344,7 +344,7 @@ export default function PublishPage() {
                       清空筛选
                     </Button>
                   ) : (
-                    <Link href="/today">
+                    <Link href="/daily-execution">
                       <Button type="primary">去今日发布</Button>
                     </Link>
                   )

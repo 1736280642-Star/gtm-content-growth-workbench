@@ -31,6 +31,7 @@ export type PublishFailureCode =
   | "payload_invalid"
   | "platform_not_supported"
   | "platform_review_pending"
+  | "publish_action_unconfirmed"
   | "verification_failed"
   | "manual_takeover_required"
   | "duplicate_protected"
@@ -131,7 +132,7 @@ export type DraftQualityIssueCode =
 
 export type DraftQualitySuggestedAction = "delete" | "rewrite" | "add_evidence" | "manual_review" | "keep_with_reason";
 
-export type DraftQualityFeedbackTarget = "prompt" | "rule_package" | "evidence_selection" | "channel_template" | "weekly_plan";
+export type DraftQualityFeedbackTarget = "prompt" | "rule_package" | "evidence_selection" | "channel_template" | "monthly_plan";
 
 export interface DraftEditAction {
   id: string;
@@ -172,18 +173,8 @@ export type PlatformContentType =
   | "implicit_tool_guide"
   | "implicit_trend_judgment";
 
-export interface WeeklyPublishMatrixDay {
-  date: string;
-  weekday: string;
-  plannedCount: number;
-  paused: boolean;
-  locked: boolean;
-  source: "manual" | "ai_suggested" | "system_default";
-}
-
 export interface ProductPlanConfig {
   product: ProductKey;
-  weeklyQuota: number;
   channels: ChannelKey[];
   knowledgeBaseIds?: string[];
   knowledgeBaseId?: string;
@@ -221,109 +212,8 @@ export interface DraftQaResult {
   feedbackTarget?: DraftQualityFeedbackTarget;
 }
 
-export interface WeeklyPlan {
-  id: string;
-  weekStart: string;
-  weekEnd: string;
-  targetTotalCount: number;
-  status: "draft" | "confirmed" | "running" | "completed";
-  publishMatrix?: WeeklyPublishMatrixDay[];
-  productPlans?: ProductPlanConfig[];
-  generationSource?: WeeklyPlanGenerationSource;
-}
-
-export interface WeeklyPlanGenerationSignal {
-  key: "knowledge_base" | "product_expression" | "distilled_terms" | "blog_diagnosis" | "weekly_report";
-  label: string;
-  status: "used" | "available" | "missing";
-  count?: number;
-  summary: string;
-}
-
-export interface WeeklyPlanGenerationSource {
-  mode: "local_rule" | "ai_provider";
-  promptVersion: string;
-  generatedAt: string;
-  matrixIssueCount: number;
-  signals: WeeklyPlanGenerationSignal[];
-}
-
-export interface WeeklyReportSuggestionDecision {
-  id: string;
-  week: string;
-  suggestion: string;
-  status: "adopted" | "partially_adopted" | "rejected";
-  reason?: string;
-  decidedAt: string;
-}
-
-export interface WeeklyRecommendationOutcome {
-  id: string;
-  week: string;
-  suggestion: string;
-  decisionStatus: WeeklyReportSuggestionDecision["status"];
-  evaluationStatus: "measured" | "waiting_next_week" | "not_applicable";
-  completionRateDelta?: number;
-  dataReturnRateDelta?: number;
-  channelPerformanceDelta?: number;
-  failureReason?: string;
-  modelLearningSignal: string;
-  evaluatedAt: string;
-}
-
-export interface WeeklyPlanQualitySignal {
-  key: "rejected_titles" | "risk_accepted" | "manual_edits" | "title_regenerated" | "low_confidence_review";
-  label: string;
-  count: number;
-  status: "normal" | "attention" | "blocked";
-  summary: string;
-  nextStep: string;
-  examples: string[];
-}
-
-export interface WeeklyPlanQualityFeedback {
-  totalPlanItems: number;
-  confirmedCount: number;
-  rejectedCount: number;
-  riskAcceptedCount: number;
-  manualEditCount: number;
-  regeneratedTitleCount: number;
-  lowConfidencePlannedCount: number;
-  reviewRequiredCount: number;
-  signals: WeeklyPlanQualitySignal[];
-  modelLearningSignals: string[];
-}
-
-export interface WeeklyReportDistilledTermMatrixRow {
-  id: string;
-  term: string;
-  contentCoverage: number;
-  typeCompleteness: string;
-  geoLift: number;
-  competitorOccupied: boolean;
-  nextSuggestion: string;
-}
-
-export interface WeeklyReportSnapshot {
-  week: string;
-  targetTotalCount: number;
-  executiveSummary: string;
-  publishRecords: PublishRecord[];
-  blogDiagnostics: BlogArticle[];
-  distilledTerms: DistilledTerm[];
-  distilledTermMatrix: WeeklyReportDistilledTermMatrixRow[];
-  promptTemplates: PromptVersionRecord[];
-  nextWeekSuggestions: string[];
-  planQualityFeedback: WeeklyPlanQualityFeedback;
-  dataSource: string;
-  createdAt: string;
-  updatedAt?: string;
-}
-
 export interface WorkspaceSetting {
   id: string;
-  defaultWeeklyDays: number;
-  defaultDailyCount: number;
   enabledChannels: ChannelKey[];
   enabledProducts: ProductKey[];
   productPlans?: ProductPlanConfig[];
@@ -370,7 +260,7 @@ export interface ContentTaskRiskAcceptanceRecord {
 }
 
 export interface ContentTaskTitleSourceAttribution {
-  key: WeeklyPlanGenerationSignal["key"] | "publish_matrix" | "system_rule";
+  key: "knowledge_base" | "product_expression" | "distilled_terms" | "blog_diagnosis" | "monthly_plan" | "system_rule";
   label: string;
   role: "primary" | "supporting";
   summary: string;
@@ -388,7 +278,6 @@ export interface ContentTaskRejectionRecord {
 
 export interface ContentTask {
   id: string;
-  weeklyPlanId: string;
   publishDate: string;
   channel: ChannelKey;
   product: ProductKey;
@@ -488,7 +377,6 @@ export interface PublishRecord {
   title: string;
   publishStatus: "queued" | "published" | "url_filled" | "failed";
   plannedPublishDate?: string;
-  sourceWeek?: string;
   publishedUrl?: string;
   publishedAt?: string;
   exportedAt?: string;
@@ -530,6 +418,7 @@ export interface PlatformPublishPayload {
   idempotencyKey: string;
   title: string;
   markdown: string;
+  contentFormat?: "markdown" | "wechat_html";
   summary?: string;
   scheduledAt: string;
   sourceDraftId: string;
@@ -538,6 +427,8 @@ export interface PlatformPublishPayload {
   coverMediaId?: string;
   categoryId?: string;
   tagIds?: string[];
+  externalDraftId?: string;
+  editorUrl?: string;
   dryRun?: boolean;
 }
 
@@ -725,7 +616,6 @@ export interface BlogArticle {
   candidateStatus?: "none" | "candidate" | "planned" | "dismissed";
   candidateReason?: string;
   candidateAddedAt?: string;
-  sourceWeek?: string;
 }
 
 export interface BotVisitSummary {

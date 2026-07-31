@@ -3,46 +3,70 @@
 import { Alert, Button, Card, Checkbox, Form, Input, Select, Space, Tag, Upload, message } from "antd";
 import type { RcFile, UploadFile } from "antd/es/upload/interface";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
-import { useWorkbenchSnapshot } from "@/lib/client-state";
-import type { KnowledgeBase } from "@/lib/types";
 
 const { Dragger } = Upload;
 
-const knowledgeTypeOptions: Array<{ value: KnowledgeBase["type"]; label: string }> = [
-  { value: "brand", label: "品牌事实" },
-  { value: "product", label: "产品知识" },
-  { value: "official_blog", label: "官网博客" },
-  { value: "channel_history", label: "渠道历史" },
-  { value: "competitor", label: "竞品参考" },
-  { value: "custom", label: "用户自定义" }
+const authorityOptions = [
+  { value: "A2", label: "A2 - 官方产品资料" },
+  { value: "B1", label: "B1 - 经确认的业务资料" },
+  { value: "B2", label: "B2 - 官方历史内容" }
 ];
 
-function detectSourceType(files: UploadFile[]) {
-  if (files.some((file) => /\.pdf$/i.test(file.name))) return "pdf";
-  if (files.some((file) => /\.(doc|docx)$/i.test(file.name))) return "docx";
-  if (files.some((file) => /\.(md|markdown)$/i.test(file.name))) return "markdown";
-  return "manual";
+interface ManagedImportResponse {
+  message?: string;
+  data?: { pipelineStatus: "queued" | "pending_config"; batchIds: string[]; generatedClaims: number; missingConfiguration: string[] };
+}
+
+interface ProductListResponse {
+  products: Array<{ productId: string; displayName: string }>;
 }
 
 export default function KnowledgeDocumentImportPage() {
-  const {
-    state: { knowledgeBases }
-  } = useWorkbenchSnapshot();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [parsedFileSignature, setParsedFileSignature] = useState("");
+  const [importResult, setImportResult] = useState<ManagedImportResponse["data"]>();
+  const [productOptions, setProductOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const idempotencyKey = useRef(crypto.randomUUID());
   const hasLegacyDoc = useMemo(() => fileList.some((file) => /\.doc$/i.test(file.name)), [fileList]);
-  const rulePackageOptions = knowledgeBases
-    .filter((item) => item.productExpressionRuleDraft)
-    .map((item) => ({
-      value: item.id,
-      label: `${item.name}（${item.productExpressionRuleDraft?.version || "草稿"}）`
-    }));
+  const currentFileSignature = useMemo(
+    () => fileList.map((file) => `${file.uid}:${file.name}:${file.size || 0}`).join("|"),
+    [fileList]
+  );
+
+  useEffect(() => {
+    let active = true;
+    callJsonApi<ProductListResponse>("/api/v5/products")
+      .then((result) => {
+        if (!active) return;
+        const requestedProductId = new URLSearchParams(window.location.search).get("productId");
+        const options = (result.products || []).map((item) => ({
+          value: item.productId,
+          label: item.displayName
+        }));
+        setProductOptions(options);
+        const requested = options.find((option) => option.value === requestedProductId);
+        if (!form.getFieldValue("productId") && (requested || options[0])) {
+          form.setFieldValue("productId", (requested || options[0]).value);
+        }
+      })
+      .catch((error) => {
+        if (active) messageApi.error(error instanceof Error ? error.message : "产品列表加载失败");
+      })
+      .finally(() => {
+        if (active) setProductsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form, messageApi]);
 
   async function handleParse() {
     const nativeFiles = fileList.map((file) => file.originFileObj).filter((file): file is RcFile => Boolean(file));
@@ -67,6 +91,7 @@ export default function KnowledgeDocumentImportPage() {
       });
       const contentPreview = result.data?.contentPreview || "";
       form.setFieldsValue({ contentPreview });
+      setParsedFileSignature(currentFileSignature);
       messageApi.success(formatApiMessage(result, result.data?.failedCount ? "文档已解析，部分文件需要处理。" : "文档已解析为 Markdown 预览。"));
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "文档解析失败");
@@ -75,31 +100,38 @@ export default function KnowledgeDocumentImportPage() {
     }
   }
 
+  function updateFileList(nextFileList: UploadFile[]) {
+    setFileList(nextFileList);
+    setParsedFileSignature("");
+    setImportResult(undefined);
+    form.setFieldValue("contentPreview", "");
+  }
+
   async function handleSave() {
-    const values = form.getFieldsValue();
+    const values = await form.validateFields();
+    const nativeFiles = fileList.map((file) => file.originFileObj).filter((file): file is RcFile => Boolean(file));
+    if (!nativeFiles.length) {
+      messageApi.warning("请先选择并解析需要导入的文档。");
+      return;
+    }
     setSaving(true);
 
     try {
-      const result = await callJsonApi<{ data?: { knowledgeBase?: KnowledgeBase } }>("/api/knowledge-bases", {
+      const formData = new FormData();
+      nativeFiles.forEach((file) => formData.append("files", file));
+      formData.append("name", values.name);
+      formData.append("productId", values.productId);
+      formData.append("authorityLevel", values.authorityLevel);
+      formData.append("publicUseConfirmed", String(values.publicUseConfirmed === true));
+      formData.append("idempotencyKey", idempotencyKey.current);
+      const result = await callJsonApi<ManagedImportResponse>("/api/v5/knowledge-imports/documents", {
         method: "POST",
-        body: JSON.stringify({
-          ...values,
-          sourceType: detectSourceType(fileList),
-          status: "enabled",
-          title: values.name,
-          manualText: values.contentPreview,
-          productExpressionSource: Boolean(values.productExpressionSource),
-          productExpressionRulePackageMode: values.productExpressionSource ? values.rulePackageMode || "new" : "none",
-          linkedProductExpressionRulePackageId: values.rulePackageMode === "existing" ? values.linkedProductExpressionRulePackageId : undefined
-        })
+        body: formData
       });
-      const id = result.data?.knowledgeBase?.id;
-      messageApi.success(formatApiMessage(result, "文档知识库已保存为待向量化。"));
-      if (id) {
-        window.location.href = `/knowledge/${id}`;
-      }
+      setImportResult(result.data);
+      messageApi.success(formatApiMessage(result, "文档已托管，治理与索引任务已创建。"));
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "保存知识库失败");
+      messageApi.error(error instanceof Error ? error.message : "文档导入失败");
     } finally {
       setSaving(false);
     }
@@ -110,7 +142,7 @@ export default function KnowledgeDocumentImportPage() {
       {contextHolder}
       <PageHeader
         title="文档导入"
-        subtitle="上传 PDF / Word / Markdown 资料，解析为 Markdown 预览后保存为待向量化知识库。"
+        subtitle="上传资料后由服务端托管正文，并自动进入 Claim、Snapshot、Embedding 与 OpenSearch 链路。"
         actions={
           <Space>
             <Link href="/knowledge/import">
@@ -124,63 +156,82 @@ export default function KnowledgeDocumentImportPage() {
       />
 
       <Card>
-        <Form form={form} layout="vertical" initialValues={{ type: "product", productExpressionSource: false, rulePackageMode: "new" }}>
+        <Form form={form} layout="vertical" initialValues={{ authorityLevel: "B1", publicUseConfirmed: false }}>
           <div className="knowledge-detail-two-column">
             <div>
               <Form.Item label="知识库名称" name="name" rules={[{ required: true, message: "请填写知识库名称" }]}>
                 <Input placeholder="例如：唯客产品资料包" />
               </Form.Item>
-              <Form.Item label="知识库类型" name="type">
-                <Select options={knowledgeTypeOptions} />
+              <Form.Item label="所属产品" name="productId" rules={[{ required: true, message: "请选择资料所属产品" }]}>
+                <Select
+                  options={productOptions}
+                  loading={productsLoading}
+                  notFoundContent={<Link href="/products/new">先新增产品</Link>}
+                />
               </Form.Item>
-              <Form.Item label="资料用途" name="usageScope">
-                <Input.TextArea rows={3} placeholder="例如：产品表达、FAQ、销售资料、官网证据" />
+              <Form.Item label="来源权威等级" name="authorityLevel" rules={[{ required: true, message: "请选择来源权威等级" }]}>
+                <Select options={authorityOptions} />
               </Form.Item>
-              <Form.Item name="productExpressionSource" valuePropName="checked">
-                <Checkbox>作为产品表达规则包来源</Checkbox>
-              </Form.Item>
-              <Form.Item shouldUpdate={(prev, next) => prev.productExpressionSource !== next.productExpressionSource || prev.rulePackageMode !== next.rulePackageMode}>
-                {({ getFieldValue }) =>
-                  getFieldValue("productExpressionSource") ? (
-                    <Space direction="vertical" style={{ width: "100%" }}>
-                      <Form.Item label="规则包处理方式" name="rulePackageMode" style={{ marginBottom: 0 }}>
-                        <Select
-                          options={[
-                            { value: "new", label: "新建产品表达规则包" },
-                            { value: "existing", label: "关联已有规则包" }
-                          ]}
-                        />
-                      </Form.Item>
-                      {getFieldValue("rulePackageMode") === "existing" ? (
-                        <Form.Item
-                          label="选择已有规则包"
-                          name="linkedProductExpressionRulePackageId"
-                          rules={[{ required: true, message: "请选择要关联的产品表达规则包" }]}
-                        >
-                          <Select options={rulePackageOptions} placeholder="选择已有规则包" />
-                        </Form.Item>
-                      ) : null}
-                    </Space>
-                  ) : null
-                }
+              <Form.Item name="publicUseConfirmed" valuePropName="checked" rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error("请确认公开内容生产权限")) }]}>
+                <Checkbox>我确认资料可用于公开内容生产与证据引用</Checkbox>
               </Form.Item>
             </div>
 
-            <div>
+            <div className="knowledge-document-upload">
               <Dragger
                 multiple
                 accept=".pdf,.docx,.md,.markdown,.txt"
                 fileList={fileList}
+                showUploadList={false}
                 beforeUpload={() => false}
-                onChange={({ fileList: nextFileList }) => setFileList(nextFileList)}
+                onChange={({ fileList: nextFileList }) => updateFileList(nextFileList)}
               >
                 <p>点击或拖拽上传文档</p>
                 <p>支持 PDF / Word(docx) / Markdown，可一次上传多份。</p>
               </Dragger>
-              <Space wrap style={{ marginTop: 16 }}>
-                <Button type="primary" disabled={!fileList.length} loading={parsing} onClick={handleParse}>解析</Button>
-                <Tag color={fileList.length ? "blue" : "gold"}>{fileList.length ? `已选择 ${fileList.length} 份文档` : "未选择文档"}</Tag>
-              </Space>
+              <div className="knowledge-upload-selection">
+                <div className="knowledge-upload-selection-header">
+                  <Tag color={fileList.length ? "blue" : "gold"}>
+                    {fileList.length ? `已选择 ${fileList.length} 份文档` : "未选择文档"}
+                  </Tag>
+                  <Space wrap>
+                    <Button
+                      type="primary"
+                      disabled={!fileList.length}
+                      loading={parsing}
+                      onClick={handleParse}
+                    >
+                      解析并预览
+                    </Button>
+                    <Button disabled={!fileList.length || parsing} onClick={() => updateFileList([])}>
+                      清空
+                    </Button>
+                  </Space>
+                </div>
+                {fileList.length ? (
+                  <div className="knowledge-upload-file-list" role="list" aria-label="已选择的文档">
+                    {fileList.map((file) => (
+                      <div className="knowledge-upload-file-row" role="listitem" key={file.uid}>
+                        <span className="knowledge-upload-file-name" title={file.name}>{file.name}</span>
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          disabled={parsing}
+                          onClick={() => updateFileList(fileList.filter((item) => item.uid !== file.uid))}
+                        >
+                          移除
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="knowledge-upload-empty">选择文件后会在这里显示完整清单。</p>
+                )}
+                {parsedFileSignature && parsedFileSignature === currentFileSignature ? (
+                  <Tag color="green" className="knowledge-upload-parsed-tag">当前文件已解析</Tag>
+                ) : null}
+              </div>
               {hasLegacyDoc ? (
                 <Alert
                   showIcon
@@ -194,13 +245,21 @@ export default function KnowledgeDocumentImportPage() {
           </div>
 
           <Form.Item label="Markdown 解析预览" name="contentPreview" style={{ marginTop: 24 }} rules={[{ required: true, message: "请先解析文档生成预览" }]}>
-            <Input.TextArea rows={12} placeholder="点击解析后显示 Markdown 预览。" />
+            <Input.TextArea rows={12} readOnly placeholder="点击解析后显示 Markdown 预览。" />
           </Form.Item>
+          {importResult ? (
+            <Alert
+              showIcon
+              type={importResult.pipelineStatus === "queued" ? "success" : "warning"}
+              message={importResult.pipelineStatus === "queued" ? "治理与索引任务已排队" : "资料已托管，等待基础设施配置"}
+              description={importResult.pipelineStatus === "queued"
+                ? "SourceAsset 与 SourceRevision 已创建，Worker 将继续提取 Claim、生成 Snapshot、Embedding 和 OpenSearch 索引。"
+                : `仍缺少：${importResult.missingConfiguration.join(", ")}`}
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
           <Space>
-            <Button type="primary" loading={saving} onClick={handleSave}>保存为待向量化</Button>
-            <Link href="/knowledge/vectorize">
-              <Button>去切片与向量化</Button>
-            </Link>
+            <Button type="primary" loading={saving} onClick={handleSave}>托管并启动治理</Button>
           </Space>
         </Form>
       </Card>

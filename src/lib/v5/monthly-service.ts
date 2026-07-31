@@ -14,6 +14,7 @@ import type {
   PatchProductionDraftRequest,
   ProductionMatrixTask,
   RulePackageOption,
+  SavePublishResultRequest,
   ScheduleTaskRequest,
   SaveMonthlyPlanRequest,
   StrategyMutationRequest,
@@ -29,8 +30,11 @@ import {
   getQuestionTypeMatchRun,
   listArticleTypeProfiles
 } from "./article-type-service";
+import { readV5FoundationSnapshot } from "./foundation-repository";
 import { readV5MonthlyState, updateV5MonthlyState } from "./monthly-repository";
 import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
+import { persistFormalApprovedStrategy, persistFormalMonthlyPlan, saveFormalPublishResult, scheduleFormalProductionTask } from "./monthly-execution-repository";
+import { readV5MonthlyPlanRecord } from "./monthly-plan-repository";
 import { calculateExpandedDeliverableCount, evaluateStrategyPreflight, expandApprovedStrategyTasks } from "./monthly-strategy-policy";
 
 export { calculateExpandedDeliverableCount, evaluateStrategyPreflight, expandApprovedStrategyTasks } from "./monthly-strategy-policy";
@@ -154,7 +158,34 @@ function buildRulePackages(state: WorkbenchState, source: V5ReferenceSource): Ru
   });
 }
 
-function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource): TargetQuestionOption[] {
+function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, month: string): TargetQuestionOption[] {
+  const foundation = readV5FoundationSnapshot();
+  const monthlyLocks = foundation.monthlyQuestionLocks.filter((lock) => lock.month === month);
+
+  if (monthlyLocks.length) {
+    const versionsById = new Map(foundation.questionVersions.map((version) => [version.questionVersionId, version]));
+
+    return monthlyLocks.map((lock) => {
+      const version = versionsById.get(lock.questionVersionId);
+      if (!version || version.questionId !== lock.questionId) {
+        throw new V5ServiceError(
+          500,
+          "V5_MONTHLY_QUESTION_VERSION_MISSING",
+          `月度目标问题 ${lock.questionId} 的锁定版本不存在或引用不一致。`,
+          ["请检查 V5 Foundation Repository 中的 monthlyQuestionLocks 和 questionVersions。"]
+        );
+      }
+
+      return {
+        questionVersionId: version.questionVersionId,
+        question: version.text.trim(),
+        productId: version.product,
+        status: "frozen" as const,
+        source: "v5_formal" as const
+      };
+    });
+  }
+
   if (source !== "v4_runtime") return [];
   return state.distilledTerms
     .filter((term) => term.status === "active" && term.validationStatus !== "disabled" && term.sourceQuestion?.trim())
@@ -224,7 +255,7 @@ export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<
     plan || strategyRows.length || batchQueueItems.length || exceptionItems.length || scheduleDraftItems.length
   );
   const rulePackages = buildRulePackages(reference.state, reference.source);
-  const targetQuestions = buildTargetQuestions(reference.state, reference.source);
+  const targetQuestions = buildTargetQuestions(reference.state, reference.source, month);
   const knowledgeBases = buildKnowledgeBases(reference.state, reference.source);
   const [articleTypeProfiles, typeMatchRun] = await Promise.all([
     listArticleTypeProfiles(),
@@ -412,8 +443,13 @@ export async function saveV5MonthlyPlan(
     );
   }
   const rulePackages = governance.source === "v5_mysql" ? governance.rulePackages : candidateRulePackages;
-  const targetQuestions = buildTargetQuestions(reference.state, reference.source);
-  const knowledgeBases = buildKnowledgeBases(reference.state, reference.source);
+  const targetQuestions = buildTargetQuestions(reference.state, reference.source, month);
+  const knowledgeBases = Array.from(
+    new Map(
+      [...buildKnowledgeBases(reference.state, reference.source), ...governance.knowledgeBases]
+        .map((item) => [item.knowledgeBaseId, item])
+    ).values()
+  );
   const referencedArticleTypeIds = Array.from(new Set((request.config.quotaRules || []).map((rule) => rule.articleTypeProfileVersionId).filter(Boolean)));
   const referencedMatchRunIds = Array.from(new Set((request.config.quotaRules || []).map((rule) => rule.typeMatchRunId).filter(Boolean)));
   const [articleTypeVersions, matchRunEntries] = await Promise.all([
@@ -435,7 +471,7 @@ export async function saveV5MonthlyPlan(
     .digest("hex");
   const storageKey = `${month}:${idempotencyKey}`;
 
-  return updateV5MonthlyState((state) => {
+  return updateV5MonthlyState(async (state) => {
     const previousRequest = state.idempotency[storageKey];
     if (previousRequest) {
       if (previousRequest.requestHash !== requestHash) {
@@ -479,6 +515,9 @@ export async function saveV5MonthlyPlan(
     };
 
     state.plans[month] = record;
+    await persistFormalMonthlyPlan(record, {
+      actorId: `local-${role}`, actorRole: role, actorType: "human", auditReason: "保存月度计划正式草稿"
+    });
     state.auditLog.unshift({
       id: randomUUID(),
       event: "monthly_plan_saved",
@@ -512,7 +551,7 @@ export async function preflightV5Strategy(month: string, request: StrategyMutati
   assertMonth(month);
   assertStrategyMutationRequest(request);
   const actor = await getWritableActor();
-  return updateV5MonthlyState((state) => {
+  return updateV5MonthlyState(async (state) => {
     const plan = state.plans[month];
     if (!plan?.strategyPackage) throw new V5ServiceError(404, "STRATEGY_NOT_FOUND", "请先保存月度计划和内容策略配置。");
     if (plan.version !== request.expectedVersion) throw new V5ServiceError(409, "MONTHLY_PLAN_VERSION_CONFLICT", "月度计划已更新，请刷新后重试。");
@@ -525,6 +564,9 @@ export async function preflightV5Strategy(month: string, request: StrategyMutati
     plan.updatedAt = now;
     plan.updatedBy = actor;
     plan.strategyPackage = { ...plan.strategyPackage, status: "preview_ready", preflightResults, updatedAt: now };
+    await persistFormalMonthlyPlan(plan, {
+      actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason.trim()
+    }, "pending_strategy_review");
     state.auditLog.unshift({
       id: randomUUID(), event: "strategy_preflight_completed", month, actor, version: plan.version,
       createdAt: now, auditReason: request.auditReason.trim(), objectId: plan.strategyPackage.strategyPackageId,
@@ -538,7 +580,7 @@ export async function approveV5Strategy(month: string, request: StrategyMutation
   assertMonth(month);
   assertStrategyMutationRequest(request);
   const actor = await getWritableActor();
-  return updateV5MonthlyState((state) => {
+  return updateV5MonthlyState(async (state) => {
     const plan = state.plans[month];
     const strategy = plan?.strategyPackage;
     if (!plan || !strategy) throw new V5ServiceError(404, "STRATEGY_NOT_FOUND", "请先保存并预检内容策略包。");
@@ -567,6 +609,9 @@ export async function approveV5Strategy(month: string, request: StrategyMutation
     plan.updatedBy = actor;
     plan.strategyPackage = approvedStrategy;
     plan.matrixTasks = expandApprovedStrategyTasks({ monthlyPlanId: plan.id, strategyPackage: approvedStrategy, now });
+    await persistFormalApprovedStrategy(plan, {
+      actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason.trim()
+    });
     state.auditLog.unshift({
       id: randomUUID(), event: "strategy_approved", month, actor, version: plan.version, createdAt: now,
       auditReason: request.auditReason.trim(), objectId: strategy.strategyPackageId,
@@ -591,6 +636,32 @@ export function parseScheduleTaskRequest(value: unknown): ScheduleTaskRequest {
   };
 }
 
+export function parseSavePublishResultRequest(value: unknown): SavePublishResultRequest {
+  if (!isRecord(value) || !isRecord(value.metrics)) throw new V5ServiceError(400, "INVALID_REQUEST", "发布结果请求格式不正确。");
+  const status = String(value.status || "");
+  if (!["published", "failed", "manual_takeover"].includes(status)) throw new V5ServiceError(422, "INVALID_PUBLISH_STATUS", "发布状态不正确。");
+  return {
+    expectedVersion: Number(value.expectedVersion),
+    status: status as SavePublishResultRequest["status"],
+    publicUrl: String(value.publicUrl || "").trim() || undefined,
+    externalContentId: String(value.externalContentId || "").trim() || undefined,
+    failureReason: String(value.failureReason || "").trim() || undefined,
+    metrics: Object.fromEntries(Object.entries(value.metrics).filter(([, metric]) => typeof metric === "number" || typeof metric === "string")) as Record<string, number | string>,
+    auditReason: String(value.auditReason || "").trim()
+  };
+}
+
+export async function saveV5PublishResult(taskId: string, request: SavePublishResultRequest) {
+  if (!Number.isInteger(request.expectedVersion) || request.expectedVersion < 0) throw new V5ServiceError(422, "INVALID_EXPECTED_VERSION", "发布结果版本号不正确。");
+  if (!request.auditReason || request.auditReason.length > 200) throw new V5ServiceError(422, "INVALID_AUDIT_REASON", "请填写 200 个字符以内的回传原因。");
+  const actor = await getWritableActor();
+  return saveFormalPublishResult({
+    taskId,
+    request,
+    actor: { actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason }
+  });
+}
+
 export async function scheduleV5ProductionTask(month: string, taskId: string, request: ScheduleTaskRequest) {
   assertMonth(month);
   if (!Number.isInteger(request.expectedVersion) || request.expectedVersion < 1) throw new V5ServiceError(400, "INVALID_EXPECTED_VERSION", "排程版本号不正确。");
@@ -598,6 +669,15 @@ export async function scheduleV5ProductionTask(month: string, taskId: string, re
   if (!request.platformAccount || request.platformAccount.length > 120) throw new V5ServiceError(422, "INVALID_PLATFORM_ACCOUNT", "请选择 120 个字符以内的平台账号。");
   if (!request.auditReason || request.auditReason.length > 200) throw new V5ServiceError(422, "INVALID_AUDIT_REASON", "请填写 200 个字符以内的排程原因。");
   const actor = await getWritableActor();
+  const formalPlan = await readV5MonthlyPlanRecord(month);
+  if (formalPlan) {
+    return scheduleFormalProductionTask({
+      month,
+      taskId,
+      request,
+      actor: { actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason }
+    });
+  }
   return updateV5MonthlyState((state) => {
     const plan = state.plans[month];
     if (!plan || plan.version !== request.expectedVersion) throw new V5ServiceError(409, "MONTHLY_PLAN_VERSION_CONFLICT", "月度计划已更新，请刷新后重新排程。");
