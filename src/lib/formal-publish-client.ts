@@ -27,6 +27,13 @@ const allowedStatuses: PublishAttemptStatus[] = [
   "published_verified",
   "published_pending_url",
   "pending_verify",
+  "public_observed",
+  "stable_published",
+  "platform_rejected",
+  "removed_after_publish",
+  "risk_blocked",
+  "verification_timeout",
+  "auth_expired",
   "failed",
   "manual_takeover_required",
   "pending_config"
@@ -85,6 +92,7 @@ async function fetchBridge(path: string, body: Record<string, unknown>) {
   try {
     return await fetch(`${getBridgeUrl().replace(/\/$/, "")}${path}`, {
       method: "POST",
+      cache: "no-store",
       headers: {
         Authorization: `Bearer ${process.env.WECHATSYNC_BRIDGE_TOKEN?.trim()}`,
         "Content-Type": "application/json"
@@ -205,7 +213,12 @@ export async function verifyFormalPublish(platform: DirectPublishPlatformKey, re
       ok: response.ok && payload.ok !== false,
       status,
       publishStatus: payload.publishStatus,
-      verifyStatus: status === "published_verified" || status === "published_pending_url" ? "verified" : status === "pending_verify" ? "pending" : "failed",
+      verifyStatus:
+        ["published_verified", "public_observed", "stable_published"].includes(status)
+          ? "verified"
+          : ["published_pending_url", "pending_verify"].includes(status)
+            ? "pending"
+            : "failed",
       platformArticleId: payload.platformArticleId || result.platformArticleId,
       externalTaskId: payload.externalTaskId || result.externalTaskId,
       publicUrl: payload.publicUrl || result.publicUrl,

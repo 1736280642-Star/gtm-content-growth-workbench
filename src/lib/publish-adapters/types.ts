@@ -5,6 +5,7 @@ export interface AuthStatus {
   status: "ready" | "pending_config" | "auth_required" | "manual_takeover_required" | "failed";
   message: string;
   nextAction: string;
+  failureCode?: PublishFailureCode;
   missingConfig?: string[];
 }
 

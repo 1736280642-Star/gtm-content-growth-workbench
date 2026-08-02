@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .env import load_project_env
+from .instance_lock import RunnerInstanceLock
 from .ledger import PublishLedger
 from .platforms import BrowserPublisher, PLATFORM_CONFIG
 
@@ -33,9 +34,7 @@ def validate_publish_payload(payload: dict[str, Any]) -> str | None:
     if payload["platform"] not in PLATFORM_CONFIG:
         return "platform is not supported"
     if payload["platform"] in {"csdn", "juejin"}:
-        hybrid_required = ["externalDraftId", "editorUrl", "tagIds"]
-        if payload["platform"] == "juejin":
-            hybrid_required.append("categoryId")
+        hybrid_required = ["externalDraftId", "editorUrl", "tagIds"] if payload["platform"] == "csdn" else ["tagIds", "categoryId"]
         hybrid_missing = [name for name in hybrid_required if not payload.get(name)]
         if hybrid_missing:
             return f"hybrid publish missing fields: {', '.join(hybrid_missing)}"
@@ -93,7 +92,15 @@ class RunnerService:
                 and record.get("externalDraftId") == payload.get("externalDraftId")
                 and record.get("editorUrl") == payload.get("editorUrl")
             )
-            if can_resume_existing_draft:
+            can_resume_juejin_page_context_before_publish = bool(
+                previous_result
+                and payload.get("platform") == "juejin"
+                and previous_result.get("failureCode") == "adapter_failed"
+                and str(previous_result.get("failureReason") or "").startswith("BrowserConnectError")
+                and not record.get("externalDraftId")
+                and not previous_result.get("platformArticleId")
+            )
+            if can_resume_existing_draft or can_resume_juejin_page_context_before_publish:
                 result = self.publisher.publish(str(payload["platform"]), payload)
                 self.ledger.complete(key, result)
                 return (200 if result.get("ok") else 409 if result.get("status") == "manual_takeover_required" else 502), result
@@ -101,7 +108,18 @@ class RunnerService:
                 return 200, {**record["result"], "duplicateProtected": True}
             return 409, {"ok": False, "status": "pending_verify", "publishStatus": "failed", "failureCode": "publish_action_unconfirmed", "failureReason": "The same idempotency key is already in progress without a confirmed result.", "nextAction": "Verify the platform creator record; do not publish again.", "duplicateProtected": True}
 
-        result = self.publisher.publish(str(payload["platform"]), payload)
+        try:
+            result = self.publisher.publish(str(payload["platform"]), payload)
+        except Exception as error:
+            detail = str(error).replace("\r", " ").replace("\n", " ")[:500]
+            result = {
+                "ok": False,
+                "status": "failed",
+                "publishStatus": "failed",
+                "failureCode": "adapter_failed",
+                "failureReason": f"{type(error).__name__}: {detail}" if detail else type(error).__name__,
+                "nextAction": "The browser failed before a confirmed publish result; keep the idempotency key and inspect the creator record before retrying.",
+            }
         self.ledger.complete(key, result)
         return (200 if result.get("ok") else 409 if result.get("status") == "manual_takeover_required" else 502), result
 
@@ -169,7 +187,8 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError) as error:
             self._json(400, {"message": str(error)})
         except Exception as error:
-            self._json(500, {"ok": False, "status": "failed", "failureCode": "adapter_failed", "failureReason": type(error).__name__, "nextAction": "Inspect the local runner and platform page; do not retry blindly."})
+            detail = str(error).replace("\r", " ").replace("\n", " ")[:500]
+            self._json(500, {"ok": False, "status": "failed", "failureCode": "adapter_failed", "failureReason": f"{type(error).__name__}: {detail}" if detail else type(error).__name__, "nextAction": "Inspect the local runner and platform page; do not retry blindly."})
 
 
 def main() -> None:
@@ -187,11 +206,13 @@ def main() -> None:
     if ledger_path == repository_root or repository_root in ledger_path.parents:
         raise RuntimeError("The publish ledger must be stored outside the repository")
 
-    Handler.service = RunnerService(PublishLedger(ledger_path), BrowserPublisher())
-    Handler.bearer_token = token
-    server = ThreadingHTTPServer((host, port), Handler)
-    print(f"JOTO Arcs runner listening on http://{host}:{port}")
-    server.serve_forever()
+    lock_path = ledger_path.with_name(f"{ledger_path.stem}-{port}.lock")
+    with RunnerInstanceLock(lock_path):
+        Handler.service = RunnerService(PublishLedger(ledger_path), BrowserPublisher())
+        Handler.bearer_token = token
+        server = ThreadingHTTPServer((host, port), Handler)
+        print(f"JOTO Arcs runner listening on http://{host}:{port}")
+        server.serve_forever()
 
 
 if __name__ == "__main__":
