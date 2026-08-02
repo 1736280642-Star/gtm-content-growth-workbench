@@ -28,6 +28,7 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         ],
         "tag_selected": ["xpath://span[contains(concat(' ',normalize-space(@class),' '),' el-tag ') and normalize-space(.)={{value}}]"],
         "success_markers": ["发布成功", "审核中", "发布完成"],
+        "publish_response_targets": ["blog-console-api", "saveArticle", "publishArticle"],
         "published_markers": ["已发布", "发布成功"],
         "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://blog\.csdn\.net/[^/]+/article/details/\d+",
@@ -51,6 +52,7 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
             "xpath://div[contains(@class,'form-item') and .//div[contains(@class,'label') and contains(normalize-space(.),'添加标签')]]//span[contains(concat(' ',normalize-space(@class),' '),' byte-select__tag ') and normalize-space(.)={{value}}]"
         ],
         "success_markers": ["发布成功", "审核中", "文章发布成功"],
+        "publish_response_targets": ["content_api/v1/article/publish"],
         "published_markers": ["已发布", "发布成功"],
         "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://juejin\.cn/post/[A-Za-z0-9]+",
@@ -67,6 +69,7 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         "publish": ["xpath://button[normalize-space(.)='发布']"],
         "confirm": ["xpath://button[contains(normalize-space(.),'确认发布')]"],
         "success_markers": ["发布成功", "审核中", "已提交"],
+        "publish_response_targets": ["api/v4/articles", "zhuanlan.zhihu.com/api/articles", "/publish"],
         "published_markers": ["已发布", "发布成功"],
         "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://zhuanlan\.zhihu\.com/p/\d+",
@@ -221,6 +224,132 @@ def _first_displayed(tab, selectors: list[str], timeout: float = 2):
 def _body_text(tab) -> str:
     body = tab.ele("tag:body", timeout=1)
     return str(body.text if body else "")
+
+
+TOAST_SELECTORS = [
+    "css:[role='alert']",
+    "css:.ant-message-notice-content",
+    "css:.el-message",
+    "css:.byte-message",
+    "css:.toast",
+]
+
+
+def _visible_publish_feedback(tab) -> str:
+    messages: list[str] = []
+    for selector in TOAST_SELECTORS:
+        try:
+            elements = tab.eles(selector, timeout=0.2)
+        except (AttributeError, TypeError):
+            element = tab.ele(selector, timeout=0.2)
+            elements = [element] if element else []
+        for element in elements:
+            try:
+                text = str(element.text or "").strip()
+                if element.states.is_displayed and text and text not in messages:
+                    messages.append(text)
+            except Exception:
+                continue
+    return " | ".join(messages)[:240]
+
+
+def _start_publish_response_capture(tab, config: dict[str, Any]) -> bool:
+    targets = config.get("publish_response_targets") or []
+    if not targets:
+        return False
+    try:
+        tab.listen.start(targets)
+        return True
+    except Exception:
+        return False
+
+
+def _stop_publish_response_capture(tab) -> None:
+    try:
+        tab.listen.stop()
+    except Exception:
+        pass
+
+
+def _nested_article_id(body: Any) -> str | None:
+    if not isinstance(body, dict):
+        return None
+    for key in ("article_id", "articleId"):
+        value = str(body.get(key) or "").strip()
+        if value:
+            return value
+    for key in ("data", "article", "article_draft"):
+        value = _nested_article_id(body.get(key))
+        if value:
+            return value
+    return None
+
+
+def _publish_response_evidence(packet, toast_text: str = "") -> dict[str, Any]:
+    response = getattr(packet, "response", None) if packet else None
+    status = int(getattr(response, "status", 0) or 0)
+    body = getattr(response, "body", None)
+    body = body if isinstance(body, dict) else {}
+    code = body.get("err_no", body.get("error_code", body.get("code")))
+    normalized_code = str(code).strip().lower() if code is not None else ""
+    accepted_codes = {"", "0", "200", "ok", "success"}
+    toast = str(toast_text or "").strip()
+    normalized_toast = toast.lower()
+    toast_rejected = any(marker in normalized_toast for marker in ("失败", "拒绝", "违规", "错误", "error", "failed", "denied"))
+    toast_accepted = any(marker in normalized_toast for marker in ("发布成功", "已提交", "审核中", "success"))
+    response_accepted = bool(response) and 200 <= status < 300 and normalized_code in accepted_codes
+    rejected = bool(response) and not response_accepted
+    return {
+        "captured": bool(response) or bool(toast),
+        "accepted": (response_accepted or toast_accepted) and not toast_rejected,
+        "rejected": rejected or toast_rejected,
+        "httpStatus": status or None,
+        "businessCode": normalized_code or None,
+        "articleId": _nested_article_id(body),
+        "toast": toast,
+    }
+
+
+def _wait_publish_response_evidence(tab, capture_started: bool, timeout: int = 5) -> dict[str, Any]:
+    packet = None
+    try:
+        if capture_started:
+            packet = tab.listen.wait(timeout=timeout, raise_err=False)
+        return _publish_response_evidence(packet, _visible_publish_feedback(tab))
+    finally:
+        if capture_started:
+            _stop_publish_response_capture(tab)
+
+
+def _publish_response_result(platform: str, evidence: dict[str, Any]) -> dict[str, Any] | None:
+    if not evidence.get("captured"):
+        return None
+    toast = str(evidence.get("toast") or "")
+    if has_security_challenge(toast):
+        return _manual_takeover(f"{platform} 发布响应出现验证码或安全挑战。")
+    if evidence.get("rejected"):
+        status = evidence.get("httpStatus") or "unknown"
+        code = evidence.get("businessCode") or "unknown"
+        return _failure(
+            "platform_rejected",
+            f"{platform} 发布响应明确拒绝（HTTP {status}，业务码 {code}）。",
+            "保留当前草稿和拒绝证据；仅在平台给出明确内容原因时生成一个新版本和新排程。",
+        )
+    if evidence.get("accepted"):
+        article_id = str(evidence.get("articleId") or "").strip() or None
+        result: dict[str, Any] = {
+            "ok": True,
+            "status": "published_pending_url",
+            "publishStatus": "confirmed",
+            "verifyStatus": "pending",
+            "pendingCsvReturn": True,
+            "nextAction": f"{platform} 发布响应已接受；继续只读核验创作后台与公开 URL。",
+            "diagnosticSummary": "publish_response_accepted_pending_public_verification",
+        }
+        if article_id:
+            result["platformArticleId"] = article_id
+        return result
+    return None
 
 
 def _input(element, value: str) -> None:
@@ -672,6 +801,7 @@ class BrowserPublisher:
             browser = _browser(platform)
             tab = browser.new_tab()
             publish_action_started = False
+            response_capture_started = False
             try:
                 if platform == "juejin" and not payload.get("externalDraftId"):
                     tab.get(config["editor_url"])
@@ -744,7 +874,10 @@ class BrowserPublisher:
                             return _failure("payload_invalid", reason or f"标签未选中：{tag}。", "更新标签 selector 或标签配置，确认每个标签均显示明确选中态后再发布。")
 
                 if platform not in {"csdn", "juejin"}:
+                    response_capture_started = _start_publish_response_capture(tab, config)
                     if not _click_optional(tab, config["publish"], timeout=5):
+                        _stop_publish_response_capture(tab)
+                        response_capture_started = False
                         return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 未找到正式发布按钮。", "nextAction": "请人工检查编辑器页面，确认未发布后更新 selector。"}
                     publish_action_started = True
                     tab.wait(1)
@@ -752,51 +885,37 @@ class BrowserPublisher:
                         return _manual_takeover(f"{platform} 在发布确认阶段出现验证码或安全挑战。")
                 confirm = _first(tab, config["confirm"], timeout=5)
                 if not confirm:
+                    response_evidence = _wait_publish_response_evidence(tab, response_capture_started)
+                    response_capture_started = False
+                    response_result = _publish_response_result(platform, response_evidence)
+                    if response_result and not response_result.get("ok"):
+                        return response_result
                     if platform == "zhihu":
                         direct_publish_result = self._verify_tab(platform, tab, payload)
                         if direct_publish_result.get("ok"):
                             return direct_publish_result
+                    if response_result:
+                        return response_result
                     return _unconfirmed(f"{platform} 第一层发布已点击，但最终确认弹窗或确认按钮未出现。")
                 before_confirm_url = str(tab.url)
-                if platform == "juejin":
-                    tab.listen.start("content_api/v1/article/publish")
+                if not response_capture_started:
+                    response_capture_started = _start_publish_response_capture(tab, config)
                 confirm.click()
-                publish_packet = tab.listen.wait(timeout=10, raise_err=False) if platform == "juejin" else None
-                if platform == "juejin":
-                    tab.listen.stop()
-                publish_body = getattr(getattr(publish_packet, "response", None), "body", None)
-                if isinstance(publish_body, dict):
-                    publish_error = publish_body.get("err_no", publish_body.get("error_code", 0))
-                    publish_message = str(publish_body.get("err_msg") or publish_body.get("message") or "").strip()
-                    publish_data = publish_body.get("data") if isinstance(publish_body.get("data"), dict) else {}
-                    article_id = str(
-                        publish_data.get("article_id")
-                        or publish_data.get("articleId")
-                        or publish_data.get("id")
-                        or ""
-                    ).strip()
-                    if str(publish_error) not in {"", "0", "None"}:
-                        return _failure(
-                            "adapter_failed",
-                            f"juejin 发布接口拒绝：{publish_message or publish_error}。",
-                            "根据平台业务错误修正发布设置；确认 draft detail 仍无 article_id 后才可恢复同一草稿。",
-                        )
-                    if article_id:
-                        return {
-                            "ok": True,
-                            "status": "published_pending_url",
-                            "publishStatus": "confirmed",
-                            "verifyStatus": "pending",
-                            "platformArticleId": article_id,
-                            "pendingCsvReturn": True,
-                            "nextAction": "掘金正式发布接口已返回文章 ID；继续验证公开 URL，不能仅凭文章 ID 判定稳定发布。",
-                            "diagnosticSummary": "publish_api_accepted_pending_public_verification",
-                        }
+                response_evidence = _wait_publish_response_evidence(tab, response_capture_started, timeout=10)
+                response_capture_started = False
+                response_result = _publish_response_result(platform, response_evidence)
+                if response_result and not response_result.get("ok"):
+                    return response_result
                 if not _wait_for_publish_action(tab, config["confirm"], before_confirm_url, config["success_markers"]):
                     if has_security_challenge(_body_text(tab)):
                         return _manual_takeover(f"{platform} 在最终确认后出现验证码或安全挑战。")
+                    if response_result:
+                        return response_result
                     return _unconfirmed(f"{platform} 最终确认按钮已点击，但弹窗未关闭、页面未跳转且没有成功提示。")
-                return self._verify_tab(platform, tab, payload)
+                verified_result = self._verify_tab(platform, tab, payload)
+                if verified_result.get("ok"):
+                    return verified_result
+                return response_result or verified_result
             except Exception as error:
                 if has_security_challenge(_body_text(tab)):
                     return _manual_takeover(f"{platform} 出现验证码或安全挑战。")
@@ -804,6 +923,8 @@ class BrowserPublisher:
                     return _unconfirmed(f"{platform} 发布点击后浏览器执行异常：{type(error).__name__}。")
                 return {"ok": False, "status": "failed", "publishStatus": "failed", "failureCode": "adapter_failed", "failureReason": f"{platform} 浏览器执行失败：{type(error).__name__}", "nextAction": "请先检查平台后台是否已生成文章；确认未生成后再创建新排程。"}
             finally:
+                if response_capture_started:
+                    _stop_publish_response_capture(tab)
                 tab.close()
 
     def verify(self, platform: str, payload: dict[str, Any]) -> dict[str, Any]:

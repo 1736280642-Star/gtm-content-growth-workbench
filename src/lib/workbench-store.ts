@@ -6872,6 +6872,19 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
     };
   }
 
+  const platformWriteBlocker = state.publishSchedules.find(
+    (item) =>
+      item.platform === schedule.platform &&
+      ["manual_takeover_required", "risk_blocked", "auth_expired"].includes(item.status)
+  );
+  if (platformWriteBlocker) {
+    return {
+      ok: false,
+      status: "pending_input",
+      message: `${schedule.platform} 写队列已由风险或认证门禁暂停；冷却到期只执行只读探测，不会通过 run 接口绕过门禁。`
+    };
+  }
+
   const draft = state.drafts.find((item) => item.id === schedule.draftId);
 
   if (!draft) {
@@ -7213,6 +7226,7 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
       "public_observed",
       "manual_takeover_required",
       "risk_blocked",
+      "auth_expired",
       "publishing"
     ].includes(schedule.status) &&
       !canVerifyAfterPriorPublishAction)
@@ -7326,13 +7340,26 @@ export async function runDuePublishSchedules(input: Record<string, unknown> = {}
     "pending_verify",
     "published_pending_url",
     "published_verified",
-    "public_observed"
+    "public_observed",
+    "manual_takeover_required",
+    "risk_blocked",
+    "auth_expired"
   ];
+  const writeBlockedPlatforms = new Set(
+    state.publishSchedules
+      .filter((schedule) => ["manual_takeover_required", "risk_blocked", "auth_expired"].includes(schedule.status))
+      .map((schedule) => schedule.platform)
+  );
   const pendingVerifySchedules = state.publishSchedules
     .filter((schedule) => verificationStatuses.includes(schedule.status) && isPublishVerificationDue(schedule, now))
     .slice(0, limit);
   const dueSchedules = state.publishSchedules
-    .filter((schedule) => schedule.status === "scheduled" && new Date(schedule.scheduledAt).getTime() <= now.getTime())
+    .filter(
+      (schedule) =>
+        schedule.status === "scheduled" &&
+        !writeBlockedPlatforms.has(schedule.platform) &&
+        new Date(schedule.scheduledAt).getTime() <= now.getTime()
+    )
     .slice(0, Math.max(0, limit - pendingVerifySchedules.length));
   const schedules: PublishSchedule[] = [];
   const attempts: PublishAttempt[] = [];

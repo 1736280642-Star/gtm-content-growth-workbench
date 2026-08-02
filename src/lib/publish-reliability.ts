@@ -10,10 +10,13 @@ export interface PublishReliabilityMetrics {
   platformRejected: number;
   riskBlocked: number;
   duplicateProtectedAttempts: number;
+  duplicatePublishCount: number;
   submissionAcceptanceRate: number | null;
   publicConversionRate: number | null;
   survival24hRate: number | null;
   survival72hRate: number | null;
+  riskBlockRate: number | null;
+  duplicatePublishRate: number | null;
   averageUrlBackfillLatencyMinutes: number | null;
 }
 
@@ -65,6 +68,23 @@ export function buildPublishReliabilityMetrics(
     const submittedSchedules = platformSchedules.filter(
       (schedule) => SUBMITTED_STATUSES.has(schedule.status) || acceptedAttemptScheduleIds.has(schedule.id)
     );
+    const acceptedInitialAttemptsBySchedule = new Map<string, number>();
+    for (const attempt of platformAttempts.filter(
+      (item) =>
+        item.mode === "real" &&
+        item.verificationKind !== "liveness" &&
+        item.diagnosticSummary !== "verify_only_no_publish_action" &&
+        Boolean(item.publishStatus && ACCEPTED_PUBLISH_STATUSES.has(item.publishStatus))
+    )) {
+      acceptedInitialAttemptsBySchedule.set(
+        attempt.scheduleId,
+        (acceptedInitialAttemptsBySchedule.get(attempt.scheduleId) || 0) + 1
+      );
+    }
+    const duplicatePublishCount = [...acceptedInitialAttemptsBySchedule.values()].reduce(
+      (sum, count) => sum + Math.max(0, count - 1),
+      0
+    );
     const observed = platformSchedules.filter((schedule) => Boolean(schedule.firstPublicObservedAt));
     const observed24h = observed.filter(
       (schedule) =>
@@ -98,10 +118,16 @@ export function buildPublishReliabilityMetrics(
       platformRejected: platformSchedules.filter((schedule) => schedule.status === "platform_rejected").length,
       riskBlocked: platformSchedules.filter((schedule) => schedule.status === "risk_blocked").length,
       duplicateProtectedAttempts: platformAttempts.filter((attempt) => attempt.failureCode === "duplicate_protected").length,
+      duplicatePublishCount,
       submissionAcceptanceRate: rate(submittedSchedules.length, platformSchedules.length),
       publicConversionRate: rate(observed.length, submittedSchedules.length),
       survival24hRate: rate(observed24h.length, eligible24h.length),
       survival72hRate: rate(observed72h.length, eligible72h.length),
+      riskBlockRate: rate(
+        platformSchedules.filter((schedule) => schedule.status === "risk_blocked").length,
+        platformSchedules.length
+      ),
+      duplicatePublishRate: rate(duplicatePublishCount, submittedSchedules.length),
       averageUrlBackfillLatencyMinutes: latencies.length
         ? Number((latencies.reduce((sum, value) => sum + value, 0) / latencies.length).toFixed(2))
         : null

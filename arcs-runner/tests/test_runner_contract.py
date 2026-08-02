@@ -17,6 +17,8 @@ from joto_arcs_runner.platforms import (
     _editor_url,
     _element_is_selected,
     _input_first,
+    _publish_response_evidence,
+    _publish_response_result,
     _record_status,
     _publish_juejin_page_context,
     _verify_juejin_draft_api,
@@ -303,12 +305,49 @@ class RunnerContractTest(unittest.TestCase):
         self.assertLess(category_selection, tag_selection)
         self.assertLess(tag_selection, final_confirmation)
 
-    def test_juejin_final_publish_captures_platform_api_result_without_logging_credentials(self):
+    def test_all_platforms_capture_publish_response_without_logging_credentials(self):
         source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
-        self.assertIn('tab.listen.start("content_api/v1/article/publish")', source)
+        for platform in ("csdn", "juejin", "zhihu"):
+            self.assertTrue(PLATFORM_CONFIG[platform]["publish_response_targets"])
+        self.assertIn("_start_publish_response_capture(tab, config)", source)
+        self.assertIn("_visible_publish_feedback(tab)", source)
         self.assertIn('"status": "published_pending_url"', source)
-        self.assertIn('"diagnosticSummary": "publish_api_accepted_pending_public_verification"', source)
-        self.assertNotIn("publish_packet.request.headers", source)
+        self.assertIn('"diagnosticSummary": "publish_response_accepted_pending_public_verification"', source)
+        self.assertNotIn("packet.request.headers", source)
+
+    def test_publish_response_evidence_distinguishes_acceptance_and_rejection(self):
+        class Response:
+            status = 200
+            body = {"err_no": 0, "data": {"article_id": "article-2"}}
+
+        class Packet:
+            response = Response()
+
+        accepted = _publish_response_evidence(Packet(), "发布成功")
+        self.assertTrue(accepted["accepted"])
+        self.assertFalse(accepted["rejected"])
+        self.assertEqual(accepted["articleId"], "article-2")
+        accepted_result = _publish_response_result("juejin", accepted)
+        self.assertEqual(accepted_result["status"], "published_pending_url")
+        self.assertEqual(accepted_result["platformArticleId"], "article-2")
+
+        class RejectedResponse:
+            status = 200
+            body = {"err_no": 1001, "err_msg": "private response details"}
+
+        class RejectedPacket:
+            response = RejectedResponse()
+
+        rejected = _publish_response_evidence(RejectedPacket())
+        rejected_result = _publish_response_result("juejin", rejected)
+        self.assertTrue(rejected["rejected"])
+        self.assertEqual(rejected_result["failureCode"], "platform_rejected")
+        self.assertNotIn("private response details", rejected_result["failureReason"])
+
+    def test_publish_toast_security_challenge_is_risk_blocked(self):
+        evidence = _publish_response_evidence(None, "请完成手机号验证")
+        result = _publish_response_result("zhihu", evidence)
+        self.assertEqual(result["failureCode"], "manual_takeover_required")
 
     def test_publish_action_guard_is_initialized_inside_publish_method(self):
         source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
