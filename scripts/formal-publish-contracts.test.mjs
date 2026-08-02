@@ -5,7 +5,13 @@ import { join } from "node:path";
 import test from "node:test";
 import { buildPublishIdempotencyKey, hashDirectPublishContent } from "../src/lib/publish-idempotency.ts";
 import { getPublishAdapter } from "../src/lib/publish-adapters/index.ts";
+import { isPublishVerificationDue, resolvePublishVerificationLifecycle } from "../src/lib/publish-lifecycle.ts";
+import { preflightPublishContent, rewriteJuejinContentOnce } from "../src/lib/publish-content-preflight.ts";
+import { buildPublishReliabilityMetrics } from "../src/lib/publish-reliability.ts";
+import { mergePublishRecordPlatformResult } from "../src/lib/publish-record-platform-results.ts";
+import { serializePublishMutation } from "../src/lib/publish-mutation-queue.ts";
 import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
+import { createBrowserPublishJobStore } from "./lib/browser-publish-job-store.mjs";
 import { createCsdnGatewayHeaders } from "./lib/csdn-api-gateway.mjs";
 import { submitAndPollWechatPublish } from "./lib/wechat-formal-publish.mjs";
 
@@ -180,14 +186,392 @@ test("direct publish worker continuously claims due schedules without a page cli
   const store = readFileSync(new URL("../src/lib/workbench-store.ts", import.meta.url), "utf8");
   assert.match(worker, /postJson\(baseUrl, "\/api\/direct-publish", \{ limit \}\)/);
   assert.match(worker, /args\.once \? 1/);
+  assert.match(store, /verificationStatuses\.includes\(schedule\.status\) && isPublishVerificationDue\(schedule, now\)/);
   assert.match(store, /schedule\.status === "scheduled" && new Date\(schedule\.scheduledAt\)\.getTime\(\) <= now\.getTime\(\)/);
+});
+
+test("publish mutations are serialized across concurrent API requests", async () => {
+  const events = [];
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const first = serializePublishMutation(async () => {
+    events.push("first:start");
+    await firstGate;
+    events.push("first:end");
+  });
+  const second = serializePublishMutation(async () => {
+    events.push("second:start");
+    events.push("second:end");
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ["first:start"]);
+  releaseFirst();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ["first:start", "first:end", "second:start", "second:end"]);
+});
+
+test("publish record keeps one URL result per platform without overwriting its primary channel", () => {
+  const record = {
+    id: "record-1",
+    draftId: "draft-1",
+    channel: "wechat",
+    title: "Title",
+    publishStatus: "queued"
+  };
+  const csdnSchedule = {
+    ...lifecycleSchedule(),
+    id: "schedule-csdn",
+    platform: "csdn",
+    status: "public_observed",
+    publicUrl: "https://blog.csdn.net/example/article/details/1",
+    urlStatus: "provisional"
+  };
+  const zhihuSchedule = {
+    ...lifecycleSchedule(),
+    id: "schedule-zhihu",
+    platform: "zhihu",
+    status: "public_observed",
+    publicUrl: "https://zhuanlan.zhihu.com/p/2",
+    urlStatus: "provisional"
+  };
+  const merged = mergePublishRecordPlatformResult(mergePublishRecordPlatformResult(record, csdnSchedule), zhihuSchedule);
+  assert.equal(merged.platformResults.csdn.publicUrl, csdnSchedule.publicUrl);
+  assert.equal(merged.platformResults.zhihu.publicUrl, zhihuSchedule.publicUrl);
+  assert.equal(merged.publishedUrl, undefined);
+  assert.equal(merged.publishStatus, "queued");
+});
+
+test("primary platform failure clears a stale URL previously written by another platform", () => {
+  const record = {
+    id: "record-1",
+    draftId: "draft-1",
+    channel: "wechat",
+    title: "Title",
+    publishStatus: "url_filled",
+    publishedUrl: "https://zhuanlan.zhihu.com/p/2",
+    urlStatus: "provisional"
+  };
+  const failedWechat = {
+    ...lifecycleSchedule(),
+    id: "schedule-wechat",
+    platform: "wechat",
+    status: "failed",
+    failureCode: "adapter_failed",
+    failureReason: "cover missing"
+  };
+  const merged = mergePublishRecordPlatformResult(record, failedWechat);
+  assert.equal(merged.publishStatus, "failed");
+  assert.equal(merged.publishedUrl, undefined);
+  assert.equal(merged.platformResults.wechat.status, "failed");
+});
+
+test("browser publish jobs are idempotent and serialized per platform", () => {
+  const directory = mkdtempSync(join(tmpdir(), "joto-browser-publish-"));
+  const store = createBrowserPublishJobStore(join(directory, "jobs.json"), { leaseMs: 30_000 });
+  const first = store.enqueue({ platform: "juejin", idempotencyKey: "key-1", payload: { title: "One" } });
+  const duplicate = store.enqueue({ platform: "juejin", idempotencyKey: "key-1", payload: { title: "Duplicate" } });
+  const second = store.enqueue({ platform: "juejin", idempotencyKey: "key-2", payload: { title: "Two" } });
+  assert.equal(first.created, true);
+  assert.equal(duplicate.created, false);
+  assert.equal(duplicate.job.id, first.job.id);
+
+  const claimed = store.claim("worker-a", ["juejin"]);
+  assert.equal(claimed.id, first.job.id);
+  assert.equal(claimed.payload.title, "One");
+  assert.equal(store.claim("worker-b", ["juejin"]), undefined);
+  assert.equal(store.complete(claimed.id, "worker-b", { ok: true }), undefined);
+  const completed = store.complete(claimed.id, "worker-a", { ok: true, status: "published_pending_url" });
+  assert.equal(completed.status, "completed");
+  assert.equal(store.claim("worker-b", ["juejin"]).id, second.job.id);
+});
+
+test("juejin preflight blocks promotional shallow content and allows one immutable rewrite", () => {
+  const original = "扫码免费领取资料 https://one.example https://two.example https://three.example";
+  const blocked = preflightPublishContent({ platform: "juejin", title: "重磅！！", markdown: original });
+  assert.equal(blocked.passed, false);
+  assert.ok(blocked.blockers.some((item) => item.code === "juejin_promotion_risk"));
+  const rewritten = rewriteJuejinContentOnce({
+    title: "重磅！！",
+    markdown: `${original}\n\n${"实现细节与验证内容。".repeat(100)}`
+  });
+  assert.equal(original.includes("扫码"), true);
+  assert.equal(rewritten.markdown.includes("扫码"), false);
+  assert.match(rewritten.markdown, /## 验证步骤/);
+});
+
+test("AI preflight creates one immutable rewrite variant and never rewrites the rewrite", () => {
+  const source = readFileSync(join(process.cwd(), "src/lib/workbench-store.ts"), "utf8");
+  const start = source.indexOf("export async function preparePublishContentWithAi");
+  const end = source.indexOf("export function createDistributionTargetsForPublishRecord", start);
+  const implementation = source.slice(start, end);
+  assert.match(implementation, /preparePublishContent\(\{ \.\.\.input, autoRewrite: false \}\)/);
+  assert.match(implementation, /preflight\?\.rewriteApplied === true/);
+  assert.match(implementation, /rewriteOfVariantId: sourceVariant\.id/);
+  assert.match(implementation, /state\.platformDraftVariants\.push\(variant\)/);
+  assert.doesNotMatch(implementation, /state\.platformDraftVariants\[index\] = variant/);
+});
+
+test("reliability metrics distinguish public observation, stability, and removal", () => {
+  const metrics = buildPublishReliabilityMetrics(
+    [
+      {
+        id: "schedule-1",
+        platform: "juejin",
+        status: "stable_published",
+        scheduledAt: "2026-07-01T00:00:00.000Z",
+        draftId: "draft-1",
+        contentHash: "hash",
+        idempotencyKey: "key",
+        attemptIds: [],
+        publishedAt: "2026-07-01T00:00:00.000Z",
+        firstPublicObservedAt: "2026-07-01T00:10:00.000Z",
+        lastVerifiedAt: "2026-07-04T01:00:00.000Z",
+        retryCount: 0,
+        createdAt: "2026-07-01T00:00:00.000Z"
+      },
+      {
+        id: "schedule-2",
+        platform: "juejin",
+        status: "removed_after_publish",
+        scheduledAt: "2026-07-01T00:00:00.000Z",
+        draftId: "draft-2",
+        contentHash: "hash",
+        idempotencyKey: "key-2",
+        attemptIds: [],
+        publishedAt: "2026-07-01T00:00:00.000Z",
+        firstPublicObservedAt: "2026-07-01T00:10:00.000Z",
+        lastVerifiedAt: "2026-07-01T12:00:00.000Z",
+        removedAt: "2026-07-01T12:00:00.000Z",
+        retryCount: 0,
+        createdAt: "2026-07-01T00:00:00.000Z"
+      }
+    ],
+    []
+  ).find((item) => item.platform === "juejin");
+  assert.equal(metrics.publicObserved, 2);
+  assert.equal(metrics.stablePublished, 1);
+  assert.equal(metrics.removedAfterPublish, 1);
+  assert.equal(metrics.survival72hRate, 0.5);
+});
+
+test("URL backfill latency starts at the first real publish action", () => {
+  const schedule = {
+    ...lifecycleSchedule(),
+    id: "schedule-latency",
+    platform: "zhihu",
+    status: "public_observed",
+    publishedAt: "2026-07-31T00:05:00.000Z",
+    firstPublicObservedAt: "2026-07-31T00:05:00.000Z",
+    lastVerifiedAt: "2026-07-31T00:05:00.000Z"
+  };
+  const attempt = {
+    id: "attempt-latency",
+    scheduleId: schedule.id,
+    platform: "zhihu",
+    contentHash: "hash",
+    idempotencyKey: "key",
+    status: "pending_verify",
+    startedAt: "2026-07-31T00:00:00.000Z",
+    mode: "real",
+    authStatus: "ready",
+    payloadStatus: "valid",
+    publishStatus: "failed",
+    verifyStatus: "pending",
+    failureCode: "publish_action_unconfirmed",
+    pendingCsvReturn: true
+  };
+  const metrics = buildPublishReliabilityMetrics([schedule], [attempt]).find((item) => item.platform === "zhihu");
+  assert.equal(metrics.averageUrlBackfillLatencyMinutes, 5);
+});
+
+test("ambiguous pending verification is not counted as an accepted submission", () => {
+  const schedule = lifecycleSchedule({ id: "schedule-ambiguous", platform: "zhihu", status: "pending_verify" });
+  const attempt = {
+    id: "attempt-ambiguous",
+    scheduleId: schedule.id,
+    platform: "zhihu",
+    contentHash: "hash",
+    idempotencyKey: "key",
+    status: "pending_verify",
+    startedAt: "2026-07-31T00:00:00.000Z",
+    mode: "real",
+    authStatus: "ready",
+    payloadStatus: "valid",
+    publishStatus: "failed",
+    verifyStatus: "pending",
+    pendingCsvReturn: true
+  };
+  const metrics = buildPublishReliabilityMetrics([schedule], [attempt]).find((item) => item.platform === "zhihu");
+  assert.equal(metrics.submitted, 0);
+  assert.equal(metrics.submissionAcceptanceRate, 0);
+});
+
+function lifecycleSchedule(overrides = {}) {
+  return {
+    id: "schedule-lifecycle",
+    platform: "juejin",
+    status: "pending_verify",
+    scheduledAt: "2026-07-31T00:00:00.000Z",
+    draftId: "draft-1",
+    contentHash: "hash",
+    idempotencyKey: "key",
+    attemptIds: [],
+    retryCount: 0,
+    createdAt: "2026-07-31T00:00:00.000Z",
+    ...overrides
+  };
+}
+
+test("first reachable public URL is provisional until a later liveness check", () => {
+  const verifiedAt = "2026-07-31T01:00:00.000Z";
+  const lifecycle = resolvePublishVerificationLifecycle(
+    lifecycleSchedule(),
+    {
+      ok: true,
+      status: "published_verified",
+      publishStatus: "confirmed",
+      verifyStatus: "verified",
+      platformArticleId: "article-1",
+      publicUrl: "https://juejin.cn/post/article-1",
+      nextAction: "verified"
+    },
+    verifiedAt
+  );
+  assert.equal(lifecycle.status, "public_observed");
+  assert.equal(lifecycle.urlStatus, "provisional");
+  assert.equal(lifecycle.firstPublicObservedAt, verifiedAt);
+  assert.ok(lifecycle.nextVerificationAt);
+});
+
+test("a later reachable check promotes a public URL to stable after the configured window", () => {
+  const previousWindow = process.env.DIRECT_PUBLISH_STABLE_AFTER_HOURS;
+  process.env.DIRECT_PUBLISH_STABLE_AFTER_HOURS = "1";
+  try {
+    const lifecycle = resolvePublishVerificationLifecycle(
+      lifecycleSchedule({
+        status: "public_observed",
+        publicUrl: "https://juejin.cn/post/article-1",
+        urlStatus: "provisional",
+        firstPublicObservedAt: "2026-07-31T01:00:00.000Z",
+        verificationCount: 1
+      }),
+      {
+        ok: true,
+        status: "published_verified",
+        publishStatus: "confirmed",
+        verifyStatus: "verified",
+        platformArticleId: "article-1",
+        publicUrl: "https://juejin.cn/post/article-1",
+        nextAction: "verified"
+      },
+      "2026-07-31T02:01:00.000Z"
+    );
+    assert.equal(lifecycle.status, "stable_published");
+    assert.equal(lifecycle.urlStatus, "stable");
+    assert.equal(lifecycle.stablePublishedAt, "2026-07-31T02:01:00.000Z");
+  } finally {
+    if (previousWindow === undefined) delete process.env.DIRECT_PUBLISH_STABLE_AFTER_HOURS;
+    else process.env.DIRECT_PUBLISH_STABLE_AFTER_HOURS = previousWindow;
+  }
+});
+
+test("two consecutive inaccessible checks mark a previously public article as removed", () => {
+  const result = {
+    ok: true,
+    status: "published_pending_url",
+    publishStatus: "pending_review",
+    verifyStatus: "pending",
+    platformArticleId: "article-1",
+    nextAction: "retry verification"
+  };
+  const first = resolvePublishVerificationLifecycle(
+    lifecycleSchedule({
+      status: "public_observed",
+      publicUrl: "https://juejin.cn/post/article-1",
+      urlStatus: "provisional",
+      firstPublicObservedAt: "2026-07-31T01:00:00.000Z",
+      verificationCount: 1
+    }),
+    result,
+    "2026-07-31T01:10:00.000Z"
+  );
+  assert.equal(first.status, "published_pending_url");
+  assert.equal(first.consecutiveVerificationFailures, 1);
+
+  const second = resolvePublishVerificationLifecycle(
+    lifecycleSchedule({
+      status: first.status,
+      publicUrl: "https://juejin.cn/post/article-1",
+      urlStatus: first.urlStatus,
+      firstPublicObservedAt: first.firstPublicObservedAt,
+      verificationStartedAt: first.verificationStartedAt,
+      verificationCount: first.verificationCount,
+      consecutiveVerificationFailures: first.consecutiveVerificationFailures
+    }),
+    result,
+    "2026-07-31T01:20:00.000Z"
+  );
+  assert.equal(second.status, "removed_after_publish");
+  assert.equal(second.urlStatus, "removed");
+  assert.equal(second.failureCode, "removed_after_publish");
+});
+
+test("verification scheduling respects nextVerificationAt", () => {
+  const schedule = lifecycleSchedule({ nextVerificationAt: "2026-07-31T01:10:00.000Z" });
+  assert.equal(isPublishVerificationDue(schedule, new Date("2026-07-31T01:09:59.000Z")), false);
+  assert.equal(isPublishVerificationDue(schedule, new Date("2026-07-31T01:10:00.000Z")), true);
+});
+
+test("unpublished verification backs off instead of polling every minute for seven days", () => {
+  const lifecycle = resolvePublishVerificationLifecycle(
+    lifecycleSchedule({
+      verificationStartedAt: "2026-07-31T00:00:00.000Z",
+      verificationCount: 8,
+      consecutiveVerificationFailures: 8
+    }),
+    {
+      ok: false,
+      status: "pending_verify",
+      publishStatus: "failed",
+      verifyStatus: "pending",
+      failureCode: "publish_action_unconfirmed",
+      failureReason: "not public"
+    },
+    "2026-07-31T02:00:00.000Z"
+  );
+  assert.equal(lifecycle.nextVerificationAt, "2026-07-31T03:00:00.000Z");
+  assert.equal(lifecycle.status, "pending_verify");
+});
+
+test("public liveness scheduling lands on the stability threshold instead of overshooting it", () => {
+  const lifecycle = resolvePublishVerificationLifecycle(
+    lifecycleSchedule({
+      status: "public_observed",
+      publicUrl: "https://juejin.cn/post/article-1",
+      urlStatus: "provisional",
+      firstPublicObservedAt: "2026-07-31T00:00:00.000Z",
+      verificationStartedAt: "2026-07-31T00:00:00.000Z",
+      verificationCount: 4
+    }),
+    {
+      ok: true,
+      status: "published_verified",
+      publishStatus: "confirmed",
+      verifyStatus: "verified",
+      publicUrl: "https://juejin.cn/post/article-1"
+    },
+    "2026-08-02T07:00:00.000Z"
+  );
+  assert.equal(lifecycle.nextVerificationAt, "2026-08-03T00:00:00.000Z");
 });
 
 test("safe retry recovers legacy pre-publish failures and interrupted schedules", () => {
   const store = readFileSync(new URL("../src/lib/workbench-store.ts", import.meta.url), "utf8");
   assert.match(store, /const retryFailureIsBeforePublish = Boolean\(/);
   assert.match(store, /schedule\.status === "failed"[\s\S]{0,80}schedule\.status === "precheck_failed"[\s\S]{0,80}schedule\.status === "publishing"/);
-  assert.match(store, /retryAttemptForRetry\.failureCode === "adapter_failed"[\s\S]{0,100}retryAttemptForRetry\.failureReason === "BrowserConnectError"/);
+  assert.match(store, /retryAttemptForRetry\.failureCode === "adapter_failed"[\s\S]{0,100}retryAttemptForRetry\.failureReason\?\.startsWith\("BrowserConnectError"\)/);
   assert.match(store, /schedule\.platform === "csdn" && schedule\.status === "pending_verify"/);
   assert.match(store, /retryAttemptForRetry\.publishStatus === "failed" \|\| retryAttemptForRetry\.publishStatus === undefined/);
   assert.match(store, /retryAttemptForRetry\?\.verifyStatus === "not_started"/);

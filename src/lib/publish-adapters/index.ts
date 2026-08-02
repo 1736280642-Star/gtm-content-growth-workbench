@@ -71,7 +71,7 @@ function verifyLocalResult(result: PublishResult): VerifyResult {
     ok: true,
     status: result.status,
     publishStatus: result.publishStatus,
-    verifyStatus: result.status === "pending_verify" ? "pending" : "verified",
+    verifyStatus: ["pending_verify", "published_pending_url"].includes(result.status) ? "pending" : "verified",
     platformArticleId: result.platformArticleId,
     externalTaskId: result.externalTaskId,
     publicUrl: result.publicUrl,
@@ -106,7 +106,7 @@ abstract class BaseDirectPublishAdapter implements PublishAdapter {
   }
 
   async verify(result: PublishResult): Promise<VerifyResult> {
-    if (getMode() !== "real" || result.status !== "pending_verify") return verifyLocalResult(result);
+    if (getMode() !== "real" || !["pending_verify", "published_pending_url"].includes(result.status)) return verifyLocalResult(result);
     return verifyFormalPublish(this.platform, result);
   }
 }

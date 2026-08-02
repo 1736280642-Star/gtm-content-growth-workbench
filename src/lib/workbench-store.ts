@@ -16,6 +16,9 @@ import { channelDistributionTargets, channelLabels, distributionPlatformLabels, 
 import { parseBotLogInput } from "./log-import-adapter";
 import { buildPublishIdempotencyKey, hashDirectPublishContent } from "./publish-idempotency";
 import { coerceDirectPublishPlatform, getPublishAdapter } from "./publish-adapters";
+import { isPublishVerificationDue, resolvePublishVerificationLifecycle } from "./publish-lifecycle";
+import { preflightPublishContent, rewriteJuejinContentOnce } from "./publish-content-preflight";
+import { mergePublishRecordPlatformResult } from "./publish-record-platform-results";
 import { getPromptTemplate, promptTemplates } from "./prompt-templates";
 import { getWorkbenchRepository } from "./repositories";
 import type {
@@ -499,11 +502,16 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
   const normalizedProducts = coerceProducts(rawWorkspaceSetting.enabledProducts) || base.workspaceSetting.enabledProducts;
   const normalizedProductPlans = normalizeProductPlans(rawWorkspaceSetting.productPlans, normalizedProducts, normalizedChannels);
   const normalizedDrafts = value.drafts || base.drafts;
-  const normalizedPublishRecords = value.publishRecords || base.publishRecords;
+  const rawPublishRecords = value.publishRecords || base.publishRecords;
   const normalizedPlatformDraftVariants = normalizePlatformDraftVariants(value.platformDraftVariants || base.platformDraftVariants);
   const normalizedDistributionTargets = normalizeDistributionTargets(value.distributionTargets || base.distributionTargets);
   const normalizedPublishSchedules = normalizePublishSchedules(value.publishSchedules || base.publishSchedules);
   const normalizedPublishAttempts = normalizePublishAttempts(value.publishAttempts || base.publishAttempts);
+  const normalizedPublishRecords = rawPublishRecords.map((record) =>
+    normalizedPublishSchedules
+      .filter((schedule) => schedule.publishRecordId === record.id)
+      .reduce(mergePublishRecordPlatformResult, record)
+  );
 
   return {
     ...base,
@@ -2908,6 +2916,13 @@ function normalizePublishScheduleStatus(value: unknown): PublishScheduleStatus {
     "published_verified",
     "published_pending_url",
     "pending_verify",
+    "public_observed",
+    "stable_published",
+    "platform_rejected",
+    "removed_after_publish",
+    "risk_blocked",
+    "verification_timeout",
+    "auth_expired",
     "failed",
     "manual_takeover_required",
     "pending_config"
@@ -2923,6 +2938,13 @@ function normalizePublishAttemptStatus(value: unknown): PublishAttemptStatus {
     "published_verified",
     "published_pending_url",
     "pending_verify",
+    "public_observed",
+    "stable_published",
+    "platform_rejected",
+    "removed_after_publish",
+    "risk_blocked",
+    "verification_timeout",
+    "auth_expired",
     "failed",
     "manual_takeover_required",
     "pending_config"
@@ -2940,6 +2962,12 @@ function normalizePublishFailureCode(value: unknown): PublishFailureCode | undef
     "platform_review_pending",
     "publish_action_unconfirmed",
     "verification_failed",
+    "platform_rejected",
+    "removed_after_publish",
+    "risk_blocked",
+    "verification_timeout",
+    "auth_expired",
+    "content_blocked",
     "manual_takeover_required",
     "duplicate_protected",
     "adapter_failed",
@@ -2969,6 +2997,17 @@ function normalizePublishSchedules(value?: PublishSchedule[]): PublishSchedule[]
       idempotencyKey: schedule.idempotencyKey || buildPublishIdempotencyKey(schedule.id, platform, contentHash),
       status: normalizePublishScheduleStatus(schedule.status),
       attemptIds: Array.isArray(schedule.attemptIds) ? schedule.attemptIds.filter((id): id is string => typeof id === "string") : [],
+      urlStatus:
+        ["pending", "provisional", "stable", "removed", "rejected"].includes(schedule.urlStatus || "")
+          ? schedule.urlStatus
+          : schedule.publicUrl
+            ? "provisional"
+            : "pending",
+      verificationCount: typeof schedule.verificationCount === "number" && schedule.verificationCount >= 0 ? schedule.verificationCount : 0,
+      consecutiveVerificationFailures:
+        typeof schedule.consecutiveVerificationFailures === "number" && schedule.consecutiveVerificationFailures >= 0
+          ? schedule.consecutiveVerificationFailures
+          : 0,
       pendingCsvReturn: Boolean(schedule.pendingCsvReturn),
       failureCode: normalizePublishFailureCode(schedule.failureCode),
       retryCount: typeof schedule.retryCount === "number" && schedule.retryCount >= 0 ? schedule.retryCount : 0,
@@ -3004,6 +3043,12 @@ function normalizePublishAttempts(value?: PublishAttempt[]): PublishAttempt[] {
         : "failed",
       payloadStatus: attempt.payloadStatus === "valid" ? "valid" : "invalid",
       verifyStatus: ["verified", "pending", "failed", "not_started"].includes(attempt.verifyStatus || "") ? attempt.verifyStatus : "not_started",
+      urlStatus: ["pending", "provisional", "stable", "removed", "rejected"].includes(attempt.urlStatus || "")
+        ? attempt.urlStatus
+        : attempt.publicUrl
+          ? "provisional"
+          : "pending",
+      verificationKind: attempt.verificationKind === "liveness" ? "liveness" : "initial",
       pendingCsvReturn: Boolean(attempt.pendingCsvReturn),
       failureCode: normalizePublishFailureCode(attempt.failureCode)
     });
@@ -6155,6 +6200,172 @@ function ensurePlatformDraftVariant(state: WorkbenchState, record: PublishRecord
   return variant;
 }
 
+function directToDistributionPlatform(platform: DirectPublishPlatformKey): DistributionPlatformKey {
+  return platform === "wechat" ? "weixin" : platform;
+}
+
+function toStoredPreflight(result: ReturnType<typeof preflightPublishContent>, rewriteApplied = false) {
+  return {
+    ruleVersion: result.ruleVersion,
+    passed: result.passed,
+    blockerCodes: result.blockers.map((item) => item.code),
+    warningCodes: result.warnings.map((item) => item.code),
+    checkedAt: result.checkedAt,
+    rewriteApplied
+  };
+}
+
+export function preparePublishContent(
+  input: Record<string, unknown>
+): WorkflowResult<{ variant: PlatformDraftVariant; preflight: ReturnType<typeof preflightPublishContent> }> {
+  const state = readWorkbenchState();
+  const draftId = typeof input.draftId === "string" ? input.draftId : "";
+  const platform = coerceDirectPublishPlatform(input.platform);
+  const draft = state.drafts.find((item) => item.id === draftId);
+  if (!draft || !platform) {
+    return { ok: false, status: "pending_input", message: "draftId and a supported platform are required." };
+  }
+  const record = findOrCreatePublishRecordForSchedule(state, draft);
+  const distributionPlatform = directToDistributionPlatform(platform);
+  const existingVariants = state.platformDraftVariants
+    .filter(
+      (item) =>
+        item.articleDraftId === draft.id &&
+        item.publishRecordId === record.id &&
+        item.platform === distributionPlatform &&
+        item.status !== "discarded"
+    )
+    .sort((left, right) => (right.updatedAt || right.generatedAt).localeCompare(left.updatedAt || left.generatedAt));
+  let variant =
+    existingVariants.find((item) => item.preflight?.rewriteApplied) ||
+    existingVariants[0] ||
+    ensurePlatformDraftVariant(state, record, draft, distributionPlatform);
+  let preflight = preflightPublishContent({
+    platform,
+    title: variant.title,
+    markdown: variant.content
+  });
+
+  if (!preflight.passed && input.autoRewrite === true && !variant.preflight?.rewriteApplied) {
+    const rewritten =
+      platform === "juejin"
+        ? rewriteJuejinContentOnce({ title: variant.title, markdown: variant.content })
+        : { title: variant.title, markdown: variant.content };
+    const rewrittenPreflight = preflightPublishContent({
+      platform,
+      title: rewritten.title,
+      markdown: rewritten.markdown
+    });
+    const rewrittenVariant: PlatformDraftVariant = {
+      ...variant,
+      id: createId("variant"),
+      title: rewritten.title,
+      content: rewritten.markdown,
+      contentHash: createContentHash(`${platform}:${rewritten.title}\n${rewritten.markdown}`),
+      rewriteOfVariantId: variant.id,
+      rewriteRevision: (variant.rewriteRevision || 0) + 1,
+      preflight: toStoredPreflight(rewrittenPreflight, true),
+      generatedAt: nowIso(),
+      updatedAt: nowIso()
+    };
+    state.platformDraftVariants.push(rewrittenVariant);
+    variant = rewrittenVariant;
+    preflight = { ...rewrittenPreflight, rewriteApplied: true };
+  } else {
+    variant.preflight = {
+      ...variant.preflight,
+      ...toStoredPreflight(preflight, Boolean(variant.preflight?.rewriteApplied))
+    };
+    variant.updatedAt = nowIso();
+  }
+
+  saveWithEvent(state, "publish_content_preflight", `Preflight ${platform} variant ${variant.id}: ${preflight.passed ? "passed" : "blocked"}.`);
+  return {
+    ok: preflight.passed,
+    status: preflight.passed ? "success" : "failed",
+    message: preflight.passed ? "Publish preflight passed." : "Publish preflight blocked the content.",
+    data: { variant, preflight }
+  };
+}
+
+export async function preparePublishContentWithAi(
+  input: Record<string, unknown>
+): Promise<WorkflowResult<{ variant: PlatformDraftVariant; preflight: ReturnType<typeof preflightPublishContent> }>> {
+  const initial = preparePublishContent({ ...input, autoRewrite: false });
+  if (
+    initial.ok ||
+    input.autoRewrite !== true ||
+    !initial.data ||
+    initial.data?.variant.preflight?.rewriteApplied === true
+  ) {
+    return initial;
+  }
+
+  const providerValue = String(process.env.PUBLISH_REWRITE_AI_PROVIDER || "qwen");
+  const provider: AiProviderKey = ["qwen", "deepseek", "doubao"].includes(providerValue)
+    ? (providerValue as AiProviderKey)
+    : "qwen";
+  const platform = input.platform as DirectPublishPlatformKey;
+  const platformInstruction =
+    platform === "juejin"
+      ? "至少 900 个中文字符，必须包含：问题背景、判断框架、实现/交付步骤、验证清单、风险与边界。"
+      : platform === "csdn"
+        ? "至少 700 个中文字符，突出工程步骤、配置检查、验证方法和故障边界。"
+        : platform === "zhihu"
+          ? "至少 600 个中文字符，以问题、判断依据、反例、可执行检查清单组织答案。"
+          : "至少 600 个中文字符，结构清晰并保留可核验依据。";
+  const aiResult = await callAiProvider({
+    provider,
+    systemPrompt:
+      `你是技术内容编辑器。只基于输入原稿扩写和重组，不编造产品能力、客户案例、数据或外部事实。输出纯 Markdown 正文，不输出解释、标题或代码围栏包装。删除推广、联系方式和导流表达。${platformInstruction}`,
+    userPrompt: `请把以下原稿改写为适合 ${platform} 的独立内容。保留可核验事实，信息不足处明确写成检查项，不要猜测。\n\n标题：${initial.data.variant.title}\n\n原稿：\n${initial.data.variant.content}`,
+    temperature: 0.2
+  });
+
+  if (!aiResult.ok || !aiResult.content?.trim()) {
+    return {
+      ...initial,
+      message:
+        aiResult.status === "pending_config"
+          ? "The original variant remains blocked and the configured AI rewrite provider is unavailable."
+          : "AI rewrite failed; the blocked platform variant was preserved without publishing."
+    };
+  }
+
+  const markdown = aiResult.content.trim().replace(/^```(?:markdown)?\s*/i, "").replace(/\s*```$/, "");
+  const preflight = preflightPublishContent({
+    platform,
+    title: initial.data.variant.title,
+    markdown
+  });
+  const state = readWorkbenchState();
+  const sourceVariant = state.platformDraftVariants.find((item) => item.id === initial.data?.variant.id);
+  if (!sourceVariant) return initial;
+  const variant: PlatformDraftVariant = {
+    ...sourceVariant,
+    id: createId("variant"),
+    content: markdown,
+    contentHash: createContentHash(`${platform}:${initial.data.variant.title}\n${markdown}`),
+    rewriteOfVariantId: sourceVariant.id,
+    rewriteRevision: (sourceVariant.rewriteRevision || 0) + 1,
+    preflight: {
+      ...toStoredPreflight(preflight, true),
+      rewriteProvider: aiResult.provider,
+      rewriteModel: aiResult.model
+    },
+    generatedAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  state.platformDraftVariants.push(variant);
+  saveWithEvent(state, "publish_content_ai_rewrite", `AI rewrite finalized Juejin variant ${variant.id}: ${preflight.passed ? "passed" : "blocked"}.`);
+  return {
+    ok: preflight.passed,
+    status: preflight.passed ? "success" : "failed",
+    message: preflight.passed ? "AI platform rewrite passed publish preflight." : "AI platform rewrite still failed publish preflight.",
+    data: { variant, preflight: { ...preflight, rewriteApplied: true } }
+  };
+}
+
 export function createDistributionTargetsForPublishRecord(
   id: string,
   input: Record<string, unknown> = {}
@@ -6422,25 +6633,29 @@ function getDirectPublishPlatforms(input: Record<string, unknown>, draft: Pick<A
 
 function getScheduleStatusFromPrecheck(status: "ready" | "pending_config" | "auth_required" | "manual_takeover_required" | "failed"): PublishScheduleStatus {
   if (status === "pending_config") return "pending_config";
-  if (status === "manual_takeover_required") return "manual_takeover_required";
+  if (status === "manual_takeover_required") return "risk_blocked";
   return "precheck_failed";
 }
 
 function getFailureCodeFromPrecheck(status: "ready" | "pending_config" | "auth_required" | "manual_takeover_required" | "failed"): PublishFailureCode {
   if (status === "pending_config") return "pending_config";
   if (status === "auth_required") return "auth_required";
-  if (status === "manual_takeover_required") return "manual_takeover_required";
+  if (status === "manual_takeover_required") return "risk_blocked";
   return "adapter_failed";
 }
 
-function buildDirectPublishPayload(schedule: PublishSchedule, draft: ArticleDraft): PlatformPublishPayload {
+function buildDirectPublishPayload(
+  schedule: PublishSchedule,
+  draft: ArticleDraft,
+  variant?: Pick<PlatformDraftVariant, "title" | "content" | "summary">
+): PlatformPublishPayload {
   return {
     scheduleId: schedule.id,
     contentHash: schedule.contentHash,
     idempotencyKey: schedule.idempotencyKey,
-    title: draft.title,
-    markdown: draft.content,
-    summary: draft.summary,
+    title: variant?.title || draft.title,
+    markdown: variant?.content || draft.content,
+    summary: variant?.summary || draft.summary,
     scheduledAt: schedule.scheduledAt,
     sourceDraftId: draft.id,
     publishRecordId: schedule.publishRecordId,
@@ -6530,13 +6745,28 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
     }
 
     const scheduleId = createId("schedule");
-    const contentHash = hashDirectPublishContent(draft.title, draft.content);
+    const distributionPlatform = directToDistributionPlatform(platform);
+    const requestedVariant =
+      typeof input.platformVariantId === "string"
+        ? state.platformDraftVariants.find(
+            (item) => item.id === input.platformVariantId && item.articleDraftId === draft.id && item.platform === distributionPlatform
+          )
+        : undefined;
+    const preparedVariants = state.platformDraftVariants
+      .filter((item) => item.articleDraftId === draft.id && item.platform === distributionPlatform && item.status === "final")
+      .sort((left, right) => (right.updatedAt || right.generatedAt).localeCompare(left.updatedAt || left.generatedAt));
+    const variant = requestedVariant || preparedVariants[0] || ensurePlatformDraftVariant(state, record, draft, distributionPlatform);
+    const preflight = preflightPublishContent({ platform, title: variant.title, markdown: variant.content });
+    variant.preflight = toStoredPreflight(preflight, Boolean(variant.preflight?.rewriteApplied));
+    variant.updatedAt = nowIso();
+    const contentHash = hashDirectPublishContent(variant.title, variant.content);
     const schedule: PublishSchedule = {
       id: scheduleId,
       platform,
-      status: "scheduled",
+      status: preflight.passed ? "scheduled" : "precheck_failed",
       scheduledAt,
       draftId: draft.id,
+      platformVariantId: variant.id,
       publishRecordId: record.id,
       matrixItemId: typeof input.matrixItemId === "string" ? input.matrixItemId : undefined,
       contentHash,
@@ -6544,6 +6774,9 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
       attemptIds: [],
       retryCount: 0,
       pendingCsvReturn: false,
+      failureCode: preflight.passed ? undefined : "content_blocked",
+      failureReason: preflight.passed ? undefined : preflight.blockers.map((item) => item.message).join(" "),
+      nextAction: preflight.passed ? undefined : "Create one platform-specific rewrite and rerun preflight before scheduling.",
       createdAt: nowIso(),
       updatedAt: nowIso()
     };
@@ -6566,6 +6799,15 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
 
 const activePublishIdempotencyKeys = new Set<string>();
 
+function syncPublishRecordLifecycle(state: WorkbenchState, schedule: PublishSchedule): void {
+  const recordIndex = schedule.publishRecordId
+    ? state.publishRecords.findIndex((item) => item.id === schedule.publishRecordId)
+    : -1;
+  if (recordIndex < 0) return;
+
+  state.publishRecords[recordIndex] = mergePublishRecordPlatformResult(state.publishRecords[recordIndex], schedule);
+}
+
 export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ schedule: PublishSchedule; attempt: PublishAttempt }>> {
   const state = readWorkbenchState();
   const scheduleIndex = state.publishSchedules.findIndex((item) => item.id === id);
@@ -6580,24 +6822,40 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
 
   let schedule = state.publishSchedules[scheduleIndex];
 
-  if (["published_verified", "published_pending_url"].includes(schedule.status)) {
+  if (
+    [
+      "published_verified",
+      "published_pending_url",
+      "public_observed",
+      "stable_published",
+      "platform_rejected",
+      "removed_after_publish"
+    ].includes(schedule.status)
+  ) {
     const attempt: PublishAttempt = {
       id: createId("attempt"),
       scheduleId: schedule.id,
       platform: schedule.platform,
       contentHash: schedule.contentHash,
       idempotencyKey: schedule.idempotencyKey,
-      status: schedule.status === "published_verified" ? "published_verified" : "published_pending_url",
+      status: schedule.status as PublishAttemptStatus,
       startedAt: nowIso(),
       finishedAt: nowIso(),
       mode: "dry_run",
       authStatus: "ready",
       payloadStatus: "valid",
-      publishStatus: "confirmed",
-      verifyStatus: "verified",
+      publishStatus:
+        schedule.status === "platform_rejected" || schedule.status === "removed_after_publish"
+          ? "failed"
+          : schedule.status === "published_pending_url"
+            ? "pending_review"
+            : "confirmed",
+      verifyStatus: schedule.status === "published_pending_url" ? "pending" : "verified",
       platformArticleId: schedule.platformArticleId,
       externalTaskId: schedule.externalTaskId,
       publicUrl: schedule.publicUrl,
+      urlStatus: schedule.urlStatus,
+      verificationKind: schedule.firstPublicObservedAt ? "liveness" : "initial",
       pendingCsvReturn: schedule.pendingCsvReturn,
       failureCode: "duplicate_protected",
       diagnosticSummary: "Duplicate execution skipped because schedule is already published."
@@ -6624,7 +6882,13 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
     };
   }
 
-  const currentContentHash = hashDirectPublishContent(draft.title, draft.content);
+  const platformVariant = schedule.platformVariantId
+    ? state.platformDraftVariants.find((item) => item.id === schedule.platformVariantId)
+    : undefined;
+  const currentContentHash = hashDirectPublishContent(
+    platformVariant?.title || draft.title,
+    platformVariant?.content || draft.content
+  );
   const currentIdempotencyKey = buildPublishIdempotencyKey(schedule.id, schedule.platform, currentContentHash);
   if (schedule.contentHash === "legacy-content-hash") {
     schedule = {
@@ -6665,7 +6929,7 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
     retryAttemptForRetry &&
       (retryAttemptForRetry.failureCode === "payload_invalid" ||
         (retryAttemptForRetry.failureCode === "adapter_failed" &&
-          retryAttemptForRetry.failureReason === "BrowserConnectError") ||
+          retryAttemptForRetry.failureReason?.startsWith("BrowserConnectError")) ||
         (schedule.platform === "csdn" &&
           ((retryAttemptForRetry.failureCode === "adapter_failed" &&
             (retryAttemptForRetry.failureReason?.includes("X-Ca-Key is not exist") ||
@@ -6701,7 +6965,7 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
 
   const adapter = getPublishAdapter(schedule.platform);
   const startedAt = nowIso();
-  const payload = buildDirectPublishPayload(schedule, draft);
+  const payload = buildDirectPublishPayload(schedule, draft, platformVariant);
   const auth = await adapter.checkAuth();
   const validation = await adapter.validatePayload(payload);
   const attemptBase: PublishAttempt = {
@@ -6718,7 +6982,12 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
     verifyStatus: "not_started"
   };
 
-  const finishAttempt = (attempt: PublishAttempt, status: PublishScheduleStatus, message: string): WorkflowResult<{ schedule: PublishSchedule; attempt: PublishAttempt }> => {
+  const finishAttempt = (
+    attempt: PublishAttempt,
+    status: PublishScheduleStatus,
+    message: string,
+    lifecycle?: ReturnType<typeof resolvePublishVerificationLifecycle>
+  ): WorkflowResult<{ schedule: PublishSchedule; attempt: PublishAttempt }> => {
     const finishedAttempt: PublishAttempt = {
       ...attempt,
       finishedAt: attempt.finishedAt || nowIso()
@@ -6728,39 +6997,53 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
       status,
       latestAttemptId: finishedAttempt.id,
       attemptIds: Array.from(new Set([...schedule.attemptIds, finishedAttempt.id])),
-      publishedAt: finishedAttempt.status === "published_verified" || finishedAttempt.status === "published_pending_url" ? finishedAttempt.finishedAt : schedule.publishedAt,
+      publishedAt: ["published_verified", "published_pending_url", "public_observed", "stable_published"].includes(finishedAttempt.status)
+        ? schedule.publishedAt || finishedAttempt.finishedAt
+        : schedule.publishedAt,
       platformArticleId: finishedAttempt.platformArticleId,
       externalTaskId: finishedAttempt.externalTaskId,
       publicUrl: finishedAttempt.publicUrl,
+      urlStatus: lifecycle?.urlStatus || finishedAttempt.urlStatus || schedule.urlStatus,
+      firstPublicObservedAt: lifecycle?.firstPublicObservedAt || schedule.firstPublicObservedAt,
+      lastVerifiedAt: lifecycle?.lastVerifiedAt || schedule.lastVerifiedAt,
+      nextVerificationAt:
+        lifecycle?.nextVerificationAt ||
+        (status === "risk_blocked" ? new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() : undefined),
+      verificationStartedAt: lifecycle?.verificationStartedAt || schedule.verificationStartedAt,
+      stablePublishedAt: lifecycle?.stablePublishedAt || schedule.stablePublishedAt,
+      removedAt: lifecycle?.removedAt,
+      verificationCount: lifecycle?.verificationCount ?? schedule.verificationCount,
+      consecutiveVerificationFailures:
+        lifecycle?.consecutiveVerificationFailures ?? schedule.consecutiveVerificationFailures,
       pendingCsvReturn: Boolean(finishedAttempt.pendingCsvReturn),
-      failureCode: finishedAttempt.failureCode,
-      failureReason: finishedAttempt.failureReason,
+      failureCode: lifecycle?.failureCode ?? finishedAttempt.failureCode,
+      failureReason: lifecycle?.failureReason ?? finishedAttempt.failureReason,
       nextAction: finishedAttempt.nextAction,
       retryCount: status === "failed" ? schedule.retryCount + 1 : schedule.retryCount,
-      manualTakeoverReason: status === "manual_takeover_required" ? finishedAttempt.failureReason || finishedAttempt.nextAction : schedule.manualTakeoverReason,
+      manualTakeoverReason:
+        status === "manual_takeover_required" || status === "risk_blocked"
+          ? finishedAttempt.failureReason || finishedAttempt.nextAction
+          : schedule.manualTakeoverReason,
       updatedAt: nowIso()
     };
 
     state.publishSchedules[scheduleIndex] = nextSchedule;
     state.publishAttempts.push(finishedAttempt);
 
-    const recordIndex = nextSchedule.publishRecordId ? state.publishRecords.findIndex((item) => item.id === nextSchedule.publishRecordId) : -1;
-
-    if (recordIndex >= 0 && ["published_verified", "published_pending_url"].includes(nextSchedule.status)) {
-      state.publishRecords[recordIndex] = {
-        ...state.publishRecords[recordIndex],
-        publishStatus: nextSchedule.publicUrl ? "url_filled" : "published",
-        publishedAt: nextSchedule.publishedAt || nowIso(),
-        publishedUrl: nextSchedule.publicUrl || state.publishRecords[recordIndex].publishedUrl,
-        notes: nextSchedule.pendingCsvReturn ? "正式发布已确认，公开 URL 等待 CSV 回传或人工回填。" : state.publishRecords[recordIndex].notes
-      };
-    }
+    syncPublishRecordLifecycle(state, nextSchedule);
 
     saveWithEvent(state, "direct_publish_attempt_finished", `Direct publish schedule ${id} finished with ${status}.`);
 
     return {
-      ok: ["published_verified", "published_pending_url", "pending_verify"].includes(status),
-      status: status === "pending_config" ? "pending_config" : status === "manual_takeover_required" ? "pending_input" : status === "failed" || status === "precheck_failed" ? "failed" : "success",
+      ok: ["published_verified", "published_pending_url", "pending_verify", "public_observed", "stable_published"].includes(status),
+      status:
+        status === "pending_config"
+          ? "pending_config"
+          : status === "manual_takeover_required" || status === "risk_blocked"
+            ? "pending_input"
+            : status === "failed" || status === "precheck_failed"
+              ? "failed"
+              : "success",
       message,
       data: {
         schedule: nextSchedule,
@@ -6774,10 +7057,18 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
     return finishAttempt(
       {
         ...attemptBase,
-        status: status === "pending_config" ? "pending_config" : status === "manual_takeover_required" ? "manual_takeover_required" : "precheck_failed",
+        status:
+          status === "pending_config"
+            ? "pending_config"
+            : status === "manual_takeover_required" || status === "risk_blocked"
+              ? status
+              : "precheck_failed",
         failureCode: getFailureCodeFromPrecheck(auth.status),
         failureReason: auth.message,
-        nextAction: auth.nextAction,
+        nextAction:
+          status === "risk_blocked"
+            ? "该平台写队列已自动熔断；系统仅周期性探测会话恢复，不会重试发布或绕过安全挑战。"
+            : auth.nextAction,
         diagnosticSummary: auth.missingConfig?.length ? `missing_config=${auth.missingConfig.join(",")}` : auth.message
       },
       status,
@@ -6812,27 +7103,30 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
     const publishResult = await adapter.publish(payload);
 
     if (!publishResult.ok) {
+      const publishFailureStatus: PublishAttemptStatus =
+        publishResult.status === "manual_takeover_required" ? "risk_blocked" : publishResult.status;
       return finishAttempt(
         {
           ...attemptBase,
-          status: publishResult.status,
+          status: publishFailureStatus,
           mode: publishResult.mode,
           publishStatus: publishResult.publishStatus,
           platformArticleId: publishResult.platformArticleId,
           externalTaskId: publishResult.externalTaskId,
           publicUrl: publishResult.publicUrl,
-          failureCode: publishResult.failureCode || "adapter_failed",
+          failureCode: publishFailureStatus === "risk_blocked" ? "risk_blocked" : publishResult.failureCode || "adapter_failed",
           failureReason: publishResult.failureReason,
           nextAction: publishResult.nextAction,
           diagnosticSummary: publishResult.diagnosticSummary
         },
-        publishResult.status,
+        publishFailureStatus,
         publishResult.failureReason || "正式发布执行失败。"
       );
     }
 
     const verifyResult = await adapter.verify(publishResult);
-    const finalStatus = verifyResult.status;
+    const lifecycle = resolvePublishVerificationLifecycle(schedule, verifyResult, nowIso());
+    const finalStatus = lifecycle.status;
 
     return finishAttempt(
       {
@@ -6844,6 +7138,8 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
         platformArticleId: verifyResult.platformArticleId,
         externalTaskId: verifyResult.externalTaskId,
         publicUrl: verifyResult.publicUrl,
+        urlStatus: lifecycle.urlStatus,
+        verificationKind: "initial",
         pendingCsvReturn: verifyResult.pendingCsvReturn,
         failureCode: verifyResult.failureCode,
         failureReason: verifyResult.failureReason,
@@ -6851,7 +7147,8 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
         diagnosticSummary: publishResult.diagnosticSummary
       },
       finalStatus,
-      verifyResult.ok ? "正式发布执行完成，并已记录验证结果。" : verifyResult.failureReason || "正式发布验证失败。"
+      verifyResult.ok ? "正式发布执行完成，并已记录验证结果。" : verifyResult.failureReason || "正式发布验证失败。",
+      lifecycle
     );
   } finally {
     activePublishIdempotencyKeys.delete(schedule.idempotencyKey);
@@ -6871,15 +7168,10 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
     ? state.publishAttempts.find((item) => item.id === schedule.latestAttemptId)
     : undefined;
   const canVerifyAfterPriorPublishAction = Boolean(
-    schedule.status === "failed" &&
-      state.publishAttempts.some((item) =>
-        item.scheduleId === schedule.id &&
-        item.failureCode === "publish_action_unconfirmed" &&
-        (item.status === "pending_verify" || item.verifyStatus === "pending")
-      )
+    schedule.status === "failed" && latestAttempt?.mode === "real" && latestAttempt.payloadStatus === "valid"
   );
 
-  if (["published_verified", "published_pending_url"].includes(schedule.status)) {
+  if (["stable_published", "platform_rejected", "removed_after_publish", "verification_timeout"].includes(schedule.status)) {
     return {
       ok: true,
       status: "success",
@@ -6893,24 +7185,38 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
             platform: schedule.platform,
             contentHash: schedule.contentHash,
             idempotencyKey: schedule.idempotencyKey,
-            status: schedule.status === "published_verified" ? "published_verified" : "published_pending_url",
+            status: schedule.status as PublishAttemptStatus,
             startedAt: nowIso(),
             finishedAt: nowIso(),
             mode: "dry_run",
             authStatus: "ready",
             payloadStatus: "valid",
-            publishStatus: "confirmed",
-            verifyStatus: "verified",
+            publishStatus: schedule.status === "stable_published" ? "confirmed" : "failed",
+            verifyStatus: schedule.status === "stable_published" ? "verified" : "failed",
             platformArticleId: schedule.platformArticleId,
             externalTaskId: schedule.externalTaskId,
             publicUrl: schedule.publicUrl,
+            urlStatus: schedule.urlStatus,
+            verificationKind: "liveness",
             pendingCsvReturn: schedule.pendingCsvReturn
           }
       }
     };
   }
 
-  if (!latestAttempt || (!["pending_verify", "manual_takeover_required", "publishing"].includes(schedule.status) && !canVerifyAfterPriorPublishAction)) {
+  if (
+    !latestAttempt ||
+    (![
+      "pending_verify",
+      "published_pending_url",
+      "published_verified",
+      "public_observed",
+      "manual_takeover_required",
+      "risk_blocked",
+      "publishing"
+    ].includes(schedule.status) &&
+      !canVerifyAfterPriorPublishAction)
+  ) {
     return {
       ok: false,
       status: "pending_input",
@@ -6931,29 +7237,33 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
     pendingCsvReturn: true,
     nextAction: "仅执行发布后验证。"
   });
+  const verifiedAt = nowIso();
+  const lifecycle = resolvePublishVerificationLifecycle(schedule, verifyResult, verifiedAt);
   const attempt: PublishAttempt = {
     id: createId("attempt"),
     scheduleId: schedule.id,
     platform: schedule.platform,
     contentHash: schedule.contentHash,
     idempotencyKey: schedule.idempotencyKey,
-    status: verifyResult.status,
-    startedAt: nowIso(),
-    finishedAt: nowIso(),
+    status: lifecycle.status,
+    startedAt: verifiedAt,
+    finishedAt: verifiedAt,
     mode: latestAttempt.mode,
     authStatus: "ready",
     payloadStatus: "valid",
     publishStatus:
       verifyResult.publishStatus ||
-      (verifyResult.status === "published_verified"
+      (lifecycle.status === "public_observed" || lifecycle.status === "stable_published"
         ? "confirmed"
-        : verifyResult.status === "published_pending_url"
+        : lifecycle.status === "published_pending_url"
           ? "pending_review"
           : latestAttempt.publishStatus || "failed"),
     verifyStatus: verifyResult.verifyStatus,
     platformArticleId: verifyResult.platformArticleId || schedule.platformArticleId,
     externalTaskId: verifyResult.externalTaskId || schedule.externalTaskId,
     publicUrl: verifyResult.publicUrl || schedule.publicUrl,
+    urlStatus: lifecycle.urlStatus,
+    verificationKind: schedule.firstPublicObservedAt ? "liveness" : "initial",
     pendingCsvReturn: verifyResult.pendingCsvReturn,
     failureCode: verifyResult.failureCode,
     failureReason: verifyResult.failureReason,
@@ -6962,41 +7272,48 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
   };
   const nextSchedule: PublishSchedule = {
     ...schedule,
-    status: verifyResult.status,
+    status: lifecycle.status,
     latestAttemptId: attempt.id,
     attemptIds: Array.from(new Set([...schedule.attemptIds, attempt.id])),
-    publishedAt: ["published_verified", "published_pending_url"].includes(verifyResult.status) ? nowIso() : schedule.publishedAt,
+    publishedAt: ["public_observed", "stable_published", "published_pending_url"].includes(lifecycle.status)
+      ? schedule.publishedAt || verifiedAt
+      : schedule.publishedAt,
     platformArticleId: attempt.platformArticleId,
     externalTaskId: attempt.externalTaskId,
     publicUrl: attempt.publicUrl,
+    urlStatus: lifecycle.urlStatus,
+    firstPublicObservedAt: lifecycle.firstPublicObservedAt,
+    lastVerifiedAt: lifecycle.lastVerifiedAt,
+    nextVerificationAt: lifecycle.nextVerificationAt,
+    verificationStartedAt: lifecycle.verificationStartedAt,
+    stablePublishedAt: lifecycle.stablePublishedAt,
+    removedAt: lifecycle.removedAt,
+    verificationCount: lifecycle.verificationCount,
+    consecutiveVerificationFailures: lifecycle.consecutiveVerificationFailures,
     pendingCsvReturn: Boolean(attempt.pendingCsvReturn),
-    failureCode: attempt.failureCode,
-    failureReason: attempt.failureReason,
+    failureCode: lifecycle.failureCode ?? attempt.failureCode,
+    failureReason: lifecycle.failureReason ?? attempt.failureReason,
     nextAction: attempt.nextAction,
-    manualTakeoverReason: verifyResult.status === "manual_takeover_required" ? attempt.failureReason || attempt.nextAction : undefined,
+    manualTakeoverReason: lifecycle.status === "manual_takeover_required" ? attempt.failureReason || attempt.nextAction : undefined,
     updatedAt: nowIso()
   };
 
   state.publishSchedules[scheduleIndex] = nextSchedule;
   state.publishAttempts.push(attempt);
 
-  const recordIndex = nextSchedule.publishRecordId
-    ? state.publishRecords.findIndex((item) => item.id === nextSchedule.publishRecordId)
-    : -1;
-  if (recordIndex >= 0 && ["published_verified", "published_pending_url"].includes(nextSchedule.status)) {
-    state.publishRecords[recordIndex] = {
-      ...state.publishRecords[recordIndex],
-      publishStatus: nextSchedule.publicUrl ? "url_filled" : "published",
-      publishedAt: nextSchedule.publishedAt,
-      publishedUrl: nextSchedule.publicUrl || state.publishRecords[recordIndex].publishedUrl
-    };
-  }
+  syncPublishRecordLifecycle(state, nextSchedule);
 
   saveWithEvent(state, "direct_publish_verification_finished", `Direct publish schedule ${id} verification finished with ${nextSchedule.status}.`);
+  const verificationOk = ["pending_verify", "published_pending_url", "public_observed", "stable_published"].includes(nextSchedule.status);
   return {
-    ok: verifyResult.ok,
-    status: verifyResult.ok ? "success" : verifyResult.status === "manual_takeover_required" ? "pending_input" : "failed",
-    message: verifyResult.ok ? "发布状态验证已更新；未重复执行发布动作。" : verifyResult.failureReason || "发布状态验证失败。",
+    ok: verificationOk,
+    status:
+      verificationOk
+        ? "success"
+        : nextSchedule.status === "manual_takeover_required" || nextSchedule.status === "risk_blocked"
+          ? "pending_input"
+          : "failed",
+    message: verificationOk ? "发布状态验证已更新；未重复执行发布动作。" : nextSchedule.failureReason || "发布状态验证失败。",
     data: { schedule: nextSchedule, attempt }
   };
 }
@@ -7005,7 +7322,15 @@ export async function runDuePublishSchedules(input: Record<string, unknown> = {}
   const state = readWorkbenchState();
   const now = typeof input.now === "string" && !Number.isNaN(new Date(input.now).getTime()) ? new Date(input.now) : new Date();
   const limit = typeof input.limit === "number" && input.limit > 0 ? Math.floor(input.limit) : 20;
-  const pendingVerifySchedules = state.publishSchedules.filter((schedule) => schedule.status === "pending_verify").slice(0, limit);
+  const verificationStatuses: PublishScheduleStatus[] = [
+    "pending_verify",
+    "published_pending_url",
+    "published_verified",
+    "public_observed"
+  ];
+  const pendingVerifySchedules = state.publishSchedules
+    .filter((schedule) => verificationStatuses.includes(schedule.status) && isPublishVerificationDue(schedule, now))
+    .slice(0, limit);
   const dueSchedules = state.publishSchedules
     .filter((schedule) => schedule.status === "scheduled" && new Date(schedule.scheduledAt).getTime() <= now.getTime())
     .slice(0, Math.max(0, limit - pendingVerifySchedules.length));

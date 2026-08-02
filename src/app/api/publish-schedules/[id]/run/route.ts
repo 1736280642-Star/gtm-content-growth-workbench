@@ -1,8 +1,8 @@
-import { runPublishSchedule } from "@/lib/workbench-store";
+import { runPublishJob } from "@/lib/publish-job-service";
 import { NextResponse } from "next/server";
 
 export async function POST(_request: Request, { params }: { params: { id: string } }) {
-  const result = await runPublishSchedule(params.id);
+  const result = await runPublishJob(params.id);
 
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }

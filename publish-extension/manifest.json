@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "JOTO Publish Executor",
+  "version": "1.0.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxVjyNYsvn6QcLmk0eOpf5lV1cD0DyDGsrS30lz/K7i0FAhUcYC3PpX8FU1JUd0vJFt/PN8YDIc3STsoVtTcyThFqlfKPbOiWFk2y2nU2ykcnHyXBxoh9MJE+h8VrTzHENBhKM1nb0gu5oQotdkGD9TcQbzmV92NqKKSGId0HWsZW+jpnANE0/N4emOwHMcOqW061VH76cefHk7z8P4Y9xAftgB6lWbAtgpf19ii/H2k26/ubPPv63U4p09PGFJ/DFFgEFBblhekFMfh7bRlfo3L7Lmf/IOBuQqosiUPiwQTfUbIKbOCLQfDfa3RGAUVFcqDiEx2DHVIdOd5b2naJUwIDAQAB",
+  "description": "Executes deterministic JOTO publish jobs in authenticated platform page contexts.",
+  "permissions": ["alarms", "scripting", "storage", "tabs"],
+  "host_permissions": [
+    "http://127.0.0.1:9528/*",
+    "http://localhost:9528/*",
+    "https://juejin.cn/*",
+    "https://api.juejin.cn/*",
+    "https://editor.csdn.net/*",
+    "https://mp.csdn.net/*",
+    "https://blog.csdn.net/*",
+    "https://zhuanlan.zhihu.com/*",
+    "https://www.zhihu.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  }
+}

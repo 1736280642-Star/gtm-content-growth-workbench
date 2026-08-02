@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
 
 
 RUNNER_ROOT = Path(__file__).resolve().parents[1]
@@ -15,8 +16,11 @@ from joto_arcs_runner.platforms import (
     BrowserPublisher,
     _editor_url,
     _element_is_selected,
+    _input_first,
     _record_status,
+    _publish_juejin_page_context,
     _verify_juejin_draft_api,
+    _verify_known_public_url,
     has_security_challenge,
     profile_dir,
 )
@@ -46,6 +50,12 @@ class ResumePublisher(FakePublisher):
         return {"ok": True, "status": "published_verified", "publishStatus": "confirmed", "publicUrl": "https://example.com/resumed"}
 
 
+class ThrowingPublisher(FakePublisher):
+    def publish(self, platform, value):
+        self.publish_calls += 1
+        raise RuntimeError("browser startup failed")
+
+
 def payload():
     value = {
         "scheduleId": "schedule-1",
@@ -63,6 +73,34 @@ def payload():
 
 
 class RunnerContractTest(unittest.TestCase):
+    def test_dynamic_editor_input_refetches_one_lost_element(self):
+        class ElementLostError(Exception):
+            pass
+
+        class Element:
+            def __init__(self, lost=False):
+                self.lost = lost
+
+            def input(self, _value, clear=True):
+                if self.lost:
+                    raise ElementLostError("rerendered")
+
+        class Tab:
+            calls = 0
+
+            def ele(self, _selector, timeout=2):
+                self.calls += 1
+                return Element(lost=self.calls == 1)
+
+        tab = Tab()
+        self.assertTrue(_input_first(tab, ["css:input"], "value"))
+        self.assertEqual(tab.calls, 2)
+
+    def test_zhihu_publish_selector_does_not_match_publish_settings(self):
+        selector = PLATFORM_CONFIG["zhihu"]["publish"][0]
+        self.assertIn("normalize-space(.)='发布'", selector)
+        self.assertNotIn("contains", selector)
+
     def test_idempotency_contract(self):
         value = payload()
         self.assertEqual(expected_idempotency_key(value), value["idempotencyKey"])
@@ -92,6 +130,17 @@ class RunnerContractTest(unittest.TestCase):
             self.assertEqual(status, 409)
             self.assertEqual(result["failureCode"], "publish_action_unconfirmed")
             self.assertNotEqual(result.get("publishStatus"), "submitted")
+
+    def test_publisher_exception_is_completed_in_ledger_instead_of_left_in_progress(self):
+        with tempfile.TemporaryDirectory() as directory:
+            value = payload()
+            ledger = PublishLedger(Path(directory) / "ledger.json")
+            status, result = RunnerService(ledger, ThrowingPublisher()).publish(value)
+            self.assertEqual(status, 502)
+            self.assertEqual(result["failureCode"], "adapter_failed")
+            stored = ledger.get(value["idempotencyKey"])
+            self.assertEqual(stored["status"], "failed")
+            self.assertEqual(stored["result"]["failureCode"], "adapter_failed")
 
     def test_payload_failure_can_resume_the_same_platform_draft(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -131,6 +180,30 @@ class RunnerContractTest(unittest.TestCase):
                 "publishStatus": "failed",
                 "failureCode": "adapter_failed",
                 "failureReason": "csdn 编辑器结构已变化，未找到标题或正文输入区。",
+            })
+            publisher = ResumePublisher()
+            status, result = RunnerService(ledger, publisher).publish(value)
+            self.assertEqual(status, 200)
+            self.assertTrue(result["ok"])
+            self.assertEqual(publisher.publish_calls, 1)
+
+    def test_juejin_page_context_browser_connect_failure_can_resume_before_any_draft_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            value = payload()
+            value["platform"] = "juejin"
+            value.pop("externalDraftId")
+            value.pop("editorUrl")
+            value["idempotencyKey"] = expected_idempotency_key(value)
+            ledger = PublishLedger(Path(directory) / "ledger.json")
+            ledger.begin(value["idempotencyKey"], {
+                "platform": "juejin",
+                "title": value["title"],
+            })
+            ledger.complete(value["idempotencyKey"], {
+                "ok": False,
+                "status": "failed",
+                "failureCode": "adapter_failed",
+                "failureReason": "BrowserConnectError",
             })
             publisher = ResumePublisher()
             status, result = RunnerService(ledger, publisher).publish(value)
@@ -194,6 +267,26 @@ class RunnerContractTest(unittest.TestCase):
         value["idempotencyKey"] = expected_idempotency_key(value)
         self.assertIn("categoryId", validate_publish_payload(value))
 
+    def test_juejin_page_context_publish_does_not_require_cookie_replay_or_hybrid_draft(self):
+        value = payload()
+        value["platform"] = "juejin"
+        value.pop("externalDraftId")
+        value.pop("editorUrl")
+        value["idempotencyKey"] = expected_idempotency_key(value)
+        self.assertIsNone(validate_publish_payload(value))
+
+        class Tab:
+            def run_js(self, _script, args, timeout=None):
+                self.args = args
+                self.timeout = timeout
+                return {"accepted": True, "stage": "publish", "draftId": "draft-2", "articleId": "article-2"}
+
+        tab = Tab()
+        result = _publish_juejin_page_context(tab, value)
+        self.assertEqual(result["status"], "published_pending_url")
+        self.assertEqual(result["platformArticleId"], "article-2")
+        self.assertEqual(tab.args["markdown"], value["markdown"])
+
     def test_juejin_tag_selectors_are_scoped_away_from_category_choices(self):
         config = PLATFORM_CONFIG["juejin"]
         self.assertIn("css:.tag-input.select input.byte-select__input", config["tag_input"])
@@ -213,8 +306,14 @@ class RunnerContractTest(unittest.TestCase):
     def test_juejin_final_publish_captures_platform_api_result_without_logging_credentials(self):
         source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
         self.assertIn('tab.listen.start("content_api/v1/article/publish")', source)
-        self.assertIn('"diagnosticSummary": "publish_api_confirmed_article"', source)
+        self.assertIn('"status": "published_pending_url"', source)
+        self.assertIn('"diagnosticSummary": "publish_api_accepted_pending_public_verification"', source)
         self.assertNotIn("publish_packet.request.headers", source)
+
+    def test_publish_action_guard_is_initialized_inside_publish_method(self):
+        source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
+        publish_source = source[source.index("    def publish(self, platform:"):source.index("    def verify(self, platform:")]
+        self.assertIn("publish_action_started = False", publish_source)
 
     def test_juejin_draft_api_reads_nested_article_id(self):
         class DetailResponse:
@@ -261,6 +360,28 @@ class RunnerContractTest(unittest.TestCase):
         self.assertEqual(result["status"], "published_pending_url")
         self.assertEqual(result["publishStatus"], "pending_review")
         self.assertNotIn("publicUrl", result)
+
+    def test_known_public_url_404_returns_structured_removed_evidence(self):
+        from unittest.mock import patch
+
+        error = HTTPError(
+            "https://juejin.cn/post/7668120258260074548",
+            404,
+            "Not Found",
+            hdrs=None,
+            fp=None,
+        )
+        with patch("joto_arcs_runner.platforms.urlopen", side_effect=error):
+            result = _verify_known_public_url(
+                "juejin",
+                {
+                    "platformArticleId": "7668120258260074548",
+                    "publicUrl": "https://juejin.cn/post/7668120258260074548",
+                },
+            )
+        self.assertEqual(result["status"], "removed_after_publish")
+        self.assertEqual(result["failureCode"], "removed_after_publish")
+        self.assertEqual(result["publicUrl"], "https://juejin.cn/post/7668120258260074548")
 
     def test_editor_url_must_open_the_same_approved_draft(self):
         value = payload()
@@ -443,6 +564,7 @@ class RunnerContractTest(unittest.TestCase):
         source = (RUNNER_ROOT / "joto_arcs_runner" / "platforms.py").read_text(encoding="utf-8")
         self.assertNotIn('_click_optional(tab, config["confirm"]', source)
         self.assertIn('confirm = _first(tab, config["confirm"]', source)
+        self.assertIn('if platform == "zhihu":\n                        direct_publish_result = self._verify_tab', source)
 
     def test_security_challenge_detection(self):
         self.assertTrue(has_security_challenge("请完成手机号验证"))

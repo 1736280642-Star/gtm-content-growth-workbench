@@ -11,6 +11,13 @@ export type PublishScheduleStatus =
   | "published_verified"
   | "published_pending_url"
   | "pending_verify"
+  | "public_observed"
+  | "stable_published"
+  | "platform_rejected"
+  | "removed_after_publish"
+  | "risk_blocked"
+  | "verification_timeout"
+  | "auth_expired"
   | "failed"
   | "manual_takeover_required"
   | "pending_config";
@@ -21,6 +28,13 @@ export type PublishAttemptStatus =
   | "published_verified"
   | "published_pending_url"
   | "pending_verify"
+  | "public_observed"
+  | "stable_published"
+  | "platform_rejected"
+  | "removed_after_publish"
+  | "risk_blocked"
+  | "verification_timeout"
+  | "auth_expired"
   | "failed"
   | "manual_takeover_required"
   | "pending_config";
@@ -33,10 +47,18 @@ export type PublishFailureCode =
   | "platform_review_pending"
   | "publish_action_unconfirmed"
   | "verification_failed"
+  | "platform_rejected"
+  | "removed_after_publish"
+  | "risk_blocked"
+  | "verification_timeout"
+  | "auth_expired"
+  | "content_blocked"
   | "manual_takeover_required"
   | "duplicate_protected"
   | "adapter_failed"
   | "unknown";
+
+export type PublishUrlStatus = "pending" | "provisional" | "stable" | "removed" | "rejected";
 
 export type DistributionTargetStatus = "pending" | "checking" | "auth_required" | "ready" | "sending" | "draft_created" | "failed" | "cancelled";
 
@@ -210,11 +232,14 @@ export interface DraftQaResult {
   feedbackTarget?: DraftQualityFeedbackTarget;
 }
 
+export type WorkspaceRole = "content_publisher" | "content_growth" | "workbench_operator" | "knowledge_manager" | "developer_admin";
+
 export interface WorkspaceSetting {
   id: string;
   enabledChannels: ChannelKey[];
   enabledProducts: ProductKey[];
   productPlans?: ProductPlanConfig[];
+  currentRole: WorkspaceRole;
   finalReviewMode: FinalReviewMode;
   logMode: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
@@ -363,6 +388,18 @@ export interface PlatformDraftVariant {
   sourceDraftVersion: number;
   qaResult: DraftQaResult;
   status: "draft" | "final" | "discarded";
+  preflight?: {
+    ruleVersion: string;
+    passed: boolean;
+    blockerCodes: string[];
+    warningCodes: string[];
+    checkedAt: string;
+    rewriteApplied?: boolean;
+    rewriteProvider?: string;
+    rewriteModel?: string;
+  };
+  rewriteOfVariantId?: string;
+  rewriteRevision?: number;
   generatedAt: string;
   updatedAt?: string;
 }
@@ -376,8 +413,14 @@ export interface PublishRecord {
   plannedPublishDate?: string;
   publishedUrl?: string;
   publishedAt?: string;
+  urlStatus?: PublishUrlStatus;
+  firstPublicObservedAt?: string;
+  lastVerifiedAt?: string;
+  stablePublishedAt?: string;
+  removedAt?: string;
   exportedAt?: string;
   notes?: string;
+  platformResults?: Partial<Record<DirectPublishPlatformKey, PublishPlatformResult>>;
   channelMetrics?: {
     impressions?: number;
     views?: number;
@@ -387,6 +430,21 @@ export interface PublishRecord {
     shares?: number;
     importedAt: string;
   };
+}
+
+export interface PublishPlatformResult {
+  platform: DirectPublishPlatformKey;
+  scheduleId: string;
+  status: PublishScheduleStatus;
+  platformArticleId?: string;
+  publicUrl?: string;
+  urlStatus?: PublishUrlStatus;
+  firstPublicObservedAt?: string;
+  lastVerifiedAt?: string;
+  stablePublishedAt?: string;
+  removedAt?: string;
+  failureCode?: PublishFailureCode;
+  failureReason?: string;
 }
 
 export interface DistributionTarget {
@@ -435,6 +493,7 @@ export interface PublishSchedule {
   status: PublishScheduleStatus;
   scheduledAt: string;
   draftId: string;
+  platformVariantId?: string;
   publishRecordId?: string;
   matrixItemId?: string;
   contentHash: string;
@@ -445,6 +504,15 @@ export interface PublishSchedule {
   platformArticleId?: string;
   externalTaskId?: string;
   publicUrl?: string;
+  urlStatus?: PublishUrlStatus;
+  firstPublicObservedAt?: string;
+  lastVerifiedAt?: string;
+  nextVerificationAt?: string;
+  verificationStartedAt?: string;
+  stablePublishedAt?: string;
+  removedAt?: string;
+  verificationCount?: number;
+  consecutiveVerificationFailures?: number;
   pendingCsvReturn?: boolean;
   failureCode?: PublishFailureCode;
   failureReason?: string;
@@ -472,6 +540,8 @@ export interface PublishAttempt {
   platformArticleId?: string;
   externalTaskId?: string;
   publicUrl?: string;
+  urlStatus?: PublishUrlStatus;
+  verificationKind?: "initial" | "liveness";
   pendingCsvReturn?: boolean;
   failureCode?: PublishFailureCode;
   failureReason?: string;
