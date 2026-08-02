@@ -12,12 +12,22 @@ const missing = requiredPlatforms.filter((platform) => !metrics.some((item) => i
 if (missing.length) throw new Error(`Missing platform metrics: ${missing.join(", ")}`);
 
 for (const metric of metrics) {
-  for (const key of ["submissionAcceptanceRate", "publicConversionRate", "survival24hRate", "survival72hRate"]) {
+  for (const key of [
+    "submissionAcceptanceRate",
+    "publicConversionRate",
+    "survival24hRate",
+    "survival72hRate",
+    "riskBlockRate",
+    "duplicatePublishRate"
+  ]) {
     const value = metric[key];
     if (value !== null && (value < 0 || value > 1)) throw new Error(`${metric.platform}.${key} is outside [0, 1].`);
   }
   if (metric.stablePublished > metric.publicObserved) {
     throw new Error(`${metric.platform} has more stable publications than observed public URLs.`);
+  }
+  if (metric.duplicatePublishCount !== 0) {
+    throw new Error(`${metric.platform} has ${metric.duplicatePublishCount} duplicate publish actions.`);
   }
 }
 

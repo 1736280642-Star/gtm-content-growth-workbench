@@ -187,7 +187,24 @@ test("direct publish worker continuously claims due schedules without a page cli
   assert.match(worker, /postJson\(baseUrl, "\/api\/direct-publish", \{ limit \}\)/);
   assert.match(worker, /args\.once \? 1/);
   assert.match(store, /verificationStatuses\.includes\(schedule\.status\) && isPublishVerificationDue\(schedule, now\)/);
-  assert.match(store, /schedule\.status === "scheduled" && new Date\(schedule\.scheduledAt\)\.getTime\(\) <= now\.getTime\(\)/);
+  assert.match(store, /schedule\.status === "scheduled"/);
+  assert.match(store, /new Date\(schedule\.scheduledAt\)\.getTime\(\) <= now\.getTime\(\)/);
+});
+
+test("due worker probes risk states read-only and blocks new writes on the same platform", () => {
+  const implementation = readFileSync(new URL("../src/lib/workbench-store.ts", import.meta.url), "utf8");
+  const dueWorker = implementation.slice(implementation.indexOf("export async function runDuePublishSchedules"));
+  assert.match(dueWorker, /"risk_blocked"/);
+  assert.match(dueWorker, /"auth_expired"/);
+  assert.match(dueWorker, /writeBlockedPlatforms/);
+  assert.match(dueWorker, /!writeBlockedPlatforms\.has\(schedule\.platform\)/);
+  assert.match(dueWorker, /verifyPublishSchedule\(schedule\.id\)/);
+  const runJob = implementation.slice(
+    implementation.indexOf("export async function runPublishSchedule"),
+    implementation.indexOf("export async function verifyPublishSchedule")
+  );
+  assert.match(runJob, /platformWriteBlocker/);
+  assert.match(runJob, /写队列已由风险或认证门禁暂停/);
 });
 
 test("publish mutations are serialized across concurrent API requests", async () => {
@@ -406,6 +423,42 @@ test("ambiguous pending verification is not counted as an accepted submission", 
   const metrics = buildPublishReliabilityMetrics([schedule], [attempt]).find((item) => item.platform === "zhihu");
   assert.equal(metrics.submitted, 0);
   assert.equal(metrics.submissionAcceptanceRate, 0);
+});
+
+test("reliability metrics report risk blocks and real duplicate publishes as rates", () => {
+  const schedules = [
+    lifecycleSchedule({ id: "schedule-risk", status: "risk_blocked" }),
+    lifecycleSchedule({ id: "schedule-duplicate", status: "published_pending_url" })
+  ];
+  const baseAttempt = {
+    platform: "juejin",
+    contentHash: "hash",
+    idempotencyKey: "key",
+    status: "published_pending_url",
+    startedAt: "2026-07-31T00:00:00.000Z",
+    mode: "real",
+    authStatus: "ready",
+    payloadStatus: "valid",
+    publishStatus: "confirmed",
+    verifyStatus: "pending",
+    verificationKind: "initial",
+    pendingCsvReturn: true
+  };
+  const attempts = [
+    { ...baseAttempt, id: "attempt-1", scheduleId: "schedule-duplicate" },
+    { ...baseAttempt, id: "attempt-2", scheduleId: "schedule-duplicate" },
+    { ...baseAttempt, id: "attempt-liveness", scheduleId: "schedule-duplicate", verificationKind: "liveness" },
+    {
+      ...baseAttempt,
+      id: "attempt-legacy-verify",
+      scheduleId: "schedule-duplicate",
+      diagnosticSummary: "verify_only_no_publish_action"
+    }
+  ];
+  const metrics = buildPublishReliabilityMetrics(schedules, attempts).find((item) => item.platform === "juejin");
+  assert.equal(metrics.riskBlockRate, 0.5);
+  assert.equal(metrics.duplicatePublishCount, 1);
+  assert.equal(metrics.duplicatePublishRate, 1);
 });
 
 function lifecycleSchedule(overrides = {}) {
