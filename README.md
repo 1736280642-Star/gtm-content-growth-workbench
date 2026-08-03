@@ -182,7 +182,6 @@ SourceAsset/SourceRevision -> Claim -> SourceSnapshot/Manifest
 | [`docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md`](./docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md) | 知乎、掘金、CSDN 真实自动发布测试环境、结果、能力判断与卡点 |
 | [`docs/方案与规划/2026-07-31-全机器多平台自动发布架构与落地方案.md`](./docs/方案与规划/2026-07-31-全机器多平台自动发布架构与落地方案.md) | 全机器正式发布、MCP Tool、浏览器会话执行层、URL 生命周期和持续存活验证方案 |
 | [`docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md`](./docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md) | 公众号排版与正式 HTML 链路 |
-| [`docs/方案与规划/v5-ui-phase-status.md`](./docs/方案与规划/v5-ui-phase-status.md) | V5 UI 阶段状态与已知缺口 |
 
 ## 许可与数据安全
 
