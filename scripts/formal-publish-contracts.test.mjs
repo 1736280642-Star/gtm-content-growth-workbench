@@ -9,6 +9,7 @@ import { isPublishVerificationDue, resolvePublishVerificationLifecycle } from ".
 import { preflightPublishContent, rewriteJuejinContentOnce } from "../src/lib/publish-content-preflight.ts";
 import { buildPublishReliabilityMetrics, evaluatePublishRolloutReadiness } from "../src/lib/publish-reliability.ts";
 import { mergePublishRecordPlatformResult } from "../src/lib/publish-record-platform-results.ts";
+import { deduplicateObservedPublishVerifications } from "../src/lib/publish-verification-queue.ts";
 import { serializePublishMutation } from "../src/lib/publish-mutation-queue.ts";
 import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
 import { createBrowserPublishJobStore } from "./lib/browser-publish-job-store.mjs";
@@ -213,6 +214,36 @@ test("MCP long-running publish operations enqueue durable jobs instead of awaiti
   assert.match(reconciliationRoute, /dispatchPublishJobReconciliation/);
   assert.doesNotMatch(dispatchRoute, /runPublishJob/);
   assert.doesNotMatch(reconciliationRoute, /reconcilePublishJob/);
+});
+
+test("verification queue keeps the earliest canonical job for one shared public entity", () => {
+  const shared = [
+    { id: "late-a", firstPublicObservedAt: "2026-08-03T01:40:00.000Z" },
+    { id: "late-b", firstPublicObservedAt: "2026-08-03T01:41:00.000Z" },
+    { id: "canonical", firstPublicObservedAt: "2026-08-02T12:43:00.000Z" }
+  ].map((item) => ({
+    ...item,
+    platform: "zhihu",
+    status: "public_observed",
+    scheduledAt: "2026-08-02T12:00:00.000Z",
+    draftId: "draft-1",
+    contentHash: item.id,
+    idempotencyKey: item.id,
+    attemptIds: [],
+    retryCount: 0,
+    platformArticleId: "article-shared",
+    publicUrl: "https://zhuanlan.zhihu.com/p/article-shared"
+  }));
+  const pending = {
+    ...shared[0],
+    id: "pending-without-public-identity",
+    status: "pending_verify",
+    firstPublicObservedAt: undefined,
+    platformArticleId: undefined,
+    publicUrl: undefined
+  };
+  const selected = deduplicateObservedPublishVerifications([...shared, pending]);
+  assert.deepEqual(selected.map((schedule) => schedule.id), ["canonical", "pending-without-public-identity"]);
 });
 
 test("due worker probes risk states read-only and blocks new writes on the same platform", () => {

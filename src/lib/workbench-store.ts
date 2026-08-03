@@ -17,6 +17,7 @@ import { parseBotLogInput } from "./log-import-adapter";
 import { buildPublishIdempotencyKey, hashDirectPublishContent } from "./publish-idempotency";
 import { coerceDirectPublishPlatform, getPublishAdapter } from "./publish-adapters";
 import { isPublishVerificationDue, resolvePublishVerificationLifecycle } from "./publish-lifecycle";
+import { deduplicateObservedPublishVerifications } from "./publish-verification-queue";
 import { preflightPublishContent, rewriteJuejinContentOnce } from "./publish-content-preflight";
 import { mergePublishRecordPlatformResult } from "./publish-record-platform-results";
 import { getPromptTemplate, promptTemplates } from "./prompt-templates";
@@ -7434,21 +7435,6 @@ function compareDuePublishVerification(left: PublishSchedule, right: PublishSche
   return leftDue - rightDue;
 }
 
-function deduplicateObservedPublishVerifications(schedules: PublishSchedule[]): PublishSchedule[] {
-  const observedIdentities = new Set<string>();
-  return schedules.filter((schedule) => {
-    if (!schedule.firstPublicObservedAt) return true;
-    const identity = schedule.platformArticleId
-      ? `${schedule.platform}:article:${schedule.platformArticleId}`
-      : schedule.publicUrl
-        ? `${schedule.platform}:url:${schedule.publicUrl.split(/[?#]/, 1)[0].replace(/\/$/, "")}`
-        : `${schedule.platform}:schedule:${schedule.id}`;
-    if (observedIdentities.has(identity)) return false;
-    observedIdentities.add(identity);
-    return true;
-  });
-}
-
 export async function runDuePublishSchedules(input: Record<string, unknown> = {}): Promise<WorkflowResult<{ schedules: PublishSchedule[]; attempts: PublishAttempt[] }>> {
   const state = readWorkbenchState();
   const now = typeof input.now === "string" && !Number.isNaN(new Date(input.now).getTime()) ? new Date(input.now) : new Date();
@@ -7468,16 +7454,17 @@ export async function runDuePublishSchedules(input: Record<string, unknown> = {}
       .filter((schedule) => ["manual_takeover_required", "risk_blocked", "auth_expired"].includes(schedule.status))
       .map((schedule) => schedule.platform)
   );
-  const pendingVerifySchedules = deduplicateObservedPublishVerifications(
-    state.publishSchedules
-      .filter(
-        (schedule) =>
-          verificationStatuses.includes(schedule.status) &&
-          (schedule.status !== "stable_published" || Boolean(schedule.nextVerificationAt)) &&
-          isPublishVerificationDue(schedule, now)
-      )
-      .sort(compareDuePublishVerification)
-  ).slice(0, limit);
+  const verificationCandidates = deduplicateObservedPublishVerifications(
+    state.publishSchedules.filter(
+      (schedule) =>
+        verificationStatuses.includes(schedule.status) &&
+        (schedule.status !== "stable_published" || Boolean(schedule.nextVerificationAt))
+    )
+  );
+  const pendingVerifySchedules = verificationCandidates
+    .filter((schedule) => isPublishVerificationDue(schedule, now))
+    .sort(compareDuePublishVerification)
+    .slice(0, limit);
   const dueSchedules = state.publishSchedules
     .filter(
       (schedule) =>
