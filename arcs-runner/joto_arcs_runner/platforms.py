@@ -80,11 +80,16 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
 CHALLENGE_MARKERS = ["验证码", "安全验证", "手机号验证", "手机确认", "captcha", "security challenge", "滑块"]
 PLATFORM_LOCKS = {platform: threading.Lock() for platform in PLATFORM_CONFIG}
 PLATFORM_BROWSERS: dict[str, Any] = {}
+TRANSIENT_BROWSER_ERRORS = {"BrowserConnectError", "PageDisconnectedError", "ContextLostError"}
 
 
 def has_security_challenge(text: str) -> bool:
     normalized = text.lower()
     return any(marker.lower() in normalized for marker in CHALLENGE_MARKERS)
+
+
+def is_transient_browser_error(error: Exception) -> bool:
+    return type(error).__name__ in TRANSIENT_BROWSER_ERRORS
 
 
 def _profile_root() -> Path:
@@ -936,12 +941,23 @@ class BrowserPublisher:
                 api_result = _verify_juejin_draft_api(payload)
                 if api_result:
                     return api_result
-            browser = _browser(platform)
-            tab = browser.new_tab()
-            try:
-                return self._verify_tab(platform, tab, payload)
-            finally:
-                tab.close()
+            for attempt in range(2):
+                tab = None
+                try:
+                    browser = _browser(platform)
+                    tab = browser.new_tab()
+                    return self._verify_tab(platform, tab, payload)
+                except Exception as error:
+                    if not is_transient_browser_error(error) or attempt == 1:
+                        raise
+                    PLATFORM_BROWSERS.pop(platform, None)
+                finally:
+                    if tab is not None:
+                        try:
+                            tab.close()
+                        except Exception:
+                            pass
+            raise RuntimeError(f"{platform} verification retry exhausted")
 
     def _verify_tab(self, platform: str, tab, payload: dict[str, Any]) -> dict[str, Any]:
         config = _config(platform)

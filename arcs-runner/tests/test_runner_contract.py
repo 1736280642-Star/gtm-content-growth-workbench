@@ -24,6 +24,7 @@ from joto_arcs_runner.platforms import (
     _verify_juejin_draft_api,
     _verify_known_public_url,
     has_security_challenge,
+    is_transient_browser_error,
     profile_dir,
 )
 from joto_arcs_runner.server import RunnerService, expected_idempotency_key, validate_publish_payload
@@ -609,6 +610,37 @@ class RunnerContractTest(unittest.TestCase):
         self.assertTrue(has_security_challenge("请完成手机号验证"))
         self.assertTrue(has_security_challenge("CAPTCHA required"))
         self.assertFalse(has_security_challenge("文章已发布"))
+
+    def test_only_known_browser_disconnects_are_transient(self):
+        PageDisconnectedError = type("PageDisconnectedError", (Exception,), {})
+        self.assertTrue(is_transient_browser_error(PageDisconnectedError("disconnected")))
+        self.assertFalse(is_transient_browser_error(RuntimeError("platform rejected")))
+
+    def test_verify_rebuilds_browser_once_after_page_disconnect(self):
+        class PageDisconnectedError(Exception):
+            pass
+
+        class FailingBrowser:
+            def new_tab(self):
+                raise PageDisconnectedError("disconnected")
+
+        class WorkingTab:
+            def close(self):
+                return None
+
+        class WorkingBrowser:
+            def new_tab(self):
+                return WorkingTab()
+
+        from unittest.mock import patch
+        publisher = BrowserPublisher()
+        with patch("joto_arcs_runner.platforms._verify_known_public_url", return_value=None), patch(
+            "joto_arcs_runner.platforms._verify_juejin_draft_api", return_value=None
+        ), patch("joto_arcs_runner.platforms._browser", side_effect=[FailingBrowser(), WorkingBrowser()]), patch.object(
+            publisher, "_verify_tab", return_value={"ok": False, "status": "pending_verify"}
+        ):
+            result = publisher.verify("juejin", {})
+        self.assertEqual(result["status"], "pending_verify")
 
     def test_auth_check_reports_browser_failure_type(self):
         class FailingTab:

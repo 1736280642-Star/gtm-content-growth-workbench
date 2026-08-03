@@ -7,9 +7,12 @@ const response = await fetch(new URL("/api/publish-reliability", baseUrl));
 if (!response.ok) throw new Error(`Reliability API failed (${response.status}).`);
 const payload = await response.json();
 const metrics = Array.isArray(payload.metrics) ? payload.metrics : [];
+const readiness = Array.isArray(payload.readiness) ? payload.readiness : [];
 const requiredPlatforms = ["juejin", "csdn", "zhihu"];
 const missing = requiredPlatforms.filter((platform) => !metrics.some((item) => item.platform === platform));
 if (missing.length) throw new Error(`Missing platform metrics: ${missing.join(", ")}`);
+const missingReadiness = requiredPlatforms.filter((platform) => !readiness.some((item) => item.platform === platform));
+if (missingReadiness.length) throw new Error(`Missing platform readiness: ${missingReadiness.join(", ")}`);
 
 for (const metric of metrics) {
   for (const key of [
@@ -31,4 +34,22 @@ for (const metric of metrics) {
   }
 }
 
-process.stdout.write(`${JSON.stringify({ ok: true, generatedAt: payload.generatedAt, metrics }, null, 2)}\n`);
+if (process.env.PUBLISH_RELIABILITY_ENFORCE === "true" && payload.rolloutReady !== true) {
+  const blockers = readiness.flatMap((item) => item.blockers.map((blocker) => `${item.platform}:${blocker}`));
+  throw new Error(`Publish rollout is not ready: ${blockers.join(", ")}`);
+}
+
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      ok: true,
+      generatedAt: payload.generatedAt,
+      rolloutReady: payload.rolloutReady === true,
+      thresholds: payload.thresholds,
+      readiness,
+      metrics
+    },
+    null,
+    2
+  )}\n`
+);
