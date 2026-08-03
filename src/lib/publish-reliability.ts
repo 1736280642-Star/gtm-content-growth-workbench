@@ -20,6 +20,22 @@ export interface PublishReliabilityMetrics {
   averageUrlBackfillLatencyMinutes: number | null;
 }
 
+export interface PublishReliabilityThresholds {
+  minimumSubmittedSamples: number;
+  minimumSubmissionAcceptanceRate: number;
+  minimumPublicConversionRate: number;
+  minimumSurvival24hRate: number;
+  minimumSurvival72hRate: number;
+  maximumRiskBlockRate: number;
+  maximumDuplicatePublishCount: number;
+}
+
+export interface PublishPlatformRolloutReadiness {
+  platform: DirectPublishPlatformKey;
+  ready: boolean;
+  blockers: string[];
+}
+
 const SUBMITTED_STATUSES = new Set([
   "published_pending_url",
   "published_verified",
@@ -32,6 +48,59 @@ const ACCEPTED_PUBLISH_STATUSES = new Set(["submitted", "confirmed", "pending_re
 
 function rate(numerator: number, denominator: number): number | null {
   return denominator ? Number((numerator / denominator).toFixed(4)) : null;
+}
+
+function environmentNumber(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+export function getPublishReliabilityThresholds(): PublishReliabilityThresholds {
+  return {
+    minimumSubmittedSamples: environmentNumber("PUBLISH_RELIABILITY_MIN_SUBMITTED_SAMPLES", 3),
+    minimumSubmissionAcceptanceRate: environmentNumber("PUBLISH_RELIABILITY_MIN_SUBMISSION_ACCEPTANCE_RATE", 0.9),
+    minimumPublicConversionRate: environmentNumber("PUBLISH_RELIABILITY_MIN_PUBLIC_CONVERSION_RATE", 0.9),
+    minimumSurvival24hRate: environmentNumber("PUBLISH_RELIABILITY_MIN_SURVIVAL_24H_RATE", 0.95),
+    minimumSurvival72hRate: environmentNumber("PUBLISH_RELIABILITY_MIN_SURVIVAL_72H_RATE", 0.95),
+    maximumRiskBlockRate: environmentNumber("PUBLISH_RELIABILITY_MAX_RISK_BLOCK_RATE", 0.1),
+    maximumDuplicatePublishCount: environmentNumber("PUBLISH_RELIABILITY_MAX_DUPLICATE_PUBLISH_COUNT", 0)
+  };
+}
+
+export function evaluatePublishRolloutReadiness(
+  metrics: PublishReliabilityMetrics[],
+  thresholds: PublishReliabilityThresholds = getPublishReliabilityThresholds()
+): PublishPlatformRolloutReadiness[] {
+  const requiredPlatforms: DirectPublishPlatformKey[] = ["juejin", "csdn", "zhihu"];
+  return requiredPlatforms.map((platform) => {
+    const metric = metrics.find((item) => item.platform === platform);
+    const blockers: string[] = [];
+    if (!metric) {
+      blockers.push("missing_metrics");
+      return { platform, ready: false, blockers };
+    }
+    if (metric.submitted < thresholds.minimumSubmittedSamples) blockers.push("insufficient_submitted_samples");
+    if (
+      metric.submissionAcceptanceRate === null ||
+      metric.submissionAcceptanceRate < thresholds.minimumSubmissionAcceptanceRate
+    ) blockers.push("submission_acceptance_below_threshold");
+    if (metric.publicConversionRate === null || metric.publicConversionRate < thresholds.minimumPublicConversionRate) {
+      blockers.push("public_conversion_below_threshold");
+    }
+    if (metric.survival24hRate === null || metric.survival24hRate < thresholds.minimumSurvival24hRate) {
+      blockers.push("survival_24h_not_proven");
+    }
+    if (metric.survival72hRate === null || metric.survival72hRate < thresholds.minimumSurvival72hRate) {
+      blockers.push("survival_72h_not_proven");
+    }
+    if (metric.riskBlockRate !== null && metric.riskBlockRate > thresholds.maximumRiskBlockRate) {
+      blockers.push("risk_block_rate_above_threshold");
+    }
+    if (metric.duplicatePublishCount > thresholds.maximumDuplicatePublishCount) {
+      blockers.push("duplicate_publish_count_above_threshold");
+    }
+    return { platform, ready: blockers.length === 0, blockers };
+  });
 }
 
 function elapsedHours(from?: string, to?: string): number {

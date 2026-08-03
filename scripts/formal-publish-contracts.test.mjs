@@ -7,7 +7,7 @@ import { buildPublishIdempotencyKey, hashDirectPublishContent } from "../src/lib
 import { getPublishAdapter } from "../src/lib/publish-adapters/index.ts";
 import { isPublishVerificationDue, resolvePublishVerificationLifecycle } from "../src/lib/publish-lifecycle.ts";
 import { preflightPublishContent, rewriteJuejinContentOnce } from "../src/lib/publish-content-preflight.ts";
-import { buildPublishReliabilityMetrics } from "../src/lib/publish-reliability.ts";
+import { buildPublishReliabilityMetrics, evaluatePublishRolloutReadiness } from "../src/lib/publish-reliability.ts";
 import { mergePublishRecordPlatformResult } from "../src/lib/publish-record-platform-results.ts";
 import { serializePublishMutation } from "../src/lib/publish-mutation-queue.ts";
 import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
@@ -461,6 +461,36 @@ test("reliability metrics report risk blocks and real duplicate publishes as rat
   assert.equal(metrics.duplicatePublishRate, 1);
 });
 
+test("rollout readiness stays false until every platform meets sample and 24/72 hour thresholds", () => {
+  const incomplete = buildPublishReliabilityMetrics([], []);
+  const blocked = evaluatePublishRolloutReadiness(incomplete);
+  assert.equal(blocked.every((item) => item.ready), false);
+  assert.ok(blocked.every((item) => item.blockers.includes("insufficient_submitted_samples")));
+
+  const passingMetric = {
+    total: 3,
+    submitted: 3,
+    publicObserved: 3,
+    stablePublished: 3,
+    removedAfterPublish: 0,
+    platformRejected: 0,
+    riskBlocked: 0,
+    duplicateProtectedAttempts: 0,
+    duplicatePublishCount: 0,
+    submissionAcceptanceRate: 1,
+    publicConversionRate: 1,
+    survival24hRate: 1,
+    survival72hRate: 1,
+    riskBlockRate: 0,
+    duplicatePublishRate: 0,
+    averageUrlBackfillLatencyMinutes: 1
+  };
+  const ready = evaluatePublishRolloutReadiness(
+    ["juejin", "csdn", "zhihu"].map((platform) => ({ ...passingMetric, platform }))
+  );
+  assert.equal(ready.every((item) => item.ready), true);
+});
+
 function lifecycleSchedule(overrides = {}) {
   return {
     id: "schedule-lifecycle",
@@ -618,6 +648,32 @@ test("public liveness scheduling lands on the stability threshold instead of ove
     "2026-08-02T07:00:00.000Z"
   );
   assert.equal(lifecycle.nextVerificationAt, "2026-08-03T00:00:00.000Z");
+});
+
+test("public liveness scheduling lands on the 24 hour survival milestone", () => {
+  const schedule = lifecycleSchedule({
+    status: "public_observed",
+    firstPublicObservedAt: "2026-07-31T00:00:00.000Z",
+    lastVerifiedAt: "2026-07-31T08:00:00.000Z",
+    verificationStartedAt: "2026-07-31T00:00:00.000Z",
+    verificationCount: 2,
+    urlStatus: "provisional",
+    publicUrl: "https://juejin.cn/post/test"
+  });
+  const lifecycle = resolvePublishVerificationLifecycle(
+    schedule,
+    {
+      ok: true,
+      status: "published_verified",
+      mode: "real",
+      publishStatus: "confirmed",
+      verifyStatus: "verified",
+      publicUrl: schedule.publicUrl,
+      pendingCsvReturn: false
+    },
+    "2026-07-31T08:00:00.000Z"
+  );
+  assert.equal(lifecycle.nextVerificationAt, "2026-08-01T00:00:00.000Z");
 });
 
 test("safe retry recovers legacy pre-publish failures and interrupted schedules", () => {

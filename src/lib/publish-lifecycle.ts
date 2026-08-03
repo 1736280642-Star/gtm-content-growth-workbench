@@ -44,9 +44,19 @@ function getNextPublishVerificationAt(
           : pendingAge < 24 * HOUR_MS
             ? 6 * HOUR_MS
             : 24 * HOUR_MS;
+  const stableWindowMs = getStablePublishWindowMs();
+  const nextObservedMilestone =
+    observedAge >= 0
+      ? [24 * HOUR_MS, stableWindowMs]
+          .filter((milestone, index, values) => milestone > observedAge && values.indexOf(milestone) === index)
+          .sort((left, right) => left - right)[0]
+      : undefined;
   const boundedInterval =
     observedAge >= 0
-      ? Math.max(MINUTE_MS, Math.min(interval, Math.max(0, getStablePublishWindowMs() - observedAge)))
+      ? Math.max(
+          MINUTE_MS,
+          Math.min(interval, Math.max(0, (nextObservedMilestone ?? stableWindowMs) - observedAge))
+        )
       : interval;
   return new Date(verifiedTime + boundedInterval).toISOString();
 }
