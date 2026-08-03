@@ -422,6 +422,7 @@ test("ambiguous pending verification is not counted as an accepted submission", 
   };
   const metrics = buildPublishReliabilityMetrics([schedule], [attempt]).find((item) => item.platform === "zhihu");
   assert.equal(metrics.submitted, 0);
+  assert.equal(metrics.uniqueSubmittedDrafts, 0);
   assert.equal(metrics.submissionAcceptanceRate, 0);
 });
 
@@ -466,10 +467,12 @@ test("rollout readiness stays false until every platform meets sample and 24/72 
   const blocked = evaluatePublishRolloutReadiness(incomplete);
   assert.equal(blocked.every((item) => item.ready), false);
   assert.ok(blocked.every((item) => item.blockers.includes("insufficient_submitted_samples")));
+  assert.ok(blocked.every((item) => item.blockers.includes("insufficient_unique_drafts")));
 
   const passingMetric = {
     total: 3,
     submitted: 3,
+    uniqueSubmittedDrafts: 3,
     publicObserved: 3,
     stablePublished: 3,
     removedAfterPublish: 0,
