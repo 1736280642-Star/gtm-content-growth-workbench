@@ -85,9 +85,9 @@ export function createPublishMcpServer() {
   );
   register(
     "publish_job_run",
-    "Run one existing publish job through the configured workbench executor.",
+    "Queue one existing publish job for deterministic worker execution and return its durable handle immediately.",
     z.object({ jobId: z.string() }),
-    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/run`, { method: "POST" })
+    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/dispatch`, { method: "POST" })
   );
   register(
     "publish_job_get",
@@ -97,21 +97,21 @@ export function createPublishMcpServer() {
   );
   register(
     "publish_job_reconcile",
-    "Reconcile a previously submitted job without issuing a second publish action.",
+    "Queue read-only reconciliation for a previously submitted job and return its durable handle immediately.",
     z.object({ jobId: z.string() }),
-    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/reconcile`, { method: "POST" })
+    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/reconcile-dispatch`, { method: "POST" })
   );
   register(
     "publish_url_verify",
     "Verify and backfill the public URL for an existing publish job.",
     z.object({ jobId: z.string() }),
-    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/reconcile`, { method: "POST" })
+    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/reconcile-dispatch`, { method: "POST" })
   );
   register(
     "publish_liveness_check",
     "Check whether an observed public article is still live and advance its lifecycle.",
     z.object({ jobId: z.string() }),
-    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/reconcile`, { method: "POST" })
+    ({ jobId }) => request(`/api/publish-jobs/${encodeURIComponent(jobId)}/reconcile-dispatch`, { method: "POST" })
   );
 
   return server;
