@@ -191,6 +191,26 @@ test("direct publish worker continuously claims due schedules without a page cli
   assert.match(store, /new Date\(schedule\.scheduledAt\)\.getTime\(\) <= now\.getTime\(\)/);
 });
 
+test("MCP long-running publish operations enqueue durable jobs instead of awaiting browser work", () => {
+  const mcp = readFileSync(new URL("./publish-mcp-server.mjs", import.meta.url), "utf8");
+  const dispatchRoute = readFileSync(
+    new URL("../src/app/api/publish-jobs/[id]/dispatch/route.ts", import.meta.url),
+    "utf8"
+  );
+  const reconciliationRoute = readFileSync(
+    new URL("../src/app/api/publish-jobs/[id]/reconcile-dispatch/route.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(mcp, /publish-jobs\/\$\{encodeURIComponent\(jobId\)\}\/dispatch/);
+  assert.match(mcp, /publish-jobs\/\$\{encodeURIComponent\(jobId\)\}\/reconcile-dispatch/);
+  assert.doesNotMatch(mcp, /publish-jobs\/\$\{encodeURIComponent\(jobId\)\}\/run/);
+  assert.match(dispatchRoute, /dispatchPublishJob/);
+  assert.match(dispatchRoute, /status: result\.ok \? 202/);
+  assert.match(reconciliationRoute, /dispatchPublishJobReconciliation/);
+  assert.doesNotMatch(dispatchRoute, /runPublishJob/);
+  assert.doesNotMatch(reconciliationRoute, /reconcilePublishJob/);
+});
+
 test("due worker probes risk states read-only and blocks new writes on the same platform", () => {
   const implementation = readFileSync(new URL("../src/lib/workbench-store.ts", import.meta.url), "utf8");
   const dueWorker = implementation.slice(implementation.indexOf("export async function runDuePublishSchedules"));

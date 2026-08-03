@@ -6797,6 +6797,93 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
   };
 }
 
+const dispatchedPublishStatuses: PublishScheduleStatus[] = [
+  "publishing",
+  "published_verified",
+  "published_pending_url",
+  "pending_verify",
+  "public_observed",
+  "stable_published",
+  "removed_after_publish"
+];
+
+const reconcilablePublishStatuses: PublishScheduleStatus[] = [
+  "published_verified",
+  "published_pending_url",
+  "pending_verify",
+  "public_observed",
+  "stable_published",
+  "manual_takeover_required",
+  "risk_blocked",
+  "auth_expired"
+];
+
+export function dispatchPublishSchedule(id: string): WorkflowResult<{ schedule: PublishSchedule; pollPath: string }> {
+  const state = readWorkbenchState();
+  const index = state.publishSchedules.findIndex((item) => item.id === id);
+  if (index < 0) {
+    return { ok: false, status: "failed", message: `Publish Job not found: ${id}` };
+  }
+
+  const schedule = state.publishSchedules[index];
+  if (dispatchedPublishStatuses.includes(schedule.status)) {
+    return {
+      ok: true,
+      status: "success",
+      message: "Publish Job already has a durable execution state; poll the returned handle.",
+      data: { schedule, pollPath: `/api/publish-jobs/${encodeURIComponent(schedule.id)}` }
+    };
+  }
+  if (schedule.status !== "scheduled") {
+    return {
+      ok: false,
+      status: ["precheck_failed", "pending_config", "manual_takeover_required", "risk_blocked", "auth_expired"].includes(schedule.status)
+        ? "pending_input"
+        : "failed",
+      message: schedule.failureReason || `Publish Job cannot be dispatched from status ${schedule.status}.`
+    };
+  }
+
+  const now = nowIso();
+  const queued = { ...schedule, scheduledAt: now, updatedAt: now };
+  state.publishSchedules[index] = queued;
+  saveWithEvent(state, "publish_job_dispatched", `Queued Publish Job ${id} for worker execution.`);
+  return {
+    ok: true,
+    status: "success",
+    message: "Publish Job queued; poll the durable handle for progress.",
+    data: { schedule: queued, pollPath: `/api/publish-jobs/${encodeURIComponent(queued.id)}` }
+  };
+}
+
+export function dispatchPublishReconciliation(id: string): WorkflowResult<{ schedule: PublishSchedule; pollPath: string }> {
+  const state = readWorkbenchState();
+  const index = state.publishSchedules.findIndex((item) => item.id === id);
+  if (index < 0) {
+    return { ok: false, status: "failed", message: `Publish Job not found: ${id}` };
+  }
+
+  const schedule = state.publishSchedules[index];
+  if (!reconcilablePublishStatuses.includes(schedule.status)) {
+    return {
+      ok: false,
+      status: schedule.status === "scheduled" || schedule.status === "publishing" ? "pending_input" : "failed",
+      message: `Publish Job cannot be reconciled from status ${schedule.status}.`
+    };
+  }
+
+  const now = nowIso();
+  const queued = { ...schedule, nextVerificationAt: now, updatedAt: now };
+  state.publishSchedules[index] = queued;
+  saveWithEvent(state, "publish_reconciliation_dispatched", `Queued reconciliation for Publish Job ${id}.`);
+  return {
+    ok: true,
+    status: "success",
+    message: "Publish Job reconciliation queued; poll the durable handle for progress.",
+    data: { schedule: queued, pollPath: `/api/publish-jobs/${encodeURIComponent(queued.id)}` }
+  };
+}
+
 const activePublishIdempotencyKeys = new Set<string>();
 
 function syncPublishRecordLifecycle(state: WorkbenchState, schedule: PublishSchedule): void {
@@ -7341,6 +7428,7 @@ export async function runDuePublishSchedules(input: Record<string, unknown> = {}
     "published_pending_url",
     "published_verified",
     "public_observed",
+    "stable_published",
     "manual_takeover_required",
     "risk_blocked",
     "auth_expired"

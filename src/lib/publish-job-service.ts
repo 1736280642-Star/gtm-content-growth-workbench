@@ -1,5 +1,7 @@
 import {
   createPublishSchedules,
+  dispatchPublishReconciliation,
+  dispatchPublishSchedule,
   readWorkbenchState,
   runDuePublishSchedules,
   runPublishSchedule,
@@ -59,6 +61,14 @@ export async function createPublishJob(input: Record<string, unknown>) {
 
 export async function runPublishJob(id: string) {
   return serializePublishMutation(() => runPublishSchedule(id));
+}
+
+export async function dispatchPublishJob(id: string) {
+  return serializePublishMutation(() => dispatchPublishSchedule(id));
+}
+
+export async function dispatchPublishJobReconciliation(id: string) {
+  return serializePublishMutation(() => dispatchPublishReconciliation(id));
 }
 
 export async function reconcilePublishJob(id: string) {
