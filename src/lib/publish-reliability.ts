@@ -110,6 +110,56 @@ function elapsedHours(from?: string, to?: string): number {
   return (Date.parse(to) - Date.parse(from)) / 3_600_000;
 }
 
+function publicIdentity(schedule: PublishSchedule): string {
+  if (schedule.platformArticleId) return `article:${schedule.platformArticleId}`;
+  if (schedule.publicUrl) {
+    try {
+      const url = new URL(schedule.publicUrl);
+      url.hash = "";
+      url.search = "";
+      url.pathname = url.pathname.replace(/\/$/, "");
+      return `url:${url.toString()}`;
+    } catch {
+      return `url:${schedule.publicUrl.trim()}`;
+    }
+  }
+  return `schedule:${schedule.id}`;
+}
+
+interface ObservedPublication {
+  schedules: PublishSchedule[];
+  firstPublicObservedAt: string;
+  lastVerifiedAt?: string;
+  removedAt?: string;
+  status: PublishSchedule["status"];
+}
+
+function groupObservedPublications(schedules: PublishSchedule[]): ObservedPublication[] {
+  const groups = new Map<string, PublishSchedule[]>();
+  for (const schedule of schedules.filter((item) => Boolean(item.firstPublicObservedAt))) {
+    const key = publicIdentity(schedule);
+    groups.set(key, [...(groups.get(key) || []), schedule]);
+  }
+  return [...groups.values()].map((group) => {
+    const ordered = [...group].sort((left, right) =>
+      String(left.lastVerifiedAt || left.firstPublicObservedAt).localeCompare(
+        String(right.lastVerifiedAt || right.firstPublicObservedAt)
+      )
+    );
+    const latest = ordered.at(-1)!;
+    const firstPublicObservedAt = ordered
+      .map((item) => item.firstPublicObservedAt!)
+      .sort((left, right) => left.localeCompare(right))[0];
+    return {
+      schedules: ordered,
+      firstPublicObservedAt,
+      lastVerifiedAt: latest.lastVerifiedAt,
+      removedAt: latest.status === "removed_after_publish" ? latest.removedAt : undefined,
+      status: latest.status
+    };
+  });
+}
+
 export function buildPublishReliabilityMetrics(
   schedules: PublishSchedule[],
   attempts: PublishAttempt[]
@@ -157,7 +207,7 @@ export function buildPublishReliabilityMetrics(
       (sum, count) => sum + Math.max(0, count - 1),
       0
     );
-    const observed = platformSchedules.filter((schedule) => Boolean(schedule.firstPublicObservedAt));
+    const observed = groupObservedPublications(platformSchedules);
     const observed24h = observed.filter(
       (schedule) =>
         elapsedHours(schedule.firstPublicObservedAt, schedule.lastVerifiedAt) >= 24 &&
@@ -175,10 +225,14 @@ export function buildPublishReliabilityMetrics(
       (schedule) => Boolean(schedule.removedAt) || elapsedHours(schedule.firstPublicObservedAt, schedule.lastVerifiedAt) >= 72
     );
     const latencies = observed
-      .map(
-        (schedule) =>
-          elapsedHours(firstSubmissionActionAt.get(schedule.id) || schedule.publishedAt, schedule.firstPublicObservedAt) * 60
-      )
+      .map((publication) => {
+        const submissionTimes = publication.schedules
+          .map((schedule) => firstSubmissionActionAt.get(schedule.id) || schedule.publishedAt)
+          .filter((value): value is string => Boolean(value))
+          .sort((left, right) => left.localeCompare(right));
+        if (!submissionTimes.length) return Number.NaN;
+        return elapsedHours(submissionTimes[0], publication.firstPublicObservedAt) * 60;
+      })
       .filter((value) => Number.isFinite(value) && value >= 0);
     return {
       platform,
@@ -186,8 +240,8 @@ export function buildPublishReliabilityMetrics(
       submitted: submittedSchedules.length,
       uniqueSubmittedDrafts,
       publicObserved: observed.length,
-      stablePublished: platformSchedules.filter((schedule) => schedule.status === "stable_published").length,
-      removedAfterPublish: platformSchedules.filter((schedule) => schedule.status === "removed_after_publish").length,
+      stablePublished: observed.filter((publication) => publication.status === "stable_published").length,
+      removedAfterPublish: observed.filter((publication) => publication.status === "removed_after_publish").length,
       platformRejected: platformSchedules.filter((schedule) => schedule.status === "platform_rejected").length,
       riskBlocked: platformSchedules.filter((schedule) => schedule.status === "risk_blocked").length,
       duplicateProtectedAttempts: platformAttempts.filter((attempt) => attempt.failureCode === "duplicate_protected").length,

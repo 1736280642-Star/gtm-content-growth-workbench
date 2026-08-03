@@ -186,7 +186,11 @@ test("direct publish worker continuously claims due schedules without a page cli
   const store = readFileSync(new URL("../src/lib/workbench-store.ts", import.meta.url), "utf8");
   assert.match(worker, /postJson\(baseUrl, "\/api\/direct-publish", \{ limit \}\)/);
   assert.match(worker, /args\.once \? 1/);
-  assert.match(store, /verificationStatuses\.includes\(schedule\.status\) && isPublishVerificationDue\(schedule, now\)/);
+  assert.match(store, /verificationStatuses\.includes\(schedule\.status\)/);
+  assert.match(store, /isPublishVerificationDue\(schedule, now\)/);
+  assert.match(store, /schedule\.status !== "stable_published" \|\| Boolean\(schedule\.nextVerificationAt\)/);
+  assert.match(store, /\.sort\(compareDuePublishVerification\)/);
+  assert.match(store, /deduplicateObservedPublishVerifications/);
   assert.match(store, /schedule\.status === "scheduled"/);
   assert.match(store, /new Date\(schedule\.scheduledAt\)\.getTime\(\) <= now\.getTime\(\)/);
 });
@@ -480,6 +484,29 @@ test("reliability metrics report risk blocks and real duplicate publishes as rat
   assert.equal(metrics.riskBlockRate, 0.5);
   assert.equal(metrics.duplicatePublishCount, 1);
   assert.equal(metrics.duplicatePublishRate, 1);
+});
+
+test("reliability metrics count one public entity when multiple schedules resolve to the same article", () => {
+  const schedules = ["schedule-a", "schedule-b", "schedule-c"].map((id, index) => ({
+    id,
+    platform: "zhihu",
+    status: "public_observed",
+    scheduledAt: `2026-08-01T0${index}:00:00.000Z`,
+    draftId: "draft-1",
+    contentHash: `hash-${index}`,
+    idempotencyKey: `key-${index}`,
+    attemptIds: [],
+    retryCount: 0,
+    platformArticleId: "article-1",
+    publicUrl: "https://zhuanlan.zhihu.com/p/article-1?utm_source=test",
+    firstPublicObservedAt: `2026-08-02T0${index}:00:00.000Z`,
+    lastVerifiedAt: `2026-08-02T1${index}:00:00.000Z`
+  }));
+  const metric = buildPublishReliabilityMetrics(schedules, []).find((item) => item.platform === "zhihu");
+  assert.equal(metric.submitted, 3);
+  assert.equal(metric.uniqueSubmittedDrafts, 1);
+  assert.equal(metric.publicObserved, 1);
+  assert.equal(metric.publicConversionRate, 0.3333);
 });
 
 test("rollout readiness stays false until every platform meets sample and 24/72 hour thresholds", () => {
