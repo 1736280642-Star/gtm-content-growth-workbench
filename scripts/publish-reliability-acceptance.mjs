@@ -29,6 +29,9 @@ for (const metric of metrics) {
   if (metric.stablePublished > metric.publicObserved) {
     throw new Error(`${metric.platform} has more stable publications than observed public URLs.`);
   }
+  if (metric.uniqueSubmittedDrafts > metric.submitted) {
+    throw new Error(`${metric.platform} has more unique submitted drafts than submitted schedules.`);
+  }
   if (metric.duplicatePublishCount !== 0) {
     throw new Error(`${metric.platform} has ${metric.duplicatePublishCount} duplicate publish actions.`);
   }

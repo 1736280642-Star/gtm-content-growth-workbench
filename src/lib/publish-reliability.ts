@@ -4,6 +4,7 @@ export interface PublishReliabilityMetrics {
   platform: DirectPublishPlatformKey;
   total: number;
   submitted: number;
+  uniqueSubmittedDrafts: number;
   publicObserved: number;
   stablePublished: number;
   removedAfterPublish: number;
@@ -80,6 +81,7 @@ export function evaluatePublishRolloutReadiness(
       return { platform, ready: false, blockers };
     }
     if (metric.submitted < thresholds.minimumSubmittedSamples) blockers.push("insufficient_submitted_samples");
+    if (metric.uniqueSubmittedDrafts < thresholds.minimumSubmittedSamples) blockers.push("insufficient_unique_drafts");
     if (
       metric.submissionAcceptanceRate === null ||
       metric.submissionAcceptanceRate < thresholds.minimumSubmissionAcceptanceRate
@@ -137,6 +139,7 @@ export function buildPublishReliabilityMetrics(
     const submittedSchedules = platformSchedules.filter(
       (schedule) => SUBMITTED_STATUSES.has(schedule.status) || acceptedAttemptScheduleIds.has(schedule.id)
     );
+    const uniqueSubmittedDrafts = new Set(submittedSchedules.map((schedule) => schedule.draftId)).size;
     const acceptedInitialAttemptsBySchedule = new Map<string, number>();
     for (const attempt of platformAttempts.filter(
       (item) =>
@@ -181,6 +184,7 @@ export function buildPublishReliabilityMetrics(
       platform,
       total: platformSchedules.length,
       submitted: submittedSchedules.length,
+      uniqueSubmittedDrafts,
       publicObserved: observed.length,
       stablePublished: platformSchedules.filter((schedule) => schedule.status === "stable_published").length,
       removedAfterPublish: platformSchedules.filter((schedule) => schedule.status === "removed_after_publish").length,
