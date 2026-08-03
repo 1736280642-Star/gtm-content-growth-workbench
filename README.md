@@ -24,6 +24,12 @@ review/                   复盘与上下文沉淀
 
 页面和 API 共用领域契约；页面负责配置、确认、查看和人工接管，后台服务负责可重复的解析、索引、证据、生成和状态流转。
 
+## 自动化机器发布能力
+
+工作台已形成知乎、CSDN、掘金的机器发布主链路：终稿准入、Publish Job、幂等执行、浏览器会话发布、只读 reconciliation、公开 URL 回填、24h/72h 存活验证和可靠性统计使用同一套状态。CSDN 与知乎已经完成真实发布和公开 URL 回填；掘金可完成平台提交，但公开结果受平台风控影响，当前不能视为稳定发布。工程链路可用于受控的单篇、低频试运行，批量扩量门槛仍为 `rolloutReady: false`。
+
+持续运行目前依赖本机进程。生产化的最简路径是把 Workbench API、Bridge、Arcs Runner 和 `direct-publish-worker` 部署到同一台带持久磁盘和 Chromium 的单实例云执行节点，使用云端定时器触发 worker 单轮扫描；前台只负责配置、结果展示和异常处理。Runner、Bridge 继续只监听 loopback，浏览器 profile 与凭证不得进入 Git 或公网。完整部署边界与测试证据见下方文档索引。
+
 ## 快速开始
 
 ### 环境
@@ -172,6 +178,7 @@ SourceAsset/SourceRevision -> Claim -> SourceSnapshot/Manifest
 | [`docs/方案与规划/2026-07-16-v5-real-rag-knowledge-production-integration-plan.md`](./docs/方案与规划/2026-07-16-v5-real-rag-knowledge-production-integration-plan.md) | 真实 RAG 生产集成计划与验收边界 |
 | [`docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md`](./docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md) | GEO 研究 Agent 方案 |
 | [`docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md`](./docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md) | 微信、CSDN、掘金、知乎草稿/发布适配和配置边界 |
+| [`docs/方案与规划/2026-08-03-自动化机器发布链路能力与测试结果.md`](./docs/方案与规划/2026-08-03-自动化机器发布链路能力与测试结果.md) | 当前机器发布能力、真实测试结果、可靠性结论、卡点与云端常驻部署路径 |
 | [`docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md`](./docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md) | 知乎、掘金、CSDN 真实自动发布测试环境、结果、能力判断与卡点 |
 | [`docs/方案与规划/2026-07-31-全机器多平台自动发布架构与落地方案.md`](./docs/方案与规划/2026-07-31-全机器多平台自动发布架构与落地方案.md) | 全机器正式发布、MCP Tool、浏览器会话执行层、URL 生命周期和持续存活验证方案 |
 | [`docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md`](./docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md) | 公众号排版与正式 HTML 链路 |
