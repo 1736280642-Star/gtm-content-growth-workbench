@@ -6,6 +6,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { fileURLToPath } from "node:url";
 import { resolveWeixinArticleContent } from "./lib/wechatsync-content.mjs";
 import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
+import { createBrowserPublishJobStore } from "./lib/browser-publish-job-store.mjs";
 import { createCsdnGatewayHeaders } from "./lib/csdn-api-gateway.mjs";
 import { submitAndPollWechatPublish, verifyWechatPublish } from "./lib/wechat-formal-publish.mjs";
 
@@ -50,6 +51,21 @@ const publishLedgerPath =
   process.env.JOTO_PUBLISH_BRIDGE_LEDGER_PATH ||
   join(process.env.LOCALAPPDATA || join(homedir(), ".joto"), "JotoPublishRunner", "bridge-ledger.json");
 const publishLedger = createPublishIdempotencyLedger(publishLedgerPath);
+const browserPublishJobStorePath =
+  process.env.JOTO_BROWSER_PUBLISH_JOB_STORE_PATH ||
+  join(process.env.LOCALAPPDATA || join(homedir(), ".joto"), "JotoPublishRunner", "browser-publish-jobs.json");
+const browserPublishJobStore = createBrowserPublishJobStore(browserPublishJobStorePath, {
+  leaseMs: Number(process.env.JOTO_BROWSER_PUBLISH_JOB_LEASE_MS || 120_000)
+});
+const browserExtensionPlatforms = new Set(
+  String(process.env.PUBLISH_BROWSER_EXTENSION_PLATFORMS || (process.env.PUBLISH_BROWSER_EXTENSION_ENABLED === "true" ? "juejin" : ""))
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => ["juejin", "csdn", "zhihu"].includes(item))
+);
+const juejinPageContextPublishEnabled = process.env.JUEJIN_PAGE_CONTEXT_PUBLISH_ENABLED !== "false";
+const publishExtensionId = String(process.env.JOTO_PUBLISH_EXTENSION_ID || "amejiagagacknhmkjgnefkhpbikkbedo").trim();
+const extensionHeartbeats = new Map();
 let cachedAccessToken;
 
 function isLoopbackUrl(value) {
@@ -76,15 +92,24 @@ const ledgerRelativePath = relative(projectRoot, resolve(publishLedgerPath));
 if (!ledgerRelativePath.startsWith("..") && !isAbsolute(ledgerRelativePath)) {
   throw new Error("JOTO_PUBLISH_BRIDGE_LEDGER_PATH must be outside the repository.");
 }
+const browserJobStoreRelativePath = relative(projectRoot, resolve(browserPublishJobStorePath));
+if (!browserJobStoreRelativePath.startsWith("..") && !isAbsolute(browserJobStoreRelativePath)) {
+  throw new Error("JOTO_BROWSER_PUBLISH_JOB_STORE_PATH must be outside the repository.");
+}
 
 function nowIso() {
   return new Date().toISOString();
 }
 
-function sendJson(response, statusCode, payload) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sendJson(response, statusCode, payload, headers = {}) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    ...headers
   });
   response.end(JSON.stringify(payload));
 }
@@ -113,6 +138,10 @@ function readJsonBody(request) {
 
 function verifyBridgeToken(request) {
   return Boolean(bridgeToken) && request.headers.authorization === `Bearer ${bridgeToken}`;
+}
+
+function verifyPublishExtensionOrigin(request) {
+  return request.headers.origin === `chrome-extension://${publishExtensionId}`;
 }
 
 function expectedIdempotencyKey(input) {
@@ -650,6 +679,7 @@ async function checkAuth(platform) {
 }
 
 async function checkFormalPublishAuth(platform) {
+  console.log(`Formal auth probe: platform=${platform}, extension=${browserExtensionPlatforms.has(platform)}, pageContext=${platform === "juejin" && juejinPageContextPublishEnabled}`);
   if (platform === "weixin") {
     const result = await checkAuth(platform);
     return {
@@ -658,7 +688,39 @@ async function checkFormalPublishAuth(platform) {
     };
   }
 
-  if (platform === "csdn" || platform === "juejin") {
+  if (browserExtensionPlatforms.has(platform)) {
+    const timeBucket = Math.floor(Date.now() / 60_000);
+    const queued = browserPublishJobStore.enqueue({
+      platform,
+      idempotencyKey: `auth-probe:${platform}:${timeBucket}`,
+      payload: { operation: "auth_probe", platform }
+    });
+    for (let index = 0; index < 70; index += 1) {
+      const job = browserPublishJobStore.getById(queued.job.id);
+      if (job && browserPublishJobStore.isTerminal(job.status)) {
+        return {
+          authenticated: job.result?.authenticated === true,
+          status: job.result?.status || (job.result?.authenticated ? "ready" : "auth_required"),
+          message: job.result?.authenticated
+            ? `${platform} browser session is authenticated.`
+            : job.result?.failureReason || `${platform} browser session is not authenticated.`,
+          nextAction: job.result?.authenticated
+            ? "The browser executor can accept publish jobs."
+            : "Keep publishing blocked until a machine-managed authenticated session is available.",
+          failureCode: job.result?.failureCode
+        };
+      }
+      await sleep(500);
+    }
+    return {
+      authenticated: false,
+      status: "failed",
+      message: `${platform} browser executor did not answer the auth probe.`,
+      nextAction: "Restart the machine-managed extension browser and retry the auth probe."
+    };
+  }
+
+  if (platform === "csdn" || (platform === "juejin" && !juejinPageContextPublishEnabled)) {
     const draftApiAuth = await checkAuth(platform);
     if (!draftApiAuth.authenticated) {
       return {
@@ -670,6 +732,9 @@ async function checkFormalPublishAuth(platform) {
 
   try {
     const { response, payload } = await proxyArcs("/auth/check", { platform });
+    console.log(
+      `Formal auth result: platform=${platform}, http=${response.status}, status=${String(payload.status || "")}, authenticated=${payload.authenticated === true}, failureCode=${String(payload.failureCode || "")}, message=${String(payload.message || payload.failureReason || "").slice(0, 240)}`
+    );
     return {
       authenticated: response.ok && payload.authenticated === true,
       status: payload.status || (response.ok ? "ready" : "auth_required"),
@@ -1142,6 +1207,48 @@ async function publishFormalArticle(input) {
   const validation = validateFormalPublishInput(input);
   if (!validation.ok) return validation;
 
+  if (browserExtensionPlatforms.has(input.platform)) {
+    const existing = publishLedger.get(input.idempotencyKey);
+    if (existing?.result) {
+      return { statusCode: 200, payload: { ...existing.result, duplicateProtected: true } };
+    }
+    if (!existing) {
+      publishLedger.begin(input.idempotencyKey, {
+        scheduleId: input.scheduleId,
+        platform: input.platform,
+        contentHash: input.contentHash,
+        title: input.title
+      });
+    }
+    const queued = browserPublishJobStore.enqueue({
+      platform: input.platform,
+      idempotencyKey: input.idempotencyKey,
+      payload: {
+        scheduleId: input.scheduleId,
+        platform: input.platform,
+        contentHash: input.contentHash,
+        idempotencyKey: input.idempotencyKey,
+        title: input.title,
+        markdown: input.markdown,
+        summary: input.summary,
+        categoryId: input.categoryId,
+        tagIds: input.tagIds,
+        externalDraftId: input.externalDraftId,
+        editorUrl: input.editorUrl
+      }
+    });
+    const result = {
+      ok: true,
+      status: "pending_verify",
+      publishStatus: "pending_verify",
+      externalTaskId: queued.job.id,
+      failureCode: "platform_review_pending",
+      nextAction: "The authenticated browser executor has accepted this job; only reconcile its result."
+    };
+    publishLedger.complete(input.idempotencyKey, result);
+    return { statusCode: 202, payload: result };
+  }
+
   if (input.platform === "csdn" || input.platform === "juejin") {
     const existing = publishLedger.get(input.idempotencyKey);
     if (existing?.result) {
@@ -1160,13 +1267,20 @@ async function publishFormalArticle(input) {
         existing.result.failureCode === "adapter_failed" &&
         String(existing.result.failureReason || "").includes("X-Ca-Key is not exist") &&
         !existing.result.externalDraftId;
+      const canRetryJuejinPageContextBeforePublish =
+        input.platform === "juejin" &&
+        juejinPageContextPublishEnabled &&
+        existing.result.failureCode === "adapter_failed" &&
+        String(existing.result.failureReason || "").startsWith("BrowserConnectError") &&
+        !existing.result.externalDraftId &&
+        !existing.result.platformArticleId;
       if (canResumeExistingDraft) {
         input = {
           ...input,
           externalDraftId: String(existing.result.externalDraftId),
           editorUrl: String(existing.result.editorUrl)
         };
-      } else if (!canRetryRejectedCsdnDraft) {
+      } else if (!canRetryRejectedCsdnDraft && !canRetryJuejinPageContextBeforePublish) {
         return { statusCode: 200, payload: { ...existing.result, duplicateProtected: true } };
       }
     }
@@ -1194,7 +1308,8 @@ async function publishFormalArticle(input) {
       });
     }
 
-    if (!input.externalDraftId || !input.editorUrl) {
+    const needsHybridDraft = input.platform === "csdn" || (input.platform === "juejin" && !juejinPageContextPublishEnabled);
+    if (needsHybridDraft && (!input.externalDraftId || !input.editorUrl)) {
       let draft;
       try {
         draft = input.platform === "csdn" ? await syncCsdnArticle(input) : await syncJuejinArticle(input);
@@ -1261,6 +1376,32 @@ async function publishFormalArticle(input) {
 
 async function verifyFormalArticle(input) {
   if (input.platform !== "weixin") {
+    const browserJob =
+      (input.externalTaskId && browserPublishJobStore.getById(String(input.externalTaskId))) ||
+      (input.idempotencyKey && browserPublishJobStore.getByIdempotencyKey(String(input.idempotencyKey)));
+    if (browserJob) {
+      if (!browserPublishJobStore.isTerminal(browserJob.status)) {
+        return {
+          statusCode: 202,
+          payload: {
+            ok: true,
+            status: "pending_verify",
+            publishStatus: "pending_verify",
+            externalTaskId: browserJob.id,
+            failureCode: "platform_review_pending",
+            nextAction: "Wait for the browser executor result; do not submit a second publish action."
+          }
+        };
+      }
+      if (!browserJob.result?.ok) {
+        return { statusCode: browserJob.status === "risk_blocked" ? 409 : 502, payload: browserJob.result };
+      }
+      input = {
+        ...input,
+        ...browserJob.result,
+        externalTaskId: browserJob.id
+      };
+    }
     try {
       const { response, payload } = await proxyArcs("/verify", input);
       return { statusCode: response.status, payload };
@@ -1281,12 +1422,36 @@ async function verifyFormalArticle(input) {
 }
 
 async function handleRequest(request, response) {
-  if (!verifyBridgeToken(request)) {
+  const url = new URL(request.url || "/", `http://${request.headers.host || `${bindHost}:${port}`}`);
+  if (request.method === "GET" && url.pathname === "/health") {
+    sendJson(response, 200, {
+      ok: true,
+      service: "joto-wechatsync-bridge",
+      browserExtensionPlatforms: [...browserExtensionPlatforms],
+      juejinPageContextPublishEnabled
+    });
+    return;
+  }
+  const isExtensionRoute = url.pathname.startsWith("/extension/publish/");
+  if (isExtensionRoute && request.method === "OPTIONS") {
+    if (!verifyPublishExtensionOrigin(request)) {
+      sendJson(response, 401, { message: "Unauthorized extension origin." });
+      return;
+    }
+    response.writeHead(204, {
+      "Access-Control-Allow-Origin": request.headers.origin,
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Max-Age": "600"
+    });
+    response.end();
+    return;
+  }
+  if ((isExtensionRoute && !verifyPublishExtensionOrigin(request)) || (!isExtensionRoute && !verifyBridgeToken(request))) {
+    if (isExtensionRoute) console.warn(`Rejected publish extension origin: ${String(request.headers.origin || "missing")}`);
     sendJson(response, 401, { message: "Unauthorized bridge request." });
     return;
   }
-
-  const url = new URL(request.url || "/", `http://${request.headers.host || `${bindHost}:${port}`}`);
 
   if (request.method === "GET" && url.pathname === "/status") {
     sendJson(response, 200, {
@@ -1294,8 +1459,62 @@ async function handleRequest(request, response) {
       mode: "real",
       service: "joto-wechatsync-bridge",
       supportedPlatforms: implementedPlatforms,
+      browserExtensionPlatforms: [...browserExtensionPlatforms],
+      juejinPageContextPublishEnabled,
       checkedAt: nowIso()
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/extension/publish/tasks/next") {
+    const workerId = String(url.searchParams.get("workerId") || "").trim();
+    if (!workerId) {
+      sendJson(response, 400, { message: "workerId is required." }, { "Access-Control-Allow-Origin": request.headers.origin });
+      return;
+    }
+    sendJson(
+      response,
+      200,
+      browserPublishJobStore.claim(workerId, [...browserExtensionPlatforms]) || {},
+      { "Access-Control-Allow-Origin": request.headers.origin }
+    );
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/extension/publish/heartbeat") {
+    const body = await readJsonBody(request);
+    const workerId = String(body.workerId || "").trim();
+    if (!workerId) {
+      sendJson(response, 400, { message: "workerId is required." }, { "Access-Control-Allow-Origin": request.headers.origin });
+      return;
+    }
+    extensionHeartbeats.set(workerId, { checkedAt: nowIso(), platforms: Array.isArray(body.platforms) ? body.platforms : [] });
+    sendJson(response, 200, { ok: true }, { "Access-Control-Allow-Origin": request.headers.origin });
+    return;
+  }
+
+  const extensionResultMatch = url.pathname.match(/^\/extension\/publish\/tasks\/([^/]+)\/result$/);
+  if (request.method === "POST" && extensionResultMatch) {
+    const body = await readJsonBody(request);
+    const completed = browserPublishJobStore.complete(
+      decodeURIComponent(extensionResultMatch[1]),
+      String(body.workerId || ""),
+      body.result && typeof body.result === "object" ? body.result : {}
+    );
+    if (!completed) {
+      sendJson(
+        response,
+        409,
+        { message: "Job lease is missing, expired, or owned by another executor." },
+        { "Access-Control-Allow-Origin": request.headers.origin }
+      );
+      return;
+    }
+    publishLedger.complete(completed.idempotencyKey, {
+      ...completed.result,
+      externalTaskId: completed.id
+    });
+    sendJson(response, 200, completed, { "Access-Control-Allow-Origin": request.headers.origin });
     return;
   }
 
@@ -1357,4 +1576,5 @@ const server = http.createServer((request, response) => {
 server.listen(port, bindHost, () => {
   console.log(`Wechatsync bridge listening on http://${bindHost}:${port}`);
   console.log(`Supported real platforms: ${implementedPlatforms.join(", ")}`);
+  console.log(`Browser extension platforms: ${[...browserExtensionPlatforms].join(", ") || "disabled"}`);
 });

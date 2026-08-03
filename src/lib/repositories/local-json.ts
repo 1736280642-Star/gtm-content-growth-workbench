@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { WorkbenchState } from "../workbench-store";
 import type { WorkbenchRepository } from "./types";
@@ -34,7 +34,9 @@ export function createLocalJsonRepository(createInitialState: () => WorkbenchSta
     },
     write(state) {
       mkdirSync(dirname(statePath), { recursive: true });
-      writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+      const temporaryPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;
+      writeFileSync(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+      renameSync(temporaryPath, statePath);
       cachedState = state;
       cachedFileSignature = getFileSignature();
       return state;

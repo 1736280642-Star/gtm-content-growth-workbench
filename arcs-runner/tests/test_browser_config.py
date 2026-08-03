@@ -43,6 +43,20 @@ class FakeChromium:
         self.options = addr_or_opts
 
 
+class BrowserConnectError(Exception):
+    pass
+
+
+class RetryChromium(FakeChromium):
+    calls = 0
+
+    def __init__(self, addr_or_opts):
+        RetryChromium.calls += 1
+        if RetryChromium.calls == 1:
+            raise BrowserConnectError("browser is still starting")
+        super().__init__(addr_or_opts)
+
+
 class BrowserConfigurationTests(unittest.TestCase):
     def test_project_env_loads_browser_path_without_overriding_process_env(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -81,6 +95,31 @@ class BrowserConfigurationTests(unittest.TestCase):
             with patch.dict(os.environ, {"ARCS_BROWSER_PATH": str(missing)}, clear=True):
                 with self.assertRaisesRegex(RuntimeError, "ARCS_BROWSER_PATH"):
                     platforms.browser_executable_path()
+
+    def test_browser_path_auto_discovers_installed_edge(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            program_files_x86 = Path(temporary_dir)
+            executable = program_files_x86 / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+            executable.parent.mkdir(parents=True)
+            executable.touch()
+            with patch.dict(os.environ, {"PROGRAMFILES(X86)": str(program_files_x86)}, clear=True):
+                self.assertEqual(platforms.browser_executable_path(), executable.resolve())
+
+    def test_browser_retries_one_transient_connection_failure(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            profile = Path(temporary_dir) / "juejin-profile"
+            RetryChromium.calls = 0
+            fake_module = types.SimpleNamespace(Chromium=RetryChromium, ChromiumOptions=FakeChromiumOptions)
+            with patch.dict(
+                os.environ,
+                {"JUEJIN_BROWSER_PROFILE_DIR": str(profile)},
+                clear=True,
+            ), patch.dict(sys.modules, {"DrissionPage": fake_module}), patch("joto_arcs_runner.platforms.time.sleep") as sleep:
+                browser = platforms._browser("juejin")
+
+            self.assertIsInstance(browser, RetryChromium)
+            self.assertEqual(RetryChromium.calls, 2)
+            sleep.assert_called_once_with(2)
 
 
 if __name__ == "__main__":

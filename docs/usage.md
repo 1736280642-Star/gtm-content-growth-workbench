@@ -229,7 +229,7 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 
 ### CSDN / 掘金 / 知乎草稿 adapter
 
-当前 bridge 已按 `CSDN -> 掘金 -> 知乎` 顺序补入 adapter。CSDN、掘金在正式发布模式下使用“草稿 API + 指定草稿浏览器发布”；知乎使用浏览器完整发布。验证码、手机确认和安全挑战进入 `manual_takeover_required`；页面改版、找不到最终确认按钮或后台找不到同标题文章时进入 `publish_action_unconfirmed`，绝不返回 `submitted` 伪成功。
+当前 bridge 已按 `CSDN -> 掘金 -> 知乎` 顺序补入 adapter。CSDN 使用“草稿 API + 指定草稿浏览器发布”；掘金使用已登录浏览器页面上下文创建并提交文章，不由服务端重放 Cookie；知乎使用浏览器完整发布。验证码、手机确认和安全挑战进入 `risk_blocked` / `manual_takeover_required` 并熔断机器写队列；页面改版、找不到最终确认按钮或后台找不到同标题文章时进入 `publish_action_unconfirmed`，绝不返回 `submitted` 伪成功。
 
 配置顺序建议：
 

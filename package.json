@@ -53,6 +53,11 @@
     "worker:v5-content-production": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/content-production-worker.mjs",
     "worker:v5-geo-research": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/geo-research-worker.mjs",
     "bridge:wechatsync": "node scripts/wechatsync-bridge.mjs",
+    "extension:publish:prepare": "node scripts/prepare-publish-extension.mjs",
+    "extension:publish:start": "node scripts/start-publish-extension-browser.mjs",
+    "mcp:publish": "node scripts/publish-mcp-server.mjs",
+    "test:mcp-publish": "node --test scripts/publish-mcp-contract.test.mjs",
+    "test:publish-reliability": "node scripts/publish-reliability-acceptance.mjs",
     "arcs:runner:start": "python -X utf8 arcs-runner/run.py",
     "test:formal-publish": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/formal-publish-contracts.test.mjs",
     "test:arcs-runner": "python -X utf8 -B -m unittest discover -s arcs-runner/tests",
@@ -68,15 +73,18 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.3.7",
+    "@modelcontextprotocol/server": "^2.0.0",
     "antd": "^5.19.4",
     "mammoth": "^1.12.0",
     "mysql2": "^3.11.0",
     "next": "^14.2.5",
     "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
