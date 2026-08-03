@@ -7419,6 +7419,36 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
   };
 }
 
+function publishVerificationPriority(schedule: PublishSchedule): number {
+  if (schedule.status === "public_observed" || schedule.status === "stable_published") return 0;
+  if (schedule.status === "published_verified" || schedule.status === "published_pending_url") return 1;
+  if (["manual_takeover_required", "risk_blocked", "auth_expired"].includes(schedule.status)) return 2;
+  return 3;
+}
+
+function compareDuePublishVerification(left: PublishSchedule, right: PublishSchedule): number {
+  const priority = publishVerificationPriority(left) - publishVerificationPriority(right);
+  if (priority !== 0) return priority;
+  const leftDue = left.nextVerificationAt ? new Date(left.nextVerificationAt).getTime() : 0;
+  const rightDue = right.nextVerificationAt ? new Date(right.nextVerificationAt).getTime() : 0;
+  return leftDue - rightDue;
+}
+
+function deduplicateObservedPublishVerifications(schedules: PublishSchedule[]): PublishSchedule[] {
+  const observedIdentities = new Set<string>();
+  return schedules.filter((schedule) => {
+    if (!schedule.firstPublicObservedAt) return true;
+    const identity = schedule.platformArticleId
+      ? `${schedule.platform}:article:${schedule.platformArticleId}`
+      : schedule.publicUrl
+        ? `${schedule.platform}:url:${schedule.publicUrl.split(/[?#]/, 1)[0].replace(/\/$/, "")}`
+        : `${schedule.platform}:schedule:${schedule.id}`;
+    if (observedIdentities.has(identity)) return false;
+    observedIdentities.add(identity);
+    return true;
+  });
+}
+
 export async function runDuePublishSchedules(input: Record<string, unknown> = {}): Promise<WorkflowResult<{ schedules: PublishSchedule[]; attempts: PublishAttempt[] }>> {
   const state = readWorkbenchState();
   const now = typeof input.now === "string" && !Number.isNaN(new Date(input.now).getTime()) ? new Date(input.now) : new Date();
@@ -7438,9 +7468,16 @@ export async function runDuePublishSchedules(input: Record<string, unknown> = {}
       .filter((schedule) => ["manual_takeover_required", "risk_blocked", "auth_expired"].includes(schedule.status))
       .map((schedule) => schedule.platform)
   );
-  const pendingVerifySchedules = state.publishSchedules
-    .filter((schedule) => verificationStatuses.includes(schedule.status) && isPublishVerificationDue(schedule, now))
-    .slice(0, limit);
+  const pendingVerifySchedules = deduplicateObservedPublishVerifications(
+    state.publishSchedules
+      .filter(
+        (schedule) =>
+          verificationStatuses.includes(schedule.status) &&
+          (schedule.status !== "stable_published" || Boolean(schedule.nextVerificationAt)) &&
+          isPublishVerificationDue(schedule, now)
+      )
+      .sort(compareDuePublishVerification)
+  ).slice(0, limit);
   const dueSchedules = state.publishSchedules
     .filter(
       (schedule) =>
