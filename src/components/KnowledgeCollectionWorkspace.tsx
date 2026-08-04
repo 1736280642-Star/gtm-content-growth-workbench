@@ -301,8 +301,13 @@ export function KnowledgeCollectionWorkspace() {
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.sourceType !== current.sourceType}>
             {({ getFieldValue }) => getFieldValue("sourceType") === "wechat_account" ? (
               <>
-                <Form.Item name="accountId" label="微信公众号账号标识">
-                  <Input placeholder="公众号名称、原始 ID 或采集服务中的账号 ID" />
+                <Form.Item
+                  name="accountId"
+                  label="公众号订阅"
+                  rules={[{ required: true, message: "请填写订阅 ID 或准确的公众号名称" }]}
+                  extra="填写订阅服务中的 subscriptionId；也可以填写订阅列表中完全一致的公众号名称。"
+                >
+                  <Input placeholder="subscriptionId 或公众号名称" />
                 </Form.Item>
                 <Form.Item name="entryUrl" label="文章列表地址">
                   <Input placeholder="RSS、Atom 或已授权的公开文章列表 URL" />

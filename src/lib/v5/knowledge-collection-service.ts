@@ -25,6 +25,7 @@ import type {
 import type { V5KnowledgeBaseWorkspace } from "./knowledge-workspace-contracts";
 import { listProductRegistryRecords } from "./product-registry-repository";
 import { importManagedSources } from "./rag/managed-source-import-service";
+import { discoverWechatSubscriptionArticles } from "./wechat-subscription-adapter";
 
 export const V5_KNOWLEDGE_COLLECTION_CLASSIFIER_VERSION = "knowledge-collection-classifier.v1.0.0";
 const MAX_DISCOVERED_URLS = 100;
@@ -40,6 +41,7 @@ interface DiscoveredArticle {
   url: string;
   title?: string;
   publishedAt?: string;
+  content?: string;
 }
 
 export interface V5KnowledgeCollectionRuntime {
@@ -242,30 +244,19 @@ async function discoverSiteArticles(source: V5KnowledgeCollectionSource) {
 async function discoverWechatArticles(source: V5KnowledgeCollectionSource) {
   if (source.entryUrl) return discoverFromFeedOrPage(source.entryUrl);
   const baseUrl = process.env.WECHAT_COLLECTION_BASE_URL?.trim();
-  if (!baseUrl || !source.accountId) {
-    throw new Error("微信公众号来源缺少文章列表地址，且 WECHAT_COLLECTION_BASE_URL 未配置。");
+  const apiKey = process.env.WECHAT_COLLECTION_API_KEY?.trim();
+  if (!baseUrl || !apiKey || !source.accountId) {
+    throw new Error("微信公众号来源缺少订阅 ID/公众号名称，或订阅服务地址与 API Key 未配置。");
   }
-  const endpoint = new URL("/articles", baseUrl);
-  endpoint.searchParams.set("accountId", source.accountId);
-  const safeUrl = await assertPublicUrl(endpoint.toString());
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(safeUrl, {
-      signal: controller.signal,
-      headers: {
-        accept: "application/json",
-        ...(process.env.WECHAT_COLLECTION_API_KEY ? { authorization: `Bearer ${process.env.WECHAT_COLLECTION_API_KEY}` } : {})
-      }
-    });
-    if (!response.ok) throw new Error(`微信公众号采集适配器返回 HTTP ${response.status}。`);
-    const payload = await response.json() as { articles?: Array<{ url?: unknown; title?: unknown; publishedAt?: unknown }> };
-    return dedupeArticles((payload.articles || []).flatMap((item) => typeof item.url === "string"
-      ? [{ url: item.url, title: typeof item.title === "string" ? item.title : undefined, publishedAt: typeof item.publishedAt === "string" ? item.publishedAt : undefined }]
-      : []));
-  } finally {
-    clearTimeout(timeout);
-  }
+  const safeBaseUrl = await assertPublicUrl(baseUrl);
+  return dedupeArticles(await discoverWechatSubscriptionArticles({
+    baseUrl: safeBaseUrl,
+    apiKey,
+    accountReference: source.accountId,
+    startDate: source.lastCollectedAt,
+    endDate: new Date().toISOString(),
+    maxArticles: MAX_DISCOVERED_URLS
+  }));
 }
 
 async function discoverArticles(source: V5KnowledgeCollectionSource) {
@@ -727,6 +718,8 @@ async function collectSource(
       try {
         const fetched = runtime?.fetchArticle
           ? await runtime.fetchArticle({ url: article.url, title: article.title, source })
+          : article.content?.trim()
+            ? { title: article.title || article.url, content: article.content }
           : await (async () => {
               const preview = await parseKnowledgeSourcesForPreview({ name: article.title || source.name, urlsText: article.url });
               const parsed = preview.data?.sources.find((item) => item.status === "parsed" && item.url && item.markdown.trim());

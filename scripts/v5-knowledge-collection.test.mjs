@@ -14,6 +14,7 @@ const {
   parseKnowledgeCollectionDiscoveryDocument,
   updateKnowledgeCollectionSource
 } = await import("../src/lib/v5/knowledge-collection-service.ts");
+const { discoverWechatSubscriptionArticles } = await import("../src/lib/v5/wechat-subscription-adapter.ts");
 
 const actor = {
   actorId: "knowledge-collection-test",
@@ -109,6 +110,82 @@ test("发现解析覆盖 Sitemap、RSS、Atom 与文章页链接并自动去重"
   });
   assert.equal(html.length, 1);
   assert.equal(html[0].title, "新文章");
+});
+
+test("公众号订阅适配器解析订阅 ID、分页文章和增量时间", async () => {
+  const requests = [];
+  const fetchImpl = async (input, init) => {
+    const url = new URL(input.toString());
+    requests.push({ url, init });
+    if (url.pathname === "/api/v1/subscriptions") {
+      return Response.json({
+        data: {
+          subscriptions: [{ id: "subscription-joto", name: "JOTO公众号", status: "following" }]
+        }
+      });
+    }
+    if (url.pathname === "/api/v1/articles" && url.searchParams.get("page") === "1") {
+      return Response.json({
+        data: {
+          articles: [{
+            articleUrl: "https://mp.weixin.qq.com/s/article-1",
+            title: "文章一",
+            publishTime: 1785772800,
+            content: "文章一正文"
+          }],
+          hasNextPage: true,
+          totalPages: 2
+        }
+      });
+    }
+    return Response.json({
+      articles: [
+        { url: "https://mp.weixin.qq.com/s/article-1", title: "重复文章" },
+        { url: "https://mp.weixin.qq.com/s/article-2", title: "文章二", publishedAt: "2026-08-04T09:00:00+08:00" }
+      ],
+      hasNextPage: false,
+      totalPages: 2
+    });
+  };
+
+  const articles = await discoverWechatSubscriptionArticles({
+    baseUrl: "https://api.weixinzs.org/api",
+    apiKey: "test-api-key",
+    accountReference: "JOTO公众号",
+    startDate: "2026-08-03T00:00:00.000Z",
+    endDate: "2026-08-04T10:00:00.000Z",
+    fetchImpl
+  });
+
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0].url.pathname, "/api/v1/subscriptions");
+  assert.equal(new Headers(requests[0].init.headers).get("authorization"), "Bearer test-api-key");
+  assert.equal(requests[1].url.searchParams.get("subscriptionId"), "subscription-joto");
+  assert.equal(requests[1].url.searchParams.get("pageSize"), "50");
+  assert.equal(requests[1].url.searchParams.get("startDate"), "2026-08-03T00:00:00.000Z");
+  assert.deepEqual(articles.map((item) => item.title), ["文章一", "文章二"]);
+  assert.equal(articles[0].content, "文章一正文");
+  assert.equal(articles[1].publishedAt, "2026-08-04T01:00:00.000Z");
+});
+
+test("公众号订阅适配器仅对服务端错误重试一次", async () => {
+  let attempts = 0;
+  const articles = await discoverWechatSubscriptionArticles({
+    baseUrl: "https://api.weixinzs.org/api",
+    apiKey: "test-api-key",
+    accountReference: "subscription-joto",
+    fetchImpl: async (input) => {
+      const url = new URL(input.toString());
+      if (url.pathname.endsWith("/subscriptions")) {
+        return Response.json({ subscriptions: [{ subscriptionId: "subscription-joto", status: "following" }] });
+      }
+      attempts += 1;
+      if (attempts === 1) return Response.json({ message: "temporary" }, { status: 503 });
+      return Response.json({ articles: [], hasNextPage: false });
+    }
+  });
+  assert.deepEqual(articles, []);
+  assert.equal(attempts, 2);
 });
 
 test("完整采集链路自动区分首次收录、内容未变与正文更新", async () => {

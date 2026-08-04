@@ -85,6 +85,26 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 
 复制 `.env.local.example` 为 `.env.local` 后，只在本机填写真实配置。密钥、Cookie、Token、密码不得写入 README、日志、截图或 Git。
 
+### 微信公众号订阅文章自动收录
+
+工作台可将订阅服务中已关注的公众号接入现有知识采集链路：查询订阅和新文章后，继续执行正文解析、URL 与内容哈希去重、产品/知识库分类、资料归档、Claim 治理和 RAG 索引刷新。工作台不会自动新增公众号订阅，避免在未确认时产生积分消耗。
+
+在 `.env.local` 或部署环境密钥中配置：
+
+```text
+WECHAT_COLLECTION_BASE_URL=https://api.weixinzs.org/api
+WECHAT_COLLECTION_API_KEY=
+```
+
+然后进入 `/knowledge`，选择“来源导入 -> 微信公众号”：
+
+1. 填写订阅服务中的 `subscriptionId`，或订阅列表中完全一致的公众号名称；
+2. “文章列表地址”留空；
+3. 选择默认知识库、默认产品和每日执行时间；
+4. 确认内容使用权限后启用来源。
+
+采集 Worker 通过 `/v1/subscriptions` 解析订阅，通过 `/v1/articles` 以每页最多 50 条进行增量查询。文章接口返回正文时直接收录；只返回 URL 时复用工作台现有正文抓取链路。API Key 不写入来源记录、日志或状态文件。完整配置、状态和失败恢复说明见 [`docs/usage.md`](./docs/usage.md#微信公众号订阅文章采集)。
+
 ### 常用验证
 
 ```powershell
