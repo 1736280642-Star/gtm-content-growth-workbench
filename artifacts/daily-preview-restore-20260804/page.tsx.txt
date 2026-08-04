@@ -1,0 +1,470 @@
+"use client";
+
+import { Button, Card, Descriptions, Empty, Form, Input, InputNumber, Modal, Progress, Segmented, Select, Space, Spin, Table, Typography, message } from "antd";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
+import { MarkdownArticle } from "@/components/MarkdownArticle";
+import { PublishStatusTag } from "@/components/PublishStatusTag";
+import { V5StatusRail } from "@/components/V5StatusRail";
+import type { ProductionMatrixTask, PublishStatus } from "@/lib/v5/monthly-workspace-contracts";
+import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
+import styles from "./daily-execution.module.css";
+
+type PublishMode = "test" | "publish";
+
+interface PublishJob {
+  month: string;
+  date: string;
+  mode: PublishMode;
+  status: "running" | "completed" | "failed";
+  startedAt: string;
+  updatedAt: string;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  message?: string;
+}
+
+interface ExecutionRow {
+  id: string;
+  taskId: string;
+  task?: ProductionMatrixTask;
+  date: string;
+  title: string;
+  product: string;
+  channel: string;
+  status: PublishStatus;
+  failureReason: string;
+}
+
+const channelLabels: Record<string, string> = {
+  wechat: "公众号",
+  csdn: "CSDN",
+  juejin: "掘金",
+  zhihu_toutiao_general: "知乎"
+};
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function displayPublishStatus(task?: ProductionMatrixTask): PublishStatus {
+  if (task?.publication?.status === "published") return "published";
+  if (task?.publication?.status === "publishing") return "publishing";
+  return "waiting";
+}
+
+function jobPercent(job?: PublishJob) {
+  if (!job?.total) return 0;
+  return Math.round((job.completed / job.total) * 100);
+}
+
+export default function DailyExecutionPage() {
+  const [messageApi, messageContext] = message.useMessage();
+  const [modalApi, modalContext] = Modal.useModal();
+  const [activeDate, setActiveDate] = useState("");
+  const [selectedTaskId, setSelectedTaskId] = useState<string>();
+  const [workingTaskId, setWorkingTaskId] = useState<string>();
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [savingResult, setSavingResult] = useState(false);
+  const [publishJob, setPublishJob] = useState<PublishJob>();
+  const [publishResultForm] = Form.useForm();
+  const { workspace, loading, error, refresh } = useMonthlyWorkspace();
+  const month = workspace?.month || activeDate.slice(0, 7) || formatLocalDate(new Date()).slice(0, 7);
+
+  const availableDates = useMemo(() => Array.from(new Set((workspace?.productionTasks || [])
+    .filter((task) => task.status === "scheduled" && task.scheduledAt && task.lastUsableDraft)
+    .map((task) => task.scheduledAt!.slice(0, 10))))
+    .sort(), [workspace?.productionTasks]);
+
+  useEffect(() => {
+    if (!availableDates.length) return;
+    if (activeDate && availableDates.includes(activeDate)) return;
+    const today = formatLocalDate(new Date());
+    setActiveDate(availableDates.includes(today) ? today : availableDates[availableDates.length - 1]);
+  }, [activeDate, availableDates]);
+
+  const rows = useMemo<ExecutionRow[]>(() => (workspace?.productionTasks || [])
+    .filter((task) => task.status === "scheduled" && task.scheduledAt && task.lastUsableDraft)
+    .map((task) => {
+      const date = task.scheduledAt!.slice(0, 10);
+      return {
+        id: task.taskId,
+        taskId: task.taskId,
+        task,
+        date,
+        title: task.lastUsableDraft!.title,
+        product: task.productNameSnapshot || "产品待确认",
+        channel: task.channel,
+        status: displayPublishStatus(task),
+        failureReason: task.publication?.failureReason || ""
+      };
+    }), [workspace?.productionTasks]);
+
+  const visibleRows = rows.filter((item) => item.date === activeDate);
+  const selectedTask = (workspace?.productionTasks || []).find((task) => task.taskId === selectedTaskId);
+  const publishedCount = rows.filter((item) => item.status === "published").length;
+  const publishingCount = rows.filter((item) => item.status === "publishing").length;
+  const waitingCount = rows.length - publishedCount - publishingCount;
+  const exceptionCount = rows.filter((item) => item.task?.publication?.status === "failed" || item.task?.publication?.preflightStatus === "failed").length;
+
+  const readJob = useCallback(async (mode: PublishMode) => {
+    const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(month)}/publish-batch?date=${encodeURIComponent(activeDate)}&mode=${mode}`, { cache: "no-store" });
+    const body = await response.json() as { ok?: boolean; data?: PublishJob | null; error?: { message?: string } };
+    if (!response.ok || !body.ok) throw new Error(body.error?.message || "发布进度读取失败。");
+    return body.data || undefined;
+  }, [activeDate, month]);
+
+  useEffect(() => {
+    if (!activeDate) {
+      setPublishJob(undefined);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([readJob("test"), readJob("publish")]).then((jobs) => {
+      if (cancelled) return;
+      const latest = jobs
+        .filter((job): job is PublishJob => Boolean(job))
+        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0];
+      setPublishJob(latest);
+    }).catch((requestError) => {
+      if (!cancelled) messageApi.error(requestError instanceof Error ? requestError.message : "发布进度恢复失败。");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDate, messageApi, readJob]);
+
+  useEffect(() => {
+    if (publishJob?.status !== "running") return;
+    const mode = publishJob.mode;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    async function poll() {
+      try {
+        const next = await readJob(mode);
+        if (cancelled) return;
+        if (!next) {
+          timer = window.setTimeout(() => void poll(), 1000);
+          return;
+        }
+        setPublishJob(next);
+        if (next.status !== "running") {
+          await refresh(month);
+          if (next.failed) messageApi.warning(`${next.completed} 篇已处理，${next.failed} 篇需要查看失败原因。`);
+          else messageApi.success(next.mode === "test" ? "发布预检已完成。" : "批量自动发布已完成。" );
+          return;
+        }
+        timer = window.setTimeout(() => void poll(), 1000);
+      } catch (requestError) {
+        if (cancelled) return;
+        messageApi.error(requestError instanceof Error ? requestError.message : "发布进度读取失败。");
+        timer = window.setTimeout(() => void poll(), 1000);
+      }
+    }
+
+    timer = window.setTimeout(() => void poll(), 1000);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [messageApi, month, publishJob?.mode, publishJob?.status, readJob, refresh]);
+
+  async function startBatch(mode: PublishMode) {
+    const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(month)}/publish-batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ date: activeDate, mode })
+    });
+    const body = await response.json() as { ok?: boolean; data?: PublishJob; error?: { message?: string; details?: string[] } };
+    if (!response.ok || !body.ok || !body.data) throw new Error([body.error?.message, ...(body.error?.details || [])].filter(Boolean).join(" ") || "发布任务启动失败。");
+    setPublishJob(body.data);
+  }
+
+  function confirmBatchPublish() {
+    modalApi.confirm({
+      title: `批量自动发布 ${activeDate} 的 ${visibleRows.length} 篇正文？`,
+      content: "系统会按渠道把正文提交到当前已配置账号，可能创建外部草稿或发布记录。任务启动后请在进度条和正文详情中查看真实结果。",
+      okText: "确认自动发布",
+      cancelText: "取消",
+      onOk: () => startBatch("publish").catch((requestError) => messageApi.error(requestError instanceof Error ? requestError.message : "批量自动发布启动失败。"))
+    });
+  }
+
+  async function runSingle(mode: PublishMode) {
+    if (!selectedTask) return;
+    setWorkingTaskId(selectedTask.taskId);
+    try {
+      const response = await fetch(`/api/v5/content-tasks/${encodeURIComponent(selectedTask.taskId)}/publish`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ month, mode })
+      });
+      const body = await response.json() as { ok?: boolean; error?: { message?: string; details?: string[] } };
+      if (!response.ok || !body.ok) throw new Error([body.error?.message, ...(body.error?.details || [])].filter(Boolean).join(" ") || "正文发布处理失败。");
+      await refresh(month);
+      messageApi.success(mode === "test" ? "单篇发布预检通过。" : "单篇自动发布已提交。" );
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "正文发布处理失败。");
+    } finally {
+      setWorkingTaskId(undefined);
+    }
+  }
+
+  function confirmSinglePublish() {
+    if (!selectedTask) return;
+    modalApi.confirm({
+      title: `自动发布《${selectedTask.lastUsableDraft?.title || selectedTask.title}》？`,
+      content: `系统会把这篇正文提交到${channelLabels[selectedTask.channel] || selectedTask.channel}的已配置账号，并记录外部返回结果。`,
+      okText: "确认自动发布",
+      cancelText: "取消",
+      onOk: () => runSingle("publish")
+    });
+  }
+
+  function openPublishResultModal() {
+    if (!selectedTask) return;
+    publishResultForm.setFieldsValue({
+      status: selectedTask.publication?.status === "published" ? "published" : "failed",
+      publicUrl: selectedTask.publication?.publicUrl,
+      externalContentId: selectedTask.publication?.externalContentId,
+      failureReason: selectedTask.publication?.failureReason,
+      views: selectedTask.publication?.metrics?.views,
+      likes: selectedTask.publication?.metrics?.likes,
+      comments: selectedTask.publication?.metrics?.comments,
+      auditReason: "从当日执行回填平台发布结果与指标"
+    });
+    setResultModalOpen(true);
+  }
+
+  async function savePublishResult() {
+    if (!selectedTask) return;
+    const values = await publishResultForm.validateFields() as {
+      status: "published" | "failed" | "manual_takeover";
+      publicUrl?: string;
+      externalContentId?: string;
+      failureReason?: string;
+      views?: number;
+      likes?: number;
+      comments?: number;
+      auditReason: string;
+    };
+    setSavingResult(true);
+    try {
+      const metrics = Object.fromEntries(
+        [["views", values.views], ["likes", values.likes], ["comments", values.comments]]
+          .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+      );
+      const response = await fetch(`/api/v5/content-tasks/${encodeURIComponent(selectedTask.taskId)}/publish-result`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedVersion: selectedTask.publication?.publishResultVersion || 0,
+          status: values.status,
+          publicUrl: values.publicUrl,
+          externalContentId: values.externalContentId,
+          failureReason: values.failureReason,
+          metrics,
+          auditReason: values.auditReason
+        })
+      });
+      const body = await response.json() as { ok?: boolean; error?: { message?: string; nextAction?: string } };
+      if (!response.ok || !body.ok) throw new Error([body.error?.message, body.error?.nextAction].filter(Boolean).join(" ") || "发布结果保存失败。");
+      await refresh(month);
+      setResultModalOpen(false);
+      messageApi.success("发布结果与指标已保存。");
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "发布结果保存失败。");
+    } finally {
+      setSavingResult(false);
+    }
+  }
+
+  return (
+    <>
+      {messageContext}
+      {modalContext}
+      <PageHeader
+        title="当日执行"
+        subtitle="查看当天正文、运行发布预检，并在人工确认后执行自动发布。"
+        actions={<Segmented aria-label="选择执行日期" options={availableDates.map((date) => ({ label: date, value: date }))} value={activeDate} onChange={(value) => setActiveDate(String(value))} />}
+      />
+
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Space wrap>
+            <Button disabled={!visibleRows.length || publishJob?.status === "running"} onClick={() => void startBatch("test").catch((requestError) => messageApi.error(requestError instanceof Error ? requestError.message : "发布预检启动失败。"))}>
+              发布预检
+            </Button>
+            <Button type="primary" disabled={!visibleRows.length || publishJob?.status === "running"} onClick={confirmBatchPublish}>
+              批量自动发布
+            </Button>
+            <Typography.Text type="secondary">{activeDate} · {visibleRows.length} 篇</Typography.Text>
+          </Space>
+          {publishJob ? (
+            <div aria-label="发布进度">
+              <Progress
+                percent={jobPercent(publishJob)}
+                status={publishJob.failed ? "exception" : publishJob.status === "completed" ? "success" : "active"}
+                format={() => `${publishJob.completed}/${publishJob.total}`}
+              />
+              <Typography.Text type={publishJob.failed ? "danger" : "secondary"}>
+                {publishJob.mode === "test" ? "发布预检" : "自动发布"}：成功 {publishJob.succeeded}，失败 {publishJob.failed}{publishJob.message ? ` · ${publishJob.message}` : ""}
+              </Typography.Text>
+            </div>
+          ) : null}
+        </Space>
+      </Card>
+
+      {error ? <Card size="small" style={{ marginBottom: 16 }}><Typography.Text type="danger">当日执行数据读取失败：{error}</Typography.Text><Button size="small" onClick={() => void refresh()}>重试</Button></Card> : null}
+      {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取当日执行任务</span></div> : null}
+
+      <V5StatusRail items={[
+        { label: "待发布", value: waitingCount, helper: "已生成并完成日期排程" },
+        { label: "正在发布", value: publishingCount, helper: "已提交平台，等待结果" },
+        { label: "已发布", value: publishedCount, helper: "以平台真实返回结果统计" },
+        { label: "发布异常", value: exceptionCount, helper: "在正文详情中查看原因" }
+      ]} />
+
+      <Card title={`排期日 · ${activeDate || "暂无"}`} size="small">
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={visibleRows}
+          locale={{ emptyText: `${activeDate || "当前月度"}没有待执行正文` }}
+          columns={[
+            { title: "发布日期", dataIndex: "date", width: 120 },
+            { title: "标题", dataIndex: "title", render: (value) => <strong className="v5-title-cell">{value}</strong> },
+            { title: "产品", dataIndex: "product" },
+            { title: "渠道", dataIndex: "channel", width: 100, render: (value) => channelLabels[value] || value },
+            { title: "实际状态", dataIndex: "status", width: 110, render: (value: PublishStatus) => <PublishStatusTag status={value} /> },
+            { title: "处理", key: "action", width: 100, render: (_, record: ExecutionRow) => <Button size="small" onClick={() => setSelectedTaskId(record.taskId)}>查看正文</Button> }
+          ]}
+        />
+      </Card>
+
+      <Modal
+        width={1180}
+        open={Boolean(selectedTask)}
+        title={selectedTask?.lastUsableDraft?.title || "正文详情"}
+        footer={selectedTask ? (
+          <Space wrap>
+            <Button loading={workingTaskId === selectedTask.taskId} onClick={() => void runSingle("test")}>发布预检</Button>
+            <Button type="primary" loading={workingTaskId === selectedTask.taskId} onClick={confirmSinglePublish}>自动发布</Button>
+            <Button onClick={openPublishResultModal}>回填结果</Button>
+            <Button onClick={() => setSelectedTaskId(undefined)}>关闭</Button>
+          </Space>
+        ) : null}
+        onCancel={() => setSelectedTaskId(undefined)}
+      >
+        {selectedTask ? (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Descriptions size="small" bordered column={2}>
+              <Descriptions.Item label="状态"><PublishStatusTag status={displayPublishStatus(selectedTask)} /></Descriptions.Item>
+              <Descriptions.Item label="渠道">{channelLabels[selectedTask.channel] || selectedTask.channel}</Descriptions.Item>
+              <Descriptions.Item label="发布日期">{selectedTask.scheduledAt?.slice(0, 10) || "未排程"}</Descriptions.Item>
+              <Descriptions.Item label="发布模式">{selectedTask.publication?.mode || "尚未执行"}</Descriptions.Item>
+              <Descriptions.Item label="发布情况" span={2}>{selectedTask.publication?.nextAction || selectedTask.publication?.preflightMessage || "尚未运行发布预检"}</Descriptions.Item>
+              <Descriptions.Item label="发布 URL" span={2}>
+                {selectedTask.publication?.publicUrl ? <a href={selectedTask.publication.publicUrl} target="_blank" rel="noreferrer">{selectedTask.publication.publicUrl}</a> : "尚未返回"}
+              </Descriptions.Item>
+              {selectedTask.publication?.failureReason ? <Descriptions.Item label="失败原因" span={2}>{selectedTask.publication.failureReason}</Descriptions.Item> : null}
+              <Descriptions.Item label="效果指标" span={2}>
+                {selectedTask.publication?.metrics && Object.keys(selectedTask.publication.metrics).length
+                  ? Object.entries(selectedTask.publication.metrics).map(([key, value]) => `${key}: ${value}`).join(" · ")
+                  : "尚未回填"}
+              </Descriptions.Item>
+            </Descriptions>
+            <div className={styles.review}>
+              <article className={styles.manuscript} aria-labelledby="daily-draft-body-heading">
+                <div className={styles.panelHeading}>
+                  <span>发布正文</span>
+                  <Typography.Title level={5} id="daily-draft-body-heading">正文预览</Typography.Title>
+                </div>
+                <MarkdownArticle className={styles.body} markdown={selectedTask.lastUsableDraft?.markdown} />
+              </article>
+              <aside className={styles.evidence} aria-labelledby="daily-draft-evidence-heading">
+                <div className={styles.panelHeading}>
+                  <span>不随正文发布</span>
+                  <Typography.Title level={5} id="daily-draft-evidence-heading">事实依据与边界</Typography.Title>
+                </div>
+                {selectedTask.lastUsableDraft?.evidenceReferences?.length ? (
+                  <div className={styles.evidenceList}>
+                    {selectedTask.lastUsableDraft.evidenceReferences.map((reference) => (
+                      <section key={reference.sourceId}>
+                        <strong>{reference.title}</strong>
+                        <p>{reference.excerpt}</p>
+                        {reference.limitation ? <small>公开边界：{reference.limitation}</small> : null}
+                      </section>
+                    ))}
+                  </div>
+                ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这篇历史正文尚未保存结构化引用" />}
+                <div className={styles.checkBasis}>
+                  <strong>系统检查</strong>
+                  <ul>{selectedTask.lastUsableDraft?.basisSummary.map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+                {selectedTask.frozenCta ? (
+                  <div className={styles.checkBasis}>
+                    <strong>冻结 CTA</strong>
+                    <p>{selectedTask.frozenCta.copy}</p>
+                    <a href={selectedTask.frozenCta.publicUrl} target="_blank" rel="noreferrer">{selectedTask.frozenCta.label}</a>
+                    <small>版本：{selectedTask.frozenCta.ctaVariantVersionId} · 证据：{selectedTask.frozenCta.evidenceReferences.map((item) => item.sourceId).join("、")}</small>
+                  </div>
+                ) : null}
+              </aside>
+            </div>
+          </Space>
+        ) : null}
+      </Modal>
+
+      <Modal
+        title="回填发布结果与效果指标"
+        open={resultModalOpen}
+        okText="保存结果"
+        cancelText="取消"
+        confirmLoading={savingResult}
+        onOk={() => void savePublishResult()}
+        onCancel={() => setResultModalOpen(false)}
+        destroyOnClose
+      >
+        <Form form={publishResultForm} layout="vertical" preserve={false}>
+          <Form.Item name="status" label="发布状态" rules={[{ required: true, message: "请选择发布状态" }]}>
+            <Select options={[
+              { label: "已发布", value: "published" },
+              { label: "发布失败", value: "failed" },
+              { label: "人工接管", value: "manual_takeover" }
+            ]} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.status !== current.status}>
+            {({ getFieldValue }) => getFieldValue("status") === "published" ? (
+              <Form.Item name="publicUrl" label="发布 URL" rules={[{ required: true, type: "url", message: "请填写有效的 http(s) 发布 URL" }]}>
+                <Input placeholder="https://..." />
+              </Form.Item>
+            ) : (
+              <Form.Item name="failureReason" label="失败或接管原因" rules={[{ required: true, message: "请填写失败或接管原因" }]}>
+                <Input.TextArea rows={3} placeholder="说明平台返回、阻塞原因和下一步处理方式" />
+              </Form.Item>
+            )}
+          </Form.Item>
+          <Form.Item name="externalContentId" label="平台内容 ID">
+            <Input placeholder="可选，用于后续核验与去重" />
+          </Form.Item>
+          <Space size={12} style={{ display: "flex" }}>
+            <Form.Item name="views" label="阅读量"><InputNumber min={0} precision={0} /></Form.Item>
+            <Form.Item name="likes" label="点赞量"><InputNumber min={0} precision={0} /></Form.Item>
+            <Form.Item name="comments" label="评论量"><InputNumber min={0} precision={0} /></Form.Item>
+          </Space>
+          <Form.Item name="auditReason" label="回填原因" rules={[{ required: true, max: 200, message: "请填写 200 字以内的回填原因" }]}>
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}

@@ -5,11 +5,12 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(request: Request, { params }: { params: { productId: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ productId: string }> }) {
+  const routeParams = await params;
   try {
     const url = new URL(request.url);
     return NextResponse.json(await getV5MonthlyProductionPool({
-      productId: params.productId,
+      productId: routeParams.productId,
       monthlyPlanId: url.searchParams.get("monthlyPlanId") || undefined
     }));
   } catch (error) {

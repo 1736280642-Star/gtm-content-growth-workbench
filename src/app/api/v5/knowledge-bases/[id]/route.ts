@@ -4,9 +4,10 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
-    return NextResponse.json(getV5KnowledgeBaseDetail(params.id));
+    return NextResponse.json(getV5KnowledgeBaseDetail(routeParams.id));
   } catch (error) {
     return v5FoundationErrorResponse(error);
   }

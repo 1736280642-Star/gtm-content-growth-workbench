@@ -76,6 +76,8 @@ export type DistributionTargetErrorCode =
 
 export type ProductKey = "joto_brand" | "weike_guardrails";
 
+export type WorkspaceRole = "content_publisher" | "content_growth" | "workbench_operator" | "knowledge_manager" | "developer_admin";
+
 export type FinalReviewMode = "default_final" | "manual_review";
 
 export type LogMode = "demo_csv" | "csv_import" | "nginx_log" | "cdn_log";
@@ -236,6 +238,7 @@ export type WorkspaceRole = "content_publisher" | "content_growth" | "workbench_
 
 export interface WorkspaceSetting {
   id: string;
+  currentRole: WorkspaceRole;
   enabledChannels: ChannelKey[];
   enabledProducts: ProductKey[];
   productPlans?: ProductPlanConfig[];
@@ -496,6 +499,7 @@ export interface PublishSchedule {
   platformVariantId?: string;
   publishRecordId?: string;
   matrixItemId?: string;
+  contentFormat?: "markdown" | "wechat_html";
   contentHash: string;
   idempotencyKey: string;
   attemptIds: string[];

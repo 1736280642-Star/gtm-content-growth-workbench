@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { callAiProvider, type AiProviderKey } from "@/lib/ai-provider";
-import { checkFormalPublishAuth, submitFormalPublish } from "@/lib/formal-publish-client";
+import { checkFormalPublishAuth } from "@/lib/formal-publish-client";
+import { createPublishJobFromApprovedContent, dispatchPublishJob } from "@/lib/publish-job-service";
 import { getRuntimeConfigStatus } from "@/lib/runtime-config";
 import type { DirectPublishPlatformKey } from "@/lib/types";
 import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
@@ -451,6 +452,26 @@ export async function listFreeProductionBatches() { const state = await readFree
 export async function getFreeProductionBatch(batchId: string) { const state = await readFreeProductionState(); const batch = state.batches[batchId]; if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回任务列表并刷新。"); return batch; }
 function version(batch: FreeProductionBatch, expected: number) { if (batch.version !== expected) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_VERSION_CONFLICT", "配置已被其他操作更新。", "刷新页面读取最新版本后重试。"); }
 
+export async function reviewFreeProductionSources(batchId: string, input: { expectedVersion: number; auditReason: string; artifactId: string }, header: string | null) {
+  const actorId = actor();
+  const context = mutationContext(input, header);
+  return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input }, () => {
+    const batch = state.batches[batchId];
+    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回任务列表并刷新。");
+    version(batch, input.expectedVersion);
+    const artifact = batch.draftArtifacts.find((item) => item.id === input.artifactId);
+    if (!artifact || artifact.id !== batch.currentDraftArtifactId || !artifact.sourceExcerpts.length) {
+      throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SOURCE_REVIEW_INVALID", "只能核对当前正文版本且必须存在可追溯来源。", "刷新并查看当前正文的来源片段后重新确认。");
+    }
+    const now = new Date().toISOString();
+    batch.sourceReview = { artifactId: artifact.id, reviewedBy: actorId, reviewedAt: now };
+    batch.version += 1;
+    batch.updatedAt = now;
+    state.audits.push({ auditId: randomUUID(), action: "free_production_sources_reviewed", objectId: batchId, actor: actorId, auditReason: context.auditReason, createdAt: now, summary: { artifactId: artifact.id, sourceCount: artifact.sourceExcerpts.length } });
+    return batch;
+  }));
+}
+
 interface FileSupplement { fileName: string; mimeType: string; dataBase64: string; }
 async function storeSupplementFile(value: FileSupplement, accepted: string[]) {
   if (!accepted.includes(value.mimeType)) throw new FreeProductionServiceError(422, "SUPPLEMENT_FILE_TYPE_INVALID", "文件类型不符合该缺失项要求。", "选择 JPG、PNG 或 WebP 图片后重试。");
@@ -551,11 +572,33 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
     return { batch: target, replayed: false };
   });
   if (reservation.replayed) return reservation.batch;
-  const result = await submitFormalPublish(platform, { scheduleId: `free-task-${batch.id}`, contentHash: artifact.contentDigest, idempotencyKey: `${batch.id}:${artifact.contentDigest}`, title: artifact.selectedTitle, markdown: isWechat ? artifact.wechatPresentation!.publishHtml : sanitized.markdown, contentFormat: isWechat ? "wechat_html" : "markdown", summary: artifact.summary, scheduledAt: new Date().toISOString(), sourceDraftId: artifact.id, matrixItemId: `free-task-${batch.id}`, coverMediaId: batch.risks.find((risk) => risk.key === "wechat_cover")?.assetRef });
+  const createdJob = await createPublishJobFromApprovedContent({
+    sourceDraftId: artifact.id,
+    sourceTaskId: `free-task-${batch.id}`,
+    matrixItemId: `free-task-${batch.id}`,
+    title: artifact.selectedTitle,
+    markdown: isWechat ? artifact.wechatPresentation!.publishHtml : sanitized.markdown,
+    summary: artifact.summary,
+    contentFormat: isWechat ? "wechat_html" : "markdown",
+    platform,
+    scheduledAt: new Date().toISOString()
+  });
+  const schedule = createdJob.ok ? createdJob.data?.schedules[0] : undefined;
+  const dispatchedJob = schedule ? await dispatchPublishJob(schedule.id) : undefined;
+  const result = {
+    ok: Boolean(schedule && dispatchedJob?.ok),
+    status: schedule?.status || "failed",
+    publicUrl: schedule?.publicUrl,
+    externalTaskId: schedule?.id,
+    platformArticleId: schedule?.platformArticleId,
+    nextAction: dispatchedJob?.ok ? "Publish Job 已进入 Worker 队列；前台会持续轮询、核验并自动回填 URL。" : createdJob.message,
+    failureCode: schedule?.failureCode,
+    failureReason: dispatchedJob?.ok ? undefined : dispatchedJob?.message || createdJob.message
+  };
   const expression = await getActiveFreeContentExpressionTypeVersion(batch.freeContentExpressionTypeVersionId);
   const updated = await updateFreeProductionState((state) => {
     const target = state.batches[batchId]; const task = state.tasks[`free-task-${batchId}`]; const now = new Date().toISOString();
-    if (result.ok) { target.status = result.status === "published_verified" || result.status === "published_pending_url" ? "published" : "publishing"; target.publishedAt = target.status === "published" ? now : undefined; target.publishedUrl = result.publicUrl; target.externalRecordId = result.externalTaskId || result.platformArticleId; target.nextAction = result.nextAction; }
+    if (result.ok) { target.status = "publishing"; target.publishedAt = undefined; target.publishedUrl = result.publicUrl; target.externalRecordId = result.externalTaskId || result.platformArticleId; target.nextAction = result.nextAction; }
     else { target.status = "publish_failed"; target.failureCode = result.failureCode || result.status; target.failureMessage = result.failureReason || "发布失败。"; target.nextAction = result.nextAction || "检查发布连接后安全重试。"; }
     target.version += 1; target.updatedAt = now;
     if (task) { task.status = target.status; task.publishedAt = target.publishedAt; task.publishedUrl = target.publishedUrl; task.failureCode = target.failureCode; task.failureMessage = target.failureMessage; task.nextAction = target.nextAction; task.updatedAt = now; }

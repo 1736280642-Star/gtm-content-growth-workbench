@@ -7,12 +7,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { productId: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ productId: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await createV5EvidenceGap({
       gapId: readString(payload.gapId),
-      productId: params.productId,
+      productId: routeParams.productId,
       gapCode: readString(payload.gapCode) || "",
       title: readString(payload.title) || "",
       description: readString(payload.description),

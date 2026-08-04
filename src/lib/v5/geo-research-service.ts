@@ -1,7 +1,15 @@
-import type { GeoResearchReadiness, GeoResearchRun } from "./geo-research-contracts";
+import type {
+  GeoResearchEvidence,
+  GeoResearchFinding,
+  GeoResearchQuestionCatalog,
+  GeoResearchReadiness,
+  GeoResearchRun,
+  GeoResearchTask
+} from "./geo-research-contracts";
 import { getGeoResearchProviderReadiness } from "./geo-research-provider";
 import {
   approveGeoBlueprintRecord,
+  confirmGeoResearchQuestionFindingsRecord,
   createGeoResearchProjectRecord,
   createGeoResearchRunRecord,
   readGeoResearchRunWorkspace,
@@ -11,6 +19,8 @@ import {
   updateGeoResearchProjectRecord
 } from "./geo-research-repository";
 import { getActiveProduct } from "./product-registry-service";
+import type { ProductRegistryItem } from "./product-registry-contracts";
+import { ingestV5QuestionSignals } from "./question-service";
 import type { V5GovernanceActor } from "./knowledge-governance-repository";
 import { V5GovernanceServiceError } from "./knowledge-governance-service";
 
@@ -39,6 +49,104 @@ function assertStringList(values: string[] | undefined, field: string, maxItems 
       400
     );
   }
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function strings(value: unknown, maxItems = 20) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim()).slice(0, maxItems)
+    : [];
+}
+
+function normalizedQuestion(value: string) {
+  return value.toLowerCase().replace(/[\s，。！？、：；“”"'（）()\-—_]/g, "");
+}
+
+export function buildGeoResearchQuestionCatalog(input: {
+  product: Pick<ProductRegistryItem, "productId" | "displayName">;
+  run: GeoResearchRun;
+  tasks: GeoResearchTask[];
+  evidence: GeoResearchEvidence[];
+  findings: GeoResearchFinding[];
+}): GeoResearchQuestionCatalog {
+  const discoveryTask = input.tasks.find((task) => task.taskType === "live_question_discovery");
+  const rawQuestions = Array.isArray(discoveryTask?.outputSummary.questions)
+    ? discoveryTask.outputSummary.questions
+    : [];
+  const metadataByQuestion = new Map<string, Record<string, unknown>>();
+  for (const raw of rawQuestions) {
+    const item = asRecord(raw);
+    if (typeof item.text === "string" && item.text.trim()) metadataByQuestion.set(normalizedQuestion(item.text), item);
+  }
+  const evidenceById = new Map(input.evidence.map((item) => [item.evidenceId, item]));
+  const items = input.findings
+    .filter((finding) => finding.findingType === "question_opportunity")
+    .map((finding) => {
+      const metadata = metadataByQuestion.get(normalizedQuestion(finding.title)) || {};
+      const sources = finding.evidenceIds.flatMap((evidenceId) => {
+        const evidence = evidenceById.get(evidenceId);
+        if (!evidence?.sourceUrl || evidence.verificationStatus !== "verified") return [];
+        return [{
+          evidenceId,
+          url: evidence.sourceUrl,
+          title: evidence.sourceTitle,
+          publisher: evidence.publisher,
+          query: evidence.queryText
+        }];
+      });
+      return {
+        findingId: finding.findingId,
+        question: finding.title,
+        intent: typeof metadata.intent === "string" ? metadata.intent : finding.summary,
+        audience: typeof metadata.audience === "string" ? metadata.audience : undefined,
+        module: typeof metadata.module === "string" && metadata.module.trim() ? metadata.module.trim() : "uncategorized",
+        priority: typeof metadata.priority === "number" ? Math.max(0, Math.min(1, metadata.priority)) : finding.confidence,
+        confidence: finding.confidence,
+        suggestedArticleTypes: strings(metadata.suggestedArticleTypes),
+        keywords: strings(metadata.keywords),
+        sourceEvidenceIds: sources.map((source) => source.evidenceId),
+        sources,
+        reviewStatus: finding.reviewStatus
+      };
+    })
+    .sort((left, right) => right.priority - left.priority || left.question.localeCompare(right.question, "zh-CN"));
+  const importedCount = items.filter((item) => item.reviewStatus === "confirmed").length;
+  const liveSearchVerified = discoveryTask?.outputSummary.liveSearchVerified === true;
+  const moduleCounts = new Map<string, number>();
+  for (const item of items) moduleCounts.set(item.module, (moduleCounts.get(item.module) || 0) + 1);
+  const status = importedCount === items.length && items.length > 0
+    ? "imported" as const
+    : importedCount > 0
+      ? "partially_imported" as const
+      : liveSearchVerified && discoveryTask?.status === "completed"
+        ? "ready_for_review" as const
+        : "collecting" as const;
+  return {
+    catalogId: `geo-question-catalog-${input.run.runId}`,
+    runId: input.run.runId,
+    productId: input.product.productId,
+    productName: input.product.displayName,
+    status,
+    liveSearchVerified,
+    totalCount: items.length,
+    verifiedCount: items.filter((item) => item.sources.length > 0).length,
+    importedCount,
+    modules: [...moduleCounts.entries()].map(([module, count]) => ({ module, count })).sort((a, b) => b.count - a.count || a.module.localeCompare(b.module)),
+    items
+  };
+}
+
+function suggestedArticleTypesForQuestion(question: string) {
+  if (/对比|区别|选择|选型|是否需要|哪个好/.test(question)) return ["选型与比较"];
+  if (/如何|怎么|步骤|准备|部署|实施|迁移|接入|配置/.test(question)) return ["实施指南"];
+  if (/报错|异常|排查|性能|接口|API|架构|技术/.test(question)) return ["技术实践"];
+  if (/场景|适合|能否用于|可以用在/.test(question)) return ["场景解决方案"];
+  return ["FAQ"];
 }
 
 export async function getGeoResearchWorkspace(productId: string) {
@@ -107,7 +215,100 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
   if (!runWorkspace) {
     throw new V5GovernanceServiceError("research_run_not_found", "GEO 调研运行不存在。", 404);
   }
-  return { product, runWorkspace };
+  return {
+    product,
+    runWorkspace: {
+      ...runWorkspace,
+      questionCatalog: buildGeoResearchQuestionCatalog({ product, ...runWorkspace })
+    }
+  };
+}
+
+export async function importGeoResearchQuestionCatalog(input: {
+  productId: string;
+  runId: string;
+  findingIds: string[];
+  expectedQuestionPoolVersion: number;
+  idempotencyKey: string;
+  actor: V5GovernanceActor;
+}) {
+  assertText(input.productId, "productId", 64);
+  assertText(input.runId, "runId", 64);
+  assertText(input.idempotencyKey, "idempotencyKey", 128);
+  assertActor(input.actor);
+  assertStringList(input.findingIds, "findingIds", 100);
+  if (input.actor.actorType !== "human") {
+    throw new V5GovernanceServiceError("human_approval_required", "真实用户问题目录必须经人工确认后才能进入问题池。", 403);
+  }
+  if (!input.findingIds.length) {
+    throw new V5GovernanceServiceError("invalid_contract", "至少选择一个真实用户问题。", 400);
+  }
+  if (!Number.isInteger(input.expectedQuestionPoolVersion) || input.expectedQuestionPoolVersion < 0) {
+    throw new V5GovernanceServiceError("invalid_contract", "expectedQuestionPoolVersion 必须是非负整数。", 400);
+  }
+  const product = await getActiveProduct(input.productId);
+  const runWorkspace = await readGeoResearchRunWorkspace({ productId: input.productId, runId: input.runId });
+  if (!runWorkspace) throw new V5GovernanceServiceError("research_run_not_found", "GEO 调研运行不存在。", 404);
+  const catalog = buildGeoResearchQuestionCatalog({ product, ...runWorkspace });
+  if (!catalog.liveSearchVerified) {
+    throw new V5GovernanceServiceError(
+      "live_search_gate_failed",
+      "本次问题目录没有通过联网搜索门禁，禁止写入正式问题池。",
+      409,
+      "等待联网问题发现任务完成，并确认每条问题都有公开来源。"
+    );
+  }
+  const selectedIds = new Set(input.findingIds);
+  const selected = catalog.items.filter((item) => selectedIds.has(item.findingId));
+  if (selected.length !== selectedIds.size) {
+    throw new V5GovernanceServiceError("question_catalog_finding_mismatch", "选择的问题不属于当前产品目录。", 409, "刷新页面后重新选择。" );
+  }
+  if (selected.some((item) => item.reviewStatus === "rejected")) {
+    throw new V5GovernanceServiceError("question_catalog_rejected_item", "已拒绝的问题不能收录到问题池。", 409, "刷新页面后重新选择。" );
+  }
+  const unverified = selected.filter((item) => item.sources.length === 0);
+  if (unverified.length) {
+    throw new V5GovernanceServiceError(
+      "question_source_evidence_missing",
+      "部分问题没有逐条对应的公开来源，不能进入问题池。",
+      409,
+      "仅选择带有可复核来源的问题。"
+    );
+  }
+  const result = ingestV5QuestionSignals({
+    idempotencyKey: `${input.idempotencyKey}:question-pool`,
+    expectedVersion: input.expectedQuestionPoolVersion,
+    actor: input.actor,
+    signals: selected.map((item) => ({
+      text: item.question,
+      source: "geo_research" as const,
+      sourceId: `${input.runId}:${item.findingId}`,
+      sourceConfidence: item.confidence,
+      product: product.displayName,
+      entities: [...new Set([product.canonicalName, product.displayName, ...product.aliases].filter(Boolean))],
+      relationship: `${catalog.catalogId}:${item.module}`,
+      audience: item.audience,
+      suggestedArticleTypes: item.suggestedArticleTypes.length ? item.suggestedArticleTypes : suggestedArticleTypesForQuestion(item.question),
+      keywords: item.keywords,
+      knowledgeReadiness: {},
+      evidenceGap: true
+    }))
+  });
+  const confirmation = await confirmGeoResearchQuestionFindingsRecord({
+    productId: input.productId,
+    runId: input.runId,
+    findingIds: selected.map((item) => item.findingId),
+    catalogId: catalog.catalogId,
+    idempotencyKey: `${input.idempotencyKey}:research-findings`,
+    actor: input.actor
+  });
+  return {
+    catalogId: catalog.catalogId,
+    importedCount: selected.length,
+    questionIds: result.data.questionIds,
+    questionPoolStateVersion: result.data.stateVersion,
+    replayed: result.status === "replayed" && confirmation.replayed
+  };
 }
 
 export async function createGeoResearchProjectForProduct(input: {

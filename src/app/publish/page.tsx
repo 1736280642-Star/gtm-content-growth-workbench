@@ -3,11 +3,12 @@
 import { Alert, Button, Card, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from "antd";
 import type { UploadFile } from "antd";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { MetricCard } from "@/components/MetricCard";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
+import { PublishResultLedger } from "@/components/PublishResultLedger";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { channelLabels, contentTypeLabels, productLabels } from "@/lib/labels";
@@ -116,6 +117,10 @@ export default function PublishPage() {
   const matchedCount = filteredPublishRecords.filter((record) => getDataReturnStatus(record) === "matched").length;
   const missingUrlCount = filteredPublishRecords.filter((record) => getDataReturnStatus(record) === "missing_url").length;
   const pendingMetricsCount = filteredPublishRecords.filter((record) => getDataReturnStatus(record) === "pending_metrics").length;
+  const matchedPublishRecordIds = useMemo(
+    () => new Set(publishRecords.filter((record) => Boolean(record.channelMetrics)).map((record) => record.id)),
+    [publishRecords]
+  );
 
   function clearFilters() {
     setStatusFilter([]);
@@ -265,17 +270,18 @@ export default function PublishPage() {
       {contextHolder}
       <PageHeader
         title="数据回传"
-        subtitle="这里只负责把渠道数据匹配到已发布文章；发布确认和 URL 回填统一回今日发布页处理。"
+        subtitle="统一读取 Publish Job、Worker、reconciliation、URL 自动回填、24h/72h 存活验证与渠道指标，形成一份发布结果账本。"
         actions={
           <>
             <Button onClick={handleCopyTemplate}>下载模板</Button>
-            <Link href="/daily-execution">
-              <Button>回今日发布</Button>
+            <Link href="/publishing">
+              <Button>打开发布控制台</Button>
             </Link>
           </>
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
+      <PublishResultLedger matchedPublishRecordIds={matchedPublishRecordIds} />
       <div className="metric-grid">
         <MetricCard title="已发布文章" value={publishedCount} suffix="篇" />
         <MetricCard title="已匹配数据" value={matchedCount} suffix="篇" />

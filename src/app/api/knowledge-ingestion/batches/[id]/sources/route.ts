@@ -7,11 +7,12 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const sources = Array.isArray(payload.sources) ? payload.sources as Array<V5SourceRegistrationInput & { g0: V5G0Input }> : [];
-    const result = await registerV5SourceAssets({ ...readV5WriteEnvelope(payload), batchId: params.id, sources });
+    const result = await registerV5SourceAssets({ ...readV5WriteEnvelope(payload), batchId: routeParams.id, sources });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     return v5GovernanceErrorResponse(error);

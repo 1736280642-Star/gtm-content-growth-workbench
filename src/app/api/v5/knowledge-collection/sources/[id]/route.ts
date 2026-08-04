@@ -10,12 +10,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const envelope = readV5WriteEnvelope(payload);
     return NextResponse.json(updateKnowledgeCollectionSource({
-      sourceId: params.id,
+      sourceId: routeParams.id,
       idempotencyKey: envelope.idempotencyKey,
       actor: readV5Actor(payload),
       expectedVersion: envelope.expectedVersion,

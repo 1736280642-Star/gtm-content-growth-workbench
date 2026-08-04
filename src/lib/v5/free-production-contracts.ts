@@ -238,6 +238,7 @@ export interface DraftSection {
   sectionKey: string;
   heading: string;
   markdown: string;
+  citations?: Array<{ claimText: string; sourceIds: string[] }>;
 }
 
 export interface ContentDraftArtifact {
@@ -252,6 +253,7 @@ export interface ContentDraftArtifact {
   channelLayoutTree: ContentLayoutNode[];
   visualSuggestions: VisualMaterialSuggestion[];
   sourceExcerpts: FreeProductionSourceExcerpt[];
+  sourceReview?: { artifactId: string; reviewedBy: string; reviewedAt: string };
   wechatPresentation?: {
     templateId: "joto-official-v1";
     previewHtml: string;
@@ -312,6 +314,7 @@ export interface FreeProductionBatch {
   factItems: FreeProductionFactInput[];
   meetingText?: string;
   sourceExcerpts: FreeProductionSourceExcerpt[];
+  sourceReview?: { artifactId: string; reviewedBy: string; reviewedAt: string };
   supplementalMaterialRefs: string[];
   riskAndGapSummary: { ready: number; needsInput: number; needsApproval: number; warning: number; blocked: number };
   generationInputSnapshotId?: string;

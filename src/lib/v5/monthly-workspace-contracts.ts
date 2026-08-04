@@ -12,6 +12,20 @@ export type GenerationStatus = "title_pending" | "pending" | "generating" | "gen
 export type FinalEvidenceGateStatus = "not_created" | "ready" | "needs_review" | "blocked" | "pending_config";
 export type ScheduleDraftStatus = "unscheduled" | "draft" | "active" | "pending_config";
 export type PublishStatus = "scheduled" | "waiting" | "publishing" | "published" | "failed" | "manual_takeover";
+export type GenerationBatchStatus = "queued" | "running" | "pausing" | "paused" | "completed" | "failed" | "cancelled";
+
+export interface GenerationBatchRecord {
+  batchId: string;
+  month: string;
+  taskIds: string[];
+  pendingTaskIds: string[];
+  completedTaskIds: string[];
+  failedTaskIds: string[];
+  activeTaskId?: string;
+  status: GenerationBatchStatus;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface RulePackageOption {
   id: string;
@@ -43,7 +57,8 @@ export type ProductionTaskStatus =
   | "available"
   | "awaiting_material"
   | "system_recovering"
-  | "scheduled";
+  | "scheduled"
+  | "published";
 
 export interface TargetQuestionOption {
   questionVersionId: string;
@@ -113,6 +128,8 @@ export interface ProductionDraftSummary {
   draftId: string;
   title: string;
   markdown: string;
+  /** False when a list projection intentionally omits the heavy article body. */
+  bodyIncluded?: boolean;
   status: "checking" | "available";
   basisSummary: string[];
   updatedAt: string;
@@ -154,6 +171,11 @@ export interface ProductionMatrixTask {
   platformAccount?: string;
   formal?: boolean;
   formalDraftId?: string;
+  ctaType?: string;
+  frozenCtaPreview?: string;
+  ctaValidationStatus?: "pending" | "passed" | "failed";
+  generationProgress?: number;
+  failureReason?: string;
   updatedAt: string;
 }
 
@@ -343,6 +365,7 @@ export interface MonthlyWorkspaceBase {
   typeMatchRun?: QuestionTypeMatchRun;
   strategyPackage: ContentStrategyPackageRecord | null;
   productionTasks: ProductionMatrixTask[];
+  generationBatches: GenerationBatchRecord[];
   source: {
     monthlyData: V5RuntimeSource;
     referenceData: V5ReferenceSource;

@@ -6,13 +6,14 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const action = readString(payload.action);
     const result = await updateV5EvidenceGap({
       ...readV5WriteEnvelope(payload),
-      gapId: params.id,
+      gapId: routeParams.id,
       action: action === "resolve" || action === "accept_risk" || action === "reopen" ? action : "start",
       resolvedBySourceIds: readStringArray(payload.resolvedBySourceIds) || [],
       resolutionNote: readString(payload.resolutionNote) || ""

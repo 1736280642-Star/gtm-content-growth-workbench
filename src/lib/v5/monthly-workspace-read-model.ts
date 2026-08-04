@@ -12,6 +12,25 @@ import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
 import { hasV5GovernanceDatabaseConfig } from "./knowledge-governance-repository";
 import { readFormalProductionQueue } from "./single-article-production-repository";
 
+function compactProductionTask(task: ProductionMatrixTask): ProductionMatrixTask {
+  const compactDraft = (draft: ProductionMatrixTask["currentDraft"]) => draft ? {
+    ...draft,
+    markdown: "",
+    bodyIncluded: false,
+    evidenceReferences: undefined
+  } : undefined;
+  return { ...task, currentDraft: compactDraft(task.currentDraft), lastUsableDraft: compactDraft(task.lastUsableDraft) };
+}
+
+/** Keeps list/status data while removing article bodies and evidence excerpts. */
+export function compactMonthlyWorkspace(model: MonthlyWorkspaceReadModel): MonthlyWorkspaceReadModel {
+  return {
+    ...model,
+    productionTasks: model.productionTasks.map(compactProductionTask),
+    plan: model.plan ? { ...model.plan, matrixTasks: model.plan.matrixTasks?.map(compactProductionTask) } : null
+  };
+}
+
 function readGoalText(plan: V5MonthlyPlan, key: string) {
   const value = plan.goals[key];
   return typeof value === "string" ? value : "";
@@ -58,7 +77,9 @@ function toWorkspacePlanRecord(plan: V5MonthlyPlan, rulePackages: RulePackageOpt
 }
 
 function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string): ProductionMatrixTask {
-  const status: ProductionMatrixTask["status"] = item.scheduleStatus === "active"
+  const status: ProductionMatrixTask["status"] = item.displayStatus === "published"
+    ? "published"
+    : item.scheduleStatus === "active"
     ? "scheduled"
     : item.draftId
       ? "available"
@@ -100,8 +121,32 @@ function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string
     platformAccount: item.platformAccount,
     formal: true,
     formalDraftId: item.draftId,
+    ctaValidationStatus: item.hardRuleStatus === "passed" ? "passed" : item.hardRuleStatus === "blocked" ? "failed" : "pending",
+    generationProgress: item.generationStatus === "generating" ? 50 : item.draftId ? 100 : 0,
+    failureReason: item.failureReason,
     updatedAt: new Date().toISOString()
   };
+}
+
+function productionTaskIdentity(task: ProductionMatrixTask) {
+  const normalizedTitle = task.title.trim().toLocaleLowerCase("zh-CN").replace(/\s+/g, " ");
+  const normalizedChannel = task.channel.trim().toLocaleLowerCase("zh-CN");
+  return `${normalizedChannel}::${normalizedTitle}`;
+}
+
+/**
+ * A formal queue is an overlay, not a replacement for a persisted monthly snapshot.
+ * This keeps restored matrix items visible while preferring MySQL state for the same
+ * channel/title once that item has entered the formal execution pipeline.
+ */
+export function mergeMonthlyProductionTasks(
+  snapshotTasks: ProductionMatrixTask[],
+  formalTasks: ProductionMatrixTask[]
+) {
+  const merged = new Map<string, ProductionMatrixTask>();
+  for (const task of snapshotTasks) merged.set(productionTaskIdentity(task), task);
+  for (const task of formalTasks) merged.set(productionTaskIdentity(task), task);
+  return Array.from(merged.values());
 }
 
 export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Promise<MonthlyWorkspaceReadModel> {
@@ -111,10 +156,18 @@ export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Pro
     loadFormalQueue(base.month)
   ]);
   const formalPlanRecord = governance.monthlyPlan ? toWorkspacePlanRecord(governance.monthlyPlan, governance.rulePackages) : null;
-  const plan = formalPlanRecord || base.plan;
-  const productionTasks = productionQueue.items.length
-    ? productionQueue.items.map((item) => toFormalProductionTask(item, governance.monthlyPlan?.strategyPackageVersionId))
-    : base.productionTasks;
+  const formalTasks = productionQueue.items.map((item) => toFormalProductionTask(item, governance.monthlyPlan?.strategyPackageVersionId));
+  const productionTasks = mergeMonthlyProductionTasks(base.productionTasks, formalTasks);
+  const plan = formalPlanRecord
+    ? {
+        ...base.plan,
+        ...formalPlanRecord,
+        strategyPackage: base.plan?.strategyPackage,
+        matrixTasks: productionTasks
+      }
+    : base.plan
+      ? { ...base.plan, matrixTasks: productionTasks }
+      : null;
   const adaptedRulePackages = governance.source === "v5_mysql" || base.source.referenceData !== "v4_runtime"
     ? governance.rulePackages
     : base.rulePackages;

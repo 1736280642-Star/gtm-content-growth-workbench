@@ -77,12 +77,12 @@ function taskInstruction(taskType: GeoResearchTaskType) {
     case "research_planning":
       return `Create an executable GEO research plan. Return JSON with:
 {"researchQuestions":[],"searchQueries":[],"frontendTestQuestions":[],"competitorDimensions":[],"successCriteria":[]}.
-Queries must cover user questions, category alternatives, competitors, citations, and content types.`;
+Queries must cover user questions, category alternatives, competitors, citations, and content types. For question discovery, deliberately cover search suggestions, Q&A/community discussions, reviews, social posts, implementation troubleshooting, pricing/procurement, security/compliance, integrations, and official support forums. Use product aliases and category terms, not only the canonical product name.`;
     case "live_question_discovery":
-      return `Search the live web for real questions and search intents relevant to the product category.
+      return `Search the live web for real user questions and search intents relevant to the product and its category. Build a reusable product question catalog, not a short article-topic list. Search across diverse public source types such as Q&A/community pages, forums, reviews, social discussions, search-intent pages, issue discussions, and official support communities. Use both the product name/aliases and category-level language. Aim for broad lifecycle coverage and 30-80 verified questions when sources permit. Deduplicate semantic variants while preserving distinct intents.
 Return JSON with:
-{"questions":[{"text":"","intent":"","audience":"","sourceUrls":[],"priority":0.0}],"queryClusters":[],"contentGaps":[]}.
-Every question must cite at least one source URL found in this run.`;
+{"questions":[{"text":"","intent":"","audience":"","module":"","sourceType":"community_forum|q_and_a|review|social_media|search_intent|official_support|other","sourceUrls":[],"priority":0.0,"confidence":0.0,"suggestedArticleTypes":[],"keywords":[]}],"queryClusters":[],"contentGaps":[]}.
+Every question must be a natural-language question a real user could ask, cite at least one source URL found in this run, and be grouped into a stable user-journey module such as awareness_selection, pricing_procurement, deployment_architecture, capabilities, integration, implementation_service, security_compliance, comparison, operations_support, or business_scenarios. Do not invent demand from product documentation alone. If a source only proves a product fact but not that users ask the question, exclude it from the catalog.`;
     case "live_competitor_discovery":
       return `Search the live web for competitors and how they distribute content for GEO visibility.
 Return JSON with:

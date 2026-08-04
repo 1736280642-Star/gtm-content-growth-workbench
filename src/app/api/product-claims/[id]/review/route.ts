@@ -6,13 +6,14 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const reviewStatus = readString(payload.reviewStatus);
     const result = await reviewV5ProductClaim({
       ...readV5WriteEnvelope(payload),
-      claimId: params.id,
+      claimId: routeParams.id,
       reviewStatus: reviewStatus === "conditional" || reviewStatus === "rejected" ? reviewStatus : "supported",
       conditions: readStringArray(payload.conditions),
       limitations: readStringArray(payload.limitations)

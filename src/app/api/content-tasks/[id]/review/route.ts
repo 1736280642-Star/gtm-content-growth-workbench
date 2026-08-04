@@ -2,14 +2,15 @@ import { readRequestPayload } from "@/lib/api-utils";
 import { rejectContentTask, restoreRejectedContentTask } from "@/lib/workbench-store";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   const payload = await readRequestPayload(request);
   const action = typeof payload.action === "string" ? payload.action : "reject";
   const result =
     action === "restore"
-      ? restoreRejectedContentTask(params.id, payload)
+      ? restoreRejectedContentTask(routeParams.id, payload)
       : action === "reject"
-        ? rejectContentTask(params.id, payload)
+        ? rejectContentTask(routeParams.id, payload)
         : {
             ok: false,
             status: "failed" as const,

@@ -4,9 +4,10 @@ import { getFreeProductionBatch } from "@/lib/v5/free-production-service";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
-    return NextResponse.json({ ok: true, data: await getFreeProductionBatch(params.id) }, { headers: { "cache-control": "no-store" } });
+    return NextResponse.json({ ok: true, data: await getFreeProductionBatch(routeParams.id) }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return freeProductionErrorResponse(error);
   }

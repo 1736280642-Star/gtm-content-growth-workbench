@@ -105,19 +105,21 @@ test("technical recovery retries and preserves the last usable draft on continue
   assert.equal(failed.currentDraft?.draftId, "draft-good");
 });
 
-test("preview stays in a drawer and business UI omits internal quality vocabulary", async () => {
-  const [table, page, draftCompat] = await Promise.all([
-    readFile("src/components/BatchGenerationMatrixTable.tsx", "utf8"),
+test("preview stays in a drawer and generation and schedule use independent routes", async () => {
+  const [table, page, schedulePage, draftCompat] = await Promise.all([
+    readFile("src/components/MonthlyTaskTable.tsx", "utf8"),
     readFile("src/app/monthly-matrix/batch-generation/page.tsx", "utf8"),
+    readFile("src/app/monthly-matrix/schedule/page.tsx", "utf8"),
     readFile("src/app/v5/drafts/[id]/page.tsx", "utf8")
   ]);
   assert.match(table, /<Drawer/);
-  assert.match(table, /内容依据/);
-  assert.match(table, /保存并自动复检/);
+  assert.match(table, /正文预览/);
+  assert.match(table, /CTA 冻结内容/);
   assert.doesNotMatch(table, /softQualityScore|hardRuleStatus|claimCount|EvidencePack|Claim|逐条重试/);
-  assert.match(page, /key: "content"/);
-  assert.match(page, /key: "schedule"/);
-  assert.doesNotMatch(page, /key: "quality"|key: "exceptions"/);
+  assert.match(page, /MonthlyTaskTable/);
+  assert.match(page, /href="\/monthly-matrix\/schedule"/);
+  assert.doesNotMatch(page, /<Tabs|key: "schedule"/);
+  assert.match(schedulePage, /ScheduleCalendarLite/);
   assert.match(draftCompat, /monthly-matrix\/batch-generation\?draftId=/);
 });
 
@@ -131,6 +133,18 @@ test("schedule mutation only accepts available tasks and does not edit strategy 
   assert.match(service, /lastUsableDraft/);
   assert.match(schedule, /日期、时间、平台账号和发布方式由排程决定，不会修改已批准策略/);
   assert.match(legacy, /redirect\("\/monthly-matrix\/batch-generation"\)/);
+});
+
+test("generation batch pause waits for the active provider task before becoming paused", async () => {
+  const [service, contracts] = await Promise.all([
+    readFile("src/lib/v5/generation-batch-service.ts", "utf8"),
+    readFile("src/lib/v5/monthly-workspace-contracts.ts", "utf8")
+  ]);
+  assert.match(contracts, /"queued" \| "running" \| "pausing" \| "paused" \| "completed" \| "failed" \| "cancelled"/);
+  assert.match(service, /batch\.activeTaskId \? "pausing" : "paused"/);
+  assert.match(service, /action === "task-completed" \|\| action === "task-failed"/);
+  assert.match(service, /if \(batch\.status === "pausing"\) batch\.status = "paused"/);
+  assert.match(service, /batch\.pendingTaskIds = batch\.pendingTaskIds\.filter/);
 });
 
 test("formal monthly closure persists plan, matrix, schedule, publish result and review reference", async () => {

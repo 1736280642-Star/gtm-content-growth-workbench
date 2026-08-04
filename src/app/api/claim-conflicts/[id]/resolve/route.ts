@@ -6,12 +6,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await resolveV5ClaimConflict({
       ...readV5WriteEnvelope(payload),
-      conflictId: params.id,
+      conflictId: routeParams.id,
       action: readString(payload.action) === "accept_risk" ? "accept_risk" : "resolve",
       selectedClaimId: readString(payload.selectedClaimId),
       applicableVersion: readString(payload.applicableVersion),

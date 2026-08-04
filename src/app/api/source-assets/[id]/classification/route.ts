@@ -6,12 +6,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await classifyV5SourceAsset({
       ...readV5WriteEnvelope(payload),
-      sourceId: params.id,
+      sourceId: routeParams.id,
       g2: (payload.g2 || {}) as V5G2Input,
       classification: (payload.classification || {}) as Parameters<typeof classifyV5SourceAsset>[0]["classification"]
     });

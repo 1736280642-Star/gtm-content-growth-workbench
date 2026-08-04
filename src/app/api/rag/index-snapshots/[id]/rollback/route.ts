@@ -5,10 +5,11 @@ import { rollbackRagIndexSnapshot } from "@/lib/v5/rag/rag-service";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readRagPayload(request);
-    const data = await rollbackRagIndexSnapshot(params.id, String(payload.targetSnapshotId || ""), readRagActor(payload));
+    const data = await rollbackRagIndexSnapshot(routeParams.id, String(payload.targetSnapshotId || ""), readRagActor(payload));
     return NextResponse.json({ ok: true, data });
   } catch (error) {
     return ragErrorResponse(error);

@@ -5,10 +5,11 @@ import { prepareAndGenerateSingleArticle } from "@/lib/v5/single-article-product
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { taskId: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ taskId: string }> }) {
+  const routeParams = await params;
   try {
     const idempotencyKey = String(request.headers.get("x-idempotency-key") || "").trim();
-    const data = await prepareAndGenerateSingleArticle({ taskId: params.taskId, idempotencyKey, actor: getSingleArticleActor() });
+    const data = await prepareAndGenerateSingleArticle({ taskId: routeParams.taskId, idempotencyKey, actor: getSingleArticleActor() });
     return NextResponse.json({ ok: true, data }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return singleArticleErrorResponse(error);

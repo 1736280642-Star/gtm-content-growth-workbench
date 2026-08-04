@@ -58,10 +58,15 @@
     "mcp:publish": "node scripts/publish-mcp-server.mjs",
     "test:mcp-publish": "node --test scripts/publish-mcp-contract.test.mjs",
     "test:publish-reliability": "node scripts/publish-reliability-acceptance.mjs",
+    "test:publish-frontend": "node --test scripts/publish-frontend-contract.test.mjs",
+    "test:markdown-article": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/markdown-article-normalization.test.mjs",
+    "test:monthly-migration": "node --test scripts/monthly-snapshot-migration.test.mjs && node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-monthly-read-model.test.mjs",
     "arcs:runner:start": "python -X utf8 arcs-runner/run.py",
     "test:formal-publish": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/formal-publish-contracts.test.mjs",
     "test:arcs-runner": "python -X utf8 -B -m unittest discover -s arcs-runner/tests",
     "check:mysql": "node scripts/check-mysql-connection.mjs",
+    "backup:deployment": "node scripts/deployment-backup.mjs",
+    "restore:deployment": "node scripts/deployment-restore.mjs",
     "check:v5-flow": "node scripts/check-v5-user-flow.mjs",
     "init:mysql": "node scripts/init-mysql-schema.mjs",
     "worker:sync-blog": "node workers/sync-blog.mjs",
@@ -77,7 +82,7 @@
     "antd": "^5.19.4",
     "mammoth": "^1.12.0",
     "mysql2": "^3.11.0",
-    "next": "^14.2.5",
+    "next": "15.5.21",
     "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -89,7 +94,11 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.5",
+    "eslint-config-next": "15.5.21",
     "typescript": "^5.5.3"
+  },
+  "overrides": {
+    "postcss": "8.5.24",
+    "sharp": "0.35.0"
   }
 }

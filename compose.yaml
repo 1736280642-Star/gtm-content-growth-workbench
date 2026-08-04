@@ -1,0 +1,240 @@
+name: joto-gtm-workbench
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  DEPLOYMENT_PROFILE: ${DEPLOYMENT_PROFILE:-full}
+  WORKBENCH_BASE_URL: http://workbench-web:3027
+  V5_WORKBENCH_BASE_URL: http://workbench-web:3027
+  WORKBENCH_STORAGE: ${WORKBENCH_STORAGE:-mysql}
+  WORKBENCH_STATE_PATH: /app/data/workbench-state.json
+  V5_FOUNDATION_STATE_PATH: /app/data/v5-foundation-state.json
+  V5_MONTHLY_STATE_PATH: /app/data/v5-monthly-workbench.json
+  V5_ARTICLE_TYPE_STATE_PATH: /app/data/v5-article-types.json
+  V5_OBSERVATION_STATE_PATH: /app/data/v5-observation-review.json
+  WORKER_STATUS_DIR: /app/runtime/worker-status
+  MYSQL_HOST: mysql
+  MYSQL_PORT: 3306
+  MYSQL_DATABASE: ${MYSQL_DATABASE:-joto_workbench}
+  MYSQL_USER: ${MYSQL_USER:-joto}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+  OPENSEARCH_URL: http://opensearch:9200
+  OPENSEARCH_AUTH_MODE: none
+  OPENSEARCH_TIMEOUT_MS: ${OPENSEARCH_TIMEOUT_MS:-15000}
+  RAG_EMBEDDING_PROVIDER: ${RAG_EMBEDDING_PROVIDER:-qwen_embedding}
+  RAG_JOB_LEASE_SECONDS: ${RAG_JOB_LEASE_SECONDS:-300}
+  RAG_EMBEDDING_BATCH_SIZE: ${RAG_EMBEDDING_BATCH_SIZE:-10}
+  RAG_OPENSEARCH_BULK_SIZE: ${RAG_OPENSEARCH_BULK_SIZE:-100}
+  DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+  QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
+  QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v3}
+  QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+  QWEN_EMBEDDING_BASE_URL: ${QWEN_EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+  V5_FORMAL_ARTICLE_PROVIDER: ${V5_FORMAL_ARTICLE_PROVIDER:-qwen}
+  CONTENT_GENERATION_PROVIDER: ${CONTENT_GENERATION_PROVIDER:-qwen}
+  ARTICLE_TYPE_AI_PROVIDER: ${ARTICLE_TYPE_AI_PROVIDER:-qwen}
+  EMBEDDING_PROVIDER_TIMEOUT_MS: ${EMBEDDING_PROVIDER_TIMEOUT_MS:-60000}
+  AI_PROVIDER_TIMEOUT_MS: ${AI_PROVIDER_TIMEOUT_MS:-120000}
+  RAG_IMPORT_ACTOR_ID: ${RAG_IMPORT_ACTOR_ID:-docker-rag-source-import}
+  RAG_IMPORT_ACTOR_ROLE: ${RAG_IMPORT_ACTOR_ROLE:-knowledge_production_worker}
+  RAG_IMPORT_ACTOR_TYPE: system
+  RAG_IMPORT_AUDIT_REASON: ${RAG_IMPORT_AUDIT_REASON:-Scheduled source import in the local production distribution.}
+  KNOWLEDGE_COLLECTION_ACTOR_ID: ${KNOWLEDGE_COLLECTION_ACTOR_ID:-docker-knowledge-collection}
+  KNOWLEDGE_COLLECTION_ACTOR_ROLE: ${KNOWLEDGE_COLLECTION_ACTOR_ROLE:-knowledge_collection_scheduler}
+  KNOWLEDGE_COLLECTION_AI_PROVIDER: ${KNOWLEDGE_COLLECTION_AI_PROVIDER:-qwen}
+  V5_CONTENT_WORKER_BATCH_SIZE: ${V5_CONTENT_WORKER_BATCH_SIZE:-20}
+  DIRECT_PUBLISH_ENABLED: ${DIRECT_PUBLISH_ENABLED:-false}
+  DIRECT_PUBLISH_MOCK: ${DIRECT_PUBLISH_MOCK:-true}
+  WECHATSYNC_ENABLED: ${WECHATSYNC_ENABLED:-false}
+  WECHATSYNC_MOCK: ${WECHATSYNC_MOCK:-true}
+  WECHATSYNC_BRIDGE_URL: ${WECHATSYNC_BRIDGE_URL:-http://host.docker.internal:9528}
+
+x-app-volumes: &app-volumes
+  - workbench_data:/app/data
+  - workbench_artifacts:/app/artifacts
+  - worker_runtime:/app/runtime/worker-status
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILES:-5}
+
+x-worker: &worker
+  build:
+    context: .
+    target: worker
+  image: joto-gtm-workbench-worker:${WORKBENCH_IMAGE_TAG:-0.1.0}
+  restart: unless-stopped
+  stop_grace_period: 30s
+  environment: *app-environment
+  volumes: *app-volumes
+  logging: *default-logging
+  depends_on:
+    mysql:
+      condition: service_healthy
+    opensearch:
+      condition: service_healthy
+
+services:
+  mysql:
+    image: mysql:8.4.3
+    profiles: [core, full]
+    restart: unless-stopped
+    stop_grace_period: 45s
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-joto_workbench}
+      MYSQL_USER: ${MYSQL_USER:-joto}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      TZ: Asia/Shanghai
+    command: ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+08:00"]
+    ports:
+      - "127.0.0.1:${MYSQL_EXPOSE_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root --password=\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *default-logging
+
+  db-init:
+    build:
+      context: .
+      target: worker
+    image: joto-gtm-workbench-worker:${WORKBENCH_IMAGE_TAG:-0.1.0}
+    profiles: [core, full]
+    restart: "no"
+    environment: *app-environment
+    command: ["node", "scripts/init-mysql-schema.mjs"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    logging: *default-logging
+
+  workbench-web:
+    build:
+      context: .
+      target: web
+    image: joto-gtm-workbench-web:${WORKBENCH_IMAGE_TAG:-0.1.0}
+    profiles: [core, full]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment: *app-environment
+    ports:
+      - "${WORKBENCH_PORT:-3027}:3027"
+    volumes: *app-volumes
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3027/api/health?scope=web').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 8s
+      retries: 8
+      start_period: 30s
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    logging: *default-logging
+
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    profiles: [full]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}
+      path.repo: /usr/share/opensearch/backup
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "127.0.0.1:${OPENSEARCH_EXPOSE_PORT:-9200}:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+      - opensearch_backups:/usr/share/opensearch/backup
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow >/dev/null"]
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 60s
+    logging: *default-logging
+
+  rag-index-worker:
+    <<: *worker
+    profiles: [full]
+    environment:
+      <<: *app-environment
+      WORKER_ROLE: rag-index-worker
+    healthcheck:
+      test: ["CMD", "node", "scripts/container-healthcheck.mjs", "rag-index-worker"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  knowledge-worker:
+    <<: *worker
+    profiles: [full]
+    environment:
+      <<: *app-environment
+      WORKER_ROLE: knowledge-worker
+    healthcheck:
+      test: ["CMD", "node", "scripts/container-healthcheck.mjs", "knowledge-worker"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  content-worker:
+    <<: *worker
+    profiles: [full]
+    environment:
+      <<: *app-environment
+      WORKER_ROLE: content-worker
+    healthcheck:
+      test: ["CMD", "node", "scripts/container-healthcheck.mjs", "content-worker"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  publish-worker:
+    <<: *worker
+    profiles: [full]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *app-environment
+      WORKER_ROLE: publish-worker
+    healthcheck:
+      test: ["CMD", "node", "scripts/container-healthcheck.mjs", "publish-worker"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      workbench-web:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  opensearch_data:
+  opensearch_backups:
+  workbench_data:
+  workbench_artifacts:
+  worker_runtime:
+

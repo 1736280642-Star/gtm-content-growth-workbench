@@ -12,13 +12,14 @@ export const runtime = "nodejs";
 
 export async function POST(
   request: Request,
-  { params }: { params: { productId: string; blueprintId: string } }
+  { params }: { params: Promise<{ productId: string; blueprintId: string }> }
 ) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await approveGeoBlueprint({
-      productId: params.productId,
-      blueprintVersionId: params.blueprintId,
+      productId: routeParams.productId,
+      blueprintVersionId: routeParams.blueprintId,
       expectedVersion: typeof payload.expectedVersion === "number" ? payload.expectedVersion : Number.NaN,
       idempotencyKey: request.headers.get("x-idempotency-key")?.trim()
         || readString(payload.idempotencyKey)

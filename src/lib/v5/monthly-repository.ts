@@ -5,6 +5,9 @@ import type {
   ExceptionItem,
   ScheduleDraftItem,
   StrategyTermHit,
+  GenerationBatchRecord,
+  ContentStrategyPackageRecord,
+  ProductionMatrixTask,
   V5MonthlyPlanRecord
 } from "./monthly-workspace-contracts";
 
@@ -16,7 +19,11 @@ export interface V5MonthlyAuditEvent {
     | "strategy_approved"
     | "batch_generation_requested"
     | "draft_edit_saved"
-    | "schedule_saved";
+    | "schedule_saved"
+    | "strategy_item_removed"
+    | "production_tasks_removed"
+    | "generation_batch_created"
+    | "generation_batch_status_changed";
   month: string;
   actor: string;
   version: number;
@@ -39,6 +46,9 @@ export interface V5MonthlyState {
   batchQueueItems: Record<string, BatchQueueItem[]>;
   exceptionItems: Record<string, ExceptionItem[]>;
   scheduleDraftItems: Record<string, ScheduleDraftItem[]>;
+  generationBatches: Record<string, GenerationBatchRecord[]>;
+  strategyHistory: Record<string, ContentStrategyPackageRecord[]>;
+  removedTasks: Record<string, ProductionMatrixTask[]>;
   auditLog: V5MonthlyAuditEvent[];
   idempotency: Record<string, V5IdempotencyRecord>;
 }
@@ -51,6 +61,9 @@ function createEmptyState(): V5MonthlyState {
     batchQueueItems: {},
     exceptionItems: {},
     scheduleDraftItems: {},
+    generationBatches: {},
+    strategyHistory: {},
+    removedTasks: {},
     auditLog: [],
     idempotency: {}
   };
@@ -71,6 +84,9 @@ function normalizeState(value: Partial<V5MonthlyState> | undefined): V5MonthlySt
     batchQueueItems: value?.batchQueueItems && typeof value.batchQueueItems === "object" ? value.batchQueueItems : empty.batchQueueItems,
     exceptionItems: value?.exceptionItems && typeof value.exceptionItems === "object" ? value.exceptionItems : empty.exceptionItems,
     scheduleDraftItems: value?.scheduleDraftItems && typeof value.scheduleDraftItems === "object" ? value.scheduleDraftItems : empty.scheduleDraftItems,
+    generationBatches: value?.generationBatches && typeof value.generationBatches === "object" ? value.generationBatches : empty.generationBatches,
+    strategyHistory: value?.strategyHistory && typeof value.strategyHistory === "object" ? value.strategyHistory : empty.strategyHistory,
+    removedTasks: value?.removedTasks && typeof value.removedTasks === "object" ? value.removedTasks : empty.removedTasks,
     auditLog: Array.isArray(value?.auditLog) ? value.auditLog : empty.auditLog,
     idempotency: value?.idempotency && typeof value.idempotency === "object" ? value.idempotency : empty.idempotency
   };

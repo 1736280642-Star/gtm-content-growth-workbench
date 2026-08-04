@@ -7,14 +7,15 @@ export const runtime = "nodejs";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { productId: string; runId: string } }
+  { params }: { params: Promise<{ productId: string; runId: string }> }
 ) {
+  const routeParams = await params;
   try {
     return NextResponse.json({
       ok: true,
       ...(await getGeoResearchRunDetails({
-        productId: params.productId,
-        runId: params.runId
+        productId: routeParams.productId,
+        runId: routeParams.runId
       }))
     });
   } catch (error) {

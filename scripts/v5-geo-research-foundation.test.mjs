@@ -57,6 +57,27 @@ test("live research requires provider web-search traces and persists raw artifac
   assert.match(repository, /INSERT INTO geo_research_evidence/);
   assert.match(repository, /INSERT INTO geo_research_finding/);
   assert.match(repository, /live_search_gate_failed/);
+  assert.match(provider, /Build a reusable product question catalog/);
+  assert.match(provider, /community_forum\|q_and_a\|review\|social_media/);
+  assert.match(repository, /question_opportunity" && evidenceIds\.length === 0/);
+});
+
+test("verified GEO questions form a human-approved product catalog before entering the question pool", async () => {
+  const contracts = await read("src/lib/v5/geo-research-contracts.ts");
+  const service = await read("src/lib/v5/geo-research-service.ts");
+  const repository = await read("src/lib/v5/geo-research-repository.ts");
+  const questionContracts = await read("src/lib/v5/question-contracts.ts");
+  const route = await read("src/app/api/v5/products/[productId]/research-runs/[runId]/question-catalog/route.ts");
+  const runPage = await read("src/app/products/[productId]/research/[runId]/page.tsx");
+  assert.match(contracts, /GeoResearchQuestionCatalog/);
+  assert.match(service, /buildGeoResearchQuestionCatalog/);
+  assert.match(service, /human_approval_required/);
+  assert.match(service, /evidenceGap: true/);
+  assert.match(service, /ingestV5QuestionSignals/);
+  assert.match(repository, /geo_question_catalog_imported_to_question_pool/);
+  assert.match(questionContracts, /"geo_research"/);
+  assert.match(route, /importGeoResearchQuestionCatalog/);
+  assert.match(runPage, /确认并收录问题池/);
 });
 
 test("blueprint approval is an explicit human-only transition", async () => {

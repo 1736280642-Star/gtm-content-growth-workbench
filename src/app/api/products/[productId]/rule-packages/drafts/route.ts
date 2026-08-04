@@ -8,11 +8,12 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { productId: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ productId: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await createV5RulePackageDraft({
-      productId: params.productId,
+      productId: routeParams.productId,
       draft: (payload.draft || {}) as V5RuleDraftWriteInput,
       conflicts: (Array.isArray(payload.conflicts) ? payload.conflicts : []) as V5G4ConflictInput[],
       gaps: (Array.isArray(payload.gaps) ? payload.gaps : []) as V5G4GapInput[],

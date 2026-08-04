@@ -159,6 +159,44 @@ export interface GeoResearchFinding {
   createdAt: string;
 }
 
+export interface GeoResearchQuestionCatalogItem {
+  findingId: string;
+  question: string;
+  intent: string;
+  audience?: string;
+  module: string;
+  priority: number;
+  confidence: number;
+  suggestedArticleTypes: string[];
+  keywords: string[];
+  sourceEvidenceIds: string[];
+  sources: Array<{
+    evidenceId: string;
+    url: string;
+    title?: string;
+    publisher?: string;
+    query?: string;
+  }>;
+  reviewStatus: GeoResearchFinding["reviewStatus"];
+}
+
+export interface GeoResearchQuestionCatalog {
+  catalogId: string;
+  runId: string;
+  productId: string;
+  productName: string;
+  status: "collecting" | "ready_for_review" | "partially_imported" | "imported";
+  liveSearchVerified: boolean;
+  totalCount: number;
+  verifiedCount: number;
+  importedCount: number;
+  modules: Array<{
+    module: string;
+    count: number;
+  }>;
+  items: GeoResearchQuestionCatalogItem[];
+}
+
 export type GeoResearchReadinessKey =
   | "product_identity"
   | "research_boundary"
@@ -229,6 +267,7 @@ export interface GeoResearchRunWorkspace {
   evidence: GeoResearchEvidence[];
   findings: GeoResearchFinding[];
   blueprint?: GeoBlueprintVersion;
+  questionCatalog?: GeoResearchQuestionCatalog;
 }
 
 export interface ProductGeoOverview {

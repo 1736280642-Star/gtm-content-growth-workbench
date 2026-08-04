@@ -6,12 +6,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await rollbackV5RulePackageVersion({
       ...readV5WriteEnvelope(payload),
-      rulePackageVersionId: params.id,
+      rulePackageVersionId: routeParams.id,
       targetRulePackageVersionId: readString(payload.targetRulePackageVersionId) || "",
       targetExpectedVersion: typeof payload.targetExpectedVersion === "number" ? payload.targetExpectedVersion : Number.NaN
     });

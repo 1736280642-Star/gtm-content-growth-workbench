@@ -4,12 +4,13 @@ import { v5FoundationErrorResponse } from "@/lib/v5/foundation-service";
 import { publishV5ArticleExpressionProfile } from "@/lib/v5/article-expression-service";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     return NextResponse.json(publishV5ArticleExpressionProfile({
       ...readV5WriteEnvelope(payload),
-      profileId: params.id,
+      profileId: routeParams.id,
       profileVersionId: readString(payload.profileVersionId) || ""
     }));
   } catch (error) {

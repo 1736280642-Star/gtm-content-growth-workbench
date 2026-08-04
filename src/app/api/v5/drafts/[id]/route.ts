@@ -7,16 +7,17 @@ import { resolveWechatPlatformKey } from "@/lib/v5/wechat-presentation-contracts
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
-    const data = await readFormalDraftVersion(params.id);
+    const data = await readFormalDraftVersion(routeParams.id);
     if (!data) {
       return NextResponse.json(
         { ok: false, error: { code: "formal_draft_not_found", message: "正式 DraftVersion 不存在。", nextAction: "返回批量生成中心刷新任务状态。" } },
         { status: 404 }
       );
     }
-    const presentationContext = await readWechatPresentationDraftContext(params.id);
+    const presentationContext = await readWechatPresentationDraftContext(routeParams.id);
     return NextResponse.json({
       ok: true,
       data: { ...data, platformKey: resolveWechatPlatformKey(presentationContext.channel) }
@@ -26,7 +27,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const body = await request.json() as { markdown?: unknown; auditReason?: unknown };
     const markdown = typeof body.markdown === "string" ? body.markdown.trim() : "";
@@ -38,7 +40,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return NextResponse.json({ ok: false, error: { code: "invalid_audit_reason", message: "请填写 200 个字符以内的编辑原因。", nextAction: "填写编辑原因后重新保存。" } }, { status: 422 });
     }
     const actor = { ...getSingleArticleActor(), auditReason };
-    const data = await createEditedFormalDraftVersion({ draftVersionId: params.id, markdown, actor });
+    const data = await createEditedFormalDraftVersion({ draftVersionId: routeParams.id, markdown, actor });
     return NextResponse.json({ ok: true, data, status: "checking", message: "编辑已保存，系统将在后台自动复检；最后一份可用正文保持不变。" });
   } catch (error) {
     return singleArticleErrorResponse(error);

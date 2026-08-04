@@ -489,7 +489,7 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
        SELECT d2.id FROM draft_version d2 WHERE d2.matrix_item_id = i.id AND d2.test_only = FALSE AND d2.copy_allowed = TRUE ORDER BY d2.created_at DESC LIMIT 1
      )
      LEFT JOIN content_publish_result pr ON pr.matrix_item_id = i.id
-     WHERE p.plan_month = ?
+     WHERE p.plan_month = ? AND i.status NOT IN ('cancelled', 'archived')
      ORDER BY i.publish_date, i.publish_time, i.created_at`,
     [month]
   );

@@ -5,8 +5,9 @@ export const dynamic = "force-dynamic";
 
 const supported = new Set<DirectPublishPlatformKey>(["wechat", "juejin", "csdn", "zhihu"]);
 
-export async function GET(_request: Request, context: { params: { platform: string } }) {
-  const platform = context.params.platform as DirectPublishPlatformKey;
+export async function GET(_request: Request, context: { params: Promise<{ platform: string }> }) {
+  const routeParams = await context.params;
+  const platform = routeParams.platform as DirectPublishPlatformKey;
   if (!supported.has(platform)) {
     return Response.json({ ok: false, message: "Unsupported publish platform." }, { status: 400 });
   }

@@ -223,6 +223,54 @@ export async function scheduleFormalProductionTask(input: {
   });
 }
 
+export async function removeFormalProductionTasks(input: {
+  month: string;
+  taskIds: string[];
+  expectedVersion: number;
+  actor: V5GovernanceActor;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const placeholders = input.taskIds.map(() => "?").join(", ");
+    const [planRows] = await connection.query<RowDataPacket[]>("SELECT * FROM monthly_plan WHERE plan_month = ? FOR UPDATE", [input.month]);
+    const plan = planRows[0];
+    if (!plan) throw new V5GovernanceRepositoryError("formal_monthly_plan_not_found", "正式 MonthlyPlan 不存在。", 404);
+    if (Number(plan.version) !== input.expectedVersion) throw new V5GovernanceRepositoryError("formal_monthly_plan_version_conflict", `正式 MonthlyPlan 当前 version 为 ${plan.version}。`, 409);
+    const [items] = await connection.query<RowDataPacket[]>(
+      `SELECT i.*, pr.status AS publish_result_status
+       FROM content_matrix_item i
+       LEFT JOIN content_publish_result pr ON pr.matrix_item_id = i.id
+       WHERE i.monthly_plan_id = ? AND i.id IN (${placeholders}) FOR UPDATE`,
+      [String(plan.id), ...input.taskIds]
+    );
+    if (!items.length) throw new V5GovernanceRepositoryError("formal_task_not_found", "所选正式矩阵任务不存在或已移除。", 404);
+    let archived = 0;
+    let deleted = 0;
+    for (const item of items) {
+      const published = String(item.status) === "published" || String(item.publish_result_status) === "published";
+      const nextStatus = published ? "archived" : "cancelled";
+      if (published) archived += 1;
+      else deleted += 1;
+      await connection.query(
+        "UPDATE content_matrix_item SET status = ?, scheduled_at = NULL, platform_account = NULL, version = version + 1 WHERE id = ?",
+        [nextStatus, String(item.id)]
+      );
+      await writeV5GovernanceAudit(connection, {
+        ...input.actor,
+        eventType: published ? "formal_task_archived" : "formal_task_soft_deleted",
+        objectType: "content_matrix_item",
+        objectId: String(item.id),
+        beforeSummary: { status: String(item.status), scheduledAt: item.scheduled_at, hasPublishedResult: published },
+        afterSummary: { status: nextStatus, draftUsableInActiveQueue: false },
+        correlationId: String(plan.id)
+      });
+    }
+    const nextVersion = Number(plan.version) + 1;
+    await connection.query("UPDATE monthly_plan SET version = ? WHERE id = ? AND version = ?", [nextVersion, String(plan.id), Number(plan.version)]);
+    const [remainingRows] = await connection.query<RowDataPacket[]>("SELECT COUNT(*) AS remaining FROM content_matrix_item WHERE monthly_plan_id = ? AND status NOT IN ('cancelled', 'archived')", [String(plan.id)]);
+    return { archived, deleted, remaining: Number(remainingRows[0]?.remaining || 0), planVersion: nextVersion };
+  });
+}
+
 export async function saveFormalPublishResult(input: {
   taskId: string; request: SavePublishResultRequest; actor: V5GovernanceActor;
 }) {
@@ -276,6 +324,66 @@ export async function saveFormalPublishResult(input: {
       correlationId: String(item.plan_id)
     });
     return { publishResultId: resultId, taskId: input.taskId, status: input.request.status, version: currentVersion + 1, publicUrl: input.request.publicUrl, metrics: input.request.metrics };
+  });
+}
+
+export async function backfillFormalPublishJobResult(input: {
+  taskId: string;
+  status: "published" | "failed" | "manual_takeover";
+  publicUrl?: string;
+  externalContentId?: string;
+  failureReason?: string;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [itemRows] = await connection.query<RowDataPacket[]>(
+      "SELECT id, monthly_plan_id, channel FROM content_matrix_item WHERE id = ? FOR UPDATE",
+      [input.taskId]
+    );
+    const item = itemRows[0];
+    if (!item) return { synced: false, reason: "formal_task_not_found" };
+    const [resultRows] = await connection.query<RowDataPacket[]>(
+      "SELECT * FROM content_publish_result WHERE matrix_item_id = ? FOR UPDATE",
+      [input.taskId]
+    );
+    const current = resultRows[0];
+    if (current && String(current.status) === input.status && String(current.public_url || "") === String(input.publicUrl || "")) {
+      return { synced: true, unchanged: true };
+    }
+    const resultId = current ? String(current.id) : `publish-${randomUUID()}`;
+    const [draftRows] = await connection.query<RowDataPacket[]>(
+      "SELECT id FROM draft_version WHERE matrix_item_id = ? AND copy_allowed = TRUE AND test_only = FALSE ORDER BY created_at DESC LIMIT 1",
+      [input.taskId]
+    );
+    if (current) {
+      await connection.query(
+        `UPDATE content_publish_result SET draft_version_id = ?, status = ?, public_url = ?, external_content_id = ?, failure_reason = ?,
+         published_at = ?, confirmed_by = 'publish_job_worker', version = version + 1 WHERE id = ?`,
+        [draftRows[0]?.id || null, input.status, input.publicUrl || null, input.externalContentId || null,
+          input.failureReason || null, input.status === "published" ? new Date() : null, resultId]
+      );
+    } else {
+      await connection.query(
+        `INSERT INTO content_publish_result
+         (id, matrix_item_id, draft_version_id, channel, status, public_url, external_content_id, failure_reason, metrics, published_at, confirmed_by, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'publish_job_worker', 1)`,
+        [resultId, input.taskId, draftRows[0]?.id || null, String(item.channel), input.status, input.publicUrl || null,
+          input.externalContentId || null, input.failureReason || null, stringifyV5Json({}), input.status === "published" ? new Date() : null]
+      );
+    }
+    const matrixStatus = input.status === "published" ? "published" : input.status === "failed" ? "publish_failed" : "scheduled";
+    await connection.query("UPDATE content_matrix_item SET status = ?, version = version + 1 WHERE id = ?", [matrixStatus, input.taskId]);
+    await writeV5GovernanceAudit(connection, {
+      actorId: "publish_job_worker",
+      actorRole: "system",
+      actorType: "system",
+      auditReason: "Durable Publish Job lifecycle backfill.",
+      eventType: "publish_job_result_backfilled",
+      objectType: "content_publish_result",
+      objectId: resultId,
+      afterSummary: { taskId: input.taskId, status: input.status, publicUrl: input.publicUrl },
+      correlationId: String(item.monthly_plan_id)
+    });
+    return { synced: true, unchanged: false };
   });
 }
 
