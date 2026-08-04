@@ -496,6 +496,7 @@ export interface PublishSchedule {
   platformVariantId?: string;
   publishRecordId?: string;
   matrixItemId?: string;
+  contentFormat?: "markdown" | "wechat_html";
   contentHash: string;
   idempotencyKey: string;
   attemptIds: string[];

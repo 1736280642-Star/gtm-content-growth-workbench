@@ -14,6 +14,7 @@ import {
   QuestionCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  RocketOutlined,
   SettingOutlined,
   UploadOutlined
 } from "@ant-design/icons";
@@ -52,6 +53,7 @@ const navItems = [
   { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
   { key: "/free-production", icon: <FormOutlined />, label: <Link href="/free-production">自由内容生产</Link> },
   { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
+  { key: "/publishing", icon: <RocketOutlined />, label: <Link href="/publishing">发布控制塔</Link> },
   { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },
   { key: "/questions-keywords", icon: <QuestionCircleOutlined />, label: <Link href="/questions-keywords">问题与关键词池</Link> },
   { key: "/knowledge", icon: <BookOutlined />, label: <Link href="/knowledge">知识库</Link> },

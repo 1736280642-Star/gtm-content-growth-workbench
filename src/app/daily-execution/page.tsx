@@ -1,5 +1,6 @@
 "use client";
 
+import { RocketOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Form, Input, InputNumber, Modal, Segmented, Select, Space, Spin, Table, message } from "antd";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -48,6 +49,15 @@ function toPublishStatus(item: BatchQueueItem): PublishStatus {
   return "waiting";
 }
 
+function toMachinePlatform(channel: string) {
+  const normalized = channel.toLowerCase();
+  if (normalized.includes("csdn")) return "csdn";
+  if (normalized.includes("掘金") || normalized.includes("juejin")) return "juejin";
+  if (normalized.includes("知乎") || normalized.includes("zhihu")) return "zhihu";
+  if (normalized.includes("公众号") || normalized.includes("wechat") || normalized.includes("weixin")) return "wechat";
+  return undefined;
+}
+
 export default function DailyExecutionPage() {
   const [messageApi, messageContext] = message.useMessage();
   const [dateKey, setDateKey] = useState<DateKey>("today");
@@ -61,6 +71,7 @@ export default function DailyExecutionPage() {
   const [likes, setLikes] = useState<number>();
   const [leads, setLeads] = useState<number>();
   const [savingResult, setSavingResult] = useState(false);
+  const [dispatchingTaskId, setDispatchingTaskId] = useState<string>();
   const { workspace, loading, error, refresh } = useMonthlyWorkspace();
   const dates = useMemo(executionDates, []);
   const dailyExecutionItems = useMemo<DailyExecutionItem[]>(() => (workspace?.batchQueueItems || [])
@@ -118,6 +129,28 @@ export default function DailyExecutionPage() {
     }
   }
 
+  async function dispatchMachinePublish(item: BatchQueueItem) {
+    const platform = toMachinePlatform(item.channel);
+    if (!item.draftId || !platform) {
+      messageApi.error("当前任务缺少正式终稿或渠道尚未映射到发布机器。");
+      return;
+    }
+    setDispatchingTaskId(item.matrixItemId);
+    try {
+      const response = await fetch(`/api/v5/content-tasks/${encodeURIComponent(item.matrixItemId)}/publish-job`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ draftId: item.draftId, platform, scheduledAt: item.scheduleDate ? `${item.scheduleDate}T${item.scheduleTime || "00:00"}:00+08:00` : undefined, dispatch: true })
+      });
+      const body = await response.json() as { ok?: boolean; message?: string; error?: { message?: string } };
+      if (!response.ok || !body.ok) throw new Error(body.message || body.error?.message || "Publish Job 创建失败。");
+      messageApi.success("已创建 Publish Job；常驻 Worker 将执行发布、URL 回填和存活核验。");
+      window.location.href = "/publishing";
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "Publish Job 创建失败。");
+    } finally { setDispatchingTaskId(undefined); }
+  }
+
   return (
     <>
       {messageContext}
@@ -138,7 +171,7 @@ export default function DailyExecutionPage() {
         showIcon
         type={workspace?.source.productionQueue === "v5_mysql" ? "info" : "warning"}
         message={workspace?.source.productionQueue === "v5_mysql" ? "正式发布执行视图" : "正式发布队列未连接"}
-        description={workspace?.source.productionQueue === "v5_mysql" ? "本页只处理正式排程和失败接管；发布后的 URL 与效果数据统一在数据回传中补全。" : workspace?.formal.message || "请检查正式 MySQL Repository 配置。"}
+        description={workspace?.source.productionQueue === "v5_mysql" ? "正式终稿从这里进入 Publish Job；Worker 发布后由 reconciliation 自动回填 URL，并继续执行 24h/72h 存活验证。" : workspace?.formal.message || "请检查正式 MySQL Repository 配置。"}
         style={{ marginBottom: 16 }}
       />
 
@@ -179,11 +212,15 @@ export default function DailyExecutionPage() {
             {
               title: "操作",
               key: "action",
-              width: 100,
+              width: 150,
               render: (_, record: DailyExecutionItem) => (
                 <Space size={4} direction="vertical">
                   {queueById.get(record.id)?.publicUrl ? <a href={queueById.get(record.id)?.publicUrl} target="_blank" rel="noreferrer">查看结果</a> : <Link href="/monthly-matrix/batch-generation">查看正文</Link>}
-                  {record.status !== "published" ? <Button size="small" type="primary" onClick={() => {
+                  {record.status !== "published" && queueById.get(record.id)?.draftId && toMachinePlatform(record.channel) ? <Button size="small" type="primary" icon={<RocketOutlined />} loading={dispatchingTaskId === queueById.get(record.id)?.matrixItemId} onClick={() => {
+                    const item = queueById.get(record.id);
+                    if (item) void dispatchMachinePublish(item);
+                  }}>机器发布</Button> : null}
+                  {record.status !== "published" ? <Button size="small" onClick={() => {
                     const item = queueById.get(record.id);
                     if (!item) return;
                     setSelectedPublishItem(item);
@@ -191,7 +228,7 @@ export default function DailyExecutionPage() {
                     setPublicUrl(item.publicUrl || "");
                     setFailureReason(item.failureReason || "");
                     setReads(undefined); setLikes(undefined); setLeads(undefined);
-                  }}>回填结果</Button> : null}
+                  }}>回填结果（异常）</Button> : null}
                 </Space>
               )
             }

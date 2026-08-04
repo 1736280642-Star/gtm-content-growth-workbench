@@ -579,6 +579,7 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
     title: artifact.selectedTitle,
     markdown: isWechat ? artifact.wechatPresentation!.publishHtml : sanitized.markdown,
     summary: artifact.summary,
+    contentFormat: isWechat ? "wechat_html" : "markdown",
     platform,
     scheduledAt: new Date().toISOString()
   });

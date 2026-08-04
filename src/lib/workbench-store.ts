@@ -6657,6 +6657,7 @@ function buildDirectPublishPayload(
     title: variant?.title || draft.title,
     markdown: variant?.content || draft.content,
     summary: variant?.summary || draft.summary,
+    contentFormat: schedule.contentFormat || "markdown",
     scheduledAt: schedule.scheduledAt,
     sourceDraftId: draft.id,
     publishRecordId: schedule.publishRecordId,
@@ -6706,6 +6707,7 @@ export interface ApprovedPublishContentInput {
   platform: DirectPublishPlatformKey;
   scheduledAt?: string;
   matrixItemId?: string;
+  contentFormat?: "markdown" | "wechat_html";
 }
 
 /**
@@ -6758,7 +6760,8 @@ export function createPublishSchedulesFromApprovedContent(
     draftId: snapshot.id,
     platform: input.platform,
     scheduledAt: input.scheduledAt,
-    matrixItemId: input.matrixItemId || input.sourceTaskId
+    matrixItemId: input.matrixItemId || input.sourceTaskId,
+    contentFormat: input.contentFormat
   });
 }
 
@@ -6835,6 +6838,7 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
       platformVariantId: variant.id,
       publishRecordId: record.id,
       matrixItemId: typeof input.matrixItemId === "string" ? input.matrixItemId : undefined,
+      contentFormat: input.contentFormat === "wechat_html" ? "wechat_html" : "markdown",
       contentHash,
       idempotencyKey: buildPublishIdempotencyKey(scheduleId, platform, contentHash),
       attemptIds: [],

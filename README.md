@@ -19,10 +19,9 @@ data/                     本地状态、文章类型和演示/导入数据
 database/                 数据库 schema 与迁移
 docs/方案与规划/           方案、实现记录、验收和阶段状态
 design/                   原型与交互设计资料
-review/                   复盘与上下文沉淀
 ```
 
-页面和 API 共用领域契约；页面负责配置、确认、查看和人工接管，后台服务负责可重复的解析、索引、证据、生成和状态流转。
+页面和 API 共用领域契约；页面负责配置、确认、创建耐久任务、查看结果和异常处理，后台服务负责可重复的解析、索引、证据、生成、发布与状态流转。
 
 ## 快速开始
 
@@ -77,13 +76,14 @@ npm.cmd run smoke:workflow
 | 批量生成中心 | `/monthly-matrix/batch-generation` | 查看后台生成、证据包、正文、自动修复和人工排程 |
 | 正文详情 | `/v5/drafts/[id]`、`/drafts/[taskId]` | 查看或编辑指定任务正文与证据上下文 |
 | 当日执行 | `/daily-execution` | 按日期查看已批准任务、执行状态和失败接管 |
+| 发布控制塔 | `/publishing` | 创建 Publish Job，查看 Worker、reconciliation、URL 回填、24h/72h 与 reliability |
 | 月度复盘 | `/monthly-review` | 汇总问题、计划、发布结果、指标并形成下月 Proposal |
 
 ### 发布、观察与扩展能力
 
 | 页面 | 路径 | 用途 |
 | --- | --- | --- |
-| 发布与回传 | `/publish`、`/publish-schedule`、`/publish-schedule/daily-execution` | 管理排期、发布结果和渠道指标回传 |
+| 发布与回传 | `/publishing`、`/publish`、`/publish-schedule` | 机器发布生命周期、排期兼容入口、结果和渠道指标回传 |
 | 博客候选/监控 | `/blog-candidates`、`/blog-monitor` | 管理候选主题、官网审计和博客表现观察 |
 | AI 前台测试 | `/ai-front-test`、`/ai-front-test/environment` | 创建采集任务、查看回答/引用/对比和环境诊断 |
 | 自由生产 | `/free-production`、`/free-production/tasks` | 处理非月度矩阵的自由内容生产；不改写月度计划 |
@@ -97,14 +97,14 @@ npm.cmd run smoke:workflow
 - 问题归一化、聚类、去重和关键词维护建议。
 - 来源版本、Claim 提取、权威性/时效性裁决、索引、EvidencePack 和证据引用映射。
 - 文章类型语义匹配建议、正文生成、事实校验、无依据段落剔除和有限次数自动修复。
-- 已批准任务的状态流转、排程执行、发布结果回传和月度指标聚合。
+- 已批准终稿的 Publish Job、Worker 发布、只读 reconciliation、URL 自动回填、24h/72h 存活验证和月度指标聚合。
 - 前台采集任务的执行、回答/引用保存、差异对比和缺口记录。
 
 ### 必须由人确认
 
 - 目标问题、产品优先级、文章类型版本和月度策略包。
 - 规则包/Claim 的审核、冲突裁决、G6 准入和生产池激活。
-- 正式内容的最终编辑、排期、外部平台风险接管和正式发布。
+- 正式内容的最终编辑与排期；确认后正常发布链路由机器执行，平台风控或登录异常按失败关闭处理。
 - 下月 Proposal 是否转为新的 `MonthlyPlan`。
 
 ### 明确不承诺
@@ -126,8 +126,9 @@ npm.cmd run smoke:workflow
   -> 正式矩阵任务
   -> RAG EvidencePack 与正文生成
   -> 人工编辑和排期
-  -> 当日执行/外部发布确认
-  -> URL 与渠道指标回传
+  -> 当日执行创建 Publish Job
+  -> Worker 发布、reconciliation 与 URL 自动回填
+  -> 24h/72h 存活验证与渠道指标
   -> AI 前台观察、官网审计
   -> MonthlyReview 与下月 Proposal
 ```
@@ -139,7 +140,7 @@ npm.cmd run smoke:workflow
 3. 在 `/monthly-matrix/content-types` 确认文章类型版本。
 4. 在 `/monthly-matrix/strategy` 配置问题、类型、渠道和配额，完成预检后批准。
 5. 在 `/monthly-matrix` 查看正式矩阵；在批量生成中心查看证据和正文。
-6. 人工编辑、排期，在 `/daily-execution` 执行；外部平台发布后回填可验证 URL 和指标。
+6. 人工编辑、排期，在 `/daily-execution` 创建机器发布任务；在 `/publishing` 查看 URL 回填、24h/72h 与 reliability。
 7. 在 `/monthly-review` 复盘并人工决定是否采用下月 Proposal。
 
 资料导入后的 RAG 后台链路通常为：
@@ -173,6 +174,7 @@ SourceAsset/SourceRevision -> Claim -> SourceSnapshot/Manifest
 | [`docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md`](./docs/方案与规划/2026-07-30-v5-geo-research-agent-implementation-plan.md) | GEO 研究 Agent 方案 |
 | [`docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md`](./docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md) | 微信、CSDN、掘金、知乎草稿/发布适配和配置边界 |
 | [`docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md`](./docs/方案与规划/2026-07-31-三平台自动化发布能力测试验证报告.md) | 知乎、掘金、CSDN 真实自动发布测试环境、结果、能力判断与卡点 |
+| [`docs/方案与规划/2026-08-04-3027自动发布前台接入说明.md`](./docs/方案与规划/2026-08-04-3027自动发布前台接入说明.md) | 3027 的 Publish Job、Worker、URL 回填、存活验证与 reliability 前台接线 |
 | [`docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md`](./docs/方案与规划/V5公众号JOTO官方排版与正式HTML链路.md) | 公众号排版与正式 HTML 链路 |
 | [`docs/方案与规划/v5-ui-phase-status.md`](./docs/方案与规划/v5-ui-phase-status.md) | V5 UI 阶段状态与已知缺口 |
 

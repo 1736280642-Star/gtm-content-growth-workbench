@@ -58,6 +58,7 @@
     "mcp:publish": "node scripts/publish-mcp-server.mjs",
     "test:mcp-publish": "node --test scripts/publish-mcp-contract.test.mjs",
     "test:publish-reliability": "node scripts/publish-reliability-acceptance.mjs",
+    "test:publish-frontend": "node --test scripts/publish-frontend-contract.test.mjs",
     "arcs:runner:start": "python -X utf8 arcs-runner/run.py",
     "test:formal-publish": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/formal-publish-contracts.test.mjs",
     "test:arcs-runner": "python -X utf8 -B -m unittest discover -s arcs-runner/tests",
