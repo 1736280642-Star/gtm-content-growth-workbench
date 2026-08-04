@@ -3,6 +3,7 @@
 import { BookOutlined, CheckOutlined, ReloadOutlined, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
 import { Alert, Button, Empty, message, Space, Spin, Tag } from "antd";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { MonthlyFlowNav } from "@/components/MonthlyFlowNav";
 import { MonthlyStrategyTable } from "@/components/MonthlyMatrixTable";
@@ -14,6 +15,7 @@ import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
 const loadingPlan = { month: "", businessGoal: "", targetDeliverableCount: 0, questionVersionIds: [], quotaRules: [], groups: [] };
 
 export default function MonthlyMatrixPage() {
+  const embedded = usePathname() === "/monthly-plan";
   const [messageApi, messageContext] = message.useMessage();
   const [mutating, setMutating] = useState<"preview" | "approval">();
   const { workspace, loading, error, refresh, preflightStrategy, approveStrategy } = useMonthlyWorkspace();
@@ -24,7 +26,6 @@ export default function MonthlyMatrixPage() {
   const target = Number(config.targetDeliverableCount || 0);
   const awaitingMaterial = strategy?.preflightResults.filter((item) => item.status === "awaiting_material").reduce((total, item) => total + item.deliverableCount, 0) || 0;
   const generatable = strategy?.preflightResults.filter((item) => item.status === "generatable").reduce((total, item) => total + item.deliverableCount, 0) || 0;
-  const locked = strategy?.status === "approved" || strategy?.status === "partially_approved";
 
   async function mutate(type: "preview" | "approval") {
     setMutating(type);
@@ -59,7 +60,7 @@ export default function MonthlyMatrixPage() {
         title="内容策略包"
         titleExtra={<Space size={6}><Tag color="blue">{config.month || "读取中"}</Tag>{strategy ? <Tag>{`策略 v${strategy.version}`}</Tag> : null}</Space>}
         subtitle="配置、预检、批准并查看本月内容策略；任务、正文生产和排程分别在后续步骤处理。"
-        actions={<Space wrap><Button icon={<ReloadOutlined />} onClick={() => void refresh().catch(() => undefined)}>刷新</Button><Link href="/monthly-matrix/content-types"><Button icon={<BookOutlined />}>管理内容类型</Button></Link><Link href="/monthly-matrix/strategy"><Button type="primary" icon={<SettingOutlined />} disabled={!workspace}>{locked ? "查看策略配置" : "配置月度策略"}</Button></Link></Space>}
+        actions={<Space wrap><Button icon={<ReloadOutlined />} onClick={() => void refresh().catch(() => undefined)}>刷新</Button>{!embedded ? <><Link href="/monthly-matrix/content-types"><Button icon={<BookOutlined />}>管理内容类型</Button></Link><Link href="/monthly-matrix/strategy"><Button type="primary" icon={<SettingOutlined />} disabled={!workspace}>策略包设置</Button></Link></> : null}</Space>}
       />
       <MonthlyFlowNav />
 
@@ -79,8 +80,8 @@ export default function MonthlyMatrixPage() {
         <div className="v5-section-heading">
           <div><span className="v5-kicker">内容策略包</span><h2 id="strategy-heading">{config.businessGoal || "尚未配置月度业务目标"}</h2></div>
           <Space wrap>
-            <Button icon={<SafetyCertificateOutlined />} disabled={!strategy || locked} loading={mutating === "preview"} onClick={() => void mutate("preview")}>运行生产预检</Button>
-            <Button type="primary" icon={<CheckOutlined />} disabled={strategy?.status !== "preview_ready" || allocated !== target} loading={mutating === "approval"} onClick={() => void mutate("approval")}>批准内容策略包</Button>
+            <Button icon={<SafetyCertificateOutlined />} disabled={!strategy || ["approved", "partially_approved"].includes(strategy.status)} loading={mutating === "preview"} onClick={() => void mutate("preview")}>运行生产预检</Button>
+            <Button type="primary" icon={<CheckOutlined />} disabled={strategy?.status !== "preview_ready" || allocated !== target} loading={mutating === "approval"} onClick={() => void mutate("approval")}>人工确认当前版本</Button>
           </Space>
         </div>
         {strategy ? <MonthlyStrategyTable strategyPackage={strategy} tasks={tasks} onDelete={deleteRule} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="先配置目标问题、内容类型组合和渠道配额" />}

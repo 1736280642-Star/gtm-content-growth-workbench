@@ -41,7 +41,19 @@ x-app-environment: &app-environment
   KNOWLEDGE_COLLECTION_ACTOR_ID: ${KNOWLEDGE_COLLECTION_ACTOR_ID:-docker-knowledge-collection}
   KNOWLEDGE_COLLECTION_ACTOR_ROLE: ${KNOWLEDGE_COLLECTION_ACTOR_ROLE:-knowledge_collection_scheduler}
   KNOWLEDGE_COLLECTION_AI_PROVIDER: ${KNOWLEDGE_COLLECTION_AI_PROVIDER:-qwen}
+  # This distribution is bound to 127.0.0.1 and uses a deployment-owned actor;
+  # request bodies can no longer choose their own identity in production.
+  V5_TRUSTED_SERVER_WRITES_ENABLED: ${V5_TRUSTED_SERVER_WRITES_ENABLED:-true}
+  V5_TRUSTED_SERVER_ACTOR_ID: ${V5_TRUSTED_SERVER_ACTOR_ID:-local-docker-operator}
+  V5_TRUSTED_SERVER_ACTOR_ROLE: ${V5_TRUSTED_SERVER_ACTOR_ROLE:-developer_admin}
+  V5_SINGLE_ARTICLE_WRITES_ENABLED: ${V5_SINGLE_ARTICLE_WRITES_ENABLED:-true}
+  V5_SINGLE_ARTICLE_ACTOR_ID: ${V5_SINGLE_ARTICLE_ACTOR_ID:-local-docker-operator}
+  V5_SINGLE_ARTICLE_ACTOR_ROLE: ${V5_SINGLE_ARTICLE_ACTOR_ROLE:-developer_admin}
   V5_CONTENT_WORKER_BATCH_SIZE: ${V5_CONTENT_WORKER_BATCH_SIZE:-20}
+  GEO_RESEARCH_INTERVAL_SECONDS: ${GEO_RESEARCH_INTERVAL_SECONDS:-60}
+  GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS: ${GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS:-300}
+  MONTHLY_AUTOMATION_INTERVAL_SECONDS: ${MONTHLY_AUTOMATION_INTERVAL_SECONDS:-60}
+  PIPELINE_WORKER_INTERVAL_SECONDS: ${PIPELINE_WORKER_INTERVAL_SECONDS:-3600}
   DIRECT_PUBLISH_ENABLED: ${DIRECT_PUBLISH_ENABLED:-false}
   DIRECT_PUBLISH_MOCK: ${DIRECT_PUBLISH_MOCK:-true}
   WECHATSYNC_ENABLED: ${WECHATSYNC_ENABLED:-false}
@@ -122,9 +134,11 @@ services:
     profiles: [core, full]
     restart: unless-stopped
     stop_grace_period: 30s
+    env_file:
+      - .env.local
     environment: *app-environment
     ports:
-      - "${WORKBENCH_PORT:-3027}:3027"
+      - "127.0.0.1:${WORKBENCH_PORT:-3027}:3027"
     volumes: *app-volumes
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3027/api/health?scope=web').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
@@ -207,6 +221,26 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  monitor-worker:
+    <<: *worker
+    profiles: [full]
+    environment:
+      <<: *app-environment
+      WORKER_ROLE: monitor-worker
+    healthcheck:
+      test: ["CMD", "node", "scripts/container-healthcheck.mjs", "monitor-worker"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      workbench-web:
+        condition: service_healthy
 
   publish-worker:
     <<: *worker

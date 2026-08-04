@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function TodayCompatibilityPage() {
-  redirect("/daily-execution");
+  redirect("/monthly-plan?step=execution&view=today");
 }

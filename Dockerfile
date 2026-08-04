@@ -8,12 +8,17 @@ FROM dependencies AS builder
 COPY . .
 RUN npm run build
 
+FROM dependencies AS production-dependencies
+RUN npm prune --omit=dev
+
 FROM node:22.14.0-bookworm-slim AS web
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3027
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=production-dependencies --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/data ./data
 COPY --from=builder --chown=nextjs:nodejs /app/config ./config
 RUN mkdir -p /app/artifacts /app/runtime/worker-status && chown -R nextjs:nodejs /app/data /app/artifacts /app/runtime

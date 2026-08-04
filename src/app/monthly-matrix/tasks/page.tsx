@@ -60,7 +60,7 @@ export default function MonthlyMatrixTasksPage() {
     <MonthlyFlowNav />
     {error ? <Alert showIcon type="error" message="矩阵任务读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} /> : null}
     {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取矩阵任务</span></div> : null}
-    <V5StatusRail items={[{ label: "未生成", value: counts.notGenerated, helper: "可选择后准入生产" }, { label: "正在生成", value: counts.generating, helper: "查看生产进度" }, { label: "已生成", value: counts.generated, helper: "等待人工排程" }, { label: "已排程", value: counts.scheduled, helper: "已确认发布日期" }, { label: "已发布", value: counts.published, helper: "保留历史，不可删除" }]} />
-    {tasks.length ? <MonthlyTaskTable items={tasks} mode="tasks" selectedTaskIds={selectedTaskIds} onSelectionChange={setSelectedTaskIds} onDelete={deleteTasks} /> : <div className="v5-action-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无矩阵任务。返回“内容策略包”完成预检并批准策略，系统会按渠道配额展开文章任务。" /><Button onClick={() => router.push("/monthly-matrix")}>返回内容策略包</Button></div>}
+    <V5StatusRail items={[{ label: "未生成", value: counts.notGenerated, helper: "系统将自动准入" }, { label: "正在生成", value: counts.generating, helper: "查看生产进度" }, { label: "已生成", value: counts.generated, helper: "等待自动排程" }, { label: "已排程", value: counts.scheduled, helper: "可人工调整日期" }, { label: "已发布", value: counts.published, helper: "保留历史，不可删除" }]} />
+    {tasks.length ? <MonthlyTaskTable items={tasks} mode="tasks" selectedTaskIds={selectedTaskIds} onSelectionChange={setSelectedTaskIds} onDelete={deleteTasks} /> : <div className="v5-action-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无矩阵任务。系统会在知识、调研和策略门禁通过后自动展开文章任务。" /><Button onClick={() => router.push("/monthly-plan?step=strategy")}>查看月度策略</Button></div>}
   </>;
 }

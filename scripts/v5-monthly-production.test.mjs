@@ -105,7 +105,7 @@ test("technical recovery retries and preserves the last usable draft on continue
   assert.equal(failed.currentDraft?.draftId, "draft-good");
 });
 
-test("preview stays in a drawer and generation and schedule use independent routes", async () => {
+test("preview stays in a drawer while generation and schedule share the GEO content center", async () => {
   const [table, page, schedulePage, draftCompat] = await Promise.all([
     readFile("src/components/MonthlyTaskTable.tsx", "utf8"),
     readFile("src/app/monthly-matrix/batch-generation/page.tsx", "utf8"),
@@ -117,10 +117,10 @@ test("preview stays in a drawer and generation and schedule use independent rout
   assert.match(table, /CTA 冻结内容/);
   assert.doesNotMatch(table, /softQualityScore|hardRuleStatus|claimCount|EvidencePack|Claim|逐条重试/);
   assert.match(page, /MonthlyTaskTable/);
-  assert.match(page, /href="\/monthly-matrix\/schedule"/);
+  assert.match(page, /href="\/monthly-plan\?step=execution&view=schedule"/);
   assert.doesNotMatch(page, /<Tabs|key: "schedule"/);
   assert.match(schedulePage, /ScheduleCalendarLite/);
-  assert.match(draftCompat, /monthly-matrix\/batch-generation\?draftId=/);
+  assert.match(draftCompat, /monthly-plan\?step=generation&draftId=/);
 });
 
 test("schedule mutation only accepts available tasks and does not edit strategy fields", async () => {
@@ -132,7 +132,7 @@ test("schedule mutation only accepts available tasks and does not edit strategy 
   assert.match(service, /only system checks passed|只有系统检查通过|TASK_NOT_AVAILABLE/);
   assert.match(service, /lastUsableDraft/);
   assert.match(schedule, /日期、时间、平台账号和发布方式由排程决定，不会修改已批准策略/);
-  assert.match(legacy, /redirect\("\/monthly-matrix\/batch-generation"\)/);
+  assert.match(legacy, /redirect\("\/monthly-plan\?step=generation"\)/);
 });
 
 test("generation batch pause waits for the active provider task before becoming paused", async () => {

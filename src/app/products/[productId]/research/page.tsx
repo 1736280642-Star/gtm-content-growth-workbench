@@ -115,7 +115,7 @@ function BlueprintReview({
         showIcon
         type={approved ? "success" : blueprint.status === "pending_review" ? "warning" : "info"}
         message={approved ? "这版蓝图已冻结，可作为月度内容策略候选输入" : blueprint.status === "pending_review" ? "请先审核研究结论，再决定批准或退回" : "请调整研究边界并重新运行"}
-        description="蓝图只决定研究方向和候选内容策略，不会自动激活规则包、创建 MonthlyPlan 或发布文章。"
+        description="蓝图会作为系统生成规则包、问题池和月度内容策略的依据；证据或配置不足时会停在待处理状态，人工可随时修改。"
         style={{ marginBottom: 16 }}
       />
       <Tabs
@@ -358,7 +358,7 @@ export default function ProductResearchPage() {
       {contextHolder}
       <PageHeader
         title={data?.product ? `${data.product.displayName} · GEO 调研` : "产品 GEO 调研"}
-        subtitle="从真实产品资料出发，记录联网问题、竞品、AI 回答和可见引用，最后由人批准内容铺设蓝图。"
+        subtitle="从真实产品资料出发，自动记录联网问题、竞品、AI 回答和可见引用，并通过系统门禁生成内容铺设蓝图。"
         actions={
           <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={() => void refresh()}>刷新</Button>

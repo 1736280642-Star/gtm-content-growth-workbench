@@ -45,6 +45,7 @@ const requiredFiles = [
   "src/app/daily-execution/page.tsx",
   "src/app/monthly-review/page.tsx",
   "src/app/monthly-plan/page.tsx",
+  "src/app/geo-monitor/page.tsx",
   "src/app/today/page.tsx",
   "src/app/knowledge/import/page.tsx",
   "src/app/knowledge/import/url/page.tsx",
@@ -61,6 +62,7 @@ const requiredFiles = [
   "src/lib/v5/monthly-workspace-contracts.ts",
   "src/lib/v5/monthly-workspace-read-model.ts",
   "src/lib/v5/monthly-execution-repository.ts",
+  "src/lib/v5/monthly-automation-service.ts",
   "src/lib/v5/rag/managed-source-contracts.ts",
   "src/lib/v5/rag/managed-source-import-api.ts",
   "src/lib/v5/rag/managed-source-import-service.ts",
@@ -68,6 +70,8 @@ const requiredFiles = [
   "src/lib/v5/rag/managed-claim-extraction-service.ts",
   "workers/knowledge-refresh-worker.mjs",
   "workers/content-production-worker.mjs",
+  "workers/monthly-automation-worker.mjs",
+  "workers/geo-research-orchestrator.mjs",
   "scripts/smoke-pages.mjs",
   "scripts/smoke-interactions.mjs",
   "scripts/smoke-workflow.mjs",
@@ -81,16 +85,18 @@ const requiredFiles = [
 for (const filePath of requiredFiles) addFileCheck(`required file: ${filePath}`, filePath);
 
 addContentCheck("monthly navigation", "src/components/AppShell.tsx", [
-  "月度内容矩阵",
-  "/daily-execution",
-  "当日执行",
-  "/monthly-review",
-  "月度复盘"
+  "知识库",
+  "/monthly-plan",
+  "GEO 内容中心",
+  "/geo-monitor",
+  "GEO 监控塔",
+  "/settings"
 ]);
 addContentCheck("monthly permissions", "src/lib/permissions.ts", [
-  "/monthly-matrix",
-  "/daily-execution",
-  "/monthly-review",
+  "/knowledge",
+  "/monthly-plan",
+  "/geo-monitor",
+  "/settings",
   "canManageMonthlyReviewProposals"
 ]);
 addContentCheck("monthly prompt", "src/lib/prompt-templates.ts", [
@@ -155,10 +161,31 @@ addContentCheck("knowledge refresh worker", "workers/knowledge-refresh-worker.mj
   "sourceSnapshotHash",
   "result.index.snapshot.indexSnapshotId"
 ]);
-addContentCheck("monthly plan compatibility redirect", "src/app/monthly-plan/page.tsx", ["redirect(\"/monthly-matrix\")"]);
-addContentCheck("date execution compatibility redirect", "src/app/today/page.tsx", ["redirect(\"/daily-execution\")"]);
+addContentCheck("unified GEO content center", "src/app/monthly-plan/page.tsx", [
+  "MonthlyMatrixPage",
+  "MonthlyMatrixTasksPage",
+  "MonthlyBatchGenerationPage",
+  "MonthlySchedulePage",
+  "人工修改策略"
+]);
+addContentCheck("unified GEO monitor tower", "src/app/geo-monitor/page.tsx", [
+  "发布状态",
+  "数据回传",
+  "官网监控",
+  "数据复盘",
+  "AI 前台测试"
+]);
+addContentCheck("automatic monthly orchestration", "src/lib/v5/monthly-automation-service.ts", [
+  "runAutomaticMonthlyPlan",
+  "runAutomaticSchedule",
+  "system_policy"
+]);
+addContentCheck("date execution compatibility redirect", "src/app/today/page.tsx", ["redirect(\"/monthly-plan?step=execution&view=today\")"]);
 addAbsentCheck("navigation has no replaced compatibility entries", "src/components/AppShell.tsx", [
-  "href=\"/monthly-plan\"",
+  "href=\"/monthly-matrix\"",
+  "href=\"/daily-execution\"",
+  "href=\"/monthly-review\"",
+  "href=\"/blog-candidates\"",
   "href=\"/today\""
 ]);
 

@@ -41,7 +41,6 @@ const geoResultColors: Record<BlogArticle["geoResult"], string> = {
   partial: "gold"
 };
 
-type BlogCandidateStatusView = NonNullable<BlogArticle["candidateStatus"]>;
 type BlogPriority = "high" | "medium" | "low";
 type BlogNextStep = "diagnose" | "add_candidate" | "candidate_pool" | "planned" | "observe" | "dismissed";
 type BlogAuditIndicator = {
@@ -50,20 +49,6 @@ type BlogAuditIndicator = {
   passed: boolean;
   severity: BlogPriority;
   action: string;
-};
-
-const candidateStatusLabels: Record<BlogCandidateStatusView, string> = {
-  none: "未入池",
-  candidate: "已入池",
-  planned: "已规划",
-  dismissed: "暂不处理"
-};
-
-const candidateStatusColors: Record<BlogCandidateStatusView, string> = {
-  none: "default",
-  candidate: "blue",
-  planned: "green",
-  dismissed: "default"
 };
 
 const blogPriorityLabels: Record<BlogPriority, string> = {
@@ -80,8 +65,8 @@ const blogPriorityColors: Record<BlogPriority, string> = {
 
 const blogNextStepLabels: Record<BlogNextStep, string> = {
   diagnose: "先诊断",
-  add_candidate: "建议入候选池",
-  candidate_pool: "候选池处理",
+  add_candidate: "进入自动策略",
+  candidate_pool: "已进入自动策略",
   planned: "已规划",
   observe: "继续观察",
   dismissed: "暂不处理"
@@ -95,10 +80,6 @@ const blogNextStepColors: Record<BlogNextStep, string> = {
   observe: "default",
   dismissed: "default"
 };
-
-function getCandidateStatusView(article: BlogArticle): BlogCandidateStatusView {
-  return article.candidateStatus || "none";
-}
 
 function getBlogPriority(article: BlogArticle): BlogPriority {
   if (article.geoResult === "miss" || article.seoIssueCount >= 2) {
@@ -233,7 +214,7 @@ function getBlogSuggestionReason(article: BlogArticle): string {
   }
 
   if (article.seoIssueCount > 0) {
-    return `存在 ${article.seoIssueCount} 个 SEO 问题，建议进入优化候选池。`;
+    return `存在 ${article.seoIssueCount} 个 SEO 问题，系统将作为 GEO 调研与内容策略输入。`;
   }
 
   if (article.geoResult === "partial") {
@@ -251,19 +232,19 @@ function getBlogActionText(article: BlogArticle): string {
   const nextStep = getBlogNextStep(article);
 
   if (nextStep === "diagnose") {
-    return "先补一次诊断，确认收录、SEO 和 GEO 状态，再决定是否进入候选池。";
+    return "先补一次诊断，确认收录、SEO 和 GEO 状态，再自动进入内容策略链路。";
   }
 
   if (nextStep === "add_candidate") {
-    return "当前问题已经足够明确，优先加入候选池，交给后续规划或生成任务处理。";
+    return "当前问题已经足够明确，系统会将其交给后续策略与生成任务处理。";
   }
 
   if (nextStep === "candidate_pool") {
-    return "主题已经入池，下一步去候选池判断是生成任务、标记规划还是继续观察。";
+    return "主题已经进入自动策略链路，可在 GEO 内容中心查看承接结果。";
   }
 
   if (nextStep === "planned") {
-    return "主题已进入规划，去月度计划或候选池查看承接结果。";
+    return "主题已进入规划，可在 GEO 内容中心查看承接结果。";
   }
 
   if (nextStep === "dismissed") {
@@ -279,9 +260,9 @@ function BlogMonitorTabs({ activeKey }: { activeKey: "articles" | "diagnosis" | 
       className="blog-monitor-section-tabs"
       activeKey={activeKey}
       items={[
-        { key: "articles", label: <Link href="/blog-monitor">文章监控</Link> },
-        { key: "diagnosis", label: <Link href="/blog-monitor#content-diagnosis">内容诊断</Link> },
-        { key: "site-audit", label: <Link href="/blog-monitor?tab=site-audit">官网审计 P1</Link> }
+        { key: "articles", label: <Link href="/geo-monitor?tab=site">文章监控</Link> },
+        { key: "diagnosis", label: <Link href="/geo-monitor?tab=site#content-diagnosis">内容诊断</Link> },
+        { key: "site-audit", label: <Link href="/geo-monitor?tab=site&siteView=site-audit">官网审计 P1</Link> }
       ]}
     />
   );
@@ -301,7 +282,6 @@ function BlogMonitorPageContent() {
   const [blogImportOpen, setBlogImportOpen] = useState(false);
   const [logImportOpen, setLogImportOpen] = useState(false);
   const [diagnosingId, setDiagnosingId] = useState<string>();
-  const [addingCandidateId, setAddingCandidateId] = useState<string>();
   const [blogSourceUrls, setBlogSourceUrls] = useState(DEFAULT_BLOG_SOURCE_URLS.join("\n"));
   const [blogSourcePath, setBlogSourcePath] = useState("");
   const [blogText, setBlogText] = useState("");
@@ -312,7 +292,7 @@ function BlogMonitorPageContent() {
   const [indexedStatusFilter, setIndexedStatusFilter] = useState<BlogArticle["indexedStatus"][]>([]);
   const [geoResultFilter, setGeoResultFilter] = useState<BlogArticle["geoResult"][]>([]);
   const [dataConfidenceFilter, setDataConfidenceFilter] = useState<DataConfidence[]>([]);
-  const siteAuditActive = searchParams.get("tab") === "site-audit";
+  const siteAuditActive = searchParams.get("siteView") === "site-audit" || searchParams.get("tab") === "site-audit";
 
   if (siteAuditActive) {
     return (
@@ -341,8 +321,7 @@ function BlogMonitorPageContent() {
 
     return nextStep === "diagnose" || nextStep === "add_candidate";
   }).length;
-  const visibleCandidateCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "candidate_pool").length;
-  const visiblePlannedCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "planned").length;
+  const visibleStrategyCount = filteredBlogArticles.filter((article) => ["candidate_pool", "planned"].includes(getBlogNextStep(article))).length;
   const visibleObserveCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "observe").length;
   const visibleDismissedCount = filteredBlogArticles.filter((article) => getBlogNextStep(article) === "dismissed").length;
   const auditRows = blogArticles.map((article) => ({
@@ -500,24 +479,8 @@ function BlogMonitorPageContent() {
     }
   }
 
-  async function handleAddCandidate(id: string) {
-    setAddingCandidateId(id);
-
-    try {
-      const result = await callJsonApi(`/api/blog-articles/${id}/candidate`, { method: "POST" });
-      await refresh();
-      messageApi.success(formatApiMessage(result, "已加入博客候选池"));
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "加入候选池失败");
-    } finally {
-      setAddingCandidateId(undefined);
-    }
-  }
-
   function renderBlogEntry(article: BlogArticle) {
     const nextStep = getBlogNextStep(article);
-    const candidateStatus = getCandidateStatusView(article);
-    const candidateLocked = candidateStatus === "candidate" || candidateStatus === "planned" || candidateStatus === "dismissed";
 
     if (nextStep === "diagnose") {
       return (
@@ -529,36 +492,30 @@ function BlogMonitorPageContent() {
 
     if (nextStep === "add_candidate") {
       return (
-        <Button
-          size="small"
-          type="primary"
-          loading={addingCandidateId === article.id}
-          disabled={candidateLocked}
-          onClick={() => handleAddCandidate(article.id)}
-        >
-          入候选池
-        </Button>
+        <Link href="/monthly-plan?step=strategy">
+          <Button size="small" type="primary">查看自动策略</Button>
+        </Link>
       );
     }
 
     if (nextStep === "candidate_pool") {
       return (
-        <Link href="/blog-candidates">
-          <Button size="small">去候选池</Button>
+        <Link href="/monthly-plan?step=strategy">
+          <Button size="small">查看自动策略</Button>
         </Link>
       );
     }
 
     if (nextStep === "planned") {
       return (
-        <Link href="/monthly-matrix">
+        <Link href="/monthly-plan?step=strategy">
           <Button size="small">看月度计划</Button>
         </Link>
       );
     }
 
     return (
-      <Link href="/monthly-review">
+      <Link href="/geo-monitor?tab=review">
         <Button size="small">{nextStep === "dismissed" ? "去月度复盘" : "继续观察"}</Button>
       </Link>
     );
@@ -574,7 +531,7 @@ function BlogMonitorPageContent() {
           <Space wrap>
             <Popconfirm
               title="确认同步博客内容？"
-              description="会根据当前输入或配置源写入博客监控数据，并刷新候选池判断。"
+              description="会根据当前输入或配置源写入官网监控数据，并刷新 GEO 策略输入。"
               okText="同步"
               cancelText="取消"
               onConfirm={handleSync}
@@ -675,7 +632,7 @@ function BlogMonitorPageContent() {
         <Alert
           showIcon
           type={visibleActionNeededCount ? "info" : "success"}
-          message={`博客监控共 ${filteredBlogArticles.length} 篇，待诊断/待优化 ${visibleActionNeededCount} 篇，已入候选池 ${visibleCandidateCount} 篇，已规划 ${visiblePlannedCount} 篇`}
+          message={`博客监控共 ${filteredBlogArticles.length} 篇，待诊断/待优化 ${visibleActionNeededCount} 篇，已由自动策略承接 ${visibleStrategyCount} 篇`}
           description={`可继续观察 ${visibleObserveCount} 篇，暂不处理 ${visibleDismissedCount} 篇。`}
           style={{ marginBottom: 16 }}
         />
@@ -728,7 +685,7 @@ function BlogMonitorPageContent() {
                   ) : (
                     <Popconfirm
                       title="确认同步博客内容？"
-                      description="会根据当前输入或配置源写入博客监控数据，并刷新候选池判断。"
+                      description="会根据当前输入或配置源写入官网监控数据，并刷新 GEO 策略输入。"
                       okText="同步"
                       cancelText="取消"
                       onConfirm={handleSync}
@@ -772,14 +729,6 @@ function BlogMonitorPageContent() {
             { title: "收录", dataIndex: "indexedStatus", render: (value) => <Tag color={indexedStatusColors[value as BlogArticle["indexedStatus"]]}>{indexedStatusLabels[value as BlogArticle["indexedStatus"]]}</Tag> },
             { title: "SEO 问题", dataIndex: "seoIssueCount" },
             { title: "GEO 结果", dataIndex: "geoResult", render: (value) => <Tag color={geoResultColors[value as BlogArticle["geoResult"]]}>{geoResultLabels[value as BlogArticle["geoResult"]]}</Tag> },
-            {
-              title: "候选状态",
-              render: (_, record) => {
-                const candidateStatus = getCandidateStatusView(record);
-
-                return <Tag color={candidateStatusColors[candidateStatus]}>{candidateStatusLabels[candidateStatus]}</Tag>;
-              }
-            },
             {
               title: "优先级",
               render: (_, record) => {

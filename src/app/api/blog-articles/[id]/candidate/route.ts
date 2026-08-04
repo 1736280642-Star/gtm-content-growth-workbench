@@ -1,26 +1,13 @@
-import { readRequestPayload } from "@/lib/api-utils";
-import { addBlogArticleToCandidatePool, updateBlogArticleCandidateStatus } from "@/lib/workbench-store";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const routeParams = await params;
-  const payload = await readRequestPayload(request);
-  const result = addBlogArticleToCandidatePool(routeParams.id, payload);
-
-  return NextResponse.json(result, { status: result.ok ? 200 : 404 });
+function retired() {
+  return NextResponse.json({
+    ok: false,
+    status: "retired",
+    error: { code: "BLOG_CANDIDATE_POOL_RETIRED", message: "博客候选池已下线；官网问题将直接进入 GEO 调研与内容策略链路。" }
+  }, { status: 410 });
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const routeParams = await params;
-  const payload = await readRequestPayload(request);
-  const result = updateBlogArticleCandidateStatus(routeParams.id, payload);
-
-  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
-}
-
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const routeParams = await params;
-  const result = updateBlogArticleCandidateStatus(routeParams.id, { status: "dismissed" });
-
-  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
-}
+export async function POST() { return retired(); }
+export async function PATCH() { return retired(); }
+export async function DELETE() { return retired(); }

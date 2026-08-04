@@ -155,11 +155,13 @@ export interface QuestionTypeMatchRequest {
   expectedVersion: number;
   questionVersionIds: string[];
   auditReason: string;
+  runMode?: "human" | "system_policy";
 }
 
 export interface QuestionTypeMatchConfirmRequest {
   expectedVersion: number;
   matchRunId: string;
+  confirmationMode?: "human" | "system_policy";
   selections: Array<{
     questionVersionId: string;
     articleTypeProfileVersionId: string;

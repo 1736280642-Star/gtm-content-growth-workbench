@@ -390,11 +390,13 @@ export type V5MonthlyWorkspace = MonthlyWorkspaceReadModel;
 export interface SaveMonthlyPlanRequest {
   config: MonthlyPlanConfig;
   expectedVersion: number;
+  mutationSource?: "human" | "system_policy";
 }
 
 export interface StrategyMutationRequest {
   expectedVersion: number;
   auditReason: string;
+  mutationSource?: "human" | "system_policy";
 }
 
 export interface GenerateBatchRequest {
@@ -420,6 +422,7 @@ export interface ScheduleTaskRequest {
   scheduledAt: string;
   platformAccount: string;
   auditReason: string;
+  mutationSource?: "human" | "system_policy";
 }
 
 export interface SavePublishResultRequest {

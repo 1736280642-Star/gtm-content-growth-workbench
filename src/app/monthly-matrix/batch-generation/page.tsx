@@ -117,8 +117,8 @@ export default function MonthlyBatchGenerationPage() {
     const ready = selected.filter((task) => getTaskBusinessStatus(task) === "generated" && task.ctaValidationStatus !== "failed");
     if (!ready.length) return void messageApi.warning("所选任务尚无可排程正文，或 CTA 校验未通过。");
     localStorage.setItem(`monthly-schedule-admission:${workspace?.month || "latest"}`, JSON.stringify(ready.map((task) => task.taskId)));
-    messageApi.success(`已准入 ${ready.length} 篇任务进入人工排程。`);
-    router.push("/monthly-matrix/schedule");
+    messageApi.success(`已准入 ${ready.length} 篇任务，系统将自动生成发布排程。`);
+    router.push("/monthly-plan?step=execution&view=schedule");
   }
 
   const batchProgress = currentBatch ? Math.round(((currentBatch.completedTaskIds.length + currentBatch.failedTaskIds.length) / Math.max(1, currentBatch.taskIds.length)) * 100) : 0;
@@ -129,7 +129,7 @@ export default function MonthlyBatchGenerationPage() {
 
   return <>
     {messageContext}
-    <PageHeader title="内容生成" titleExtra={<Space size={6}><Tag color="blue">{workspace?.month || "读取中"}</Tag>{currentBatch ? <Tag color={currentBatch.status === "running" ? "processing" : currentBatch.status === "paused" ? "gold" : "default"}>{batchLabels[currentBatch.status]}</Tag> : null}</Space>} subtitle="生成、暂停、修复并预览已准入正文；排程在下一步独立完成。" actions={<Space wrap><Button type="primary" icon={<PlayCircleOutlined />} onClick={currentBatch?.status === "paused" ? () => void runBatch(currentBatch) : oneClickGenerate}>{currentBatch?.status === "paused" ? "继续生成" : "一键生成"}</Button><Button icon={<PauseOutlined />} disabled={!currentBatch || !["queued", "running"].includes(currentBatch.status)} onClick={() => void pauseBatch()}>暂停生成</Button><Button icon={<ToolOutlined />} onClick={() => checkAndRepair()}>格式检查与修复</Button><Link href="/monthly-matrix/schedule"><Button icon={<ScheduleOutlined />}>去人工排程</Button></Link></Space>} />
+    <PageHeader title="内容生成" titleExtra={<Space size={6}><Tag color="blue">{workspace?.month || "读取中"}</Tag>{currentBatch ? <Tag color={currentBatch.status === "running" ? "processing" : currentBatch.status === "paused" ? "gold" : "default"}>{batchLabels[currentBatch.status]}</Tag> : null}</Space>} subtitle="系统持续生成、校验和修复已准入正文；这里保留人工补跑、暂停和预览能力。" actions={<Space wrap><Button type="primary" icon={<PlayCircleOutlined />} onClick={currentBatch?.status === "paused" ? () => void runBatch(currentBatch) : oneClickGenerate}>{currentBatch?.status === "paused" ? "继续生成" : "立即补跑"}</Button><Button icon={<PauseOutlined />} disabled={!currentBatch || !["queued", "running"].includes(currentBatch.status)} onClick={() => void pauseBatch()}>暂停生成</Button><Button icon={<ToolOutlined />} onClick={() => checkAndRepair()}>格式检查与修复</Button><Link href="/monthly-plan?step=execution&view=schedule"><Button icon={<ScheduleOutlined />}>查看发布排程</Button></Link></Space>} />
     <MonthlyFlowNav />
     {error ? <Alert showIcon type="error" message="生产工作区读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} /> : null}
     {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取内容生成任务</span></div> : null}

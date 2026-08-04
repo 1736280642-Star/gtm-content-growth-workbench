@@ -21,9 +21,20 @@ const definitions = {
   "knowledge-worker": [
     oneShot("rag-source-import", "workers/rag-source-import-worker.mjs", "RAG_SOURCE_IMPORT_INTERVAL_SECONDS", 300, ["--write", "--production-text-only"]),
     oneShot("knowledge-refresh", "workers/knowledge-refresh-worker.mjs", "KNOWLEDGE_REFRESH_INTERVAL_SECONDS", 15),
-    oneShot("knowledge-collection", "workers/knowledge-collection-worker.mjs", "KNOWLEDGE_COLLECTION_INTERVAL_SECONDS", 900)
+    oneShot("knowledge-collection", "workers/knowledge-collection-worker.mjs", "KNOWLEDGE_COLLECTION_INTERVAL_SECONDS", 900),
+    oneShot("geo-research-orchestration", "workers/geo-research-orchestrator.mjs", "GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS", 300),
+    oneShot("geo-research", "workers/geo-research-worker.mjs", "GEO_RESEARCH_INTERVAL_SECONDS", 60)
   ],
-  "content-worker": [oneShot("content-production", "workers/content-production-worker.mjs", "CONTENT_WORKER_INTERVAL_SECONDS", 15)],
+  "content-worker": [
+    oneShot("monthly-automation", "workers/monthly-automation-worker.mjs", "MONTHLY_AUTOMATION_INTERVAL_SECONDS", 60),
+    oneShot("content-production", "workers/content-production-worker.mjs", "CONTENT_WORKER_INTERVAL_SECONDS", 15)
+  ],
+  "monitor-worker": [{
+    name: "geo-monitor-pipeline",
+    args: ["workers/schedule-pipeline.mjs", "--repeat", "--interval-seconds", String(integer("PIPELINE_WORKER_INTERVAL_SECONDS", 3600, 300, 86_400)), "--max-runs", "1000"],
+    intervalMs: 5_000,
+    longRunning: true
+  }],
   "publish-worker": [{ name: "direct-publish", args: ["workers/direct-publish-worker.mjs", "--interval-seconds", String(integer("PUBLISH_WORKER_INTERVAL_SECONDS", 30, 10, 3600))], intervalMs: 5_000, longRunning: true }]
 };
 if (!role || !definitions[role]) {

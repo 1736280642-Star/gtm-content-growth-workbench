@@ -1,11 +1,9 @@
-import { readRequestPayload } from "@/lib/api-utils";
-import { createContentTaskFromBlogCandidate } from "@/lib/workbench-store";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const routeParams = await params;
-  const payload = await readRequestPayload(request);
-  const result = createContentTaskFromBlogCandidate(routeParams.id, payload);
-
-  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+export async function POST() {
+  return NextResponse.json({
+    ok: false,
+    status: "retired",
+    error: { code: "BLOG_CANDIDATE_POOL_RETIRED", message: "博客候选池已下线，系统会从问题池直接生成 GEO 内容策略。" }
+  }, { status: 410 });
 }

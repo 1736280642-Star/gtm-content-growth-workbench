@@ -1,15 +1,18 @@
 "use client";
 
-import { Alert, Button, Card, Checkbox, Form, Radio, Select, Space, Table, Tag, message } from "antd";
+import { Alert, Button, Card, Checkbox, Form, Input, Radio, Segmented, Select, Space, Table, Tag, message } from "antd";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { channelLabels, productLabels } from "@/lib/labels";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
 import { getVisibleRoutesForRole, workspaceRoleLabels, workspaceRouteLabels } from "@/lib/permissions";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import type { ChannelKey, ProductKey, ProductPlanConfig, WorkspaceRole } from "@/lib/types";
+import ConfigurationPage from "@/app/configuration/page";
+import OperationsPage from "@/app/operations/page";
 
 const finalReviewModeLabels = {
   default_final: "默认终稿",
@@ -106,7 +109,7 @@ function createSettingsRuleChecks(input: {
           item: "渠道范围",
           status: `已选择 ${input.channels.length} 个渠道`,
           detail: input.channels.map((item) => channelLabels[item]).join("、"),
-          action: "可以进入月度内容矩阵。",
+          action: "可以进入 GEO 内容中心。",
           nextStep: "ready"
         }
       : {
@@ -157,7 +160,7 @@ function createSettingsRuleChecks(input: {
           item: "日志接入",
           status: logModeLabels[input.logMode],
           detail: "真实日志模式需要先确认文件路径和导出格式。",
-          action: "先到配置管理的连接页检查访问数据来源。",
+          action: "先到设置的连接页检查访问数据来源。",
           nextStep: "configure_real_log"
         }
       : {
@@ -165,7 +168,7 @@ function createSettingsRuleChecks(input: {
           item: "日志接入",
           status: logModeLabels[input.logMode],
           detail: input.logMode === "demo_csv" ? "用于熟悉数据分析流程。" : "通过人工文件导入补充访问数据。",
-          action: "可以继续在博客监控页导入日志。",
+          action: "可以继续在 GEO 监控塔的官网监控中导入日志。",
           nextStep: "ready"
         },
   ];
@@ -173,17 +176,17 @@ function createSettingsRuleChecks(input: {
 
 function getSettingsRuleEntry(nextStep: SettingsRuleNextStep) {
   if (nextStep === "configure_real_log") {
-    return { type: "link" as const, href: "/configuration?tab=connections", label: "查看连接" };
+    return { type: "link" as const, href: "/settings?tab=connections", label: "查看连接" };
   }
 
   if (nextStep === "ready") {
-    return { type: "link" as const, href: "/monthly-matrix", label: "去月度内容矩阵" };
+    return { type: "link" as const, href: "/monthly-plan?step=strategy", label: "去 GEO 内容中心" };
   }
 
   return { type: "save" as const, label: "保存设置" };
 }
 
-export default function SettingsPage() {
+function WorkspaceRulesSettings({ section }: { section: "rules" | "permissions" }) {
   const {
     state: { workspaceSetting, knowledgeBases },
     loading,
@@ -256,10 +259,9 @@ export default function SettingsPage() {
     try {
       const result = await callJsonApi("/api/workspace-settings", {
         method: "PATCH",
-        body: JSON.stringify({
-          ...values,
-          productPlans
-        })
+        body: JSON.stringify(section === "permissions"
+          ? { currentRole: values.currentRole }
+          : { ...values, productPlans })
       });
       await refresh();
       messageApi.success(formatApiMessage(result, "设置已保存"));
@@ -292,8 +294,10 @@ export default function SettingsPage() {
     <>
       {contextHolder}
       <PageHeader
-        title="工作台设置"
-        subtitle="管理月度内容生产的默认范围、终稿规则和日志模式。"
+        title={section === "permissions" ? "权限" : "默认规则"}
+        subtitle={section === "permissions"
+          ? "按角色控制可见入口；系统状态仅向管理员或异常处理场景开放。"
+          : "管理自动生产、发布排程与产品绑定的长期默认值，人工只修正例外。"}
         actions={
           <Space>
             <Button onClick={handleResetForm}>恢复当前保存配置</Button>
@@ -304,6 +308,7 @@ export default function SettingsPage() {
         }
       />
       <PageErrorState message={error} loading={loading} onRetry={refresh} />
+      {section === "rules" ? <>
       <Alert
         type="info"
         showIcon
@@ -366,8 +371,10 @@ export default function SettingsPage() {
           ]}
         />
       </Card>
+      </> : null}
       <Form form={form} layout="vertical">
-        <div className="two-column">
+        <div className="two-column settings-section-single">
+          {section === "rules" ? (
           <Card title="默认发布范围">
             <Form.Item label="默认渠道" name="enabledChannels">
               <Checkbox.Group options={Object.entries(channelLabels).map(([value, label]) => ({ value, label }))} />
@@ -375,7 +382,25 @@ export default function SettingsPage() {
             <Form.Item label="默认产品" name="enabledProducts">
               <Checkbox.Group options={Object.entries(productLabels).map(([value, label]) => ({ value, label }))} />
             </Form.Item>
+            <Alert
+              showIcon
+              type="info"
+              message="自动排程需要默认发布账号"
+              description="系统仅会为已配置账号的渠道创建排程；未配置的渠道保留为待配置，不会误发。"
+              style={{ marginBottom: 16 }}
+            />
+            {previewChannels.map((channel) => (
+              <Form.Item
+                key={channel}
+                label={`${channelLabels[channel]}默认发布账号`}
+                name={["publishAccountByChannel", channel]}
+              >
+                <Input placeholder="填写平台账号 ID 或连接别名" maxLength={120} />
+              </Form.Item>
+            ))}
           </Card>
+          ) : null}
+          {section === "permissions" ? (
           <Card title="角色与可见范围">
             <Form.Item label="当前使用角色" name="currentRole">
               <Radio.Group
@@ -406,8 +431,9 @@ export default function SettingsPage() {
               ]}
             />
           </Card>
+          ) : null}
         </div>
-        <div className="two-column" style={{ marginTop: 16 }}>
+        {section === "rules" ? <div className="two-column" style={{ marginTop: 16 }}>
           <Card title="执行与采集规则">
             <Form.Item label="终稿模式" name="finalReviewMode">
               <Radio.Group
@@ -473,15 +499,70 @@ export default function SettingsPage() {
                 showIcon
                 type="info"
                 message="这里保存长期默认值"
-                description="月度内容矩阵可以基于默认值做当月调整；当月临时配额不会反向污染长期默认配置。"
+                description="GEO 内容中心可以基于默认值做当月调整；当月临时配额不会反向污染长期默认配置。"
               />
             </Space>
           </Card>
-        </div>
+        </div> : null}
         <Card size="small" style={{ marginTop: 16 }}>
           <span className="muted">最近保存：{workspaceSetting.updatedAt || "-"}</span>
         </Card>
       </Form>
     </>
   );
+}
+
+type SettingsTab = "models" | "connections" | "rules" | "permissions" | "logs";
+
+const settingsTabs = [
+  { label: "模型", value: "models" },
+  { label: "连接", value: "connections" },
+  { label: "默认规则", value: "rules" },
+  { label: "权限", value: "permissions" },
+  { label: "日志", value: "logs" }
+];
+
+function SettingsHub() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const tab = settingsTabs.some((item) => item.value === requestedTab)
+    ? requestedTab as SettingsTab
+    : "models";
+  const showSystemStatus = searchParams.get("system") === "1" || searchParams.get("view") === "system-status";
+
+  return (
+    <>
+      <div className="unified-workspace-nav is-monitor">
+        <Segmented
+          block
+          value={tab}
+          options={settingsTabs}
+          onChange={(value) => router.push(`/settings?tab=${value}`)}
+        />
+      </div>
+      {showSystemStatus ? <OperationsPage /> : null}
+      {!showSystemStatus && tab === "models" ? <ConfigurationPage /> : null}
+      {!showSystemStatus && tab === "connections" ? <ConfigurationPage /> : null}
+      {!showSystemStatus && tab === "rules" ? (
+        <>
+          <WorkspaceRulesSettings section="rules" />
+          <ConfigurationPage />
+        </>
+      ) : null}
+      {!showSystemStatus && tab === "permissions" ? <WorkspaceRulesSettings section="permissions" /> : null}
+      {!showSystemStatus && tab === "logs" ? (
+        <>
+          <Space style={{ marginBottom: 12 }} wrap>
+            <Button onClick={() => router.push("/settings?tab=logs&system=1")}>管理员查看系统状态</Button>
+          </Space>
+          <ConfigurationPage />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+export default function SettingsPage() {
+  return <Suspense fallback={null}><SettingsHub /></Suspense>;
 }

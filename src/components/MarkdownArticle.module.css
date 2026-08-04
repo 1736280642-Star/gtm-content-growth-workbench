@@ -1,7 +1,11 @@
 .article {
+  width: min(100%, 82ch);
+  margin-inline: auto;
   color: #172033;
-  font-size: 15px;
-  line-height: 1.85;
+  font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.9;
+  letter-spacing: 0.01em;
   overflow-wrap: anywhere;
 }
 
@@ -13,15 +17,16 @@
 }
 
 .article h1 {
-  margin: 0 0 24px;
-  font-size: 26px;
+  margin: 0 0 28px;
+  font-size: 28px;
+  letter-spacing: -0.02em;
 }
 
 .article h2 {
-  margin: 32px 0 12px;
-  padding-bottom: 8px;
+  margin: 36px 0 14px;
+  padding-bottom: 9px;
   border-bottom: 1px solid #e7ebf0;
-  font-size: 20px;
+  font-size: 21px;
 }
 
 .article h3 {
@@ -30,7 +35,7 @@
 }
 
 .article p {
-  margin: 0 0 16px;
+  margin: 0 0 18px;
 }
 
 .article ul,
@@ -40,7 +45,7 @@
 }
 
 .article li + li {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .article blockquote {

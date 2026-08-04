@@ -3,14 +3,27 @@ import { NextResponse } from "next/server";
 import { toV5GovernanceError, V5GovernanceServiceError, type V5WriteEnvelope } from "./knowledge-governance-service";
 import type { V5GovernanceActor } from "./knowledge-governance-repository";
 
+export function readTrustedServerActor(defaultRole = "developer_admin"): V5GovernanceActor | undefined {
+  if (process.env.V5_TRUSTED_SERVER_WRITES_ENABLED !== "true") return undefined;
+  const actorId = String(process.env.V5_TRUSTED_SERVER_ACTOR_ID || "").trim();
+  const actorRole = String(process.env.V5_TRUSTED_SERVER_ACTOR_ROLE || defaultRole).trim();
+  if (!actorId || !actorRole) return undefined;
+  return { actorId, actorRole, actorType: "human", auditReason: "由工作台可信服务端身份发起写入" };
+}
+
 export async function readV5GovernancePayload(request: Request) {
   if (process.env.NODE_ENV === "production") {
-    throw new V5GovernanceServiceError(
-      "authorization_not_configured",
-      "V5 治理写接口尚未接入可信服务端身份，生产环境拒绝使用请求体自报角色。",
-      503,
-      "接入服务端 Session / SSO 身份与对象范围授权后，再启用生产写入。"
-    );
+    const actor = readTrustedServerActor();
+    if (!actor) {
+      throw new V5GovernanceServiceError(
+        "authorization_not_configured",
+        "当前 Docker 生产环境未配置工作台可信身份，系统已阻止写入以避免伪造操作人。",
+        503,
+        "配置 V5_TRUSTED_SERVER_WRITES_ENABLED、服务端操作人和角色后重启 Web。生产环境拒绝使用请求体自报角色。"
+      );
+    }
+    const payload = await readRequestPayload(request);
+    return { ...payload, actorId: actor.actorId, actorRole: actor.actorRole, actorType: actor.actorType };
   }
   return readRequestPayload(request);
 }

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CapturedAnswer, ObservationGap, ObservationGapDestination } from "@/lib/v5/observation-contracts";
 
 const destinationLabels: Record<ObservationGapDestination, string> = {
-  blog_candidate: "博客候选池",
+  blog_candidate: "GEO 内容策略输入",
   knowledge_issue: "知识库问题与冲突",
   site_audit: "官网审计",
   manual_review: "人工复核队列"
@@ -71,7 +71,7 @@ export function ObservationGapReviewDrawer({ answer, gaps, open, submitting, onC
           <strong>复核说明</strong>
           <Input.TextArea style={{ marginTop: 8 }} rows={4} value={note} onChange={(event) => setNote(event.target.value)} placeholder="记录最终业务判断；原始回答不会被修改" />
         </div>
-        <Alert showIcon type="warning" message="分流不会自动创建月度任务" description="内容缺口仅进入博客候选适配器，证据缺口仅进入知识库问题适配器；是否进入下月生产仍需在 MonthlyPlan 中人工批准。" />
+        <Alert showIcon type="info" message="确认后由系统继续处理" description="内容缺口进入 GEO 内容策略，证据缺口进入知识库治理；系统会在证据和规则门禁通过后自动生成月度任务，人工仍可修改。" />
       </Space>
     </Drawer>
   );

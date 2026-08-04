@@ -9,82 +9,26 @@ export const workspaceRoleLabels: Record<WorkspaceRole, string> = {
 };
 
 export const workspaceRouteLabels: Record<string, string> = {
-  "/products": "产品与 GEO 调研",
-  "/": "首页",
-  "/monthly-strategy": "月度策略包（已并入月度内容矩阵）",
-  "/monthly-matrix": "月度内容矩阵",
-  "/monthly-matrix/strategy": "月度策略工作区",
-  "/monthly-matrix/content-types": "内容类型库",
-  "/monthly-matrix/batch-generation": "批量生成中心",
-  "/free-production": "自由内容生产",
-  "/monthly-plan": "月度内容矩阵（兼容入口）",
-  "/batch-generation": "批量生成中心",
-  "/exceptions": "异常拦截（已并入批量生成中心）",
-  "/publish-schedule": "人工排程（已并入批量生成中心）",
-  "/publish-schedule/daily-execution": "当日执行",
-  "/daily-execution": "当日执行",
-  "/today": "当日执行（兼容入口）",
-  "/monthly-review": "月度复盘",
-  "/ai-front-test": "AI 前台测试",
-  "/v5/drafts": "正式 Markdown 正文",
-  "/publish": "数据回传",
   "/knowledge": "知识库",
-  "/questions-keywords": "问题与关键词池",
-  "/distilled-terms": "问题与关键词池（兼容入口）",
-  "/blog-monitor": "官网博客监控",
-  "/blog-candidates": "博客候选池",
-  "/configuration": "配置管理",
-  "/real-integration": "配置管理（兼容入口）",
-  "/ai-config": "配置管理（兼容入口）",
-  "/settings": "工作台设置"
+  "/monthly-plan": "GEO 内容中心",
+  "/geo-monitor": "GEO 监控塔",
+  "/settings": "设置"
 };
 
 const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
-  content_publisher: ["/", "/free-production", "/monthly-matrix/batch-generation", "/daily-execution", "/publish", "/monthly-review", "/settings"],
-  content_growth: ["/", "/products", "/monthly-matrix", "/free-production", "/monthly-review", "/ai-front-test", "/questions-keywords", "/blog-monitor", "/blog-candidates", "/settings"],
-  workbench_operator: [
-    "/",
-    "/products",
-    "/monthly-matrix",
-    "/free-production",
-    "/daily-execution",
-    "/monthly-review",
-    "/ai-front-test",
-    "/v5/drafts",
-    "/publish",
-    "/knowledge",
-    "/questions-keywords",
-    "/blog-monitor",
-    "/blog-candidates",
-    "/configuration",
-    "/settings"
-  ],
-  knowledge_manager: ["/", "/products", "/knowledge", "/questions-keywords", "/monthly-review", "/settings"],
-  developer_admin: [
-    "/",
-    "/products",
-    "/monthly-matrix",
-    "/free-production",
-    "/daily-execution",
-    "/monthly-review",
-    "/ai-front-test",
-    "/v5/drafts",
-    "/publish",
-    "/knowledge",
-    "/questions-keywords",
-    "/blog-monitor",
-    "/blog-candidates",
-    "/configuration",
-    "/settings"
-  ]
+  content_publisher: ["/monthly-plan", "/geo-monitor", "/settings"],
+  content_growth: ["/knowledge", "/monthly-plan", "/geo-monitor", "/settings"],
+  workbench_operator: ["/knowledge", "/monthly-plan", "/geo-monitor", "/settings"],
+  knowledge_manager: ["/knowledge", "/geo-monitor", "/settings"],
+  developer_admin: ["/knowledge", "/monthly-plan", "/geo-monitor", "/settings"]
 };
 
 const roleDefaultRoutes: Record<WorkspaceRole, string> = {
-  content_publisher: "/daily-execution",
-  content_growth: "/monthly-review",
-  workbench_operator: "/monthly-matrix",
+  content_publisher: "/monthly-plan?step=execution",
+  content_growth: "/geo-monitor",
+  workbench_operator: "/geo-monitor",
   knowledge_manager: "/knowledge",
-  developer_admin: "/configuration"
+  developer_admin: "/settings"
 };
 
 export function getVisibleRoutesForRole(role: WorkspaceRole) {

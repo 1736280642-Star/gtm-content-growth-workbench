@@ -274,8 +274,8 @@ export default function PublishPage() {
         actions={
           <>
             <Button onClick={handleCopyTemplate}>下载模板</Button>
-            <Link href="/publishing">
-              <Button>打开发布控制台</Button>
+            <Link href="/geo-monitor?tab=publishing">
+              <Button>查看发布状态</Button>
             </Link>
           </>
         }

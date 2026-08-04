@@ -14,7 +14,7 @@ import type {
 import { QuestionTypeMatchPanel } from "./QuestionTypeMatchPanel";
 
 interface MonthlyPlanConfigPanelProps {
-  locked?: boolean;
+  approved?: boolean;
   value: MonthlyPlanConfig;
   rulePackages: RulePackageOption[];
   channels: string[];
@@ -43,7 +43,10 @@ function sameSnapshot(rulePackage?: RulePackageOption, knowledgeBase?: Knowledge
 }
 
 export function MonthlyPlanConfigPanel(props: MonthlyPlanConfigPanelProps) {
-  const { locked, value, rulePackages, channels, targetQuestions, knowledgeBases, articleTypeProfiles, typeMatchRun, onSave, onRunMatch, onConfirmMatch } = props;
+  const { approved, value, rulePackages, channels, targetQuestions, knowledgeBases, articleTypeProfiles, typeMatchRun, onSave, onRunMatch, onConfirmMatch } = props;
+  // The current strategy is the editable initial value for this settings form,
+  // including when the plan has already been approved.
+  const locked = false;
   const [messageApi, contextHolder] = message.useMessage();
   const [draft, setDraft] = useState(() => cloneConfig(value));
   const [step, setStep] = useState(0);
@@ -156,18 +159,18 @@ export function MonthlyPlanConfigPanel(props: MonthlyPlanConfigPanelProps) {
   async function confirmMatch(selections: Parameters<MonthlyPlanConfigPanelProps["onConfirmMatch"]>[1]) {
     try {
       await onConfirmMatch(draft.month, selections);
-      messageApi.success("内容类型组合已确认并冻结匹配快照。" );
+      messageApi.success("内容类型组合已确认。" );
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "内容类型组合确认失败。" );
     }
   }
 
   async function save() {
-    if (issues.length || locked) return;
+    if (issues.length) return;
     setSaving(true);
     try {
       await onSave(cloneConfig(draft));
-      messageApi.success("月度策略草稿已保存。" );
+      messageApi.success("策略包设置已保存。" );
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "月度策略保存失败。" );
     } finally {
@@ -178,33 +181,33 @@ export function MonthlyPlanConfigPanel(props: MonthlyPlanConfigPanelProps) {
   return (
     <div className="monthly-strategy-builder">
       {contextHolder}
-      {locked ? <Alert showIcon type="info" message="策略已批准" description="目标问题、内容类型版本、匹配快照、渠道配额、规则包和知识快照均已冻结。" /> : null}
+      {approved ? <Alert showIcon type="info" message="当前策略已载入，可直接重新配置" description="现有选择作为初始值保留；可增删目标问题、重新运行 AI 推荐、调整类型组合并保存。" /> : null}
       <Steps className="monthly-strategy-steps" current={step} onChange={setStep} items={[{ title: "目标与问题" }, { title: "内容组合" }, { title: "类型与配额" }, { title: "资料与版本" }]} />
 
       {step === 0 ? <section className="monthly-strategy-step" aria-labelledby="strategy-step-goal">
         <div className="v5-section-heading"><div><span className="v5-kicker">步骤 1</span><h2 id="strategy-step-goal">月度目标与目标问题</h2></div></div>
         <Form layout="vertical" className="monthly-plan-base-form">
-          <Form.Item label="月份" required><Input type="month" disabled={locked} value={draft.month} onChange={(event) => setDraft((current) => ({ ...current, month: event.target.value, quotaRules: [] }))} /></Form.Item>
-          <Form.Item label="月度渠道成品总数" required><InputNumber min={1} max={1000} disabled={locked} value={draft.targetDeliverableCount} addonAfter="篇" onChange={(value) => setDraft((current) => ({ ...current, targetDeliverableCount: Number(value || 0) }))} /></Form.Item>
-          <Form.Item label="月度业务目标" required className="monthly-plan-goal-field"><Input.TextArea disabled={locked} maxLength={160} showCount value={draft.businessGoal} onChange={(event) => setDraft((current) => ({ ...current, businessGoal: event.target.value }))} /></Form.Item>
-          <Form.Item label="目标问题" required className="monthly-plan-goal-field"><Select mode="multiple" disabled={locked} value={draft.questionVersionIds} options={targetQuestions.map((item) => ({ value: item.questionVersionId, label: item.question }))} onChange={(questionVersionIds) => setDraft((current) => ({ ...current, questionVersionIds, quotaRules: (current.quotaRules || []).filter((rule) => questionVersionIds.includes(rule.questionVersionId)) }))} /></Form.Item>
+          <Form.Item label="月份" required><Input type="month" disabled value={draft.month} /></Form.Item>
+          <Form.Item label="月度渠道成品总数" required><InputNumber min={1} max={1000} value={draft.targetDeliverableCount} addonAfter="篇" onChange={(value) => setDraft((current) => ({ ...current, targetDeliverableCount: Number(value || 0) }))} /></Form.Item>
+          <Form.Item label="月度业务目标" required className="monthly-plan-goal-field"><Input.TextArea maxLength={160} showCount value={draft.businessGoal} onChange={(event) => setDraft((current) => ({ ...current, businessGoal: event.target.value }))} /></Form.Item>
+          <Form.Item label="目标问题" required className="monthly-plan-goal-field"><Select mode="multiple" value={draft.questionVersionIds} options={targetQuestions.map((item) => ({ value: item.questionVersionId, label: item.question }))} onChange={(questionVersionIds) => setDraft((current) => ({ ...current, questionVersionIds, quotaRules: (current.quotaRules || []).filter((rule) => questionVersionIds.includes(rule.questionVersionId)) }))} /></Form.Item>
         </Form>
       </section> : null}
 
       {step === 1 ? <section className="monthly-strategy-step" aria-labelledby="strategy-step-match">
         <div className="v5-section-heading"><div><span className="v5-kicker">步骤 2</span><h2 id="strategy-step-match">AI 推荐内容组合</h2></div><Button href="/monthly-matrix/content-types">管理内容类型</Button></div>
-        <QuestionTypeMatchPanel questions={selectedQuestions} profiles={articleTypeProfiles} run={relevantMatchRun} disabled={locked || !draft.month} running={matching} onRun={runMatch} onConfirm={confirmMatch} />
+        <QuestionTypeMatchPanel questions={selectedQuestions} profiles={articleTypeProfiles} run={relevantMatchRun} disabled={!draft.month} running={matching} onRun={runMatch} onConfirm={confirmMatch} />
       </section> : null}
 
       {step === 2 ? <section className="monthly-strategy-step" aria-labelledby="strategy-step-quota">
-        <div className="v5-section-heading"><div><span className="v5-kicker">步骤 3</span><h2 id="strategy-step-quota">类型、渠道和配额</h2><p>配额表示每个渠道分别生成的数量，多选渠道会增加渠道成品总数。</p></div><Button icon={<PlusOutlined />} disabled={locked || relevantMatchRun?.status !== "confirmed"} onClick={addConfirmedRules}>从已确认组合添加配额</Button></div>
+        <div className="v5-section-heading"><div><span className="v5-kicker">步骤 3</span><h2 id="strategy-step-quota">类型、渠道和配额</h2><p>配额表示每个渠道分别生成的数量，多选渠道会增加渠道成品总数。</p></div><Button icon={<PlusOutlined />} disabled={relevantMatchRun?.status !== "confirmed"} onClick={addConfirmedRules}>从已确认组合添加配额</Button></div>
         <div className="monthly-quota-list">
           {(draft.quotaRules || []).map((rule, index) => {
             const selectedPackage = selectablePackages.find((item) => item.id === rule.rulePackageVersionId);
     const availableChannels = ["wechat", "csdn", "juejin", "zhihu_toutiao_general"];
             const channelNames = Object.keys(rule.channelQuotas);
             return <section className="monthly-quota-row" key={rule.quotaRuleId} aria-label={`配额 ${index + 1}`}>
-              <div className="monthly-quota-row-header"><div><strong>{rule.question}</strong><Space size={4}><Tag color={rule.typeSelectionSource === "ai_recommended" ? "blue" : "cyan"}>{rule.typeSelectionSource === "ai_recommended" ? "AI 推荐" : "手动加入"}</Tag><Tag>{rule.articleTypeNameSnapshot}</Tag><Tag>冻结版本</Tag></Space></div><Button danger type="text" icon={<DeleteOutlined />} disabled={locked} aria-label="删除配额" onClick={() => setDraft((current) => ({ ...current, quotaRules: (current.quotaRules || []).filter((_, itemIndex) => itemIndex !== index) }))} /></div>
+              <div className="monthly-quota-row-header"><div><strong>{rule.question}</strong><Space size={4}><Tag color={rule.typeSelectionSource === "ai_recommended" ? "blue" : "cyan"}>{rule.typeSelectionSource === "ai_recommended" ? "AI 推荐" : "当前选择"}</Tag><Tag>{rule.articleTypeNameSnapshot}</Tag><Tag>当前类型版本</Tag></Space></div><Button danger type="text" icon={<DeleteOutlined />} disabled={locked} aria-label="删除配额" onClick={() => setDraft((current) => ({ ...current, quotaRules: (current.quotaRules || []).filter((_, itemIndex) => itemIndex !== index) }))} /></div>
               <p className="monthly-type-match-reason">{rule.matchReasonSnapshot}</p>
               <div className="monthly-quota-grid">
                 <Form.Item label="内容类型版本"><Input disabled value={`${rule.articleTypeNameSnapshot} · ${rule.articleTypeProfileVersionId}`} /></Form.Item>
@@ -228,11 +231,11 @@ export function MonthlyPlanConfigPanel(props: MonthlyPlanConfigPanelProps) {
             <div className="monthly-quota-grid monthly-quota-bindings">
               <Form.Item label="产品表达规则包"><Select disabled={locked} value={rule.rulePackageVersionId} options={selectablePackages.map((item) => ({ value: item.id, label: `${item.productName} ${item.version}` }))} onChange={(id) => { const item = selectablePackages.find((candidate) => candidate.id === id); const knowledge = knowledgeBases.find((candidate) => item?.knowledgeBaseIds?.includes(candidate.knowledgeBaseId)); const hash = sameSnapshot(item, knowledge); updateRule(index, { rulePackageVersionId: id, knowledgeBaseIds: knowledge ? [knowledge.knowledgeBaseId] : [], sourceSnapshotHash: hash, rulePackageSourceSnapshotHash: hash, knowledgeIndexSourceSnapshotHash: hash, evidencePackSourceSnapshotHash: hash }); }} /></Form.Item>
               <Form.Item label="知识库"><Select disabled={locked} value={rule.knowledgeBaseIds[0]} options={knowledgeBases.filter((item) => selectedPackage?.knowledgeBaseIds?.includes(item.knowledgeBaseId)).map((item) => ({ value: item.knowledgeBaseId, label: item.name, disabled: item.status !== "ready" || item.sourceSnapshotHash !== selectedPackage?.sourceSnapshotHash }))} onChange={(id) => { const item = knowledgeBases.find((candidate) => candidate.knowledgeBaseId === id); const hash = selectedPackage?.sourceSnapshotHash || ""; if (item?.sourceSnapshotHash === hash) updateRule(index, { knowledgeBaseIds: [id], sourceSnapshotHash: hash, rulePackageSourceSnapshotHash: hash, knowledgeIndexSourceSnapshotHash: hash, evidencePackSourceSnapshotHash: hash }); }} /></Form.Item>
-              <Form.Item label="匹配快照"><Input disabled value={`${rule.typeMatchRunId} · ${rule.typeSelectionSource === "ai_recommended" ? "AI 推荐" : "人工选择"}`} /></Form.Item>
+              <Form.Item label="当前匹配结果"><Input disabled value={rule.typeSelectionSource === "ai_recommended" ? "AI 推荐" : "当前选择"} /></Form.Item>
             </div>
           </section>;
         })}
-        <div className="monthly-plan-summary-bar"><span>月度总数 <strong>{draft.targetDeliverableCount || 0}</strong></span><span>已分配 <strong>{allocated}</strong></span><span>待分配 <strong>{remaining}</strong></span><Tag color={allocated === draft.targetDeliverableCount ? "green" : allocated > Number(draft.targetDeliverableCount || 0) ? "red" : "gold"}>{allocated === draft.targetDeliverableCount ? "配额已平衡" : "草稿可继续配置"}</Tag><Button type="primary" icon={<SaveOutlined />} disabled={Boolean(issues.length) || locked} loading={saving} onClick={() => void save()}>保存月度策略草稿</Button></div>
+        <div className="monthly-plan-summary-bar"><span>月度总数 <strong>{draft.targetDeliverableCount || 0}</strong></span><span>已分配 <strong>{allocated}</strong></span><span>待分配 <strong>{remaining}</strong></span><Tag color={allocated === draft.targetDeliverableCount ? "green" : allocated > Number(draft.targetDeliverableCount || 0) ? "red" : "gold"}>{allocated === draft.targetDeliverableCount ? "配额已平衡" : "草稿可继续配置"}</Tag><Button type="primary" icon={<SaveOutlined />} disabled={Boolean(issues.length)} loading={saving} onClick={() => void save()}>保存策略包设置</Button></div>
         {issues.length ? <Alert className="monthly-plan-balance-alert" showIcon type="warning" message="当前草稿尚不能保存" description={issues.join("；")} /> : null}
       </section> : null}
 

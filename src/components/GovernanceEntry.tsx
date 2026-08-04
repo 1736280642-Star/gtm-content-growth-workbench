@@ -16,7 +16,7 @@ export function GovernanceEntry({
   type
 }: GovernanceEntryProps) {
   return (
-    <Link href="/configuration">
+    <Link href="/settings?tab=connections">
       <Button size={size} type={type}>{label}</Button>
     </Link>
   );

@@ -114,13 +114,13 @@ export default function PublishingPage() {
   return (
     <>
       {messageContext}
-      <PageHeader title="发布控制塔" subtitle="前台只下发耐久任务并展示结果；Worker 负责发布，reconciliation 负责 URL 回填与 24h/72h 存活验证。" actions={<Button icon={<ReloadOutlined />} onClick={() => void refresh()} loading={loading}>刷新</Button>} />
+      <PageHeader title="发布状态监控" subtitle="前台只下发耐久任务并展示结果；Worker 负责发布，reconciliation 负责 URL 回填与 24h/72h 存活验证。" actions={<Button icon={<ReloadOutlined />} onClick={() => void refresh()} loading={loading}>刷新</Button>} />
       <div className="publish-control-hero">
         <div><span className="v5-kicker">MACHINE PUBLISHING</span><h2>一次下发，持续追踪到稳定发布</h2><p>按钮点击不等于成功；只有公开 URL 被观察并通过存活窗口，才进入可靠性样本。</p></div>
         <div className={`publish-rollout-seal ${reliability?.rolloutReady ? "is-ready" : ""}`}><SafetyCertificateOutlined /><strong>{reliability?.rolloutReady ? "可规模化" : "验收中"}</strong><span>三平台 reliability</span></div>
       </div>
 
-      {error ? <Alert showIcon type="error" message="发布控制塔读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} style={{ marginBottom: 16 }} /> : null}
+      {error ? <Alert showIcon type="error" message="发布状态读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} style={{ marginBottom: 16 }} /> : null}
       <Row gutter={[12, 12]} className="publish-stat-row">
         <Col xs={12} lg={6}><Card size="small"><Statistic title="Publish Jobs" value={stats.total} /></Card></Col>
         <Col xs={12} lg={6}><Card size="small"><Statistic title="队列 / 执行中" value={stats.running} /></Card></Col>

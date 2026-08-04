@@ -231,13 +231,15 @@ export async function importGeoResearchQuestionCatalog(input: {
   expectedQuestionPoolVersion: number;
   idempotencyKey: string;
   actor: V5GovernanceActor;
+  approvalMode?: "human" | "system_policy";
 }) {
   assertText(input.productId, "productId", 64);
   assertText(input.runId, "runId", 64);
   assertText(input.idempotencyKey, "idempotencyKey", 128);
   assertActor(input.actor);
   assertStringList(input.findingIds, "findingIds", 100);
-  if (input.actor.actorType !== "human") {
+  const isSystemPolicy = input.approvalMode === "system_policy" && ["system", "scheduler"].includes(input.actor.actorType);
+  if (input.actor.actorType !== "human" && !isSystemPolicy) {
     throw new V5GovernanceServiceError("human_approval_required", "真实用户问题目录必须经人工确认后才能进入问题池。", 403);
   }
   if (!input.findingIds.length) {
@@ -309,6 +311,43 @@ export async function importGeoResearchQuestionCatalog(input: {
     questionPoolStateVersion: result.data.stateVersion,
     replayed: result.status === "replayed" && confirmation.replayed
   };
+}
+
+export async function importVerifiedGeoResearchQuestionsByPolicy(input: {
+  productId: string;
+  runId: string;
+  expectedQuestionPoolVersion: number;
+  idempotencyKey: string;
+  actor: V5GovernanceActor;
+}) {
+  assertActor(input.actor);
+  if (!["system", "scheduler"].includes(input.actor.actorType)) {
+    throw new V5GovernanceServiceError("system_policy_actor_required", "自动收录问题必须由系统策略执行器发起。", 403);
+  }
+  const product = await getActiveProduct(input.productId);
+  const runWorkspace = await readGeoResearchRunWorkspace({ productId: input.productId, runId: input.runId });
+  if (!runWorkspace) throw new V5GovernanceServiceError("research_run_not_found", "GEO 调研运行不存在。", 404);
+  const catalog = buildGeoResearchQuestionCatalog({ product, ...runWorkspace });
+  const findingIds = catalog.items
+    .filter((item) => item.reviewStatus !== "rejected" && item.confidence >= 0.7 && item.sources.length > 0)
+    .sort((left, right) => right.priority - left.priority || right.confidence - left.confidence)
+    .slice(0, 50)
+    .map((item) => item.findingId);
+  if (!catalog.liveSearchVerified || findingIds.length === 0) {
+    return {
+      catalogId: catalog.catalogId,
+      importedCount: 0,
+      questionIds: [] as string[],
+      questionPoolStateVersion: input.expectedQuestionPoolVersion,
+      replayed: false,
+      status: "waiting_for_verified_questions" as const
+    };
+  }
+  return importGeoResearchQuestionCatalog({
+    ...input,
+    findingIds,
+    approvalMode: "system_policy"
+  });
 }
 
 export async function createGeoResearchProjectForProduct(input: {
@@ -427,12 +466,14 @@ export async function approveGeoBlueprint(input: {
   expectedVersion: number;
   idempotencyKey: string;
   actor: V5GovernanceActor;
+  approvalMode?: "human" | "system_policy";
 }) {
   assertText(input.productId, "productId", 64);
   assertText(input.blueprintVersionId, "blueprintVersionId", 64);
   assertText(input.idempotencyKey, "idempotencyKey", 128);
   assertActor(input.actor);
-  if (input.actor.actorType !== "human") {
+  const isSystemPolicy = input.approvalMode === "system_policy" && ["system", "scheduler"].includes(input.actor.actorType);
+  if (input.actor.actorType !== "human" && !isSystemPolicy) {
     throw new V5GovernanceServiceError(
       "human_approval_required",
       "GEO 蓝图必须由人工批准，Agent 不能代替批准。",
@@ -440,7 +481,7 @@ export async function approveGeoBlueprint(input: {
     );
   }
   const allowedRoles = new Set(["content_growth", "knowledge_manager", "workbench_operator", "developer_admin"]);
-  if (!allowedRoles.has(input.actor.actorRole)) {
+  if (!isSystemPolicy && !allowedRoles.has(input.actor.actorRole)) {
     throw new V5GovernanceServiceError(
       "forbidden",
       "当前角色无权批准 GEO 蓝图。",
@@ -455,6 +496,69 @@ export async function approveGeoBlueprint(input: {
   const workspace = await readGeoResearchWorkspace(input.productId);
   if (!workspace) throw new V5GovernanceServiceError("research_project_not_found", "调研项目不存在。", 404);
   return { ...write, workspace };
+}
+
+export async function runAutomaticGeoResearchOrchestration(input: { actor: V5GovernanceActor }) {
+  assertActor(input.actor);
+  if (!["system", "scheduler"].includes(input.actor.actorType)) {
+    throw new V5GovernanceServiceError("system_policy_actor_required", "自动 GEO 调研必须由系统策略执行器发起。", 403);
+  }
+  const { listProducts } = await import("./product-registry-service");
+  const products = await listProducts();
+  const results: Array<{ productId: string; status: string; detail?: string }> = [];
+  for (const product of products) {
+    let state = await getGeoResearchWorkspace(product.productId);
+    if (!state.workspace) {
+      await createGeoResearchProjectForProduct({
+        productId: product.productId,
+        expressionFocus: `围绕 ${product.displayName} 的真实用户问题、适用场景、选型依据与可信产品事实建立 GEO 可见性。`,
+        forbiddenFocus: ["不得编造产品能力、客户案例或未经资料支持的结论"],
+        researchMarkets: ["CN"],
+        languages: ["zh-CN"],
+        targetChannels: ["wechat", "official_website", "ai_frontend"],
+        idempotencyKey: `auto-geo-project:${product.productId}`,
+        actor: input.actor
+      });
+      state = await getGeoResearchWorkspace(product.productId);
+    }
+    const blueprint = state.workspace?.currentBlueprint;
+    if (blueprint?.status === "pending_review") {
+      await approveGeoBlueprint({
+        productId: product.productId,
+        blueprintVersionId: blueprint.blueprintVersionId,
+        expectedVersion: blueprint.rowVersion,
+        idempotencyKey: `auto-blueprint-policy:${blueprint.blueprintVersionId}:${blueprint.rowVersion}`,
+        actor: input.actor,
+        approvalMode: "system_policy"
+      });
+      results.push({ productId: product.productId, status: "blueprint_approved", detail: "联网证据完整，系统策略门禁已通过" });
+      continue;
+    }
+    const openRun = state.workspace?.latestRun && !["completed", "failed", "cancelled"].includes(state.workspace.latestRun.status);
+    if (openRun) {
+      results.push({ productId: product.productId, status: "running" });
+      continue;
+    }
+    if (!state.readiness.canCreateRun || !state.workspace) {
+      results.push({ productId: product.productId, status: "waiting_for_sources", detail: "等待知识库形成正式来源快照" });
+      continue;
+    }
+    const latestRun = state.workspace.latestRun;
+    const recent = latestRun && Date.now() - Date.parse(latestRun.updatedAt) < 30 * 24 * 60 * 60 * 1000;
+    if (recent && blueprint?.status === "approved") {
+      results.push({ productId: product.productId, status: "monitoring", detail: "本轮调研在 30 天监控周期内" });
+      continue;
+    }
+    await startGeoResearchRun({
+      productId: product.productId,
+      triggerType: latestRun ? "manual_refresh" : "product_onboarding",
+      expectedProjectVersion: state.workspace.project.rowVersion,
+      idempotencyKey: `auto-geo-run:${product.productId}:${state.readiness.latestSourceSnapshot!.snapshotHash}`,
+      actor: input.actor
+    });
+    results.push({ productId: product.productId, status: "queued" });
+  }
+  return { products: results, queuedCount: results.filter((item) => item.status === "queued").length };
 }
 
 export async function requestGeoBlueprintChanges(input: {

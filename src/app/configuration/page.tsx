@@ -25,7 +25,7 @@ import {
   Typography,
   message
 } from "antd";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { PageErrorState } from "@/components/PageErrorState";
@@ -40,13 +40,27 @@ import type {
 
 type ProfilesResponse = { ok: true; data: { profiles: V5ArticleExpressionProfileView[]; stateVersion: number } };
 type ConfigurationResponse = { ok: true; data: { items: V5ConfigurationStatusItem[] } };
+type EmbeddedConfigurationSection = "models" | "connections" | "expression_profiles" | "logs";
 
 function tabFromQuery(value: string | null) {
-  return value === "connections" ? "publish_connections" : value || "models";
+  if (value === "connections") return "publish_connections";
+  if (value === "logs") return "audit";
+  return value || "models";
 }
 
 function ConfigurationPageContent() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const settingsTab = searchParams.get("tab");
+  const embeddedSection: EmbeddedConfigurationSection | undefined = pathname === "/settings"
+    ? settingsTab === "connections"
+      ? "connections"
+      : settingsTab === "rules"
+        ? "expression_profiles"
+        : settingsTab === "logs"
+          ? "logs"
+          : "models"
+    : undefined;
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const [profilesData, setProfilesData] = useState<ProfilesResponse["data"]>();
@@ -234,27 +248,71 @@ function ConfigurationPageContent() {
     </Card>
   );
 
+  const embeddedHeader = embeddedSection ? {
+    models: {
+      title: "模型",
+      subtitle: "检查内容生成、向量化与分析模型是否具备可运行配置。"
+    },
+    connections: {
+      title: "连接",
+      subtitle: "集中查看发布渠道与 AI 前台测试连接；凭证只校验状态，不在页面回显。"
+    },
+    expression_profiles: {
+      title: "文章表达预设",
+      subtitle: "保留人工可控的表达偏好，未填写项继续由系统自动判断。"
+    },
+    logs: {
+      title: "日志",
+      subtitle: "查看配置版本与调用状态，不展示密钥、完整 Prompt 或原始模型 trace。"
+    }
+  }[embeddedSection] : undefined;
+
+  const embeddedContent = embeddedSection === "models"
+    ? statusTable(grouped.models, "暂无模型服务")
+    : embeddedSection === "connections"
+      ? (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <div>
+              <Typography.Title level={4}>发布连接</Typography.Title>
+              <Typography.Paragraph type="secondary">自动排程只会使用已验证并绑定默认账号的渠道。</Typography.Paragraph>
+              {statusTable(grouped.publish, "暂无发布连接")}
+            </div>
+            <div>
+              <Typography.Title level={4}>AI 前台测试连接</Typography.Title>
+              <Typography.Paragraph type="secondary">用于执行产品前台测试和 GEO 结果调研；缺少连接时任务保持待配置。</Typography.Paragraph>
+              {statusTable(grouped.observation, "暂无前台测试连接")}
+            </div>
+          </Space>
+        )
+      : embeddedSection === "expression_profiles"
+        ? profilesTab
+        : embeddedSection === "logs"
+          ? auditTab
+          : null;
+
   return (
     <>
       {contextHolder}
-      <PageHeader
-        title="配置管理"
-        subtitle="统一管理模型、文章表达预设、发布连接和前台测试连接。"
+      {embeddedSection !== "expression_profiles" ? <PageHeader
+        title={embeddedHeader?.title || "配置管理"}
+        subtitle={embeddedHeader?.subtitle || "统一管理模型、文章表达预设、发布连接和前台测试连接。"}
         titleExtra={<Tag color="blue" icon={<SettingOutlined />}>凭证不回显</Tag>}
-        actions={<Button icon={<ReloadOutlined />} loading={loading} onClick={refresh}>检查全部配置</Button>}
-      />
+        actions={<Button icon={<ReloadOutlined />} loading={loading} onClick={refresh}>{embeddedSection ? "重新检查" : "检查全部配置"}</Button>}
+      /> : null}
       <PageErrorState message={error} loading={loading && !profilesData} onRetry={refresh} />
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={[
-          { key: "models", label: "模型服务", icon: <SettingOutlined />, children: statusTable(grouped.models, "暂无模型服务") },
-          { key: "expression_profiles", label: "文章表达预设", children: profilesTab },
-          { key: "publish_connections", label: "发布连接", icon: <CloudSyncOutlined />, children: statusTable(grouped.publish, "暂无发布连接") },
-          { key: "observation_connections", label: "前台测试连接", children: <><Alert showIcon type="warning" message="本分支只聚合连接状态，不运行 AI 前台采集" style={{ marginBottom: 12 }} />{statusTable(grouped.observation, "暂无前台测试连接")}</> },
-          { key: "audit", label: "版本与调用日志", children: auditTab }
-        ]}
-      />
+      {embeddedSection ? embeddedContent : (
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            { key: "models", label: "模型服务", icon: <SettingOutlined />, children: statusTable(grouped.models, "暂无模型服务") },
+            { key: "expression_profiles", label: "文章表达预设", children: profilesTab },
+            { key: "publish_connections", label: "发布连接", icon: <CloudSyncOutlined />, children: statusTable(grouped.publish, "暂无发布连接") },
+            { key: "observation_connections", label: "前台测试连接", children: <><Alert showIcon type="warning" message="本分支只聚合连接状态，不运行 AI 前台采集" style={{ marginBottom: 12 }} />{statusTable(grouped.observation, "暂无前台测试连接")}</> },
+            { key: "audit", label: "版本与调用日志", children: auditTab }
+          ]}
+        />
+      )}
 
       <Modal
         title={editingProfile ? `编辑文章表达预设：${editingProfile.name}` : "新建文章表达预设"}

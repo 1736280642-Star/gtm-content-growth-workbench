@@ -243,6 +243,7 @@ export interface WorkspaceSetting {
   finalReviewMode: FinalReviewMode;
   logMode: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
+  publishAccountByChannel?: Partial<Record<ChannelKey, string>>;
   updatedAt?: string;
 }
 

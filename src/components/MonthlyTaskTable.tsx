@@ -106,14 +106,14 @@ export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChan
       if (businessStatus === "not_generated") return <Button size="small" type="primary" icon={<PlayCircleOutlined />} onClick={() => onGenerate?.(task)}>生成</Button>;
       if (businessStatus === "generating") return <Button size="small" icon={<PauseOutlined />} onClick={() => onPause?.(task)}>查看进度</Button>;
       if (businessStatus === "generated") return <Button size="small" icon={<EyeOutlined />} onClick={() => void openPreview(task)}>预览正文</Button>;
-      if (businessStatus === "scheduled") return <Link href="/monthly-matrix/schedule"><Button size="small">查看排程</Button></Link>;
-      return <Link href="/daily-execution"><Button size="small">查看发布结果</Button></Link>;
+      if (businessStatus === "scheduled") return <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">查看排程</Button></Link>;
+      return <Link href="/monthly-plan?step=execution&view=today"><Button size="small">查看发布结果</Button></Link>;
     }
-    if (businessStatus === "not_generated") return <Link href="/monthly-matrix/batch-generation"><Button size="small">去内容生成</Button></Link>;
-    if (businessStatus === "generating") return <Link href="/monthly-matrix/batch-generation"><Button size="small">查看进度</Button></Link>;
-    if (businessStatus === "generated") return <Link href="/monthly-matrix/schedule"><Button size="small">去人工排程</Button></Link>;
-    if (businessStatus === "scheduled") return <Link href="/monthly-matrix/schedule"><Button size="small">查看排程</Button></Link>;
-    return <Link href="/daily-execution"><Button size="small">查看发布结果</Button></Link>;
+    if (businessStatus === "not_generated") return <Link href="/monthly-plan?step=generation"><Button size="small">去内容生成</Button></Link>;
+    if (businessStatus === "generating") return <Link href="/monthly-plan?step=generation"><Button size="small">查看进度</Button></Link>;
+    if (businessStatus === "generated") return <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">查看自动排程</Button></Link>;
+    if (businessStatus === "scheduled") return <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">查看排程</Button></Link>;
+    return <Link href="/monthly-plan?step=execution&view=today"><Button size="small">查看发布结果</Button></Link>;
   }
 
   const selectedTasks = items.filter((item) => selectedTaskIds.includes(item.taskId));

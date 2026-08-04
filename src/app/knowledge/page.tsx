@@ -1,10 +1,10 @@
 "use client";
 
 import { BookOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from "antd";
+import { Button, Card, Form, Input, Modal, Segmented, Select, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { MetricCard } from "@/components/MetricCard";
 import { KnowledgeCollectionWorkspace } from "@/components/KnowledgeCollectionWorkspace";
@@ -13,6 +13,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type { V5KnowledgeBaseWorkspace, V5KnowledgeVisibility } from "@/lib/v5/knowledge-workspace-contracts";
+import ProductsPage from "@/app/products/page";
+import QuestionsKeywordsPage from "@/app/questions-keywords/page";
 
 type KnowledgeResponse = { ok: true; data: { knowledgeBases: V5KnowledgeBaseWorkspace[]; stateVersion: number } };
 
@@ -22,7 +24,7 @@ const visibilityLabels: Record<V5KnowledgeVisibility, string> = {
   public: "允许公开引用"
 };
 
-export default function KnowledgePage() {
+function KnowledgeAssetsView() {
   const router = useRouter();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -159,4 +161,41 @@ export default function KnowledgePage() {
       </Modal>
     </>
   );
+}
+
+type KnowledgeView = "assets" | "products" | "questions";
+
+const knowledgeViews = [
+  { label: "资料与来源", value: "assets" },
+  { label: "产品与 GEO 调研", value: "products" },
+  { label: "问题与关键词", value: "questions" }
+];
+
+function KnowledgeHub() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedView = searchParams.get("view") || searchParams.get("tab");
+  const view = knowledgeViews.some((item) => item.value === requestedView)
+    ? requestedView as KnowledgeView
+    : "assets";
+
+  return (
+    <>
+      <div className="unified-workspace-nav is-monitor">
+        <Segmented
+          block
+          value={view}
+          options={knowledgeViews}
+          onChange={(value) => router.push(`/knowledge?view=${value}`)}
+        />
+      </div>
+      {view === "assets" ? <KnowledgeAssetsView /> : null}
+      {view === "products" ? <ProductsPage /> : null}
+      {view === "questions" ? <QuestionsKeywordsPage /> : null}
+    </>
+  );
+}
+
+export default function KnowledgePage() {
+  return <Suspense fallback={null}><KnowledgeHub /></Suspense>;
 }

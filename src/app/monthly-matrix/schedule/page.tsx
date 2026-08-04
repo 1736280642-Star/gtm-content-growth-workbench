@@ -18,7 +18,7 @@ export default function MonthlyMatrixSchedulePage() {
 
   async function saveSchedule(item: ScheduleDraftItem, value: { date: string; time: string; platformAccount: string }) {
     if (!workspace?.plan) throw new Error("月度计划尚未加载。");
-    const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(workspace.month)}/schedule/${encodeURIComponent(item.matrixItemId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: workspace.plan.version, scheduledAt: `${value.date}T${value.time}:00+08:00`, platformAccount: value.platformAccount, auditReason: "在人工排程页安排可用正文发布时间" }) });
+    const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(workspace.month)}/schedule/${encodeURIComponent(item.matrixItemId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: workspace.plan.version, scheduledAt: `${value.date}T${value.time}:00+08:00`, platformAccount: value.platformAccount, auditReason: "人工调整系统生成的发布排程" }) });
     const body = await response.json() as { ok?: boolean; error?: { message?: string } };
     if (!response.ok || !body.ok) throw new Error(body.error?.message || "排程保存失败。");
     await refresh(workspace.month); messageApi.success("排程已保存。");
@@ -26,10 +26,10 @@ export default function MonthlyMatrixSchedulePage() {
 
   return <>
     {messageContext}
-    <PageHeader title="人工排程" titleExtra={<Tag color="blue">{workspace?.month || "读取中"}</Tag>} subtitle="只安排已生成且校验通过的文章发布日期、时间和发布账号。" />
+    <PageHeader title="发布排程" titleExtra={<Tag color="blue">{workspace?.month || "读取中"}</Tag>} subtitle="系统为校验通过的正文自动安排日期、时间和发布账号；可在这里人工调整。" />
     <MonthlyFlowNav />
     {error ? <Alert showIcon type="error" message="排程工作区读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} /> : null}
-    {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取人工排程</span></div> : null}
+    {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取发布排程</span></div> : null}
     {schedules.length ? <ScheduleCalendarLite items={schedules} month={workspace?.month || new Date().toISOString().slice(0, 7)} onSchedule={saveSchedule} /> : <div className="v5-action-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可排程正文。返回“内容生成”完成正文生成与校验后，再安排发布日期。" /><Button onClick={() => router.push("/monthly-matrix/batch-generation")}>返回内容生成</Button></div>}
   </>;
 }

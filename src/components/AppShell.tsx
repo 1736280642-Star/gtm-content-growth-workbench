@@ -1,77 +1,29 @@
 "use client";
 
-import {
-  ApiOutlined,
-  AppstoreOutlined,
-  BarChartOutlined,
-  BookOutlined,
-  CalendarOutlined,
-  CheckSquareOutlined,
-  DashboardOutlined,
-  FileSearchOutlined,
-  ExperimentOutlined,
-  FormOutlined,
-  QuestionCircleOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  RocketOutlined,
-  SettingOutlined,
-  UploadOutlined
-} from "@ant-design/icons";
+import { BookOutlined, ControlOutlined, DashboardOutlined, FundProjectionScreenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined } from "@ant-design/icons";
 import { Button, Layout, Menu, Space, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 const { Header, Sider, Content } = Layout;
-
-const shellStyle: CSSProperties = {
-  minHeight: "100vh",
-  display: "flex",
-  background: "#f6f7fb"
-};
-
-const siderStyle: CSSProperties = {
-  minHeight: "100vh",
-  background: "#fff",
-  borderRight: "1px solid #e6e8ef"
-};
-
-const mainLayoutStyle: CSSProperties = {
-  minWidth: 0,
-  flex: "1 1 auto"
-};
-
-const contentStyle: CSSProperties = {
-  minWidth: 0,
-  padding: 24
-};
+const shellStyle: CSSProperties = { minHeight: "100vh", display: "flex", background: "#f6f7fb" };
+const siderStyle: CSSProperties = { minHeight: "100vh", background: "#fff", borderRight: "1px solid #e6e8ef" };
+const mainLayoutStyle: CSSProperties = { minWidth: 0, flex: "1 1 auto" };
+const contentStyle: CSSProperties = { minWidth: 0, padding: 24 };
 
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
-  { key: "/products", icon: <AppstoreOutlined />, label: <Link href="/products">产品与 GEO 调研</Link> },
-  { key: "/monthly-matrix", icon: <CalendarOutlined />, label: <Link href="/monthly-matrix">月度内容矩阵</Link> },
-  { key: "/free-production", icon: <FormOutlined />, label: <Link href="/free-production">自由内容生产</Link> },
-  { key: "/daily-execution", icon: <CheckSquareOutlined />, label: <Link href="/daily-execution">当日执行</Link> },
-  { key: "/publishing", icon: <RocketOutlined />, label: <Link href="/publishing">发布控制塔</Link> },
-  { key: "/publish", icon: <UploadOutlined />, label: <Link href="/publish">数据回传</Link> },
-  { key: "/questions-keywords", icon: <QuestionCircleOutlined />, label: <Link href="/questions-keywords">问题与关键词池</Link> },
   { key: "/knowledge", icon: <BookOutlined />, label: <Link href="/knowledge">知识库</Link> },
-  { key: "/blog-monitor", icon: <FileSearchOutlined />, label: <Link href="/blog-monitor">官网博客监控</Link> },
-  { key: "/blog-candidates", icon: <FileSearchOutlined />, label: <Link href="/blog-candidates">博客候选池</Link> },
-  { key: "/monthly-review", icon: <BarChartOutlined />, label: <Link href="/monthly-review">月度复盘</Link> },
-  { key: "/ai-front-test", icon: <ExperimentOutlined />, label: <Link href="/ai-front-test">AI 前台测试</Link> },
-  { key: "/configuration", icon: <ApiOutlined />, label: <Link href="/configuration">配置管理</Link> },
-  { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">工作台设置</Link> }
+  { key: "/monthly-plan", icon: <ControlOutlined />, label: <Link href="/monthly-plan">GEO 内容中心</Link> },
+  { key: "/geo-monitor", icon: <FundProjectionScreenOutlined />, label: <Link href="/geo-monitor">GEO 监控塔</Link> },
+  { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">设置</Link> }
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [siderCollapsed, setSiderCollapsed] = useState(false);
-  const selectedKey = navItems
-    .map((item) => item.key)
-    .filter((key) => key === "/" || pathname.startsWith(key))
-    .sort((a, b) => b.length - a.length)[0];
+  const selectedKey = navItems.map((item) => item.key).filter((key) => pathname.startsWith(key)).sort((a, b) => b.length - a.length)[0];
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true);
@@ -79,29 +31,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <Layout className="app-shell" style={shellStyle}>
-      <Sider
-        className="app-sider"
-        collapsed={siderCollapsed}
-        collapsedWidth={72}
-        style={siderStyle}
-        theme="light"
-        trigger={null}
-        width={228}
-      >
+      <Sider className="app-sider" collapsed={siderCollapsed} collapsedWidth={72} style={siderStyle} theme="light" trigger={null} width={228}>
         <div className="app-sider-brand">
           {siderCollapsed ? (
-            <Typography.Text className="app-sider-mark" strong>
-              GTM
-            </Typography.Text>
+            <Typography.Text className="app-sider-mark" strong>GTM</Typography.Text>
           ) : (
-            <div className="app-sider-title-block">
-              <Typography.Title level={4} style={{ margin: 0 }}>
-                JOTO GTM
-              </Typography.Title>
-            </div>
+            <div className="app-sider-title-block"><Typography.Title level={4} style={{ margin: 0 }}>JOTO GTM</Typography.Title></div>
           )}
           <Button
-            aria-label={siderCollapsed ? "展开导航" : "折叠导航"}
+            aria-label={siderCollapsed ? "展开导航" : "收起导航"}
             className="app-sider-collapse-button"
             icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setSiderCollapsed((current) => !current)}
@@ -111,27 +49,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <Menu
           mode="inline"
-          selectedKeys={[selectedKey || "/"]}
+          selectedKeys={selectedKey ? [selectedKey] : []}
           items={navItems}
-          onClick={() => {
-            if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true);
-          }}
+          onClick={() => { if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true); }}
         />
       </Sider>
       <Layout style={mainLayoutStyle}>
-        <Header
-          style={{
-            background: "#fff",
-            borderBottom: "1px solid #e6e8ef",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between"
-          }}
-        >
-          <Typography.Text strong>{"产品 GEO 准入 -> 月度内容矩阵 -> 人工排程 -> 当日执行 -> 月度复盘 -> AI 前台测试"}</Typography.Text>
-          <Space>
-            <Typography.Text type="secondary">AI 可控、效果可评估、复盘能回流</Typography.Text>
-          </Space>
+        <Header className="app-header" style={{ background: "#fff", borderBottom: "1px solid #e6e8ef", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Typography.Text strong>知识采集 → GEO 调研 → 月度策略 → 内容生产 → 自动排程 → 发布与复盘</Typography.Text>
+          <Space><Typography.Text type="secondary">默认自动运行 · 异常才需人工处理</Typography.Text></Space>
         </Header>
         <Content style={contentStyle}>{children}</Content>
       </Layout>

@@ -62,7 +62,7 @@ test("live research requires provider web-search traces and persists raw artifac
   assert.match(repository, /question_opportunity" && evidenceIds\.length === 0/);
 });
 
-test("verified GEO questions form a human-approved product catalog before entering the question pool", async () => {
+test("verified GEO questions can enter the pool by system policy while retaining manual correction", async () => {
   const contracts = await read("src/lib/v5/geo-research-contracts.ts");
   const service = await read("src/lib/v5/geo-research-service.ts");
   const repository = await read("src/lib/v5/geo-research-repository.ts");
@@ -72,6 +72,8 @@ test("verified GEO questions form a human-approved product catalog before enteri
   assert.match(contracts, /GeoResearchQuestionCatalog/);
   assert.match(service, /buildGeoResearchQuestionCatalog/);
   assert.match(service, /human_approval_required/);
+  assert.match(service, /importVerifiedGeoResearchQuestionsByPolicy/);
+  assert.match(service, /confidence >= 0\.7/);
   assert.match(service, /evidenceGap: true/);
   assert.match(service, /ingestV5QuestionSignals/);
   assert.match(repository, /geo_question_catalog_imported_to_question_pool/);
@@ -80,11 +82,13 @@ test("verified GEO questions form a human-approved product catalog before enteri
   assert.match(runPage, /确认并收录问题池/);
 });
 
-test("blueprint approval is an explicit human-only transition", async () => {
+test("blueprint approval distinguishes manual review from the audited system policy", async () => {
   const service = await read("src/lib/v5/geo-research-service.ts");
   const repository = await read("src/lib/v5/geo-research-repository.ts");
   assert.match(service, /actor\.actorType !== "human"/);
   assert.match(service, /human_approval_required/);
+  assert.match(service, /approvalMode === "system_policy"/);
+  assert.match(service, /runAutomaticGeoResearchOrchestration/);
   assert.match(repository, /status = 'approved'/);
   assert.match(repository, /status = 'ready_for_monthly_strategy'/);
   assert.match(repository, /geo_blueprint_approved/);

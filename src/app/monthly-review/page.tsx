@@ -27,7 +27,7 @@ export default function MonthlyReviewPage() {
     <>
       {contextHolder}
       <PageHeader
-        title="月度复盘"
+        title="数据复盘"
         titleExtra={<Tag color="blue">问题级视图</Tag>}
         subtitle="按目标问题关联 MonthlyPlan、已发布内容、指标与 AI 前台测试；建议只生成待审批 Proposal。"
         actions={<><Select value={month} onChange={setMonth} style={{ width: 132 }} options={[{ value: month, label: month }]} /><Button icon={<ReloadOutlined />} loading={loading} onClick={() => refresh()}>刷新数据</Button></>}

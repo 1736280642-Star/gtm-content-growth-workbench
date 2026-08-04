@@ -19,6 +19,7 @@ import type {
 import { readArticleTypeState, updateArticleTypeState, type ArticleTypeState } from "./article-type-repository";
 import { ARTICLE_TYPE_PROMPT_VERSION, createArticleTypeSemanticProvider, type ArticleTypeSemanticProvider } from "./article-type-semantic-provider";
 import { readV5FoundationSnapshot } from "./foundation-repository";
+import { readV5MonthlyState } from "./monthly-repository";
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -392,16 +393,26 @@ export async function runQuestionTypeMatch(
   provider: ArticleTypeSemanticProvider = createArticleTypeSemanticProvider()
 ) {
   if (!MONTH_PATTERN.test(month)) throw new ArticleTypeServiceError(400, "INVALID_MONTH", "月份格式必须为 YYYY-MM。" );
-  const actor = requireActor();
+  const actor = request.runMode === "system_policy" ? "monthly-strategy-policy" : requireActor();
   const auditReason = requireAuditReason(request.auditReason);
   const key = requireIdempotencyKey(idempotencyHeader);
   const uniqueQuestionIds = Array.from(new Set(request.questionVersionIds || []));
   if (!uniqueQuestionIds.length || uniqueQuestionIds.length > 30) throw new ArticleTypeServiceError(422, "INVALID_MATCH_QUESTIONS", "请选择 1 到 30 个目标问题。" );
   const foundation = readV5FoundationSnapshot();
+  const legacyTerms = readWorkbenchState().distilledTerms;
+  const monthlyState = await readV5MonthlyState();
+  const configuredRules = monthlyState.plans[month]?.config.quotaRules || [];
   const questions = uniqueQuestionIds.map((questionVersionId) => {
     const item = foundation.questionVersions.find((version) => version.questionVersionId === questionVersionId);
-    if (!item) throw new ArticleTypeServiceError(422, "QUESTION_VERSION_NOT_FOUND", `目标问题 ${questionVersionId} 不存在。` );
-    return { questionVersionId, question: item.text, productId: item.product };
+    const legacyTerm = legacyTerms.find((term) => term.id === questionVersionId);
+    const configuredRule = configuredRules.find((rule) => rule.questionVersionId === questionVersionId);
+    if (!item && !legacyTerm && !configuredRule) throw new ArticleTypeServiceError(422, "QUESTION_VERSION_NOT_FOUND", `目标问题 ${questionVersionId} 不存在。` );
+    const configuredProduct = configuredRule as typeof configuredRule & { productId?: string; productNameSnapshot?: string };
+    return {
+      questionVersionId,
+      question: item?.text || legacyTerm?.term || configuredRule!.question,
+      productId: item?.product || legacyTerm?.product || configuredProduct?.productId || configuredProduct?.productNameSnapshot || configuredRule?.rulePackageVersionId || "monthly_strategy"
+    };
   });
   const hash = requestHash({ month, request: { ...request, questionVersionIds: uniqueQuestionIds } });
   const storageKey = `match:${month}:${key}`;
@@ -410,23 +421,47 @@ export async function runQuestionTypeMatch(
   const state = await readArticleTypeState();
   const previousRevision = (state.monthRunIds[month] || []).map((id) => state.matchRuns[id]?.revision || 0).reduce((max, value) => Math.max(max, value), 0);
   if (request.expectedVersion !== previousRevision) throw new ArticleTypeServiceError(409, "TYPE_MATCH_VERSION_CONFLICT", `内容类型匹配已更新到修订 ${previousRevision}，请刷新后重试。` );
-  const providerResult = await provider.matchQuestions({ questions, activeProfiles: await getActiveArticleTypeVersions() });
+  const activeProfiles = await getActiveArticleTypeVersions();
+  const providerResult = await provider.matchQuestions({ questions, activeProfiles });
   const now = new Date().toISOString();
   const matchRunId = `type-match-${month}-${randomUUID()}`;
-  const suggestions: QuestionTypeSuggestion[] = (providerResult.data?.suggestions || []).map((item) => ({
+  const providerSuggestions: QuestionTypeSuggestion[] = (providerResult.data?.suggestions || []).map((item) => ({
     ...item,
     suggestionId: `type-suggestion-${randomUUID()}`,
     selectionStatus: item.fitLevel === "high" ? "accepted" : "suggested",
     selectionSource: "ai_recommended"
   }));
+  const currentSelectionSuggestions: QuestionTypeSuggestion[] = configuredRules
+    .filter((rule, index, rules) => uniqueQuestionIds.includes(rule.questionVersionId)
+      && Boolean(rule.articleTypeProfileVersionId)
+      && rules.findIndex((candidate) => candidate.questionVersionId === rule.questionVersionId
+        && candidate.articleTypeProfileVersionId === rule.articleTypeProfileVersionId) === index)
+    .map((rule) => ({
+      suggestionId: `type-suggestion-${randomUUID()}`,
+      questionVersionId: rule.questionVersionId,
+      question: rule.question,
+      articleTypeProfileVersionId: rule.articleTypeProfileVersionId,
+      articleTypeName: activeProfiles.find((profile) => profile.profileVersionId === rule.articleTypeProfileVersionId)?.name
+        || rule.articleTypeNameSnapshot,
+      fitLevel: "high",
+      semanticScore: 1,
+      reason: rule.matchReasonSnapshot || "沿用当前策略组合，可继续增删和调整。",
+      matchedFacets: [],
+      missingInformation: [],
+      conflictProfileVersionIds: [],
+      selectionStatus: "accepted",
+      selectionSource: "user_selected"
+    }));
+  const usingCurrentSelectionFallback = providerResult.status === "pending_config" && currentSelectionSuggestions.length > 0;
+  const suggestions = providerSuggestions.length ? providerSuggestions : usingCurrentSelectionFallback ? currentSelectionSuggestions : [];
   const run: QuestionTypeMatchRun = {
     matchRunId,
     month,
     revision: previousRevision + 1,
-    status: providerResult.status === "pending_config" ? "pending_config" : providerResult.status === "failed" ? "failed" : "draft",
+    status: usingCurrentSelectionFallback ? "draft" : providerResult.status === "pending_config" ? "pending_config" : providerResult.status === "failed" ? "failed" : "draft",
     questionVersionIds: uniqueQuestionIds,
-    provider: providerResult.provider,
-    providerModel: providerResult.model,
+    provider: usingCurrentSelectionFallback ? "local_strategy_fallback" : providerResult.provider,
+    providerModel: usingCurrentSelectionFallback ? "current_selection" : providerResult.model,
     promptVersion: ARTICLE_TYPE_PROMPT_VERSION,
     suggestions,
     createdAt: now,
@@ -448,11 +483,15 @@ export async function runQuestionTypeMatch(
 
 export async function confirmQuestionTypeMatch(month: string, request: QuestionTypeMatchConfirmRequest, idempotencyHeader: string | null) {
   if (!MONTH_PATTERN.test(month)) throw new ArticleTypeServiceError(400, "INVALID_MONTH", "月份格式必须为 YYYY-MM。" );
-  const actor = requireActor();
+  const confirmationMode = request.confirmationMode === "system_policy" ? "system_policy" : "human";
+  const actor = confirmationMode === "system_policy" ? "monthly-strategy-policy" : requireActor();
   const auditReason = requireAuditReason(request.auditReason);
   const key = requireIdempotencyKey(idempotencyHeader);
   const hash = requestHash({ month, request });
-  const questionById = new Map(readV5FoundationSnapshot().questionVersions.map((item) => [item.questionVersionId, item.text]));
+  const questionById = new Map([
+    ...readV5FoundationSnapshot().questionVersions.map((item) => [item.questionVersionId, item.text] as const),
+    ...readWorkbenchState().distilledTerms.map((item) => [item.id, item.term] as const)
+  ]);
   return updateArticleTypeState((state) => idempotentMutation({
     state,
     storageKey: `confirm-match:${month}:${key}`,
@@ -499,7 +538,7 @@ export async function confirmQuestionTypeMatch(month: string, request: QuestionT
       run.revision += 1;
       run.confirmedAt = now;
       run.confirmedBy = actor;
-      state.auditLog.unshift({ auditId: randomUUID(), event: "type_match_confirmed", objectId: run.matchRunId, actor, auditReason, createdAt: now, summary: { accepted: run.suggestions.filter((item) => item.selectionStatus === "accepted" || item.selectionStatus === "manual_added").length } });
+      state.auditLog.unshift({ auditId: randomUUID(), event: "type_match_confirmed", objectId: run.matchRunId, actor, auditReason, createdAt: now, summary: { accepted: run.suggestions.filter((item) => item.selectionStatus === "accepted" || item.selectionStatus === "manual_added").length, confirmationMode } });
       return run;
     }
   }));
@@ -536,7 +575,12 @@ export function parseArticleTypeSupplementRequest(value: unknown): ArticleTypeSu
 
 export function parseQuestionTypeMatchRequest(value: unknown): QuestionTypeMatchRequest {
   if (!isRecord(value)) throw new ArticleTypeServiceError(400, "INVALID_REQUEST", "匹配请求格式不正确。" );
-  return { expectedVersion: Number(value.expectedVersion), questionVersionIds: cleanStrings(value.questionVersionIds, 30), auditReason: String(value.auditReason || "") };
+  return {
+    expectedVersion: Number(value.expectedVersion),
+    questionVersionIds: cleanStrings(value.questionVersionIds, 30),
+    auditReason: String(value.auditReason || ""),
+    runMode: value.runMode === "system_policy" ? "system_policy" : "human"
+  };
 }
 
 export function parseQuestionTypeMatchConfirmRequest(value: unknown): QuestionTypeMatchConfirmRequest {
@@ -544,6 +588,7 @@ export function parseQuestionTypeMatchConfirmRequest(value: unknown): QuestionTy
   return {
     expectedVersion: Number(value.expectedVersion),
     matchRunId: String(value.matchRunId || ""),
+    confirmationMode: value.confirmationMode === "system_policy" ? "system_policy" : "human",
     auditReason: String(value.auditReason || ""),
     selections: value.selections.flatMap((item) => {
       if (!isRecord(item)) return [];

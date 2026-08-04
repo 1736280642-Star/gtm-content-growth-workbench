@@ -147,6 +147,7 @@ interface SaveWorkspaceSettingInput {
   finalReviewMode?: WorkspaceSetting["finalReviewMode"];
   logMode?: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
+  publishAccountByChannel?: Partial<Record<ChannelKey, string>>;
 }
 
 interface DraftEvidenceSelection {
@@ -380,6 +381,7 @@ function createInitialWorkspaceSetting(): WorkspaceSetting {
     currentRole: "workbench_operator",
     finalReviewMode: "default_final",
     logMode: "demo_csv",
+    publishAccountByChannel: {},
     updatedAt: nowIso()
   };
 }
@@ -531,6 +533,11 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
           enabledProducts: normalizedProducts,
           productPlans: normalizedProductPlans,
           currentRole: coerceWorkspaceRole(value.workspaceSetting.currentRole, base.workspaceSetting.currentRole),
+          publishAccountByChannel: Object.fromEntries(
+            Object.entries(value.workspaceSetting.publishAccountByChannel || {})
+              .filter(([channel, account]) => normalizedChannels.includes(channel as ChannelKey) && typeof account === "string" && account.trim())
+              .map(([channel, account]) => [channel, String(account).trim().slice(0, 120)])
+          ),
           knowledgeRagConfig: normalizeKnowledgeRagConfig(value.workspaceSetting.knowledgeRagConfig)
         }
       : base.workspaceSetting,
@@ -4750,6 +4757,11 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
       input.logMode === "demo_csv" || input.logMode === "csv_import" || input.logMode === "nginx_log" || input.logMode === "cdn_log"
         ? input.logMode
         : state.workspaceSetting.logMode,
+    publishAccountByChannel: Object.fromEntries(
+      Object.entries(input.publishAccountByChannel ?? state.workspaceSetting.publishAccountByChannel ?? {})
+        .filter(([channel, account]) => enabledChannels.includes(channel as ChannelKey) && typeof account === "string" && account.trim())
+        .map(([channel, account]) => [channel, String(account).trim().slice(0, 120)])
+    ),
     knowledgeRagConfig:
       input.knowledgeRagConfig === undefined
         ? state.workspaceSetting.knowledgeRagConfig

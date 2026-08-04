@@ -52,6 +52,8 @@
     "worker:v5-knowledge-collection": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/knowledge-collection-worker.mjs",
     "worker:v5-content-production": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/content-production-worker.mjs",
     "worker:v5-geo-research": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/geo-research-worker.mjs",
+    "worker:v5-geo-research-orchestration": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/geo-research-orchestrator.mjs",
+    "worker:v5-monthly-automation": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs workers/monthly-automation-worker.mjs",
     "bridge:wechatsync": "node scripts/wechatsync-bridge.mjs",
     "extension:publish:prepare": "node scripts/prepare-publish-extension.mjs",
     "extension:publish:start": "node scripts/start-publish-extension-browser.mjs",

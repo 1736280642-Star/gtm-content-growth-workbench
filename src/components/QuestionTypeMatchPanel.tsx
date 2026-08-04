@@ -86,7 +86,7 @@ export function QuestionTypeMatchPanel({
     <div className="question-type-match-panel">
       <div className="question-type-match-header">
         <div><strong>AI 推荐内容组合</strong><span>AI 判断适合度，人确认组合；Evidence Gate 仍独立决定能否生产。</span></div>
-        <Space wrap><Button icon={<RobotOutlined />} disabled={disabled || !questions.length} loading={running} onClick={() => void onRun()}>{running ? "AI 正在匹配" : run ? "重新运行匹配" : "AI 推荐内容组合"}</Button><Button type="primary" disabled={!run || !suggestions.some((item) => item.selectionStatus !== "rejected" && item.selectionStatus !== "suggested")} loading={confirming} onClick={() => void confirm()}>确认类型组合</Button></Space>
+        <Space wrap><Button icon={<RobotOutlined />} disabled={disabled || !questions.length} loading={running} onClick={() => void onRun()}>{running ? "AI 正在推荐" : run ? "重新运行 AI 推荐" : "运行 AI 推荐"}</Button><Button type="primary" disabled={!run || !suggestions.some((item) => item.selectionStatus !== "rejected" && item.selectionStatus !== "suggested")} loading={confirming} onClick={() => void confirm()}>确认类型组合</Button></Space>
       </div>
       {run?.status === "pending_config" ? <Alert showIcon type="warning" message="AI 匹配暂不可用 · pending_config" description="Provider 尚未配置。可以为每个问题手动加入已启用类型，确认后继续配置配额。" /> : null}
       {run?.status === "failed" ? <Alert showIcon type="error" message="AI 匹配失败，请重试" description="当前问题与人工选择不会被清空。" /> : null}
@@ -98,12 +98,12 @@ export function QuestionTypeMatchPanel({
             const meta = fitMeta[item.fitLevel];
             const selected = item.selectionStatus === "accepted" || item.selectionStatus === "manual_added";
             return <article className={`question-match-option${selected ? " is-selected" : ""}`} key={item.suggestionId}>
-              <div className="question-match-option-top"><Space wrap><Tag color={item.selectionSource === "user_selected" ? "cyan" : "blue"}>{item.selectionSource === "user_selected" ? "手动加入" : "AI 推荐"}</Tag><strong>{item.articleTypeName}</strong><Tag color={meta.color}>适配度 {meta.label}</Tag><span>v{profiles.find((profile) => profile.activeVersion?.profileVersionId === item.articleTypeProfileVersionId)?.activeVersion?.version || "-"}</span></Space><Space><Button size="small" type={selected ? "primary" : "default"} onClick={() => setSelection(item, "accepted")}>{selected ? "已选择" : "加入策略"}</Button><Button size="small" danger={item.selectionStatus === "rejected"} onClick={() => setSelection(item, "rejected")}>排除</Button></Space></div>
+              <div className="question-match-option-top"><Space wrap><Tag color={item.selectionSource === "user_selected" ? "cyan" : "blue"}>{item.selectionSource === "user_selected" ? "当前选择" : "AI 推荐"}</Tag><strong>{item.articleTypeName}</strong><Tag color={meta.color}>适配度 {meta.label}</Tag><span>v{profiles.find((profile) => profile.activeVersion?.profileVersionId === item.articleTypeProfileVersionId)?.activeVersion?.version || "-"}</span></Space><Space><Button size="small" type={selected ? "primary" : "default"} onClick={() => setSelection(item, "accepted")}>{selected ? "已选择" : "加入策略"}</Button><Button size="small" danger={item.selectionStatus === "rejected"} onClick={() => setSelection(item, "rejected")}>排除</Button></Space></div>
               <p>{item.reason}</p>
               {item.matchedFacets.length ? <div className="question-match-facets">{item.matchedFacets.map((facet) => <Tag key={facet}>{facet}</Tag>)}</div> : null}
               {item.missingInformation.length ? <span className="question-match-missing">仍缺：{item.missingInformation.join("、")}</span> : null}
             </article>;
-          })}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={run ? "暂无 AI 建议，可手动增加类型" : "运行匹配后查看推荐理由"} />}
+          })}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={run ? "暂无 AI 建议，可手动增加类型" : "运行 AI 推荐后查看推荐理由"} />}
         </section>;
       })}
     </div>

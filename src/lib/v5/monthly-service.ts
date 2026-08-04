@@ -158,7 +158,7 @@ function buildRulePackages(state: WorkbenchState, source: V5ReferenceSource): Ru
   });
 }
 
-function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, month: string): TargetQuestionOption[] {
+function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, month: string, snapshots: ContentQuotaRule[] = []): TargetQuestionOption[] {
   const foundation = readV5FoundationSnapshot();
   const monthlyLocks = foundation.monthlyQuestionLocks.filter((lock) => lock.month === month);
 
@@ -178,8 +178,7 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
     };
   };
 
-  if (monthlyLocks.length) {
-    const locked = monthlyLocks.map((lock) => {
+  const locked = monthlyLocks.map((lock) => {
       const option = toOption(lock.questionId, lock.questionVersionId, "frozen");
       if (!option) {
         throw new V5ServiceError(
@@ -192,17 +191,12 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
 
       return option;
     });
-
-    const currentFormal = foundation.questions.flatMap((question) => {
-      if (!question.currentVersionId || !["available", "observing"].includes(question.status)) return [];
-      const option = toOption(question.questionId, question.currentVersionId, "monthly_ready");
-      return option ? [option] : [];
-    });
-    return Array.from(new Map([...locked, ...currentFormal].map((item) => [item.questionVersionId, item])).values());
-  }
-
-  if (source !== "v4_runtime") return [];
-  return state.distilledTerms
+  const currentFormal = foundation.questions.flatMap((question) => {
+    if (!question.currentVersionId || !["available", "observing"].includes(question.status)) return [];
+    const option = toOption(question.questionId, question.currentVersionId, "monthly_ready");
+    return option ? [option] : [];
+  });
+  const adapted = source === "v4_runtime" ? state.distilledTerms
     .filter((term) => term.status === "active" && term.validationStatus !== "disabled" && term.sourceQuestion?.trim())
     .map((term) => ({
       questionVersionId: term.id,
@@ -210,7 +204,16 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
       productId: term.product,
       status: "monthly_ready" as const,
       source: "v4_adapter" as const
+    })) : [];
+  const frozenSnapshots = snapshots
+    .filter((rule) => rule.questionVersionId.trim() && rule.question.trim())
+    .map((rule) => ({
+      questionVersionId: rule.questionVersionId,
+      question: rule.question.trim(),
+      status: "frozen" as const,
+      source: "v5_formal" as const
     }));
+  return Array.from(new Map([...frozenSnapshots, ...adapted, ...currentFormal, ...locked].map((item) => [item.questionVersionId, item])).values());
 }
 
 function buildKnowledgeBases(state: WorkbenchState, source: V5ReferenceSource): KnowledgeBaseOption[] {
@@ -272,7 +275,7 @@ export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<
     plan || strategyRows.length || batchQueueItems.length || exceptionItems.length || scheduleDraftItems.length || generationBatches.length
   );
   const rulePackages = buildRulePackages(reference.state, reference.source);
-  const targetQuestions = buildTargetQuestions(reference.state, reference.source, month);
+  const targetQuestions = buildTargetQuestions(reference.state, reference.source, month, plan?.config.quotaRules || []);
   const knowledgeBases = buildKnowledgeBases(reference.state, reference.source);
   const [articleTypeProfiles, typeMatchRun] = await Promise.all([
     listArticleTypeProfiles(),
@@ -443,7 +446,8 @@ export async function saveV5MonthlyPlan(
   }
 
   const reference = await readV4Reference();
-  const actor = WORKSPACE_ACTOR.actorId;
+  const mutationSource = request.mutationSource === "system_policy" ? "system_policy" : "human";
+  const actor = mutationSource === "system_policy" ? "monthly-strategy-policy" : WORKSPACE_ACTOR.actorId;
   const candidateRulePackages = buildRulePackages(reference.state, reference.source);
   const governance = await loadMonthlyWorkspaceGovernance(month, candidateRulePackages, `monthly-plan-${month}`);
   if (governance.source !== "v5_mysql" && reference.source !== "v4_runtime") {
@@ -454,7 +458,7 @@ export async function saveV5MonthlyPlan(
     );
   }
   const rulePackages = governance.source === "v5_mysql" ? governance.rulePackages : candidateRulePackages;
-  const targetQuestions = buildTargetQuestions(reference.state, reference.source, month);
+  const targetQuestions = buildTargetQuestions(reference.state, reference.source, month, request.config.quotaRules || []);
   const knowledgeBases = Array.from(
     new Map(
       [...buildKnowledgeBases(reference.state, reference.source), ...governance.knowledgeBases]
@@ -496,46 +500,56 @@ export async function saveV5MonthlyPlan(
     if (currentVersion !== request.expectedVersion) {
       throw new V5ServiceError(409, "MONTHLY_PLAN_VERSION_CONFLICT", `月度计划已更新到版本 ${currentVersion}，请刷新后再保存。`);
     }
-    if (current?.strategyPackage && ["approved", "partially_approved"].includes(current.strategyPackage.status)) {
-      throw new V5ServiceError(409, "APPROVED_STRATEGY_LOCKED", "已批准月度策略不能修改，请创建新的策略版本。", ["批量生成中心不会反向修改已批准策略字段。"]);
-    }
+    const versionedEdit = Boolean(current?.strategyPackage && ["approved", "partially_approved"].includes(current.strategyPackage.status));
 
     const now = new Date().toISOString();
     const previousStrategy = current?.strategyPackage;
+    if (versionedEdit && previousStrategy) {
+      state.strategyHistory[month] = [previousStrategy, ...(state.strategyHistory[month] || [])];
+    }
     const strategyPackage: ContentStrategyPackageRecord = {
-      strategyPackageId: previousStrategy?.strategyPackageId || `strategy-${month}-${randomUUID()}`,
+      strategyPackageId: versionedEdit ? `strategy-${month}-${randomUUID()}` : previousStrategy?.strategyPackageId || `strategy-${month}-${randomUUID()}`,
       version: (previousStrategy?.version || 0) + 1,
       status: "draft",
       targetDeliverableCount: config.targetDeliverableCount || 0,
       quotaRules: config.quotaRules || [],
       preflightResults: [],
-      createdAt: previousStrategy?.createdAt || now,
+      createdAt: versionedEdit ? now : previousStrategy?.createdAt || now,
       updatedAt: now
     };
     const record: V5MonthlyPlanRecord = {
       id: current?.id || `monthly-plan-${month}`,
       version: currentVersion + 1,
-      status: current?.status || "draft",
+      status: versionedEdit ? "draft" : current?.status || "draft",
       config,
       createdAt: current?.createdAt || now,
       createdBy: current?.createdBy || actor,
       updatedAt: now,
       updatedBy: actor,
       strategyPackage,
-      matrixTasks: []
+      matrixTasks: versionedEdit ? current?.matrixTasks || [] : []
     };
 
     state.plans[month] = record;
     await persistFormalMonthlyPlan(record, {
-      actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: "保存月度计划正式草稿"
-    });
+      actorId: `local-${actor}`,
+      actorRole: actor,
+      actorType: mutationSource === "system_policy" ? "scheduler" : "human",
+      auditReason: mutationSource === "system_policy" ? "系统根据知识库、调研结果和问题池生成月度策略" : "保存月度计划正式草稿"
+    }, versionedEdit ? "preserve" : "draft");
     state.auditLog.unshift({
       id: randomUUID(),
       event: "monthly_plan_saved",
       month,
       actor,
       version: record.version,
-      createdAt: now
+      createdAt: now,
+      summary: versionedEdit ? {
+        mode: "next_version",
+        previousStrategyPackageId: previousStrategy?.strategyPackageId,
+        retainedTaskCount: current?.matrixTasks?.length || 0,
+        retainedPublishedTaskCount: current?.matrixTasks?.filter((task) => task.status === "published").length || 0
+      } : { mode: "draft", mutationSource }
     });
     state.idempotency[storageKey] = { requestHash, response: record, createdAt: now };
 
@@ -556,10 +570,24 @@ async function getWritableActor() {
   return WORKSPACE_ACTOR.actorId;
 }
 
+function getStrategyMutationActor(request: StrategyMutationRequest) {
+  const systemPolicy = request.mutationSource === "system_policy";
+  const actor = systemPolicy ? "monthly-strategy-policy" : WORKSPACE_ACTOR.actorId;
+  return {
+    actor,
+    formalActor: {
+      actorId: `local-${actor}`,
+      actorRole: actor,
+      actorType: systemPolicy ? "scheduler" as const : "human" as const,
+      auditReason: request.auditReason.trim()
+    }
+  };
+}
+
 export async function preflightV5Strategy(month: string, request: StrategyMutationRequest) {
   assertMonth(month);
   assertStrategyMutationRequest(request);
-  const actor = await getWritableActor();
+  const { actor, formalActor } = getStrategyMutationActor(request);
   return updateV5MonthlyState(async (state) => {
     const plan = state.plans[month];
     if (!plan?.strategyPackage) throw new V5ServiceError(404, "STRATEGY_NOT_FOUND", "请先保存月度计划和内容策略配置。");
@@ -573,9 +601,7 @@ export async function preflightV5Strategy(month: string, request: StrategyMutati
     plan.updatedAt = now;
     plan.updatedBy = actor;
     plan.strategyPackage = { ...plan.strategyPackage, status: "preview_ready", preflightResults, updatedAt: now };
-    await persistFormalMonthlyPlan(plan, {
-      actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason.trim()
-    }, "pending_strategy_review");
+    await persistFormalMonthlyPlan(plan, formalActor, "pending_strategy_review");
     state.auditLog.unshift({
       id: randomUUID(), event: "strategy_preflight_completed", month, actor, version: plan.version,
       createdAt: now, auditReason: request.auditReason.trim(), objectId: plan.strategyPackage.strategyPackageId,
@@ -588,7 +614,7 @@ export async function preflightV5Strategy(month: string, request: StrategyMutati
 export async function approveV5Strategy(month: string, request: StrategyMutationRequest) {
   assertMonth(month);
   assertStrategyMutationRequest(request);
-  const actor = await getWritableActor();
+  const { actor, formalActor } = getStrategyMutationActor(request);
   return updateV5MonthlyState(async (state) => {
     const plan = state.plans[month];
     const strategy = plan?.strategyPackage;
@@ -618,9 +644,7 @@ export async function approveV5Strategy(month: string, request: StrategyMutation
     plan.updatedBy = actor;
     plan.strategyPackage = approvedStrategy;
     plan.matrixTasks = expandApprovedStrategyTasks({ monthlyPlanId: plan.id, strategyPackage: approvedStrategy, now });
-    await persistFormalApprovedStrategy(plan, {
-      actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason.trim()
-    });
+    await persistFormalApprovedStrategy(plan, formalActor);
     state.auditLog.unshift({
       id: randomUUID(), event: "strategy_approved", month, actor, version: plan.version, createdAt: now,
       auditReason: request.auditReason.trim(), objectId: strategy.strategyPackageId,
@@ -632,7 +656,11 @@ export async function approveV5Strategy(month: string, request: StrategyMutation
 
 export function parseStrategyMutationRequest(value: unknown): StrategyMutationRequest {
   if (!isRecord(value)) throw new V5ServiceError(400, "INVALID_REQUEST", "请求格式不正确。");
-  return { expectedVersion: Number(value.expectedVersion), auditReason: String(value.auditReason || "") };
+  return {
+    expectedVersion: Number(value.expectedVersion),
+    auditReason: String(value.auditReason || ""),
+    mutationSource: value.mutationSource === "system_policy" ? "system_policy" : "human"
+  };
 }
 
 export function parseScheduleTaskRequest(value: unknown): ScheduleTaskRequest {
@@ -641,7 +669,8 @@ export function parseScheduleTaskRequest(value: unknown): ScheduleTaskRequest {
     expectedVersion: Number(value.expectedVersion),
     scheduledAt: String(value.scheduledAt || ""),
     platformAccount: String(value.platformAccount || "").trim(),
-    auditReason: String(value.auditReason || "").trim()
+    auditReason: String(value.auditReason || "").trim(),
+    mutationSource: value.mutationSource === "system_policy" ? "system_policy" : "human"
   };
 }
 
@@ -677,14 +706,15 @@ export async function scheduleV5ProductionTask(month: string, taskId: string, re
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(request.scheduledAt) || Number.isNaN(Date.parse(request.scheduledAt))) throw new V5ServiceError(422, "INVALID_SCHEDULE_TIME", "请选择有效的发布日期和时间。");
   if (!request.platformAccount || request.platformAccount.length > 120) throw new V5ServiceError(422, "INVALID_PLATFORM_ACCOUNT", "请选择 120 个字符以内的平台账号。");
   if (!request.auditReason || request.auditReason.length > 200) throw new V5ServiceError(422, "INVALID_AUDIT_REASON", "请填写 200 个字符以内的排程原因。");
-  const actor = await getWritableActor();
+  const systemPolicy = request.mutationSource === "system_policy";
+  const actor = systemPolicy ? "monthly-schedule-policy" : await getWritableActor();
   const formalPlan = await readV5MonthlyPlanRecord(month);
   if (formalPlan) {
     return scheduleFormalProductionTask({
       month,
       taskId,
       request,
-      actor: { actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason }
+      actor: { actorId: `local-${actor}`, actorRole: actor, actorType: systemPolicy ? "scheduler" : "human", auditReason: request.auditReason }
     });
   }
   return updateV5MonthlyState((state) => {

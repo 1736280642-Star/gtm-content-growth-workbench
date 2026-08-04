@@ -62,7 +62,7 @@ function workspacePlanFromRow(row: RowDataPacket): V5MonthlyPlanRecord {
   };
 }
 
-export async function persistFormalMonthlyPlan(record: V5MonthlyPlanRecord, actor: V5GovernanceActor, status = "draft") {
+export async function persistFormalMonthlyPlan(record: V5MonthlyPlanRecord, actor: V5GovernanceActor, status: "draft" | "pending_strategy_review" | "preserve" = "draft") {
   const summary = summarizePlan(record);
   return withV5GovernanceTransaction(async (connection) => {
     const [rows] = await connection.query<RowDataPacket[]>("SELECT * FROM monthly_plan WHERE plan_month = ? FOR UPDATE", [record.config.month]);
@@ -71,9 +71,10 @@ export async function persistFormalMonthlyPlan(record: V5MonthlyPlanRecord, acto
     if (current && Number(current.version) !== record.version - 1) {
       throw new V5GovernanceRepositoryError("formal_monthly_plan_version_conflict", `正式 MonthlyPlan 当前 version 为 ${current.version}。`, 409, "刷新月度工作区后重试。");
     }
-    if (current && ["approved", "in_execution", "review_ready", "completed"].includes(String(current.status))) {
+    if (current && ["approved", "in_execution", "review_ready", "completed"].includes(String(current.status)) && status !== "preserve") {
       throw new V5GovernanceRepositoryError("formal_monthly_plan_locked", "正式 MonthlyPlan 已进入执行阶段，不能覆盖配置。", 409);
     }
+    const persistedStatus = status === "preserve" && current ? String(current.status) : status;
     const values = [
       stringifyV5Json({ businessGoal: record.config.businessGoal }),
       stringifyV5Json(summary.productQuotas), stringifyV5Json(summary.channelMix), stringifyV5Json(summary.contentTypeMix),
@@ -84,7 +85,7 @@ export async function persistFormalMonthlyPlan(record: V5MonthlyPlanRecord, acto
       await connection.query(
         `UPDATE monthly_plan SET status = ?, goals = ?, product_quotas = ?, channel_mix = ?, content_type_mix = ?, publish_frequency = ?,
          question_version_ids = ?, workspace_config = ?, version = ? WHERE id = ? AND version = ?`,
-        [status, ...values, record.version, String(current.id), Number(current.version)]
+        [persistedStatus, ...values, record.version, String(current.id), Number(current.version)]
       );
     } else {
       if (record.version !== 1) throw new V5GovernanceRepositoryError("formal_monthly_plan_missing", "正式 MonthlyPlan 尚未建立。", 409);
@@ -92,12 +93,12 @@ export async function persistFormalMonthlyPlan(record: V5MonthlyPlanRecord, acto
         `INSERT INTO monthly_plan
          (id, plan_month, status, goals, product_quotas, channel_mix, content_type_mix, publish_frequency, question_version_ids, workspace_config, version)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [record.id, record.config.month, status, ...values, record.version]
+        [record.id, record.config.month, persistedStatus, ...values, record.version]
       );
     }
     await writeV5GovernanceAudit(connection, {
       ...actor, eventType: "formal_monthly_plan_saved", objectType: "monthly_plan", objectId: record.id,
-      afterSummary: { month: record.config.month, status, version: record.version, targetDeliverableCount: record.config.targetDeliverableCount || 0 },
+      afterSummary: { month: record.config.month, status: persistedStatus, version: record.version, targetDeliverableCount: record.config.targetDeliverableCount || 0 },
       correlationId: record.id
     });
     const [saved] = await connection.query<RowDataPacket[]>("SELECT * FROM monthly_plan WHERE plan_month = ? LIMIT 1", [record.config.month]);
@@ -109,7 +110,7 @@ export async function persistFormalApprovedStrategy(record: V5MonthlyPlanRecord,
   const strategy = record.strategyPackage;
   const tasks = record.matrixTasks || [];
   if (!strategy || !["approved", "partially_approved"].includes(strategy.status)) {
-    throw new V5GovernanceRepositoryError("formal_strategy_not_approved", "只有已人工批准的策略包可以写入正式矩阵。", 409);
+    throw new V5GovernanceRepositoryError("formal_strategy_not_approved", "只有通过策略门禁的策略包可以写入正式矩阵。", 409);
   }
   return withV5GovernanceTransaction(async (connection) => {
     const [planRows] = await connection.query<RowDataPacket[]>("SELECT * FROM monthly_plan WHERE id = ? AND plan_month = ? FOR UPDATE", [record.id, record.config.month]);

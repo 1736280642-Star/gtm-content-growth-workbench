@@ -1,16 +1,40 @@
 "use client";
 
 import { RocketOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Form, Input, InputNumber, Modal, Segmented, Select, Space, Spin, Table, message } from "antd";
-import Link from "next/link";
+import { Alert, Button, Card, Descriptions, Empty, Form, Input, InputNumber, Modal, Segmented, Select, Space, Spin, Table, message } from "antd";
 import { useMemo, useState } from "react";
+import { MarkdownArticle } from "@/components/MarkdownArticle";
 import { PageHeader } from "@/components/PageHeader";
 import { PublishStatusTag } from "@/components/PublishStatusTag";
 import { V5StatusRail } from "@/components/V5StatusRail";
-import type { BatchQueueItem, DailyExecutionItem, PublishStatus } from "@/lib/v5/monthly-workspace-contracts";
+import type { BatchQueueItem, DailyExecutionItem, ProductionMatrixTask, PublishStatus } from "@/lib/v5/monthly-workspace-contracts";
 import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
+import styles from "./daily-execution.module.css";
 
 type DateKey = DailyExecutionItem["dateKey"];
+
+interface PreviewEvidenceReference {
+  sourceId: string;
+  title: string;
+  excerpt: string;
+  limitation?: string;
+}
+
+type PreviewTask = ProductionMatrixTask & {
+  productNameSnapshot?: string;
+  publication?: {
+    nextAction?: string;
+    preflightMessage?: string;
+  };
+  frozenCta?: {
+    copy: string;
+    label: string;
+    publicUrl: string;
+    ctaVariantVersionId?: string;
+  };
+  lastUsableDraft?: ProductionMatrixTask["lastUsableDraft"] & { evidenceReferences?: PreviewEvidenceReference[] };
+  currentDraft?: ProductionMatrixTask["currentDraft"] & { evidenceReferences?: PreviewEvidenceReference[] };
+};
 
 const dateOptions = [
   { label: "昨日", value: "yesterday" },
@@ -49,6 +73,16 @@ function toPublishStatus(item: BatchQueueItem): PublishStatus {
   return "waiting";
 }
 
+function toProductionPublishStatus(item: ProductionMatrixTask): PublishStatus {
+  if (item.status === "published") return "published";
+  if (item.failureReason) return "failed";
+  if (item.status === "scheduled") return "scheduled";
+  if (item.status === "generating") return "publishing";
+  if (item.status === "system_recovering") return "failed";
+  if (item.status === "awaiting_material") return "manual_takeover";
+  return "waiting";
+}
+
 function toMachinePlatform(channel: string) {
   const normalized = channel.toLowerCase();
   if (normalized.includes("csdn")) return "csdn";
@@ -63,6 +97,10 @@ export default function DailyExecutionPage() {
   const [dateKey, setDateKey] = useState<DateKey>("today");
   const [channelFilter, setChannelFilter] = useState<string>();
   const [statusFilter, setStatusFilter] = useState<PublishStatus>();
+  const [selectedPreviewTaskId, setSelectedPreviewTaskId] = useState<string>();
+  const [loadedPreviewTask, setLoadedPreviewTask] = useState<PreviewTask>();
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string>();
   const [selectedPublishItem, setSelectedPublishItem] = useState<BatchQueueItem>();
   const [publishStatus, setPublishStatus] = useState<"published" | "failed" | "manual_takeover">("published");
   const [publicUrl, setPublicUrl] = useState("");
@@ -74,22 +112,32 @@ export default function DailyExecutionPage() {
   const [dispatchingTaskId, setDispatchingTaskId] = useState<string>();
   const { workspace, loading, error, refresh } = useMonthlyWorkspace();
   const dates = useMemo(executionDates, []);
-  const dailyExecutionItems = useMemo<DailyExecutionItem[]>(() => (workspace?.batchQueueItems || [])
-    .filter((item) => item.scheduleDate && (item.scheduleStatus === "active" || ["published", "publish_failed"].includes(item.displayStatus)))
-    .map((item) => {
-      const matchedDateKey = (Object.entries(dates).find(([, date]) => date === item.scheduleDate)?.[0] || "today") as DateKey;
-      return {
-        id: item.id,
-        dateKey: matchedDateKey,
-        date: item.scheduleDate || "",
-        time: item.scheduleTime || "待定",
-        title: item.title,
-        product: item.product,
-        channel: item.channel,
-        status: toPublishStatus(item),
-        failureReason: item.failureReason || ""
-      };
-    }), [dates, workspace?.batchQueueItems]);
+  const dailyExecutionItems = useMemo<DailyExecutionItem[]>(() => {
+    const queueByTaskId = new Map((workspace?.batchQueueItems || []).map((item) => [item.matrixItemId, item]));
+    const rulePackagesById = new Map((workspace?.rulePackages || []).flatMap((item) => [[item.id, item], [item.version, item]] as const));
+
+    return (workspace?.productionTasks || [])
+      .filter((item) => Boolean(item.scheduledAt))
+      .map((item) => {
+        const scheduleDate = item.scheduledAt?.slice(0, 10) || "";
+        const matchedDateKey = Object.entries(dates).find(([, date]) => date === scheduleDate)?.[0] as DateKey | undefined;
+        if (!matchedDateKey) return null;
+        const queueItem = queueByTaskId.get(item.taskId);
+        const product = queueItem?.product || rulePackagesById.get(item.rulePackageVersionId)?.productName || item.question;
+        return {
+          id: item.taskId,
+          dateKey: matchedDateKey,
+          date: scheduleDate,
+          time: item.scheduledAt?.slice(11, 16) || "待定",
+          title: item.title,
+          product,
+          channel: item.channel,
+          status: queueItem ? toPublishStatus(queueItem) : toProductionPublishStatus(item),
+          failureReason: queueItem?.failureReason || item.failureReason || ""
+        } satisfies DailyExecutionItem;
+      })
+      .filter((item): item is DailyExecutionItem => item !== null);
+  }, [dates, workspace?.batchQueueItems, workspace?.productionTasks, workspace?.rulePackages]);
   const dateItems = dailyExecutionItems.filter((item) => item.dateKey === dateKey);
   const visibleItems = dateItems.filter((item) => (!channelFilter || item.channel === channelFilter) && (!statusFilter || item.status === statusFilter));
   const channelOptions = Array.from(new Set(dateItems.map((item) => item.channel))).sort();
@@ -99,7 +147,43 @@ export default function DailyExecutionPage() {
   const publishedCount = queue.filter((item) => item.displayStatus === "published").length;
   const scheduledCount = queue.filter((item) => item.scheduleStatus === "active" && item.displayStatus !== "published").length;
   const unscheduledCount = queue.filter((item) => item.scheduleStatus === "unscheduled").length;
-  const queueById = new Map(queue.map((item) => [item.id, item]));
+  const queueById = new Map<string, BatchQueueItem>();
+  for (const item of queue) {
+    queueById.set(item.id, item);
+    queueById.set(item.matrixItemId, item);
+  }
+  const compactPreviewTask = (workspace?.productionTasks || []).find((item) => item.taskId === selectedPreviewTaskId) as PreviewTask | undefined;
+  const selectedPreviewTask = loadedPreviewTask?.taskId === selectedPreviewTaskId ? loadedPreviewTask : compactPreviewTask;
+  const selectedPreviewDraft = selectedPreviewTask?.lastUsableDraft || selectedPreviewTask?.currentDraft;
+  const selectedPreviewRow = dailyExecutionItems.find((item) => item.id === selectedPreviewTaskId);
+
+  async function openPreview(taskId: string) {
+    setSelectedPreviewTaskId(taskId);
+    setLoadedPreviewTask(undefined);
+    setPreviewError(undefined);
+    const compactTask = (workspace?.productionTasks || []).find((item) => item.taskId === taskId) as PreviewTask | undefined;
+    const compactDraft = compactTask?.lastUsableDraft || compactTask?.currentDraft;
+    if (compactDraft?.bodyIncluded !== false && compactDraft?.markdown) return;
+    setPreviewLoading(true);
+    try {
+      const query = new URLSearchParams({ taskId });
+      if (workspace?.month) query.set("month", workspace.month);
+      const response = await fetch(`/api/v5/monthly-workspace/tasks?${query.toString()}`, { cache: "no-store" });
+      const body = await response.json() as { ok?: boolean; data?: { task?: PreviewTask }; error?: { message?: string } };
+      if (!response.ok || !body.ok || !body.data?.task) throw new Error(body.error?.message || "正文读取失败。");
+      setLoadedPreviewTask(body.data.task);
+    } catch (requestError) {
+      setPreviewError(requestError instanceof Error ? requestError.message : "正文读取失败。");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function closePreview() {
+    setSelectedPreviewTaskId(undefined);
+    setLoadedPreviewTask(undefined);
+    setPreviewError(undefined);
+  }
 
   async function savePublishResult() {
     if (!selectedPublishItem) return;
@@ -215,7 +299,8 @@ export default function DailyExecutionPage() {
               width: 150,
               render: (_, record: DailyExecutionItem) => (
                 <Space size={4} direction="vertical">
-                  {queueById.get(record.id)?.publicUrl ? <a href={queueById.get(record.id)?.publicUrl} target="_blank" rel="noreferrer">查看结果</a> : <Link href="/monthly-matrix/batch-generation">查看正文</Link>}
+                  <Button size="small" onClick={() => void openPreview(record.id)}>查看正文</Button>
+                  {queueById.get(record.id)?.publicUrl ? <a href={queueById.get(record.id)?.publicUrl} target="_blank" rel="noreferrer">查看结果</a> : null}
                   {record.status !== "published" && queueById.get(record.id)?.draftId && toMachinePlatform(record.channel) ? <Button size="small" type="primary" icon={<RocketOutlined />} loading={dispatchingTaskId === queueById.get(record.id)?.matrixItemId} onClick={() => {
                     const item = queueById.get(record.id);
                     if (item) void dispatchMachinePublish(item);
@@ -235,6 +320,68 @@ export default function DailyExecutionPage() {
           ]}
         />
       </Card>
+      <Modal
+        width={1180}
+        open={Boolean(selectedPreviewTask)}
+        title={selectedPreviewDraft?.title || selectedPreviewTask?.title || "正文预览"}
+        footer={<Button onClick={closePreview}>关闭</Button>}
+        onCancel={closePreview}
+        destroyOnHidden
+      >
+        {selectedPreviewTask ? (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Descriptions size="small" bordered column={2}>
+              <Descriptions.Item label="状态"><PublishStatusTag status={toProductionPublishStatus(selectedPreviewTask)} /></Descriptions.Item>
+              <Descriptions.Item label="渠道">{selectedPreviewTask.channel}</Descriptions.Item>
+              <Descriptions.Item label="发布日期">{selectedPreviewTask.scheduledAt?.slice(0, 10) || "未排程"}</Descriptions.Item>
+              <Descriptions.Item label="产品">{selectedPreviewTask.productNameSnapshot || selectedPreviewRow?.product || selectedPreviewTask.question}</Descriptions.Item>
+              <Descriptions.Item label="发布情况" span={2}>{selectedPreviewTask.publication?.nextAction || selectedPreviewTask.publication?.preflightMessage || "尚未运行发布预检"}</Descriptions.Item>
+            </Descriptions>
+            {previewLoading ? <div className="v5-loading-row"><Spin /><span>正在读取这篇完整正文</span></div> : null}
+            {previewError ? <Alert showIcon type="error" message="正文读取失败" description={previewError} /> : null}
+            <div className={styles.review}>
+              <article className={styles.manuscript} aria-labelledby="daily-preview-body-heading">
+                <div className={styles.panelHeading}>
+                  <span>发布正文</span>
+                  <h3 id="daily-preview-body-heading">正文预览</h3>
+                </div>
+                <MarkdownArticle className={styles.body} markdown={selectedPreviewDraft?.markdown} />
+              </article>
+              <aside className={styles.evidence} aria-labelledby="daily-preview-evidence-heading">
+                <div className={styles.panelHeading}>
+                  <span>不随正文发布</span>
+                  <h3 id="daily-preview-evidence-heading">事实依据与边界</h3>
+                </div>
+                {selectedPreviewDraft?.evidenceReferences?.length ? (
+                  <div className={styles.evidenceList}>
+                    {selectedPreviewDraft.evidenceReferences.map((reference) => (
+                      <section key={reference.sourceId}>
+                        <strong>{reference.title}</strong>
+                        <p>{reference.excerpt}</p>
+                        {reference.limitation ? <small>公开边界：{reference.limitation}</small> : null}
+                      </section>
+                    ))}
+                  </div>
+                ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这篇正文尚未保存结构化引用" />}
+                <div className={styles.checkBasis}>
+                  <strong>系统检查</strong>
+                  <ul>{(selectedPreviewDraft?.basisSummary || []).map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+                <div className={styles.checkBasis}>
+                  <strong>冻结 CTA</strong>
+                  {selectedPreviewTask.frozenCta ? (
+                    <>
+                      <p>{selectedPreviewTask.frozenCta.copy}</p>
+                      <a href={selectedPreviewTask.frozenCta.publicUrl} target="_blank" rel="noreferrer">{selectedPreviewTask.frozenCta.label}</a>
+                      {selectedPreviewTask.frozenCta.ctaVariantVersionId ? <small>版本：{selectedPreviewTask.frozenCta.ctaVariantVersionId}</small> : null}
+                    </>
+                  ) : selectedPreviewTask.frozenCtaPreview ? <p>{selectedPreviewTask.frozenCtaPreview}</p> : <p>当前任务尚未冻结 CTA。</p>}
+                </div>
+              </aside>
+            </div>
+          </Space>
+        ) : null}
+      </Modal>
       <Modal
         open={Boolean(selectedPublishItem)}
         title={selectedPublishItem ? `回填发布结果：${selectedPublishItem.title}` : "回填发布结果"}

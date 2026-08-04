@@ -4,6 +4,7 @@ import { EditOutlined, EyeOutlined, FileAddOutlined } from "@ant-design/icons";
 import { Alert, Button, Drawer, Empty, Input, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { MarkdownArticle } from "@/components/MarkdownArticle";
 import type { ProductionDraftSummary, ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
 import { WechatPresentationPanel } from "@/components/WechatPresentationPanel";
 import { WechatTemplateSelectionPanel } from "@/components/WechatTemplateSelectionPanel";
@@ -115,7 +116,7 @@ export function BatchGenerationMatrixTable({
     <div className="v5-draft-preview">
       {draftLoading ? <div className="v5-loading-row"><Spin /><span>正在按需读取正文</span></div> : null}
       {draftError ? <Alert type="error" showIcon message="正文详情读取失败" description={draftError} /> : null}
-      {editing ? <Input.TextArea aria-label="编辑正文" autoSize={{ minRows: 18 }} value={markdown} onChange={(event) => setMarkdown(event.target.value)} /> : <pre>{markdown}</pre>}
+      {editing ? <Input.TextArea aria-label="编辑正文" autoSize={{ minRows: 18 }} value={markdown} onChange={(event) => setMarkdown(event.target.value)} /> : <MarkdownArticle markdown={markdown || ""} />}
       <section aria-labelledby="content-basis-heading">
         <Typography.Title level={5} id="content-basis-heading">内容依据</Typography.Title>
         <ul>{selectedDraft?.basisSummary.map((item) => <li key={item}>{item}</li>)}</ul>
@@ -148,7 +149,7 @@ export function BatchGenerationMatrixTable({
                   {
                     title: "操作", key: "action", width: 140,
                     render: (_: unknown, task) => {
-                      if (task.formalDraftId) return <Link href={`/monthly-matrix/batch-generation?draftId=${encodeURIComponent(task.formalDraftId)}`}><Button size="small" icon={<EyeOutlined />}>预览正文</Button></Link>;
+                      if (task.formalDraftId) return <Link href={`/monthly-plan?step=generation&draftId=${encodeURIComponent(task.formalDraftId)}`}><Button size="small" icon={<EyeOutlined />}>预览正文</Button></Link>;
                       if (task.currentDraft || task.lastUsableDraft) return <Button size="small" icon={<EyeOutlined />} onClick={() => openPreview(task)}>预览正文</Button>;
                       if (task.status === "awaiting_material") return <Link href={`/knowledge?todo=${encodeURIComponent(task.knowledgeTodoId || task.taskId)}`}><Button size="small" icon={<FileAddOutlined />}>补充资料</Button></Link>;
                       if (task.formal && ["ready_for_generation", "system_recovering"].includes(task.status)) return <Button size="small" type="primary" disabled={!onGenerate} onClick={() => void onGenerate?.(task)}>立即生成</Button>;

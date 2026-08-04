@@ -1,12 +1,16 @@
 import { readRequestPayload, readString, readStringArray } from "@/lib/api-utils";
 import { NextResponse } from "next/server";
 import { V5GovernanceRepositoryError, type V5GovernanceActor } from "../knowledge-governance-repository";
+import { readTrustedServerActor } from "../knowledge-governance-api";
 import { RagInfrastructureError } from "./infrastructure";
 import { RagServiceError } from "./rag-service";
 
 export async function readRagPayload(request: Request) {
   if (process.env.NODE_ENV === "production") {
-    throw new RagServiceError(503, "authorization_not_configured", "RAG 写接口尚未接入可信服务端身份。", "接入 Session / SSO 与对象范围授权后启用生产写入。");
+    const actor = readTrustedServerActor("rag_operator");
+    if (!actor) throw new RagServiceError(503, "authorization_not_configured", "RAG 写入尚未配置工作台可信身份。", "完成 Docker 服务端身份配置后重启 Web。");
+    const payload = await readRequestPayload(request);
+    return { ...payload, actorId: actor.actorId, actorRole: actor.actorRole, actorType: actor.actorType };
   }
   return readRequestPayload(request);
 }
