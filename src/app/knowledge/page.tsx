@@ -24,7 +24,7 @@ const visibilityLabels: Record<V5KnowledgeVisibility, string> = {
   public: "允许公开引用"
 };
 
-function KnowledgeAssetsView() {
+function KnowledgeAssetsView({ initialImportType }: { initialImportType?: "site" | "wechat_account" }) {
   const router = useRouter();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -101,7 +101,7 @@ function KnowledgeAssetsView() {
         <MetricCard title="资料" value={materialCount} suffix="份" />
         <MetricCard title="待处理" value={pendingCount} suffix="项" />
       </div>
-      <KnowledgeCollectionWorkspace />
+      <KnowledgeCollectionWorkspace initialImportType={initialImportType} />
       <Card className="foundation-panel" bordered={false}>
         <Space style={{ marginBottom: 16 }} wrap>
           <Select
@@ -178,6 +178,7 @@ function KnowledgeHub() {
   const view = knowledgeViews.some((item) => item.value === requestedView)
     ? requestedView as KnowledgeView
     : "assets";
+  const initialImportType = searchParams.get("import") === "wechat" ? "wechat_account" as const : undefined;
 
   return (
     <>
@@ -189,7 +190,7 @@ function KnowledgeHub() {
           onChange={(value) => router.push(`/knowledge?view=${value}`)}
         />
       </div>
-      {view === "assets" ? <KnowledgeAssetsView /> : null}
+      {view === "assets" ? <KnowledgeAssetsView initialImportType={initialImportType} /> : null}
       {view === "products" ? <ProductsPage /> : null}
       {view === "questions" ? <QuestionsKeywordsPage /> : null}
     </>

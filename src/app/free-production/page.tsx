@@ -59,7 +59,7 @@ export default function FreeProductionPage() {
   async function createExpression(input: CreateFreeExpressionInput) {
     setSavingExpression(true);
     try {
-      const profile = await request<FreeContentExpressionTypeSummary>("/api/v5/free-content-expression-types", { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key("create-expression") }, body: JSON.stringify({ expectedVersion: 0, auditReason: "在自由生产页面新建工作区表达", input }) });
+      const profile = await request<FreeContentExpressionTypeSummary>("/api/v5/free-content-expression-types", { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key("create-expression") }, body: JSON.stringify({ expectedVersion: 0, auditReason: "在公众号生产中心新建工作区表达", input }) });
       setDrawerOpen(false);
       await loadCatalog();
       messageApi.success("新类型已保存，请填写本次生产资料。");
@@ -98,7 +98,7 @@ export default function FreeProductionPage() {
     const previousBatch = batch;
     setWorking("retry");
     setBatch({ ...batch, status: "generating", failureCode: undefined, failureMessage: undefined, nextAction: undefined });
-    try { const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/retry-failures`, { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key("retry") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "安全重试自由生产失败任务" }) }); setBatch(data); }
+    try { const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/retry-failures`, { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key("retry") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "安全重试公众号生产失败任务" }) }); setBatch(data); }
     catch (error) { setBatch(previousBatch); messageApi.error(error instanceof Error ? error.message : "安全重试失败。"); }
     finally { setWorking(undefined); }
   }
@@ -106,7 +106,7 @@ export default function FreeProductionPage() {
   return (
     <>
       {contextHolder}
-      <PageHeader title="自由内容生产" subtitle="选择内容类型，补齐本次资料，再生成可追溯的公众号正文。" actions={!batch ? <Space><Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>新建类型</Button><Link href="/free-production/tasks"><Button icon={<UnorderedListOutlined />}>任务与发布</Button></Link></Space> : undefined} />
+      <PageHeader title="公众号生产中心" subtitle="保留 V5 单篇生产完整链路：选择表达、补齐资料、生成复检，再确认进入公众号发布队列。" actions={!batch ? <Space><Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>新建类型</Button><Link href="/free-production/tasks"><Button icon={<UnorderedListOutlined />}>任务与发布</Button></Link></Space> : undefined} />
       {!batch ? <Tabs className="free-production-tabs" activeKey="types" items={[{ key: "types", label: "内容类型", children: loading && !catalog ? <div className="v5-loading-row"><Spin /><span>正在读取内容类型</span></div> : catalog ? selectedType ? <ProductionInputPanel profile={selectedType} catalog={catalog} loading={usingId === selectedType.activeVersion?.freeContentExpressionTypeVersionId} onBack={() => setSelectedType(undefined)} onGenerate={(values) => void generateFromExpression(selectedType, values)} /> : <><div className="expression-list-intro"><div><span className="v5-kicker">新建正文</span><h2>选择内容类型</h2></div><p>不同类型会打开对应的资料入口。</p></div><ExpressionPresetList expressions={catalog.expressionTypes} onUse={setSelectedType} /></> : <Alert showIcon type="error" message="内容类型读取失败" /> }, { key: "tasks", label: <Link href="/free-production/tasks">任务与发布</Link>, children: null }]} /> : <GenerationResultWorkspace batch={batch} working={working} onBack={() => { setBatch(undefined); setSelectedType(undefined); window.history.replaceState(null, "", "/free-production"); }} onRetry={() => void retry()} onSupplements={(values) => void supplements(values)} onPublish={() => void publish()} />}
       {catalog ? <CreateExpressionDrawer open={drawerOpen} catalog={catalog} saving={savingExpression} onClose={() => setDrawerOpen(false)} onSubmit={(input) => void createExpression(input)} /> : null}
     </>

@@ -13,6 +13,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import type { ChannelKey, ProductKey, ProductPlanConfig, WorkspaceRole } from "@/lib/types";
 import ConfigurationPage from "@/app/configuration/page";
 import OperationsPage from "@/app/operations/page";
+import { WechatSubscriptionSettingsCard } from "@/components/WechatSubscriptionSettingsCard";
 
 const finalReviewModeLabels = {
   default_final: "默认终稿",
@@ -543,7 +544,7 @@ function SettingsHub() {
       </div>
       {showSystemStatus ? <OperationsPage /> : null}
       {!showSystemStatus && tab === "models" ? <ConfigurationPage /> : null}
-      {!showSystemStatus && tab === "connections" ? <ConfigurationPage /> : null}
+      {!showSystemStatus && tab === "connections" ? <><WechatSubscriptionSettingsCard /><ConfigurationPage /></> : null}
       {!showSystemStatus && tab === "rules" ? (
         <>
           <WorkspaceRulesSettings section="rules" />

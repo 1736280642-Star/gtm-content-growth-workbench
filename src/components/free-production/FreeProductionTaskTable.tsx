@@ -31,5 +31,5 @@ export function FreeProductionTaskTable({ data, loading, onPreview, onRetry }: {
     { title: "更新时间", dataIndex: "updatedAt", width: 170, render: (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false }) },
     { title: "操作", key: "actions", width: 170, render: (_, record) => <div className="free-table-actions"><Button type="text" icon={<EyeOutlined />} onClick={() => onPreview(record)}>查看正文</Button>{["generation_failed", "publish_failed"].includes(record.status) ? <Button type="text" icon={<ReloadOutlined />} onClick={() => onRetry(record)}>安全重试</Button> : null}</div> }
   ];
-  return <Table rowKey="id" loading={loading} dataSource={data} columns={columns} pagination={{ pageSize: 12 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有自由内容生产批次" /> }} />;
+  return <Table rowKey="id" loading={loading} dataSource={data} columns={columns} pagination={{ pageSize: 12 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有公众号生产批次" /> }} />;
 }

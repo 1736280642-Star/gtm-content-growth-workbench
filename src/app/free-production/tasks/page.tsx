@@ -36,7 +36,7 @@ export default function FreeProductionTasksPage() {
 
   async function retry(batch: FreeProductionBatch) {
     try {
-      await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/retry-failures`, { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key("retry-free-production") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "人工重试自由生产失败任务" }) });
+      await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/retry-failures`, { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key("retry-free-production") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "人工重试公众号生产失败任务" }) });
       messageApi.success("失败任务已进入安全重试，已生成的成功结果保持不变。");
       await load();
     } catch (error) { messageApi.error(error instanceof Error ? error.message : "失败任务重试失败。"); }
@@ -46,7 +46,7 @@ export default function FreeProductionTasksPage() {
   return (
     <>
       {contextHolder}
-      <PageHeader title="自由生产任务与发布" subtitle="查看单篇正文的生成与发布状态；失败恢复不会改动已经成功的结果。" actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Link href="/free-production"><Button type="primary" icon={<PlusOutlined />}>选择表达</Button></Link></Space>} />
+      <PageHeader title="公众号生产任务与发布" subtitle="查看公众号单篇正文的生成与发布状态；失败恢复不会改动已经成功的结果。" actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Link href="/free-production"><Button type="primary" icon={<PlusOutlined />}>选择表达</Button></Link></Space>} />
       {failedCount ? <Alert className="free-task-alert" showIcon type="warning" message={`${failedCount} 个批次需要处理`} description="打开批次查看失败原因和下一步，重试只作用于失败任务。" /> : null}
       <Tabs className="free-production-tabs" activeKey="tasks" items={[
         { key: "expressions", label: <Link href="/free-production">表达预设</Link>, children: null },

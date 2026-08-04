@@ -131,7 +131,7 @@ async function ensureMonthlyPlan(month: string, actorId: string) {
   return updateV5MonthlyState((state) => {
     if (state.plans[month]) return state.plans[month];
     const now = new Date().toISOString();
-    const plan: V5MonthlyPlanRecord = { id: `monthly-plan-${month}`, version: 1, status: "draft", config: { month, businessGoal: "承载当月自由内容生产补充任务", targetDeliverableCount: 0, questionVersionIds: [], quotaRules: [], groups: [] }, createdAt: now, createdBy: actorId, updatedAt: now, updatedBy: actorId, matrixTasks: [] };
+    const plan: V5MonthlyPlanRecord = { id: `monthly-plan-${month}`, version: 1, status: "draft", config: { month, businessGoal: "承载当月公众号单篇生产补充任务", targetDeliverableCount: 0, questionVersionIds: [], quotaRules: [], groups: [] }, createdAt: now, createdBy: actorId, updatedAt: now, updatedBy: actorId, matrixTasks: [] };
     state.plans[month] = plan;
     return plan;
   });
@@ -256,7 +256,7 @@ async function generateArtifact(input: { batch: FreeProductionBatch; expression:
 async function runGeneration(batchId: string, options?: { affectedSectionKeys?: string[]; auditReason?: string; actorId?: string }) {
   const state = await readFreeProductionState();
   const batch = state.batches[batchId];
-  if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回表达列表后刷新。");
+  if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回表达列表后刷新。");
   const expression = await getActiveFreeContentExpressionTypeVersion(batch.freeContentExpressionTypeVersionId);
   const catalog = await getFreeProductionCatalog();
   const selection = selectionFor(batch, catalog);
@@ -449,7 +449,7 @@ export async function createFreeProductionFromExpression(input: CreateFreeProduc
 }
 
 export async function listFreeProductionBatches() { const state = await readFreeProductionState(); return Object.values(state.batches).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
-export async function getFreeProductionBatch(batchId: string) { const state = await readFreeProductionState(); const batch = state.batches[batchId]; if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回任务列表并刷新。"); return batch; }
+export async function getFreeProductionBatch(batchId: string) { const state = await readFreeProductionState(); const batch = state.batches[batchId]; if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。"); return batch; }
 function version(batch: FreeProductionBatch, expected: number) { if (batch.version !== expected) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_VERSION_CONFLICT", "配置已被其他操作更新。", "刷新页面读取最新版本后重试。"); }
 
 export async function reviewFreeProductionSources(batchId: string, input: { expectedVersion: number; auditReason: string; artifactId: string }, header: string | null) {
@@ -457,7 +457,7 @@ export async function reviewFreeProductionSources(batchId: string, input: { expe
   const context = mutationContext(input, header);
   return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input }, () => {
     const batch = state.batches[batchId];
-    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回任务列表并刷新。");
+    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
     version(batch, input.expectedVersion);
     const artifact = batch.draftArtifacts.find((item) => item.id === input.artifactId);
     if (!artifact || artifact.id !== batch.currentDraftArtifactId || !artifact.sourceExcerpts.length) {
@@ -518,7 +518,7 @@ export async function recheckFreeProductionBatch(batchId: string, input: { expec
 
 function publishPlatform(channel: FreeProductionChannel): DirectPublishPlatformKey | undefined { if (channel === "zhihu") return "zhihu"; if (channel === "wechat_official_account") return "wechat"; return undefined; }
 function toMatrixTask(batch: FreeProductionBatch, artifact: ContentDraftArtifact, expression: FreeContentExpressionTypeVersion): ProductionMatrixTask {
-  return { taskId: `free-task-${batch.id}`, monthlyPlanId: batch.monthlyPlanId, planningSource: "free_production", freeProductionBatchId: batch.id, freeContentExpressionTypeVersionId: expression.freeContentExpressionTypeVersionId, strategyPackageId: "", quotaRuleId: "", questionVersionId: "", question: "自由内容生产补充任务", baseTopicIndex: 1, title: artifact.selectedTitle, contentType: expression.name, articleTypeProfileVersionId: "", articleTypeNameSnapshot: expression.name, typeMatchRunId: "", typeSelectionSource: "user_selected", matchReasonSnapshot: "用户选择自由内容表达预设", articleTypePromptConstraintSnapshot: JSON.stringify(expression), articleTypePromptConstraintSnapshotHash: expression.snapshotHash, channel: freeProductionChannelLabels[batch.channelConfig.channel], rulePackageVersionId: batch.productExpressionRulePackageVersionId, knowledgeBaseIds: batch.knowledgeSnapshotIds, sourceSnapshotHash: batch.inputSnapshots.at(-1)?.snapshotHash || "", evidencePackSourceSnapshotHash: batch.inputSnapshots.at(-1)?.snapshotHash || "", status: "available", recoveryAttemptCount: 0, automaticRepairCount: batch.repairCount, currentDraft: { draftId: artifact.id, title: artifact.selectedTitle, markdown: artifact.articleBody, status: "available", basisSummary: ["产品规则快照", "知识快照", "品牌基线", "表达版本"], updatedAt: artifact.createdAt }, lastUsableDraft: { draftId: artifact.id, title: artifact.selectedTitle, markdown: artifact.articleBody, status: "available", basisSummary: ["产品规则快照", "知识快照", "品牌基线", "表达版本"], updatedAt: artifact.createdAt }, updatedAt: artifact.createdAt };
+  return { taskId: `free-task-${batch.id}`, monthlyPlanId: batch.monthlyPlanId, planningSource: "free_production", freeProductionBatchId: batch.id, freeContentExpressionTypeVersionId: expression.freeContentExpressionTypeVersionId, strategyPackageId: "", quotaRuleId: "", questionVersionId: "", question: "公众号单篇生产补充任务", baseTopicIndex: 1, title: artifact.selectedTitle, contentType: expression.name, articleTypeProfileVersionId: "", articleTypeNameSnapshot: expression.name, typeMatchRunId: "", typeSelectionSource: "user_selected", matchReasonSnapshot: "用户选择公众号内容表达预设", articleTypePromptConstraintSnapshot: JSON.stringify(expression), articleTypePromptConstraintSnapshotHash: expression.snapshotHash, channel: freeProductionChannelLabels[batch.channelConfig.channel], rulePackageVersionId: batch.productExpressionRulePackageVersionId, knowledgeBaseIds: batch.knowledgeSnapshotIds, sourceSnapshotHash: batch.inputSnapshots.at(-1)?.snapshotHash || "", evidencePackSourceSnapshotHash: batch.inputSnapshots.at(-1)?.snapshotHash || "", status: "available", recoveryAttemptCount: 0, automaticRepairCount: batch.repairCount, currentDraft: { draftId: artifact.id, title: artifact.selectedTitle, markdown: artifact.articleBody, status: "available", basisSummary: ["产品规则快照", "知识快照", "品牌基线", "表达版本"], updatedAt: artifact.createdAt }, lastUsableDraft: { draftId: artifact.id, title: artifact.selectedTitle, markdown: artifact.articleBody, status: "available", basisSummary: ["产品规则快照", "知识快照", "品牌基线", "表达版本"], updatedAt: artifact.createdAt }, updatedAt: artifact.createdAt };
 }
 
 export async function confirmAndPublishFreeProductionBatch(batchId: string, input: { expectedVersion: number; auditReason: string; contentDigest: string }, header: string | null) {
@@ -527,7 +527,7 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
   const initialReplay = replayBatch(initialState, context.key, requestPayload);
   if (initialReplay) return initialReplay;
   const batch = initialState.batches[batchId];
-  if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回任务列表并刷新。");
+  if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
   version(batch, input.expectedVersion);
   const artifact = batch.draftArtifacts.find((item) => item.id === batch.currentDraftArtifactId);
   if (!artifact || artifact.contentDigest !== input.contentDigest) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_CONTENT_DIGEST_MISMATCH", "正文已更新，当前确认不再有效。", "刷新并查看最新正文后重新确认自动发布。");
@@ -562,7 +562,7 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
     const replay = replayBatch(state, context.key, requestPayload);
     if (replay) return { batch: replay, replayed: true };
     const target = state.batches[batchId];
-    if (!target) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "自由生产任务不存在。", "返回任务列表并刷新。");
+    if (!target) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
     version(target, input.expectedVersion);
     target.status = "publishing";
     target.confirmedContentDigest = artifact.contentDigest;

@@ -134,7 +134,7 @@ export default function PublishingPage() {
           <div><Typography.Text type="secondary">目标平台</Typography.Text><Select mode="multiple" value={platforms} onChange={setPlatforms} style={{ width: 300 }} options={(["csdn", "juejin", "zhihu"] as DirectPublishPlatformKey[]).map((value) => ({ value, label: platformLabel[value] }))} /></div>
           <Button type="primary" icon={<RocketOutlined />} disabled={!candidateId || !platforms.length} loading={acting === "create"} onClick={() => void createAndDispatch()}>创建并交给 Worker</Button>
         </Space>
-        <Typography.Paragraph type="secondary" style={{ margin: "12px 0 0" }}>月度生产与自由生产的确认发布入口也会进入同一 Publish Job 队列，不再直接调用平台发布。</Typography.Paragraph>
+        <Typography.Paragraph type="secondary" style={{ margin: "12px 0 0" }}>月度生产与公众号生产中心的确认发布入口都会进入同一 Publish Job 队列，不再直接调用平台发布。</Typography.Paragraph>
       </Card>
 
       <Card title="任务生命周期" className="publish-jobs-card" extra={<Typography.Text type="secondary">15 秒自动刷新</Typography.Text>}>

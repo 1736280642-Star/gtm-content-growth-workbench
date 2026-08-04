@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOutlined, ControlOutlined, DashboardOutlined, FundProjectionScreenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined } from "@ant-design/icons";
+import { BookOutlined, ControlOutlined, DashboardOutlined, FundProjectionScreenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined, WechatOutlined } from "@ant-design/icons";
 import { Button, Layout, Menu, Space, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -16,6 +16,7 @@ const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
   { key: "/knowledge", icon: <BookOutlined />, label: <Link href="/knowledge">知识库</Link> },
   { key: "/monthly-plan", icon: <ControlOutlined />, label: <Link href="/monthly-plan">GEO 内容中心</Link> },
+  { key: "/free-production", icon: <WechatOutlined />, label: <Link href="/free-production">公众号生产中心</Link> },
   { key: "/geo-monitor", icon: <FundProjectionScreenOutlined />, label: <Link href="/geo-monitor">GEO 监控塔</Link> },
   { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">设置</Link> }
 ];
@@ -56,7 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Sider>
       <Layout style={mainLayoutStyle}>
         <Header className="app-header" style={{ background: "#fff", borderBottom: "1px solid #e6e8ef", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Typography.Text strong>知识采集 → GEO 调研 → 月度策略 → 内容生产 → 自动排程 → 发布与复盘</Typography.Text>
+          <Typography.Text strong>知识采集 → GEO 调研 → 内容生产 → 自动排程 → 发布与复盘</Typography.Text>
           <Space><Typography.Text type="secondary">默认自动运行 · 异常才需人工处理</Typography.Text></Space>
         </Header>
         <Content style={contentStyle}>{children}</Content>

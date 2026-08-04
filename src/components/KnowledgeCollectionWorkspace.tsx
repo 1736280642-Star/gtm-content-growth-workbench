@@ -1,12 +1,16 @@
 "use client";
 
 import {
+  ArrowRightOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
-  ImportOutlined,
-  LinkOutlined
+  GlobalOutlined,
+  LinkOutlined,
+  WechatOutlined
 } from "@ant-design/icons";
 import {
+  Alert,
   Button,
   Checkbox,
   Drawer,
@@ -14,6 +18,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Radio,
   Select,
   Space,
   Switch,
@@ -23,6 +28,7 @@ import {
   Typography,
   message
 } from "antd";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { callJsonApi } from "@/lib/client-api";
@@ -60,7 +66,11 @@ function statusColor(value: string) {
   return "blue";
 }
 
-export function KnowledgeCollectionWorkspace() {
+type KnowledgeCollectionWorkspaceProps = {
+  initialImportType?: "site" | "wechat_account";
+};
+
+export function KnowledgeCollectionWorkspace({ initialImportType }: KnowledgeCollectionWorkspaceProps) {
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const [workspace, setWorkspace] = useState<CollectionWorkspace>();
@@ -69,7 +79,15 @@ export function KnowledgeCollectionWorkspace() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [autoOpened, setAutoOpened] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<V5KnowledgeCollectionSnapshot>();
+  const sourceType = Form.useWatch("sourceType", form) as "site" | "wechat_account" | undefined;
+
+  const openImport = useCallback((type: "site" | "wechat_account") => {
+    form.resetFields();
+    form.setFieldsValue({ sourceType: type, scheduleHour: 8 });
+    setImportOpen(true);
+  }, [form]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -93,6 +111,13 @@ export function KnowledgeCollectionWorkspace() {
       .then((result) => setProducts(result.products || []))
       .catch(() => setProducts([]));
   }, [refresh]);
+
+  useEffect(() => {
+    if (initialImportType && !autoOpened) {
+      openImport(initialImportType);
+      setAutoOpened(true);
+    }
+  }, [autoOpened, initialImportType, openImport]);
 
   const knowledgeBaseOptions = useMemo(
     () => knowledgeBases.map((item) => ({ value: item.knowledgeBaseId, label: item.name })),
@@ -155,7 +180,7 @@ export function KnowledgeCollectionWorkspace() {
           <ActionEmpty
             title="今日还没有采集快照"
             description={workspace?.sources.length ? "到达执行时间后，系统会自动显示采集结果。" : "先导入一个站点或微信公众号来源。"}
-            action={!workspace?.sources.length ? <Button type="primary" icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>来源导入</Button> : undefined}
+            action={!workspace?.sources.length ? <Space wrap><Button type="primary" icon={<GlobalOutlined />} onClick={() => openImport("site")}>导入站点</Button><Button className="wechat-source-button" icon={<WechatOutlined />} onClick={() => openImport("wechat_account")}>订阅公众号</Button></Space> : undefined}
           />
         )
       }}
@@ -224,7 +249,7 @@ export function KnowledgeCollectionWorkspace() {
       dataSource={workspace?.sources || []}
       scroll={{ x: 1050 }}
       locale={{
-        emptyText: <ActionEmpty title="还没有导入来源" description="导入后系统每天自动执行完整采集链路。" action={<Button type="primary" icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>来源导入</Button>} />
+        emptyText: <ActionEmpty title="还没有导入来源" description="导入站点或公众号后，系统每天自动执行采集与知识治理。" action={<Space wrap><Button type="primary" icon={<GlobalOutlined />} onClick={() => openImport("site")}>导入站点</Button><Button className="wechat-source-button" icon={<WechatOutlined />} onClick={() => openImport("wechat_account")}>订阅公众号</Button></Space>} />
       }}
       columns={[
         {
@@ -232,7 +257,7 @@ export function KnowledgeCollectionWorkspace() {
           width: 240,
           render: (_, record) => (
             <Space direction="vertical" size={2}>
-              <Space><DatabaseOutlined /><strong>{record.name}</strong></Space>
+              <Space>{record.sourceType === "site" ? <DatabaseOutlined /> : <WechatOutlined className="wechat-source-icon" />}<strong>{record.name}</strong></Space>
               <Typography.Text type="secondary">{record.sourceType === "site" ? "指定站点" : "微信公众号"}</Typography.Text>
             </Space>
           )
@@ -273,7 +298,7 @@ export function KnowledgeCollectionWorkspace() {
       <div className="foundation-panel">
         <Tabs
           defaultActiveKey="today"
-          tabBarExtraContent={<Button type="primary" icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>来源导入</Button>}
+          tabBarExtraContent={<Space wrap><Button icon={<GlobalOutlined />} onClick={() => openImport("site")}>导入站点</Button><Button className="wechat-source-button" icon={<WechatOutlined />} onClick={() => openImport("wechat_account")}>订阅公众号</Button></Space>}
           items={[
             { key: "today", label: `今日采集 ${workspace?.todaySnapshots.length || 0}`, children: todayTab },
             { key: "sources", label: `采集来源 ${workspace?.sources.length || 0}`, children: sourcesTab }
@@ -282,7 +307,7 @@ export function KnowledgeCollectionWorkspace() {
       </div>
 
       <Modal
-        title="来源导入"
+        title={sourceType === "wechat_account" ? "订阅公众号并导入知识库" : "导入站点并持续采集"}
         open={importOpen}
         width={680}
         okText="导入并启用每日采集"
@@ -292,11 +317,28 @@ export function KnowledgeCollectionWorkspace() {
         onCancel={() => setImportOpen(false)}
       >
         <Form form={form} layout="vertical" initialValues={{ sourceType: "site", scheduleHour: 8 }}>
-          <Form.Item name="name" label="来源名称" rules={[{ required: true, message: "请填写来源名称" }]}>
-            <Input maxLength={120} placeholder="例如：JOTO 官方内容" />
+          <Form.Item name="sourceType" label="选择来源" rules={[{ required: true }]}>
+            <Radio.Group className="knowledge-source-picker" buttonStyle="solid">
+              <Radio.Button value="site"><GlobalOutlined /> 站点持续采集</Radio.Button>
+              <Radio.Button value="wechat_account"><WechatOutlined /> 公众号订阅</Radio.Button>
+            </Radio.Group>
           </Form.Item>
-          <Form.Item name="sourceType" label="来源类型" rules={[{ required: true }]}>
-            <Select options={[{ value: "site", label: "指定站点" }, { value: "wechat_account", label: "微信公众号" }]} />
+          {sourceType === "wechat_account" ? (
+            <>
+              <div className="wechat-import-flow" aria-label="公众号内容导入流程">
+                <span><b>1</b>服务侧订阅</span><ArrowRightOutlined /><span><b>2</b>定时拉取文章</span><ArrowRightOutlined /><span><b>3</b>治理并索引</span>
+              </div>
+              <Alert
+                className="wechat-import-alert"
+                showIcon
+                type="info"
+                message="先在公众号订阅服务中关注账号，再由工作台持续导入"
+                description={<span>此处只填写 subscriptionId 或完全一致的公众号名称；API 地址和密钥需由管理员在 <Link href="/settings?tab=connections#wechat-subscription">设置 → 连接</Link> 中自行配置。文章导入后会自动去重、归属、归档、治理和索引。</span>}
+              />
+            </>
+          ) : null}
+          <Form.Item name="name" label="来源名称" rules={[{ required: true, message: "请填写来源名称" }]}>
+            <Input maxLength={120} placeholder={sourceType === "wechat_account" ? "例如：产品经理公众号观察" : "例如：JOTO 官方内容"} />
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.sourceType !== current.sourceType}>
             {({ getFieldValue }) => getFieldValue("sourceType") === "wechat_account" ? (
@@ -309,8 +351,8 @@ export function KnowledgeCollectionWorkspace() {
                 >
                   <Input placeholder="subscriptionId 或公众号名称" />
                 </Form.Item>
-                <Form.Item name="entryUrl" label="文章列表地址">
-                  <Input placeholder="RSS、Atom 或已授权的公开文章列表 URL" />
+                <Form.Item name="entryUrl" label="自有文章列表地址（可选）" extra="仅在你已有 RSS、Atom 或其他已授权文章列表时填写；使用订阅 API 时无需填写。">
+                  <Input placeholder="https://example.com/feed" />
                 </Form.Item>
               </>
             ) : (
@@ -336,7 +378,7 @@ export function KnowledgeCollectionWorkspace() {
             valuePropName="checked"
             rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error("请确认来源内容的使用权限")) }]}
           >
-            <Checkbox>已确认该来源内容可用于知识治理与公开内容生产</Checkbox>
+            <Checkbox><CheckCircleOutlined /> 已确认该来源内容可用于知识治理与公开内容生产</Checkbox>
           </Form.Item>
         </Form>
       </Modal>
