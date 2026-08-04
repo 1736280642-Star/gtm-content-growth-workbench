@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
+import { BookOutlined, FileTextOutlined, LinkOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Modal, Segmented, Select, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -68,8 +68,9 @@ function KnowledgeAssetsView({ initialImportType }: { initialImportType?: "site"
       });
       setCreateOpen(false);
       form.resetFields();
-      messageApi.success("知识库已创建，请继续导入资料。");
-      router.push(`/knowledge/${result.data.knowledgeBase.knowledgeBaseId}?import=1`);
+      messageApi.success("知识库已创建，请继续导入第一批资料。");
+      const importPath = values.importMode === "document" ? "/knowledge/import/document" : "/knowledge/import/url";
+      router.push(`${importPath}?knowledgeBaseId=${encodeURIComponent(result.data.knowledgeBase.knowledgeBaseId)}&name=${encodeURIComponent(values.name)}`);
     } catch (requestError) {
       messageApi.error(requestError instanceof Error ? requestError.message : "创建知识库失败");
     } finally {
@@ -88,10 +89,7 @@ function KnowledgeAssetsView({ initialImportType }: { initialImportType?: "site"
         title="知识库"
         subtitle="用名称和重点限定系统理解方向；资料处理、索引和治理由系统自动完成。"
         actions={
-          <Space wrap>
-            <Link href="/knowledge/import"><Button icon={<UploadOutlined />}>导入到已有知识库</Button></Link>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-testid="knowledge-create-button">创建知识库</Button>
-          </Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-testid="knowledge-create-button">创建知识库</Button>
         }
       />
       <PageErrorState message={error} loading={loading && !data} onRetry={refresh} />
@@ -148,8 +146,18 @@ function KnowledgeAssetsView({ initialImportType }: { initialImportType?: "site"
         />
       </Card>
 
-      <Modal title="创建知识库" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={createKnowledgeBase} confirmLoading={saving} okText="创建并导入" width={640}>
-        <Form form={form} layout="vertical" initialValues={{ defaultVisibility: "conditional_public" }}>
+      <Modal title="创建知识库并导入资料" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={createKnowledgeBase} confirmLoading={saving} okText="创建并继续" width={680}>
+        <Form form={form} layout="vertical" initialValues={{ defaultVisibility: "conditional_public", importMode: "url" }}>
+          <Form.Item name="importMode" label="第一批资料从哪里导入" rules={[{ required: true }]}>
+            <Segmented
+              block
+              className="knowledge-create-source-mode"
+              options={[
+                { value: "url", label: <span><LinkOutlined /> URL 解析</span> },
+                { value: "document", label: <span><FileTextOutlined /> 上传文档</span> }
+              ]}
+            />
+          </Form.Item>
           <Form.Item name="name" label="知识库名称" rules={[{ required: true, message: "请填写知识库名称" }]}><Input maxLength={100} /></Form.Item>
           <Form.Item name="focus" label="知识库重点" rules={[{ required: true, message: "请说明希望系统重点理解什么" }]} extra="重点只限定理解和检索方向，不会直接成为文章事实。">
             <Input.TextArea rows={4} maxLength={600} showCount />
@@ -157,6 +165,7 @@ function KnowledgeAssetsView({ initialImportType }: { initialImportType?: "site"
           <Form.Item name="defaultVisibility" label="默认公开范围">
             <Select options={Object.entries(visibilityLabels).map(([value, label]) => ({ value, label }))} />
           </Form.Item>
+          <Typography.Text type="secondary">创建后直接进入所选导入方式，资料解析完成后自动治理、向量化并建立索引。</Typography.Text>
         </Form>
       </Modal>
     </>

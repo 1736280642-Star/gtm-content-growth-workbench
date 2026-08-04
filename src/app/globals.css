@@ -4417,6 +4417,21 @@ body {
   color: #048a45 !important;
 }
 
+.knowledge-create-source-mode {
+  padding: 5px;
+  border: 1px solid #dce5f2;
+  background: #f4f7fb;
+}
+
+.knowledge-create-source-mode .ant-segmented-item-label {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
 .wechat-source-button:hover,
 .wechat-source-button:focus-visible {
   background: #f0fff6 !important;

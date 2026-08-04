@@ -69,6 +69,8 @@ export default function KnowledgeUrlImportPage() {
 
   useEffect(() => {
     let active = true;
+    const requestedName = new URLSearchParams(window.location.search).get("name");
+    if (requestedName && !form.getFieldValue("name")) form.setFieldValue("name", requestedName);
     callJsonApi<ProductListResponse>("/api/v5/products")
       .then((result) => {
         if (!active) return;
