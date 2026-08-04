@@ -234,15 +234,12 @@ export interface DraftQaResult {
   feedbackTarget?: DraftQualityFeedbackTarget;
 }
 
-export type WorkspaceRole = "content_publisher" | "content_growth" | "workbench_operator" | "knowledge_manager" | "developer_admin";
-
 export interface WorkspaceSetting {
   id: string;
   currentRole: WorkspaceRole;
   enabledChannels: ChannelKey[];
   enabledProducts: ProductKey[];
   productPlans?: ProductPlanConfig[];
-  currentRole: WorkspaceRole;
   finalReviewMode: FinalReviewMode;
   logMode: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
