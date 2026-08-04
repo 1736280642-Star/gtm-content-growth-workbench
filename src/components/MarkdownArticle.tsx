@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { normalizeMarkdownBlocks } from "@/lib/markdown-normalization";
 import styles from "./MarkdownArticle.module.css";
 
 function renderInline(value: string): ReactNode[] {
@@ -13,7 +14,8 @@ function renderInline(value: string): ReactNode[] {
 }
 
 export function MarkdownArticle({ markdown, className }: { markdown?: string; className?: string }) {
-  const lines = (markdown || "").replace(/\r\n/g, "\n").split("\n");
+  const normalizedMarkdown = normalizeMarkdownBlocks(markdown || "");
+  const lines = normalizedMarkdown.split("\n");
   const blocks: ReactNode[] = [];
 
   for (let index = 0; index < lines.length;) {
