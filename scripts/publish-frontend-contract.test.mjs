@@ -14,6 +14,19 @@ test("publishing control tower uses durable dispatch and reconciliation handles"
   assert.match(page, /72h/);
 });
 
+test("data return consumes the same Publish Job and reliability ledger", async () => {
+  const page = await read("src/app/publish/page.tsx");
+  const ledger = await read("src/components/PublishResultLedger.tsx");
+  assert.match(page, /PublishResultLedger/);
+  assert.match(page, /打开发布控制台/);
+  assert.match(ledger, /\/api\/publish-jobs/);
+  assert.match(ledger, /\/api\/publish-reliability/);
+  assert.match(ledger, /reconcile-dispatch/);
+  assert.match(ledger, /PublishLifecycleRail/);
+  assert.match(ledger, /渠道指标已匹配/);
+  assert.doesNotMatch(ledger, /\/run["`]/, "data return must not execute a publish job in the browser");
+});
+
 test("monthly execution creates a Publish Job from the approved formal draft", async () => {
   const page = await read("src/app/daily-execution/page.tsx");
   const route = await read("src/app/api/v5/content-tasks/[taskId]/publish-job/route.ts");

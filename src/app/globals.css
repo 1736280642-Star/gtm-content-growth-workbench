@@ -54,6 +54,13 @@
 .publish-reliability-platform { height: 100%; padding: 16px; background: #f8fafb; border: 1px solid #e5e9ef; border-radius: 12px; }
 .publish-reliability-title { display: flex; justify-content: space-between; margin-bottom: 10px; }
 .publish-reliability-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 10px; color: #475467; font-size: 12px; }
+.publish-result-ledger .ant-card-head-title > span { display: flex; align-items: baseline; gap: 10px; }
+.publish-ledger-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.publish-ledger-summary span { padding: 12px 14px; color: #475467; background: #f8fafb; border: 1px solid #e5e9ef; border-radius: 10px; }
+.publish-ledger-summary span.is-risk { color: #b42318; background: #fff7f6; border-color: #fecdca; }
+.publish-ledger-summary b { margin-right: 6px; color: #0f4854; font-size: 20px; }
+.publish-ledger-summary .is-risk b { color: #b42318; }
+.publish-ledger-readiness { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 
 @media (max-width: 900px) {
   .publish-control-hero, .publish-job-head { align-items: flex-start; flex-direction: column; }
@@ -62,6 +69,7 @@
   .publish-lifecycle-step { grid-template-columns: 28px 1fr; justify-items: start; text-align: left; }
   .publish-lifecycle-step::before { top: -9px; bottom: 50%; left: 13px; width: 2px; height: auto; }
   .publish-job-meta { grid-template-columns: 1fr 1fr; }
+  .publish-ledger-summary { grid-template-columns: 1fr 1fr; }
 }
 
 * {

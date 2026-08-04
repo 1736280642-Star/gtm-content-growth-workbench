@@ -128,6 +128,27 @@ function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string
   };
 }
 
+function productionTaskIdentity(task: ProductionMatrixTask) {
+  const normalizedTitle = task.title.trim().toLocaleLowerCase("zh-CN").replace(/\s+/g, " ");
+  const normalizedChannel = task.channel.trim().toLocaleLowerCase("zh-CN");
+  return `${normalizedChannel}::${normalizedTitle}`;
+}
+
+/**
+ * A formal queue is an overlay, not a replacement for a persisted monthly snapshot.
+ * This keeps restored matrix items visible while preferring MySQL state for the same
+ * channel/title once that item has entered the formal execution pipeline.
+ */
+export function mergeMonthlyProductionTasks(
+  snapshotTasks: ProductionMatrixTask[],
+  formalTasks: ProductionMatrixTask[]
+) {
+  const merged = new Map<string, ProductionMatrixTask>();
+  for (const task of snapshotTasks) merged.set(productionTaskIdentity(task), task);
+  for (const task of formalTasks) merged.set(productionTaskIdentity(task), task);
+  return Array.from(merged.values());
+}
+
 export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Promise<MonthlyWorkspaceReadModel> {
   const base = await getMonthlyWorkspaceBase(requestedMonth);
   const [governance, productionQueue] = await Promise.all([
@@ -135,10 +156,18 @@ export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Pro
     loadFormalQueue(base.month)
   ]);
   const formalPlanRecord = governance.monthlyPlan ? toWorkspacePlanRecord(governance.monthlyPlan, governance.rulePackages) : null;
-  const plan = formalPlanRecord || base.plan;
-  const productionTasks = productionQueue.items.length
-    ? productionQueue.items.map((item) => toFormalProductionTask(item, governance.monthlyPlan?.strategyPackageVersionId))
-    : base.productionTasks;
+  const formalTasks = productionQueue.items.map((item) => toFormalProductionTask(item, governance.monthlyPlan?.strategyPackageVersionId));
+  const productionTasks = mergeMonthlyProductionTasks(base.productionTasks, formalTasks);
+  const plan = formalPlanRecord
+    ? {
+        ...base.plan,
+        ...formalPlanRecord,
+        strategyPackage: base.plan?.strategyPackage,
+        matrixTasks: productionTasks
+      }
+    : base.plan
+      ? { ...base.plan, matrixTasks: productionTasks }
+      : null;
   const adaptedRulePackages = governance.source === "v5_mysql" || base.source.referenceData !== "v4_runtime"
     ? governance.rulePackages
     : base.rulePackages;
