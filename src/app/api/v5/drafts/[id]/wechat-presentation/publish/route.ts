@@ -9,11 +9,12 @@ import { claimWechatPresentationPublish, completeWechatPresentationPublish } fro
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(_: Request, { params }: { params: { id: string } }) {
+export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const [draft, artifact] = await Promise.all([
-      readFormalDraftVersion(params.id),
-      getPublishableWechatPresentation(params.id)
+      readFormalDraftVersion(routeParams.id),
+      getPublishableWechatPresentation(routeParams.id)
     ]);
     if (!draft) throw new V5GovernanceRepositoryError("formal_draft_not_found", "正式正文不存在。", 404, "刷新批量生成中心后重试。");
     const actor = { ...getSingleArticleActor(), auditReason: "将已批准的公众号 HTML 写入公众号草稿箱" };

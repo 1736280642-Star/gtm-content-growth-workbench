@@ -1,7 +1,7 @@
 "use client";
 
 import { EditOutlined, EyeOutlined, FileAddOutlined } from "@ant-design/icons";
-import { Button, Drawer, Empty, Input, Space, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Drawer, Empty, Input, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ProductionDraftSummary, ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
@@ -16,6 +16,7 @@ const statusMeta: Record<ProductionMatrixTask["status"], { label: string; color:
   awaiting_material: { label: "待补资料", color: "gold" },
   system_recovering: { label: "系统恢复中", color: "cyan" },
   scheduled: { label: "已排程", color: "purple" }
+, published: { label: "已发布", color: "green" }
 };
 
 export function BatchGenerationMatrixTable({
@@ -30,6 +31,9 @@ export function BatchGenerationMatrixTable({
   onGenerate?: (task: ProductionMatrixTask) => Promise<void>;
 }) {
   const [selectedTask, setSelectedTask] = useState<ProductionMatrixTask>();
+  const [loadedDraft, setLoadedDraft] = useState<ProductionDraftSummary>();
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState<string>();
   const [editing, setEditing] = useState(false);
   const [markdown, setMarkdown] = useState("");
   const grouped = useMemo(() => {
@@ -73,20 +77,44 @@ export function BatchGenerationMatrixTable({
       updatedAt: initialDraft.updatedAt
     };
     setSelectedTask(task);
+    setLoadedDraft(initialDraft);
     setMarkdown(initialDraft.markdown);
   }, [initialDraft, items]);
 
-  function openPreview(task: ProductionMatrixTask) {
+  async function openPreview(task: ProductionMatrixTask) {
     setSelectedTask(task);
-    setMarkdown((task.currentDraft || task.lastUsableDraft)?.markdown || "");
+    setLoadedDraft(undefined);
+    setMarkdown("");
+    setDraftError(undefined);
     setEditing(false);
+    const summary = task.currentDraft || task.lastUsableDraft;
+    if (!summary) return;
+    if (summary.bodyIncluded !== false && summary.markdown) {
+      setLoadedDraft(summary);
+      setMarkdown(summary.markdown);
+      return;
+    }
+    setDraftLoading(true);
+    try {
+      const response = await fetch(`/api/v5/drafts/${encodeURIComponent(summary.draftId)}`, { cache: "no-store" });
+      const body = await response.json() as { ok?: boolean; data?: ProductionDraftSummary; error?: { message?: string } };
+      if (!response.ok || !body.ok || !body.data) throw new Error(body.error?.message || "正文详情读取失败。");
+      setLoadedDraft({ ...body.data, bodyIncluded: true });
+      setMarkdown(body.data.markdown || "");
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : "正文详情读取失败。");
+    } finally {
+      setDraftLoading(false);
+    }
   }
 
-  const selectedDraft = selectedTask?.currentDraft || selectedTask?.lastUsableDraft;
+  const selectedDraft = loadedDraft || selectedTask?.currentDraft || selectedTask?.lastUsableDraft;
   const isWechatDraft = Boolean(selectedTask && (resolveWechatPlatformKey(selectedTask.channel) === "weixin" || selectedDraft?.platformKey === "weixin"));
 
   const draftTab = selectedTask ? (
     <div className="v5-draft-preview">
+      {draftLoading ? <div className="v5-loading-row"><Spin /><span>正在按需读取正文</span></div> : null}
+      {draftError ? <Alert type="error" showIcon message="正文详情读取失败" description={draftError} /> : null}
       {editing ? <Input.TextArea aria-label="编辑正文" autoSize={{ minRows: 18 }} value={markdown} onChange={(event) => setMarkdown(event.target.value)} /> : <pre>{markdown}</pre>}
       <section aria-labelledby="content-basis-heading">
         <Typography.Title level={5} id="content-basis-heading">内容依据</Typography.Title>
@@ -110,7 +138,7 @@ export function BatchGenerationMatrixTable({
               <Table<ProductionMatrixTask>
                 rowKey="taskId"
                 size="small"
-                pagination={false}
+                pagination={tasks.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
                 tableLayout="fixed"
                 dataSource={tasks}
                 columns={[
@@ -140,7 +168,7 @@ export function BatchGenerationMatrixTable({
         width={isWechatDraft ? 1040 : 720}
         open={Boolean(selectedTask)}
         title={selectedTask ? `正文预览：${selectedTask.title}` : "正文预览"}
-        onClose={() => setSelectedTask(undefined)}
+        onClose={() => { setSelectedTask(undefined); setLoadedDraft(undefined); setDraftError(undefined); }}
         extra={selectedTask ? <Tag color="green">{statusMeta[selectedTask.status].label}</Tag> : null}
       >
         {selectedTask ? (

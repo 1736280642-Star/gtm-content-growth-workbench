@@ -16,7 +16,7 @@ function currentMonth() {
 
 export default function MonthlyReviewPage() {
   const [month, setMonth] = useState(currentMonth);
-  const { review, loading, error, refresh, createProposal } = useMonthlyObservationReview(month);
+  const { review, loading, error, refresh, createProposal } = useMonthlyObservationReview(month, "workbench_operator");
   const [selected, setSelected] = useState<MonthlyQuestionReview>();
   const [creating, setCreating] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();

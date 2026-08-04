@@ -26,7 +26,9 @@ async function fetchWorkspace(month?: string, force = false) {
   if (!force && workspaceCache.has(key)) return workspaceCache.get(key)!;
   if (inFlightRequests.has(key)) return inFlightRequests.get(key)!;
 
-  const request = fetch(`/api/v5/monthly-workspace${month ? `?month=${encodeURIComponent(month)}` : ""}`, {
+  const query = new URLSearchParams({ projection: "compact" });
+  if (month) query.set("month", month);
+  const request = fetch(`/api/v5/monthly-workspace?${query.toString()}`, {
     headers: { accept: "application/json" },
     cache: "no-store"
   })

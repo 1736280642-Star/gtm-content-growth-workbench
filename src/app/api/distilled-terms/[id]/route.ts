@@ -2,7 +2,8 @@ import { readRequestPayload } from "@/lib/api-utils";
 import { archiveDistilledTerm, deleteDistilledTerm } from "@/lib/workbench-store";
 import { NextResponse } from "next/server";
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   const payload = await readRequestPayload(request);
   const action = typeof payload.action === "string" ? payload.action : "archive";
 
@@ -17,13 +18,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     );
   }
 
-  const result = archiveDistilledTerm(params.id);
+  const result = archiveDistilledTerm(routeParams.id);
 
   return NextResponse.json(result, { status: result.ok ? 200 : 404 });
 }
 
-export function DELETE(_request: Request, { params }: { params: { id: string } }) {
-  const result = deleteDistilledTerm(params.id);
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
+  const result = deleteDistilledTerm(routeParams.id);
 
   return NextResponse.json(result, { status: result.ok ? 200 : 404 });
 }

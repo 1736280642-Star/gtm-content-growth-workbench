@@ -1,0 +1,16 @@
+.git
+.next
+.next-*
+node_modules
+coverage
+review
+保存
+backups
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+data/*.tmp
+data/*.json.*.tmp
+publish-extension/runtime-config.js

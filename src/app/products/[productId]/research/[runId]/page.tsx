@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowLeftOutlined, ExportOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Progress, Space, Table, Tabs, Tag, Typography } from "antd";
+import { ArrowLeftOutlined, ExportOutlined, InboxOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Progress, Space, Table, Tabs, Tag, Typography, message } from "antd";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -10,10 +10,13 @@ import { GeoStructuredData } from "@/components/geo/GeoStructuredData";
 import { PageErrorState } from "@/components/PageErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { callJsonApi } from "@/lib/client-api";
+import { useWorkbenchSnapshot } from "@/lib/client-state";
+import { createV5WritePayload } from "@/lib/v5-client";
 import type {
   GeoResearchEvidence,
   GeoResearchFinding,
   GeoResearchFindingType,
+  GeoResearchQuestionCatalogItem,
   GeoResearchRunWorkspace,
   GeoResearchTask,
   GeoResearchTaskStatus,
@@ -74,6 +77,10 @@ export default function GeoResearchRunPage() {
   const [data, setData] = useState<RunResponse>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<React.Key[]>([]);
+  const [importingQuestions, setImportingQuestions] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
+  const { state: { workspaceSetting } } = useWorkbenchSnapshot();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -99,9 +106,40 @@ export default function GeoResearchRunPage() {
     () => workspace?.evidence.filter((item) => Boolean(item.sourceUrl)) || [],
     [workspace?.evidence]
   );
+  const questionCatalog = workspace?.questionCatalog;
+  const selectableQuestionIds = useMemo(
+    () => questionCatalog?.items.filter((item) => item.sources.length > 0 && item.reviewStatus === "candidate").map((item) => item.findingId) || [],
+    [questionCatalog?.items]
+  );
+
+  async function importQuestionCatalog() {
+    if (!selectedQuestionIds.length) return;
+    setImportingQuestions(true);
+    try {
+      const questionPool = await callJsonApi<{ data: { stateVersion: number } }>("/api/v5/questions", { cache: "no-store" });
+      const write = createV5WritePayload(workspaceSetting.currentRole, questionPool.data.stateVersion, "人工确认 GEO 真实用户问题目录并收录到问题池");
+      await callJsonApi(`/api/v5/products/${encodeURIComponent(productId)}/research-runs/${encodeURIComponent(runId)}/question-catalog`, {
+        method: "POST",
+        headers: { "x-idempotency-key": write.idempotencyKey },
+        body: JSON.stringify({
+          ...write,
+          expectedQuestionPoolVersion: questionPool.data.stateVersion,
+          findingIds: selectedQuestionIds
+        })
+      });
+      messageApi.success(`已将 ${selectedQuestionIds.length} 个真实用户问题收录到问题池`);
+      setSelectedQuestionIds([]);
+      await refresh();
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "问题目录收录失败");
+    } finally {
+      setImportingQuestions(false);
+    }
+  }
 
   return (
     <>
+      {contextHolder}
       <PageHeader
         title={data ? `${data.product.displayName} · 研究运行 v${workspace?.run.runVersion}` : "GEO 研究运行"}
         subtitle="这里展示本次运行真正执行了什么、引用了哪些公开网页、发现了哪些问题和竞品。"
@@ -139,8 +177,57 @@ export default function GeoResearchRunPage() {
 
           <Card bordered={false}>
             <Tabs
-              defaultActiveKey="findings"
+              defaultActiveKey="question-catalog"
               items={[
+                {
+                  key: "question-catalog",
+                  label: `用户问题目录 ${questionCatalog?.totalCount || 0}`,
+                  children: questionCatalog ? (
+                    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                      <Alert
+                        showIcon
+                        type={questionCatalog.liveSearchVerified ? "info" : "warning"}
+                        message={questionCatalog.liveSearchVerified ? "目录问题均来自本次联网研究" : "目录仍在采集，暂不能写入问题池"}
+                        description="公开网页只证明用户确实在问，不证明产品答案成立；收录后默认进入观察状态，待产品知识证据补齐后才能用于月度计划。"
+                      />
+                      <Space wrap>
+                        <Button
+                          icon={<InboxOutlined />}
+                          type="primary"
+                          disabled={!selectedQuestionIds.length || !questionCatalog.liveSearchVerified}
+                          loading={importingQuestions}
+                          onClick={() => void importQuestionCatalog()}
+                        >确认并收录问题池</Button>
+                        <Button
+                          disabled={!selectableQuestionIds.length}
+                          onClick={() => setSelectedQuestionIds(selectableQuestionIds)}
+                        >选择全部未收录问题</Button>
+                        <Typography.Text type="secondary">
+                          已验证 {questionCatalog.verifiedCount} · 已收录 {questionCatalog.importedCount} · {questionCatalog.modules.map((item) => `${item.module} ${item.count}`).join(" / ")}
+                        </Typography.Text>
+                      </Space>
+                      <Table<GeoResearchQuestionCatalogItem>
+                        rowKey="findingId"
+                        size="small"
+                        pagination={{ pageSize: 20 }}
+                        dataSource={questionCatalog.items}
+                        rowSelection={{
+                          selectedRowKeys: selectedQuestionIds,
+                          onChange: setSelectedQuestionIds,
+                          getCheckboxProps: (record) => ({ disabled: record.sources.length === 0 || record.reviewStatus !== "candidate" })
+                        }}
+                        locale={{ emptyText: "联网问题发现任务尚未形成可核验目录" }}
+                        columns={[
+                          { title: "模块", dataIndex: "module", width: 170, render: (value: string) => <Tag>{value}</Tag> },
+                          { title: "真实用户问题", dataIndex: "question", render: (value: string, record) => <div className="v5-table-stack"><strong>{value}</strong><span>{record.audience || "通用用户"} · {record.intent}</span></div> },
+                          { title: "优先级", dataIndex: "priority", width: 90, render: (value: number) => `${Math.round(value * 100)}%` },
+                          { title: "来源", dataIndex: "sources", width: 180, render: (sources: GeoResearchQuestionCatalogItem["sources"]) => <Space direction="vertical" size={2}>{sources.slice(0, 2).map((source) => <a key={source.evidenceId} href={source.url} target="_blank" rel="noreferrer">{source.title || new URL(source.url).hostname} <ExportOutlined /></a>)}</Space> },
+                          { title: "状态", dataIndex: "reviewStatus", width: 100, render: (value: string) => <Tag color={value === "confirmed" ? "green" : "gold"}>{value === "confirmed" ? "已收录" : "待确认"}</Tag> }
+                        ]}
+                      />
+                    </Space>
+                  ) : "问题目录尚未生成"
+                },
                 {
                   key: "findings",
                   label: `研究发现 ${workspace.findings.length}`,

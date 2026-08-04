@@ -82,7 +82,7 @@ test("rollback route is explicit and production writes fail closed", () => {
   const service = fs.readFileSync(path.join(root, "src/lib/v5/rag/rag-service.ts"), "utf8");
   const repository = fs.readFileSync(path.join(root, "src/lib/v5/rag/rag-repository.ts"), "utf8");
   assert.match(route, /readRagPayload\(request\)/);
-  assert.match(route, /rollbackRagIndexSnapshot\(params\.id,[\s\S]*readRagActor\(payload\)\)/);
+  assert.match(route, /rollbackRagIndexSnapshot\((?:params|routeParams)\.id,[\s\S]*readRagActor\(payload\)\)/);
   assert.match(api, /NODE_ENV === "production"/);
   assert.match(api, /authorization_not_configured/);
   assert.match(service, /current\.status !== "active"/);

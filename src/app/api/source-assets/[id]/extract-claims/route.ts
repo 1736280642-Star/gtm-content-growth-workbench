@@ -7,11 +7,12 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const claims = Array.isArray(payload.claims) ? payload.claims as V5ClaimWriteInput[] : [];
-    if (claims.some((claim) => claim.sourceId !== params.id)) {
+    if (claims.some((claim) => claim.sourceId !== routeParams.id)) {
       return NextResponse.json({ ok: false, status: "failed", code: "source_mismatch", message: "Claim sourceId 与路由来源不一致。" }, { status: 400 });
     }
     const result = await extractV5ProductClaims({

@@ -2,6 +2,7 @@
 
 import { Alert, Button, Card, Input, Modal, Select, Space, Tag, message } from "antd";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
@@ -81,7 +82,8 @@ function inferKeepReasonCategory(reason: string): DraftRiskKeepReasonCategory {
   return "uncategorized";
 }
 
-export default function DraftReviewPage({ params }: { params: { taskId: string } }) {
+export default function DraftReviewPage() {
+  const params = useParams<{ taskId: string }>();
   const {
     state: { drafts, tasks },
     loading,

@@ -12,6 +12,25 @@ import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
 import { hasV5GovernanceDatabaseConfig } from "./knowledge-governance-repository";
 import { readFormalProductionQueue } from "./single-article-production-repository";
 
+function compactProductionTask(task: ProductionMatrixTask): ProductionMatrixTask {
+  const compactDraft = (draft: ProductionMatrixTask["currentDraft"]) => draft ? {
+    ...draft,
+    markdown: "",
+    bodyIncluded: false,
+    evidenceReferences: undefined
+  } : undefined;
+  return { ...task, currentDraft: compactDraft(task.currentDraft), lastUsableDraft: compactDraft(task.lastUsableDraft) };
+}
+
+/** Keeps list/status data while removing article bodies and evidence excerpts. */
+export function compactMonthlyWorkspace(model: MonthlyWorkspaceReadModel): MonthlyWorkspaceReadModel {
+  return {
+    ...model,
+    productionTasks: model.productionTasks.map(compactProductionTask),
+    plan: model.plan ? { ...model.plan, matrixTasks: model.plan.matrixTasks?.map(compactProductionTask) } : null
+  };
+}
+
 function readGoalText(plan: V5MonthlyPlan, key: string) {
   const value = plan.goals[key];
   return typeof value === "string" ? value : "";
@@ -58,7 +77,9 @@ function toWorkspacePlanRecord(plan: V5MonthlyPlan, rulePackages: RulePackageOpt
 }
 
 function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string): ProductionMatrixTask {
-  const status: ProductionMatrixTask["status"] = item.scheduleStatus === "active"
+  const status: ProductionMatrixTask["status"] = item.displayStatus === "published"
+    ? "published"
+    : item.scheduleStatus === "active"
     ? "scheduled"
     : item.draftId
       ? "available"
@@ -100,6 +121,9 @@ function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string
     platformAccount: item.platformAccount,
     formal: true,
     formalDraftId: item.draftId,
+    ctaValidationStatus: item.hardRuleStatus === "passed" ? "passed" : item.hardRuleStatus === "blocked" ? "failed" : "pending",
+    generationProgress: item.generationStatus === "generating" ? 50 : item.draftId ? 100 : 0,
+    failureReason: item.failureReason,
     updatedAt: new Date().toISOString()
   };
 }

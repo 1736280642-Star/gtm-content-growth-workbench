@@ -12,12 +12,13 @@ export const runtime = "nodejs";
 
 export async function POST(
   request: Request,
-  { params }: { params: { productId: string } }
+  { params }: { params: Promise<{ productId: string }> }
 ) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await createGeoResearchProjectForProduct({
-      productId: params.productId,
+      productId: routeParams.productId,
       expressionFocus: readString(payload.expressionFocus) || "",
       forbiddenFocus: readStringArray(payload.forbiddenFocus),
       researchMarkets: readStringArray(payload.researchMarkets),
@@ -36,12 +37,13 @@ export async function POST(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { productId: string } }
+  { params }: { params: Promise<{ productId: string }> }
 ) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await updateGeoResearchProject({
-      productId: params.productId,
+      productId: routeParams.productId,
       expectedProjectVersion: typeof payload.expectedProjectVersion === "number"
         ? payload.expectedProjectVersion
         : Number.NaN,

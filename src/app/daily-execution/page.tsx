@@ -51,6 +51,8 @@ function toPublishStatus(item: BatchQueueItem): PublishStatus {
 export default function DailyExecutionPage() {
   const [messageApi, messageContext] = message.useMessage();
   const [dateKey, setDateKey] = useState<DateKey>("today");
+  const [channelFilter, setChannelFilter] = useState<string>();
+  const [statusFilter, setStatusFilter] = useState<PublishStatus>();
   const [selectedPublishItem, setSelectedPublishItem] = useState<BatchQueueItem>();
   const [publishStatus, setPublishStatus] = useState<"published" | "failed" | "manual_takeover">("published");
   const [publicUrl, setPublicUrl] = useState("");
@@ -77,7 +79,9 @@ export default function DailyExecutionPage() {
         failureReason: item.failureReason || ""
       };
     }), [dates, workspace?.batchQueueItems]);
-  const visibleItems = dailyExecutionItems.filter((item) => item.dateKey === dateKey);
+  const dateItems = dailyExecutionItems.filter((item) => item.dateKey === dateKey);
+  const visibleItems = dateItems.filter((item) => (!channelFilter || item.channel === channelFilter) && (!statusFilter || item.status === statusFilter));
+  const channelOptions = Array.from(new Set(dateItems.map((item) => item.channel))).sort();
   const activeDate = dates[dateKey];
   const recentFailureCount = dailyExecutionItems.filter((item) => ["failed", "manual_takeover"].includes(item.status)).length;
   const queue = workspace?.batchQueueItems || [];
@@ -151,28 +155,34 @@ export default function DailyExecutionPage() {
         ]}
       />
 
-      <Card title={`${dateLabels[dateKey]} · ${activeDate}`} size="small">
+      <Card title={`${dateLabels[dateKey]} · ${activeDate}`} size="small" extra={<Space wrap>
+        <Select aria-label="渠道筛选" allowClear value={channelFilter} onChange={setChannelFilter} placeholder="全部渠道" style={{ width: 140 }} options={channelOptions.map((value) => ({ value, label: value }))} />
+        <Select aria-label="发布状态筛选" allowClear value={statusFilter} onChange={setStatusFilter} placeholder="全部发布状态" style={{ width: 150 }} options={[
+          { value: "scheduled", label: "已排程" }, { value: "waiting", label: "等待发布" }, { value: "publishing", label: "发布中" }, { value: "published", label: "已发布" }, { value: "failed", label: "发布失败" }, { value: "manual_takeover", label: "人工接管" }
+        ]} />
+        <Button onClick={() => { setChannelFilter(undefined); setStatusFilter(undefined); }}>清除筛选</Button>
+      </Space>}>
         <Table
+          className="v5-daily-execution-table"
           rowKey="id"
           size="small"
+          tableLayout="fixed"
           pagination={false}
           dataSource={visibleItems}
           locale={{ emptyText: `${dateLabels[dateKey]}没有发布任务` }}
           columns={[
-            { title: "计划时间", dataIndex: "time", width: 100 },
+            { title: "发布日期", key: "publishDate", width: 120, render: (_, record) => <div className="v5-date-cell"><strong>{record.date.slice(5)}</strong><span>{record.time}</span></div> },
             { title: "标题", dataIndex: "title", render: (value) => <strong className="v5-title-cell">{value}</strong> },
-            { title: "产品", dataIndex: "product" },
-            { title: "渠道", dataIndex: "channel" },
-            { title: "实际状态", dataIndex: "status", render: (value: DailyExecutionItem["status"]) => <PublishStatusTag status={value} /> },
-            { title: "发布 URL", key: "publicUrl", render: (_, record) => queueById.get(record.id)?.publicUrl ? <a href={queueById.get(record.id)?.publicUrl} target="_blank" rel="noreferrer">打开</a> : <span className="muted">待回填</span> },
-            { title: "失败原因", dataIndex: "failureReason", render: (value) => value || <span className="muted">无</span> },
+            { title: "产品", dataIndex: "product", width: 160 },
+            { title: "渠道", dataIndex: "channel", width: 100 },
+            { title: "状态", dataIndex: "status", width: 110, render: (value: DailyExecutionItem["status"]) => <PublishStatusTag status={value} /> },
             {
-              title: "处理",
+              title: "操作",
               key: "action",
-              width: 170,
+              width: 100,
               render: (_, record: DailyExecutionItem) => (
-                <Space size={4} wrap>
-                  <Link href="/monthly-matrix/batch-generation"><Button size="small">查看</Button></Link>
+                <Space size={4} direction="vertical">
+                  {queueById.get(record.id)?.publicUrl ? <a href={queueById.get(record.id)?.publicUrl} target="_blank" rel="noreferrer">查看结果</a> : <Link href="/monthly-matrix/batch-generation">查看正文</Link>}
                   {record.status !== "published" ? <Button size="small" type="primary" onClick={() => {
                     const item = queueById.get(record.id);
                     if (!item) return;

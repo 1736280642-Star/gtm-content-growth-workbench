@@ -6,20 +6,22 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
-    return NextResponse.json(getV5Question(params.id));
+    return NextResponse.json(getV5Question(routeParams.id));
   } catch (error) {
     return v5FoundationErrorResponse(error);
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     return NextResponse.json(updateV5Question({
       ...readV5WriteEnvelope(payload),
-      questionId: params.id,
+      questionId: routeParams.id,
       text: readString(payload.text) || "",
       product: readString(payload.product),
       entities: Array.isArray(payload.entities) ? payload.entities.filter((item): item is string => typeof item === "string") : undefined,

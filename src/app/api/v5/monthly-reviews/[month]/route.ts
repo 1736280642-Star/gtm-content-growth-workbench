@@ -3,9 +3,10 @@ import { getMonthlyReview } from "@/lib/v5/monthly-review-service";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_: Request, { params }: { params: { month: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ month: string }> }) {
+  const routeParams = await params;
   try {
-    return observationOk(await getMonthlyReview(params.month));
+    return observationOk(await getMonthlyReview(routeParams.month));
   } catch (error) {
     return observationError(error, "MONTHLY_REVIEW_READ_FAILED", "问题级月度复盘读取失败，请检查上游适配器。");
   }

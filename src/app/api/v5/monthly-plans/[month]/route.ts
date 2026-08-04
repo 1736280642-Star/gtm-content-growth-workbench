@@ -4,10 +4,11 @@ import { parseSaveMonthlyPlanRequest, saveV5MonthlyPlan, V5ServiceError } from "
 
 export const dynamic = "force-dynamic";
 
-export async function PUT(request: NextRequest, { params }: { params: { month: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ month: string }> }) {
+  const routeParams = await params;
   try {
     const body = parseSaveMonthlyPlanRequest(await request.json());
-    const data = await saveV5MonthlyPlan(params.month, body, request.headers.get("x-idempotency-key"));
+    const data = await saveV5MonthlyPlan(routeParams.month, body, request.headers.get("x-idempotency-key"));
     return NextResponse.json<V5ApiEnvelope<V5MonthlyPlanRecord>>({ ok: true, data });
   } catch (error) {
     const serviceError = error instanceof V5ServiceError ? error : new V5ServiceError(500, "V5_MONTHLY_PLAN_SAVE_FAILED", "月度计划保存失败，请稍后重试。");

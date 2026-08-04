@@ -7,13 +7,14 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string; gate: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string; gate: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await evaluateV5GovernanceRunGate({
       ...readV5WriteEnvelope(payload),
-      runId: params.id,
-      gate: params.gate.toUpperCase() as V5GateCode,
+      runId: routeParams.id,
+      gate: routeParams.gate.toUpperCase() as V5GateCode,
       gateInput: payload.input,
       evaluatorVersion: readString(payload.evaluatorVersion)
     });

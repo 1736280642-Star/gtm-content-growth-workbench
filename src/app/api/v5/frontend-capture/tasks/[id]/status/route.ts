@@ -2,10 +2,11 @@ import type { CaptureFailureDetail, FrontendCaptureTaskStatus, V5MutationContext
 import { observationError, observationOk, readObservationPayload } from "@/lib/v5/observation-api";
 import { updateCaptureTaskStatus } from "@/lib/v5/observation-service";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readObservationPayload(request);
-    return observationOk(await updateCaptureTaskStatus(params.id, payload as unknown as V5MutationContext & {
+    return observationOk(await updateCaptureTaskStatus(routeParams.id, payload as unknown as V5MutationContext & {
       status: FrontendCaptureTaskStatus;
       note: string;
       failure?: CaptureFailureDetail;

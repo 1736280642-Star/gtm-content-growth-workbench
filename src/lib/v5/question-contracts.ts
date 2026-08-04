@@ -105,7 +105,7 @@ export interface V5QuestionDecisionException {
 
 export interface V5QuestionSignalInput {
   text: string;
-  source: "site_search" | "sales_question" | "ai_observation" | "published_content" | "manual";
+  source: "site_search" | "sales_question" | "ai_observation" | "published_content" | "geo_research" | "manual";
   sourceId: string;
   /** Source quality is retained for traceability only and never determines question status. */
   sourceConfidence?: number;

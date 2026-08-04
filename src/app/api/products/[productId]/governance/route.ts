@@ -5,9 +5,10 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, { params }: { params: { productId: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ productId: string }> }) {
+  const routeParams = await params;
   try {
-    return NextResponse.json(await getV5ProductGovernanceSummary(params.productId));
+    return NextResponse.json(await getV5ProductGovernanceSummary(routeParams.productId));
   } catch (error) {
     return v5GovernanceErrorResponse(error);
   }

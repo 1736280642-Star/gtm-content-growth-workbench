@@ -34,7 +34,7 @@ import {
 import { readV5FoundationSnapshot } from "./foundation-repository";
 import { readV5MonthlyState, updateV5MonthlyState } from "./monthly-repository";
 import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
-import { persistFormalApprovedStrategy, persistFormalMonthlyPlan, saveFormalPublishResult, scheduleFormalProductionTask } from "./monthly-execution-repository";
+import { persistFormalApprovedStrategy, persistFormalMonthlyPlan, removeFormalProductionTasks, saveFormalPublishResult, scheduleFormalProductionTask } from "./monthly-execution-repository";
 import { readV5MonthlyPlanRecord } from "./monthly-plan-repository";
 import { calculateExpandedDeliverableCount, evaluateStrategyPreflight, expandApprovedStrategyTasks } from "./monthly-strategy-policy";
 
@@ -257,7 +257,8 @@ export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<
       ...Object.keys(monthlyState.strategyRows),
       ...Object.keys(monthlyState.batchQueueItems),
       ...Object.keys(monthlyState.exceptionItems),
-      ...Object.keys(monthlyState.scheduleDraftItems)
+      ...Object.keys(monthlyState.scheduleDraftItems),
+      ...Object.keys(monthlyState.generationBatches)
     ])
   );
   const month = selectMonth(requestedMonth, availableMonths);
@@ -266,8 +267,9 @@ export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<
   const batchQueueItems = monthlyState.batchQueueItems[month] || [];
   const exceptionItems = monthlyState.exceptionItems[month] || [];
   const scheduleDraftItems = monthlyState.scheduleDraftItems[month] || [];
+  const generationBatches = monthlyState.generationBatches[month] || [];
   const hasPersistedMonthlyData = Boolean(
-    plan || strategyRows.length || batchQueueItems.length || exceptionItems.length || scheduleDraftItems.length
+    plan || strategyRows.length || batchQueueItems.length || exceptionItems.length || scheduleDraftItems.length || generationBatches.length
   );
   const rulePackages = buildRulePackages(reference.state, reference.source);
   const targetQuestions = buildTargetQuestions(reference.state, reference.source, month);
@@ -294,6 +296,7 @@ export async function getMonthlyWorkspaceBase(requestedMonth?: string): Promise<
     typeMatchRun,
     strategyPackage: plan?.strategyPackage || null,
     productionTasks: plan?.matrixTasks || [],
+    generationBatches,
     source: {
       monthlyData: hasPersistedMonthlyData ? "persisted" : "empty",
       referenceData: reference.source
@@ -524,7 +527,7 @@ export async function saveV5MonthlyPlan(
 
     state.plans[month] = record;
     await persistFormalMonthlyPlan(record, {
-      actorId: `local-${role}`, actorRole: role, actorType: "human", auditReason: "保存月度计划正式草稿"
+      actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: "保存月度计划正式草稿"
     });
     state.auditLog.unshift({
       id: randomUUID(),
@@ -701,5 +704,86 @@ export async function scheduleV5ProductionTask(month: string, taskId: string, re
     plan.updatedBy = actor;
     state.auditLog.unshift({ id: randomUUID(), event: "schedule_saved", month, actor, version: plan.version, createdAt: now, auditReason: request.auditReason, objectId: taskId, summary: { scheduledAt: request.scheduledAt, platformAccount: request.platformAccount } });
     return plan;
+  });
+}
+
+export async function removeV5StrategyItem(month: string, quotaRuleId: string, request: StrategyMutationRequest) {
+  assertMonth(month);
+  assertStrategyMutationRequest(request);
+  const actor = await getWritableActor();
+  return updateV5MonthlyState((state) => {
+    const plan = state.plans[month];
+    const strategy = plan?.strategyPackage;
+    if (!plan || !strategy) throw new V5ServiceError(404, "STRATEGY_NOT_FOUND", "当前月份没有可删除的内容策略项。");
+    if (plan.version !== request.expectedVersion) throw new V5ServiceError(409, "MONTHLY_PLAN_VERSION_CONFLICT", "月度计划已更新，请刷新后重试。");
+    const rule = strategy.quotaRules.find((item) => item.quotaRuleId === quotaRuleId);
+    if (!rule) throw new V5ServiceError(404, "STRATEGY_ITEM_NOT_FOUND", "策略项不存在或已被移除。");
+    const affectedTasks = (plan.matrixTasks || []).filter((task) => task.quotaRuleId === quotaRuleId);
+    const publishedCount = affectedTasks.filter((task) => task.status === "published").length;
+    const versioned = ["approved", "partially_approved"].includes(strategy.status) || affectedTasks.length > 0;
+    const now = new Date().toISOString();
+    if (versioned) state.strategyHistory[month] = [strategy, ...(state.strategyHistory[month] || [])];
+    plan.strategyPackage = {
+      ...strategy,
+      strategyPackageId: versioned ? `strategy-${month}-${randomUUID()}` : strategy.strategyPackageId,
+      version: versioned ? strategy.version + 1 : strategy.version,
+      status: "draft",
+      targetDeliverableCount: Math.max(0, strategy.targetDeliverableCount - rule.expandedDeliverableCount),
+      quotaRules: strategy.quotaRules.filter((item) => item.quotaRuleId !== quotaRuleId),
+      preflightResults: strategy.preflightResults.filter((item) => item.quotaRuleId !== quotaRuleId),
+      approvedAt: undefined,
+      approvedBy: undefined,
+      approvalReason: undefined,
+      updatedAt: now
+    };
+    plan.config = { ...plan.config, targetDeliverableCount: plan.strategyPackage.targetDeliverableCount, quotaRules: plan.strategyPackage.quotaRules, questionVersionIds: Array.from(new Set(plan.strategyPackage.quotaRules.map((item) => item.questionVersionId))) };
+    plan.version += 1; plan.updatedAt = now; plan.updatedBy = actor;
+    state.auditLog.unshift({ id: randomUUID(), event: "strategy_item_removed", month, actor, version: plan.version, createdAt: now, auditReason: request.auditReason, objectId: quotaRuleId, summary: { mode: versioned ? "next_version" : "direct", affectedTaskCount: affectedTasks.length, publishedCount } });
+    return { mode: versioned ? "next_version" : "direct", affectedTaskCount: affectedTasks.length, publishedCount };
+  });
+}
+
+export async function removeV5ProductionTasks(month: string, taskIds: string[], request: StrategyMutationRequest) {
+  assertMonth(month);
+  assertStrategyMutationRequest(request);
+  const normalizedIds = Array.from(new Set(taskIds.map(String).filter(Boolean)));
+  if (!normalizedIds.length) throw new V5ServiceError(422, "TASK_IDS_REQUIRED", "至少选择 1 篇文章任务。");
+  const actor = await getWritableActor();
+  const formalPlan = await readV5MonthlyPlanRecord(month);
+  if (formalPlan) {
+    const result = await removeFormalProductionTasks({
+      month,
+      taskIds: normalizedIds,
+      expectedVersion: request.expectedVersion,
+      actor: { actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason }
+    });
+    await updateV5MonthlyState((state) => {
+      const plan = state.plans[month];
+      if (!plan) return;
+      const removed = (plan.matrixTasks || []).filter((task) => normalizedIds.includes(task.taskId));
+      state.removedTasks[month] = [...removed, ...(state.removedTasks[month] || [])];
+      plan.matrixTasks = (plan.matrixTasks || []).filter((task) => !normalizedIds.includes(task.taskId));
+      plan.version = result.planVersion;
+      plan.updatedAt = new Date().toISOString();
+      plan.updatedBy = actor;
+      state.auditLog.unshift({ id: randomUUID(), event: "production_tasks_removed", month, actor, version: plan.version, createdAt: plan.updatedAt, auditReason: request.auditReason, summary: { taskIds: normalizedIds, archived: result.archived, deleted: result.deleted, formal: true } });
+    });
+    const target = Number(formalPlan.workspaceConfig?.targetDeliverableCount || formalPlan.publishFrequency?.targetDeliverableCount || 0);
+    return { archived: result.archived, deleted: result.deleted, quotaGap: Math.max(0, target - result.remaining) };
+  }
+  return updateV5MonthlyState((state) => {
+    const plan = state.plans[month];
+    if (!plan) throw new V5ServiceError(404, "MONTHLY_PLAN_NOT_FOUND", "当前月份没有可操作的月度计划。");
+    if (plan.version !== request.expectedVersion) throw new V5ServiceError(409, "MONTHLY_PLAN_VERSION_CONFLICT", "月度计划已更新，请刷新后重试。");
+    const removed = (plan.matrixTasks || []).filter((task) => normalizedIds.includes(task.taskId));
+    if (!removed.length) throw new V5ServiceError(404, "PRODUCTION_TASK_NOT_FOUND", "所选文章任务不存在或已删除。");
+    const archived = removed.filter((task) => task.status === "published").length;
+    state.removedTasks[month] = [...removed, ...(state.removedTasks[month] || [])];
+    plan.matrixTasks = (plan.matrixTasks || []).filter((task) => !normalizedIds.includes(task.taskId));
+    const now = new Date().toISOString();
+    plan.version += 1; plan.updatedAt = now; plan.updatedBy = actor;
+    const quotaGap = Math.max(0, Number(plan.strategyPackage?.targetDeliverableCount || 0) - plan.matrixTasks.length);
+    state.auditLog.unshift({ id: randomUUID(), event: "production_tasks_removed", month, actor, version: plan.version, createdAt: now, auditReason: request.auditReason, summary: { taskIds: normalizedIds, archived, deleted: removed.length - archived, quotaGap, scheduleCancelled: removed.filter((task) => task.status === "scheduled").length, draftInvalidated: removed.filter((task) => Boolean(task.currentDraft || task.lastUsableDraft || task.formalDraftId)).length } });
+    return { archived, deleted: removed.length - archived, quotaGap };
   });
 }

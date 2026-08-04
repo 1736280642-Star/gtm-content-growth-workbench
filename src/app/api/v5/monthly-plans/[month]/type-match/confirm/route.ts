@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ArticleTypeServiceError, confirmQuestionTypeMatch, parseQuestionTypeMatchConfirmRequest } from "@/lib/v5/article-type-service";
 
-export async function POST(request: NextRequest, { params }: { params: { month: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ month: string }> }) {
+  const routeParams = await params;
   try {
-    const data = await confirmQuestionTypeMatch(params.month, parseQuestionTypeMatchConfirmRequest(await request.json()), request.headers.get("x-idempotency-key"));
+    const data = await confirmQuestionTypeMatch(routeParams.month, parseQuestionTypeMatchConfirmRequest(await request.json()), request.headers.get("x-idempotency-key"));
     return NextResponse.json({ ok: true, data });
   } catch (error) {
     const detail = error instanceof ArticleTypeServiceError ? error : new ArticleTypeServiceError(500, "TYPE_MATCH_CONFIRM_FAILED", "内容类型匹配确认失败，请稍后重试。" );

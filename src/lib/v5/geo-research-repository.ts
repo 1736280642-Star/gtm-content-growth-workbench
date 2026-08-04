@@ -847,6 +847,7 @@ function buildProviderFindings(
         ...sourceUrls(item.citedUrls)
       ];
       const evidenceIds = urls.flatMap((url) => evidenceIdsByUrl.get(url) || []);
+      if (spec.findingType === "question_opportunity" && evidenceIds.length === 0) continue;
       findings.push({
         findingType: spec.findingType,
         title: findingTitle(item, spec.fallback),
@@ -1110,6 +1111,70 @@ export async function persistGeoResearchProviderResult(input: {
       findingCount: findings.length,
       blueprintVersionId
     };
+  });
+}
+
+export async function confirmGeoResearchQuestionFindingsRecord(input: {
+  productId: string;
+  runId: string;
+  findingIds: string[];
+  catalogId: string;
+  idempotencyKey: string;
+  actor: V5GovernanceActor;
+}) {
+  const findingIds = [...new Set(input.findingIds)].sort();
+  const requestHash = hashV5GovernancePayload({
+    productId: input.productId,
+    runId: input.runId,
+    findingIds,
+    catalogId: input.catalogId
+  });
+  return withV5GovernanceTransaction(async (connection) => {
+    const replay = await readV5Idempotency(connection, input.idempotencyKey, requestHash);
+    if (replay?.resourceId) {
+      return { replayed: true, catalogId: replay.resourceId, confirmedCount: findingIds.length };
+    }
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT f.id, f.finding_type, f.review_status
+       FROM geo_research_finding f
+       JOIN geo_research_run r ON r.id = f.run_id
+       WHERE f.run_id = ? AND r.product_id = ? AND f.id IN (?)
+       FOR UPDATE`,
+      [input.runId, input.productId, findingIds]
+    );
+    if (rows.length !== findingIds.length || rows.some((row) => String(row.finding_type) !== "question_opportunity")) {
+      throw new V5GovernanceRepositoryError(
+        "question_catalog_finding_mismatch",
+        "待收录项包含不存在或不属于该产品研究运行的问题发现。",
+        409,
+        "刷新研究运行后重新选择问题。"
+      );
+    }
+    await connection.query(
+      `UPDATE geo_research_finding
+       SET review_status = 'confirmed'
+       WHERE run_id = ? AND id IN (?) AND finding_type = 'question_opportunity'`,
+      [input.runId, findingIds]
+    );
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "geo_question_catalog_imported_to_question_pool",
+      objectType: "geo_question_catalog",
+      objectId: input.catalogId,
+      relatedSourceIds: findingIds,
+      afterSummary: { productId: input.productId, runId: input.runId, confirmedCount: findingIds.length },
+      correlationId: input.runId
+    });
+    await writeV5Idempotency(connection, {
+      idempotencyKey: input.idempotencyKey,
+      operationType: "confirm_geo_question_catalog",
+      requestHash,
+      resourceType: "geo_question_catalog",
+      resourceId: input.catalogId,
+      responseStatus: "confirmed",
+      responseSummary: { confirmedCount: findingIds.length }
+    });
+    return { replayed: false, catalogId: input.catalogId, confirmedCount: findingIds.length };
   });
 }
 

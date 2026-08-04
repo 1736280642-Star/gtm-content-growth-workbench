@@ -2,11 +2,12 @@ import type { V5MutationContext } from "@/lib/v5/observation-contracts";
 import { observationError, observationOk, readObservationPayload } from "@/lib/v5/observation-api";
 import { reviewSiteAuditFinding } from "@/lib/v5/site-audit-service";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     return observationOk(
       await reviewSiteAuditFinding(
-        params.id,
+        routeParams.id,
         (await readObservationPayload(request)) as unknown as V5MutationContext & { decision: "resolved" | "ignored"; note: string }
       )
     );

@@ -2,10 +2,11 @@ import type { CreateNextMonthProposalRequest } from "@/lib/v5/monthly-review-con
 import { observationError, observationOk, readObservationPayload } from "@/lib/v5/observation-api";
 import { createNextMonthProposal } from "@/lib/v5/monthly-review-service";
 
-export async function POST(request: Request, { params }: { params: { month: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ month: string }> }) {
+  const routeParams = await params;
   try {
     return observationOk(
-      await createNextMonthProposal(params.month, (await readObservationPayload(request)) as unknown as CreateNextMonthProposalRequest),
+      await createNextMonthProposal(routeParams.month, (await readObservationPayload(request)) as unknown as CreateNextMonthProposalRequest),
       201
     );
   } catch (error) {

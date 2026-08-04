@@ -5,12 +5,13 @@ import { updateV5KnowledgeActionItem } from "@/lib/v5/knowledge-workspace-servic
 import type { V5KnowledgeActionStatus } from "@/lib/v5/knowledge-workspace-contracts";
 import { NextResponse } from "next/server";
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     return NextResponse.json(updateV5KnowledgeActionItem({
       ...readV5WriteEnvelope(payload),
-      actionItemId: params.id,
+      actionItemId: routeParams.id,
       status: readString(payload.status) as V5KnowledgeActionStatus
     }));
   } catch (error) {

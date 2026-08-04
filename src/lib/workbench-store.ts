@@ -6697,6 +6697,71 @@ function findOrCreatePublishRecordForSchedule(state: WorkbenchState, draft: Arti
   return record;
 }
 
+export interface ApprovedPublishContentInput {
+  sourceDraftId: string;
+  sourceTaskId: string;
+  title: string;
+  markdown: string;
+  summary?: string;
+  platform: DirectPublishPlatformKey;
+  scheduledAt?: string;
+  matrixItemId?: string;
+}
+
+/**
+ * Adapts an approved V5 draft into the durable publishing ledger. The source
+ * draft remains authoritative; this immutable snapshot exists only so the
+ * existing Worker can execute every publishing source through one lifecycle.
+ */
+export function createPublishSchedulesFromApprovedContent(
+  input: ApprovedPublishContentInput
+): WorkflowResult<{ schedules: PublishSchedule[]; record: PublishRecord }> {
+  const title = input.title.trim();
+  const markdown = input.markdown.trim();
+  if (!input.sourceDraftId.trim() || !input.sourceTaskId.trim() || !title || !markdown) {
+    return { ok: false, status: "pending_input", message: "Approved source draft, task, title and content are required." };
+  }
+
+  const state = readWorkbenchState();
+  const channelByPlatform: Record<DirectPublishPlatformKey, ChannelKey> = {
+    wechat: "wechat",
+    csdn: "csdn",
+    juejin: "juejin",
+    zhihu: "zhihu_toutiao_general"
+  };
+  const snapshotId = `publish-source-${createContentHash(`${input.sourceTaskId}:${input.sourceDraftId}`)}`;
+  const existingIndex = state.drafts.findIndex((item) => item.id === snapshotId);
+  const snapshot: ArticleDraft = {
+    id: snapshotId,
+    taskId: input.sourceTaskId,
+    title,
+    summary: input.summary?.trim() || title,
+    content: markdown,
+    channel: channelByPlatform[input.platform],
+    qaResult: {
+      passed: true,
+      blockers: [],
+      warnings: [],
+      copyAllowed: true,
+      distributionAllowed: true,
+      summary: "Approved upstream draft snapshot for durable machine publishing."
+    },
+    version: existingIndex >= 0 ? state.drafts[existingIndex].version + 1 : 1,
+    status: "final",
+    updatedAt: nowIso()
+  };
+  if (existingIndex >= 0) state.drafts[existingIndex] = snapshot;
+  else state.drafts.push(snapshot);
+  saveWithEvent(state, "publish_source_snapshot_created", `Snapshotted approved source draft ${input.sourceDraftId}.`);
+
+  return createPublishSchedules({
+    draftId: snapshot.id,
+    platform: input.platform,
+    scheduledAt: input.scheduledAt,
+    matrixItemId: input.matrixItemId || input.sourceTaskId
+  });
+}
+
 export function createPublishSchedules(input: Record<string, unknown>): WorkflowResult<{ schedules: PublishSchedule[]; record: PublishRecord }> {
   const state = readWorkbenchState();
   const draftId = typeof input.draftId === "string" ? input.draftId : undefined;

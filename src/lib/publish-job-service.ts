@@ -1,5 +1,6 @@
 import {
   createPublishSchedules,
+  createPublishSchedulesFromApprovedContent,
   dispatchPublishReconciliation,
   dispatchPublishSchedule,
   readWorkbenchState,
@@ -9,7 +10,9 @@ import {
 } from "@/lib/workbench-store";
 import { getPublishAdapter } from "@/lib/publish-adapters";
 import type { DirectPublishPlatformKey, PublishAttempt, PublishSchedule } from "@/lib/types";
+import type { ApprovedPublishContentInput } from "@/lib/workbench-store";
 import { serializePublishMutation } from "@/lib/publish-mutation-queue";
+import { backfillPublishJob } from "@/lib/publish-job-backfill";
 
 export interface PublishJobView {
   schedule: PublishSchedule;
@@ -59,6 +62,10 @@ export async function createPublishJob(input: Record<string, unknown>) {
   return serializePublishMutation(() => createPublishSchedules(input));
 }
 
+export async function createPublishJobFromApprovedContent(input: ApprovedPublishContentInput) {
+  return serializePublishMutation(() => createPublishSchedulesFromApprovedContent(input));
+}
+
 export async function runPublishJob(id: string) {
   return serializePublishMutation(() => runPublishSchedule(id));
 }
@@ -72,11 +79,20 @@ export async function dispatchPublishJobReconciliation(id: string) {
 }
 
 export async function reconcilePublishJob(id: string) {
-  return serializePublishMutation(() => verifyPublishSchedule(id));
+  const result = await serializePublishMutation(() => verifyPublishSchedule(id));
+  if (result.ok && result.data?.schedule) await backfillPublishJob(result.data.schedule);
+  return result;
 }
 
 export async function runDuePublishJobs(input: Record<string, unknown>) {
-  return serializePublishMutation(() => runDuePublishSchedules(input));
+  const result = await serializePublishMutation(() => runDuePublishSchedules(input));
+  if (result.ok && result.data?.attempts) {
+    for (const attempt of result.data.attempts) {
+      const job = getPublishJob(attempt.scheduleId);
+      if (job) await backfillPublishJob(job.schedule);
+    }
+  }
+  return result;
 }
 
 export async function probePublishPlatformAuth(platform: DirectPublishPlatformKey) {

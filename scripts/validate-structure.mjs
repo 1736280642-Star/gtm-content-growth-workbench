@@ -100,8 +100,8 @@ addContentCheck("monthly prompt", "src/lib/prompt-templates.ts", [
 ]);
 addContentCheck("monthly matrix workspace", "src/app/monthly-matrix/page.tsx", [
   "useMonthlyWorkspace",
-  "MonthlyMatrixTable",
-  "月度内容矩阵"
+  "MonthlyStrategyTable",
+  "内容策略包"
 ]);
 addContentCheck("monthly strategy workspace", "src/app/monthly-matrix/strategy/page.tsx", [
   "MonthlyPlanConfigPanel",
@@ -110,9 +110,9 @@ addContentCheck("monthly strategy workspace", "src/app/monthly-matrix/strategy/p
   "confirmTypeMatch"
 ]);
 addContentCheck("monthly batch generation", "src/app/monthly-matrix/batch-generation/page.tsx", [
-  "BatchGenerationMatrixTable",
-  "/api/v5/monthly-plans/",
-  "/schedule/"
+  "MonthlyTaskTable",
+  "MonthlyFlowNav",
+  "/generation-batches"
 ]);
 addContentCheck("daily execution publish closure", "src/app/daily-execution/page.tsx", [
   "当日执行",

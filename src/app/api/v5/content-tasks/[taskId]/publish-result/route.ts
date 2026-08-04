@@ -5,9 +5,10 @@ import { V5GovernanceRepositoryError } from "@/lib/v5/knowledge-governance-repos
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function PATCH(request: NextRequest, { params }: { params: { taskId: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+  const routeParams = await params;
   try {
-    const data = await saveV5PublishResult(params.taskId, parseSavePublishResultRequest(await request.json()));
+    const data = await saveV5PublishResult(routeParams.taskId, parseSavePublishResultRequest(await request.json()));
     return NextResponse.json({ ok: true, data });
   } catch (error) {
     if (error instanceof V5GovernanceRepositoryError) {

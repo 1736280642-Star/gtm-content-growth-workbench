@@ -6,12 +6,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await createV5SourceRevision({
       ...readV5WriteEnvelope(payload),
-      sourceId: params.id,
+      sourceId: routeParams.id,
       g1: (payload.g1 || {}) as V5G1Input,
       revision: (payload.revision || {}) as Parameters<typeof createV5SourceRevision>[0]["revision"]
     });

@@ -7,10 +7,11 @@ export const runtime = "nodejs";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { productId: string } }
+  { params }: { params: Promise<{ productId: string }> }
 ) {
+  const routeParams = await params;
   try {
-    return NextResponse.json({ ok: true, ...(await getGeoResearchWorkspace(params.productId)) });
+    return NextResponse.json({ ok: true, ...(await getGeoResearchWorkspace(routeParams.productId)) });
   } catch (error) {
     return v5GovernanceErrorResponse(error);
   }

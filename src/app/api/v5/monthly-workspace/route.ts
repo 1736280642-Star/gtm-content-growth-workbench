@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { V5ApiEnvelope, V5MonthlyWorkspace } from "@/lib/v5/monthly-workspace-contracts";
-import { getMonthlyWorkspaceReadModel } from "@/lib/v5/monthly-workspace-read-model";
+import { compactMonthlyWorkspace, getMonthlyWorkspaceReadModel } from "@/lib/v5/monthly-workspace-read-model";
 import { V5ServiceError } from "@/lib/v5/monthly-service";
 
 export const dynamic = "force-dynamic";
@@ -8,10 +8,12 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const month = request.nextUrl.searchParams.get("month") || undefined;
-    const data = await getMonthlyWorkspaceReadModel(month);
+    const model = await getMonthlyWorkspaceReadModel(month);
+    const projection = request.nextUrl.searchParams.get("projection") || "full";
+    const data = projection === "compact" ? compactMonthlyWorkspace(model) : model;
     return NextResponse.json<V5ApiEnvelope<V5MonthlyWorkspace>>(
       { ok: true, data },
-      { headers: { "cache-control": "no-store" } }
+      { headers: { "cache-control": "no-store", "x-workspace-projection": projection } }
     );
   } catch (error) {
     const serviceError = error instanceof V5ServiceError ? error : new V5ServiceError(500, "V5_WORKSPACE_READ_FAILED", "V5 月度工作区读取失败，请稍后重试。");

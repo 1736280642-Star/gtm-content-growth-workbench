@@ -3,7 +3,7 @@
 import { FileTextOutlined, ImportOutlined, InfoCircleOutlined, WarningOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Collapse, Descriptions, Drawer, Form, Input, List, Modal, Select, Space, Table, Tabs, Tag, Typography, message } from "antd";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
 import { PageErrorState } from "@/components/PageErrorState";
@@ -20,7 +20,8 @@ const actionTypeLabels = {
   unrecoverable_source_failure: "资料处理失败"
 };
 
-export default function KnowledgeDetailPage({ params }: { params: { id: string } }) {
+export default function KnowledgeDetailPage() {
+  const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();

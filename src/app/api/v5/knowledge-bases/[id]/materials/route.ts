@@ -5,13 +5,14 @@ import { addV5KnowledgeMaterial } from "@/lib/v5/knowledge-workspace-service";
 import type { V5KnowledgeMaterialStatus, V5KnowledgeVisibility } from "@/lib/v5/knowledge-workspace-contracts";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const kind = readString(payload.kind);
     return NextResponse.json(addV5KnowledgeMaterial({
       ...readV5WriteEnvelope(payload),
-      knowledgeBaseId: params.id,
+      knowledgeBaseId: routeParams.id,
       title: readString(payload.title) || "",
       kind: kind === "url" || kind === "document" || kind === "text" ? kind : "text",
       status: readString(payload.status) as V5KnowledgeMaterialStatus | undefined,

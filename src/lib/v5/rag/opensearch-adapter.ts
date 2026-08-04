@@ -70,7 +70,7 @@ export class HttpRagOpenSearchAdapter implements RagOpenSearchAdapter {
       await this.request(indexName, {
         method: "PUT",
         body: JSON.stringify({
-        settings: { index: { knn: true, number_of_shards: 1, number_of_replicas: 1 } },
+        settings: { index: { knn: true, number_of_shards: 1, number_of_replicas: 0 } },
         mappings: {
           dynamic: false,
           properties: {

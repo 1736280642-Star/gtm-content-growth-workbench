@@ -7,12 +7,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const routeParams = await params;
   try {
     const payload = await readV5GovernancePayload(request);
     const result = await reviewV5RulePackageChange({
       ...readV5WriteEnvelope(payload),
-      changeId: params.id,
+      changeId: routeParams.id,
       role: (readString(payload.role) || "knowledge_manager") as V5GovernanceRole,
       action: (readString(payload.action) || "approve") as V5ApprovalAction,
       reason: readString(payload.reason) || "",
