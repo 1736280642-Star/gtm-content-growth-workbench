@@ -135,7 +135,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     env_file:
-      - .env.local
+      - path: .env.local
+        required: false
     environment: *app-environment
     ports:
       - "127.0.0.1:${WORKBENCH_PORT:-3027}:3027"
