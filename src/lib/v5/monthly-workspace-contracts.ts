@@ -79,6 +79,8 @@ export interface KnowledgeBaseOption {
 
 export interface ContentQuotaRule {
   quotaRuleId: string;
+  productId?: string;
+  productNameSnapshot?: string;
   questionVersionId: string;
   question: string;
   contentType: string;
@@ -139,6 +141,8 @@ export interface ProductionDraftSummary {
 export interface ProductionMatrixTask {
   taskId: string;
   monthlyPlanId: string;
+  productId?: string;
+  productNameSnapshot?: string;
   planningSource?: "geo_strategy" | "free_production";
   freeProductionBatchId?: string;
   freeContentExpressionTypeVersionId?: string;
@@ -176,6 +180,9 @@ export interface ProductionMatrixTask {
   ctaValidationStatus?: "pending" | "passed" | "failed";
   generationProgress?: number;
   failureReason?: string;
+  publishResultVersion?: number;
+  publicUrl?: string;
+  externalContentId?: string;
   updatedAt: string;
 }
 

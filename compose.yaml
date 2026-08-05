@@ -62,8 +62,6 @@ x-app-environment: &app-environment
   GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS: ${GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS:-300}
   MONTHLY_AUTOMATION_INTERVAL_SECONDS: ${MONTHLY_AUTOMATION_INTERVAL_SECONDS:-60}
   PIPELINE_WORKER_INTERVAL_SECONDS: ${PIPELINE_WORKER_INTERVAL_SECONDS:-3600}
-  DIRECT_PUBLISH_ENABLED: ${DIRECT_PUBLISH_ENABLED:-false}
-  DIRECT_PUBLISH_MOCK: ${DIRECT_PUBLISH_MOCK:-true}
   WECHATSYNC_ENABLED: ${WECHATSYNC_ENABLED:-false}
   WECHATSYNC_MOCK: ${WECHATSYNC_MOCK:-true}
   WECHATSYNC_BRIDGE_URL: ${WECHATSYNC_BRIDGE_URL:-http://host.docker.internal:9528}
@@ -145,7 +143,12 @@ services:
     env_file:
       - path: .env.local
         required: false
-    environment: *app-environment
+        format: raw
+    environment:
+      <<: *app-environment
+      # The web API owns the persisted publish ledger. Keep it on the mounted
+      # JSON state unless an operator explicitly selects another web backend.
+      WORKBENCH_STORAGE: ${WEB_WORKBENCH_STORAGE:-local_json}
     ports:
       - "127.0.0.1:${WORKBENCH_PORT:-3027}:3027"
     volumes: *app-volumes

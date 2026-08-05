@@ -1,12 +1,11 @@
 "use client";
 
-import { ReloadOutlined, SyncOutlined } from "@ant-design/icons";
+import { DownOutlined, LinkOutlined, ReloadOutlined, SyncOutlined, UpOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Empty, Space, Spin, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DirectPublishPlatformKey, PublishAttempt, PublishSchedule, PublishScheduleStatus } from "@/lib/types";
-import { PublishLifecycleRail } from "./PublishLifecycleRail";
 
-interface PublishJobView { schedule: PublishSchedule; attempts: PublishAttempt[] }
+interface PublishJobView { schedule: PublishSchedule; attempts: PublishAttempt[]; title: string; productName: string }
 interface ReliabilityMetric {
   platform: DirectPublishPlatformKey;
   submitted: number;
@@ -63,6 +62,9 @@ export function PublishResultLedger({ matchedPublishRecordIds }: { matchedPublis
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string>();
   const [error, setError] = useState<string>();
+  const [showAllPending, setShowAllPending] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [expandedJobId, setExpandedJobId] = useState<string>();
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -107,6 +109,64 @@ export function PublishResultLedger({ matchedPublishRecordIds }: { matchedPublis
     exceptions: jobs.filter((item) => dangerStatuses.has(item.schedule.status)).length
   }), [jobs]);
 
+  const pendingJobs = useMemo(() => jobs.filter((job) => !job.schedule.publishRecordId || !matchedPublishRecordIds.has(job.schedule.publishRecordId)), [jobs, matchedPublishRecordIds]);
+  const completedJobs = useMemo(() => jobs.filter((job) => Boolean(job.schedule.publishRecordId && matchedPublishRecordIds.has(job.schedule.publishRecordId))), [jobs, matchedPublishRecordIds]);
+  const visiblePendingJobs = showAllPending ? pendingJobs : pendingJobs.slice(0, 5);
+
+  function renderLedgerJob(job: PublishJobView) {
+    const schedule = job.schedule;
+    const matched = Boolean(schedule.publishRecordId && matchedPublishRecordIds.has(schedule.publishRecordId));
+    const observed = observedStatus(schedule);
+    const needsAttention = dangerStatuses.has(schedule.status);
+    const expanded = expandedJobId === schedule.id;
+    const returnLabel = matched ? "指标已匹配" : schedule.publicUrl ? "待导入指标" : needsAttention ? "发布异常" : "等待公开 URL";
+    const returnColor = matched ? "green" : needsAttention ? "red" : schedule.publicUrl ? "gold" : "default";
+    const nextStep = matched
+      ? "可进入月度复盘"
+      : needsAttention
+        ? schedule.nextAction || "先处理发布异常，再重新核验"
+        : schedule.publicUrl
+          ? "导入或补录渠道指标"
+          : "等待系统自动回填公开地址";
+
+    return (
+      <article className={`publish-compact-job publish-ledger-job ${needsAttention ? "is-attention" : ""}`} key={schedule.id}>
+        <div className="publish-compact-row publish-ledger-row">
+          <div className="publish-compact-identity">
+            <strong title={job.title}>{job.title || `发布任务 ${schedule.id}`}</strong>
+            <span><Tag>{platformLabel[schedule.platform]}</Tag>{job.productName || "其他产品内容"}</span>
+          </div>
+          <div className="publish-compact-status">
+            <Tag color={observed.color}>{observed.label}</Tag>
+            <span className={needsAttention ? "is-risk-text" : ""}>{needsAttention ? schedule.failureReason || statusLabel[schedule.status] : timeText(schedule.lastVerifiedAt || schedule.updatedAt)}</span>
+          </div>
+          <div className="publish-ledger-return-state">
+            <Tag color={returnColor}>{returnLabel}</Tag>
+            <span title={nextStep}>{nextStep}</span>
+          </div>
+          <Button type="text" className="publish-compact-expand" onClick={() => setExpandedJobId(expanded ? undefined : schedule.id)} aria-expanded={expanded}>
+            查看详情 {expanded ? <UpOutlined /> : <DownOutlined />}
+          </Button>
+        </div>
+        {expanded ? <div className="publish-compact-detail">
+          <div className="publish-detail-facts publish-ledger-detail-facts">
+            <span><b>公开地址</b>{schedule.publicUrl ? <a href={schedule.publicUrl} target="_blank" rel="noreferrer">打开文章 <LinkOutlined /></a> : "等待自动回填"}</span>
+            <span><b>首次公开</b>{timeText(schedule.firstPublicObservedAt)}</span>
+            <span><b>最近核验</b>{timeText(schedule.lastVerifiedAt)}</span>
+            <span><b>下次核验</b>{timeText(schedule.nextVerificationAt)}</span>
+            <span><b>执行记录</b>{job.attempts.length} 次</span>
+            <span><b>任务编号</b><code>{schedule.id}</code></span>
+          </div>
+          {schedule.failureReason || schedule.nextAction ? <div className={`publish-detail-guidance ${needsAttention ? "is-attention" : ""}`}>
+            <div><b>{needsAttention ? "异常原因" : "当前说明"}</b><span>{schedule.failureReason || "系统正在继续核验"}</span></div>
+            {schedule.nextAction ? <div><b>建议操作</b><span>{schedule.nextAction}</span></div> : null}
+          </div> : null}
+          {reconcilable.has(schedule.status) ? <Space className="publish-detail-actions"><Button icon={<SyncOutlined />} loading={acting === schedule.id} onClick={() => void reconcile(schedule)}>重新核验</Button></Space> : null}
+        </div> : null}
+      </article>
+    );
+  }
+
   return (
     <Card
       className="publish-jobs-card publish-result-ledger"
@@ -127,37 +187,22 @@ export function PublishResultLedger({ matchedPublishRecordIds }: { matchedPublis
           return <Tag key={metric.platform} color={ready ? "green" : "default"}>{platformLabel[metric.platform]} · 24h {metric.survival24hRate == null ? "待样本" : `${Math.round(metric.survival24hRate * 100)}%`} · 72h {metric.survival72hRate == null ? "待样本" : `${Math.round(metric.survival72hRate * 100)}%`}</Tag>;
         })}
       </div>
-      {loading && !jobs.length ? <div className="v5-loading-row"><Spin /><span>正在同步发布结果</span></div> : !jobs.length ? <Empty description="暂无 Publish Job；发布控制台创建的任务会自动出现在这里。" /> : (
-        <div className="publish-job-list">
-          {jobs.map(({ schedule }) => {
-            const matched = Boolean(schedule.publishRecordId && matchedPublishRecordIds.has(schedule.publishRecordId));
-            const observed = observedStatus(schedule);
-            return (
-              <article className="publish-job" key={schedule.id}>
-                <div className="publish-job-head">
-                  <div>
-                    <Space wrap>
-                      <Tag>{platformLabel[schedule.platform]}</Tag>
-                      <Tag color={observed.color}>{observed.label}</Tag>
-                      <Tag color={matched ? "green" : schedule.publicUrl ? "gold" : "default"}>{matched ? "渠道指标已匹配" : schedule.publicUrl ? "待导入渠道指标" : "等待公开 URL"}</Tag>
-                    </Space>
-                    <Typography.Text strong>{schedule.id}</Typography.Text>
-                  </div>
-                  {reconcilable.has(schedule.status) ? <Button size="small" icon={<SyncOutlined />} loading={acting === schedule.id} onClick={() => void reconcile(schedule)}>只读核验</Button> : null}
-                </div>
-                <PublishLifecycleRail schedule={schedule} />
-                <div className="publish-job-meta">
-                  <span><b>PUBLIC URL</b>{schedule.publicUrl ? <a href={schedule.publicUrl} target="_blank" rel="noreferrer">{schedule.publicUrl}</a> : "等待自动回填"}</span>
-                  <span><b>首次公开</b>{timeText(schedule.firstPublicObservedAt)}</span>
-                  <span><b>最近核验</b>{timeText(schedule.lastVerifiedAt)}</span>
-                  <span><b>下次核验</b>{timeText(schedule.nextVerificationAt)}</span>
-                </div>
-                {schedule.failureReason || schedule.nextAction ? <Alert showIcon type="warning" message={schedule.failureReason || "需要处理"} description={schedule.nextAction} /> : null}
-              </article>
-            );
-          })}
-        </div>
-      )}
+      {loading && !jobs.length ? <div className="v5-loading-row"><Spin /><span>正在同步发布结果</span></div> : !jobs.length ? <Empty description="暂无 Publish Job；发布控制台创建的任务会自动出现在这里。" /> : <div className="publish-ledger-task-groups">
+        <section className="publish-ledger-task-section" aria-labelledby="ledger-pending-heading">
+          <div className="publish-task-section-head">
+            <div><h3 id="ledger-pending-heading">待回传任务 <Tag color={summary.exceptions ? "gold" : "blue"}>{pendingJobs.length}</Tag></h3><p>优先显示最近 {Math.min(5, pendingJobs.length)} 条；异常、缺 URL 和待补指标统一在这里处理。</p></div>
+            {pendingJobs.length > 5 ? <Button type="text" onClick={() => setShowAllPending((value) => !value)}>{showAllPending ? "收起其余任务" : `查看全部 ${pendingJobs.length} 项`} {showAllPending ? <UpOutlined /> : <DownOutlined />}</Button> : null}
+          </div>
+          <div className="publish-compact-list">{visiblePendingJobs.map(renderLedgerJob)}</div>
+        </section>
+        <section className="publish-ledger-task-section" aria-labelledby="ledger-completed-heading">
+          <div className="publish-task-section-head">
+            <div><h3 id="ledger-completed-heading">已完成回传 <Tag color="green">{completedJobs.length}</Tag></h3><p>渠道指标已经匹配，可直接进入月度复盘。</p></div>
+            <Button type="text" disabled={!completedJobs.length} onClick={() => setShowCompleted((value) => !value)}>{showCompleted ? "收起" : `展开 ${completedJobs.length} 项`} {showCompleted ? <UpOutlined /> : <DownOutlined />}</Button>
+          </div>
+          {showCompleted ? <div className="publish-compact-list">{completedJobs.map(renderLedgerJob)}</div> : null}
+        </section>
+      </div>}
     </Card>
   );
 }

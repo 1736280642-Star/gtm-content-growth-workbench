@@ -21,15 +21,9 @@ const exceptionLabels: Record<ExceptionItem["code"], string> = {
 };
 
 function buildEvidenceHref(item: ExceptionItem) {
-  const params = new URLSearchParams({
-    productId: item.productId,
-    distilledTermId: item.distilledTermId,
-    matrixItemId: item.matrixItemId,
-    missingClaimType: item.missingClaimType,
-    requiredEvidenceLevel: item.requiredEvidenceLevel,
-    titlePromise: item.currentTitlePromise
-  });
-  return `/knowledge/import?${params.toString()}`;
+  return item.productId
+    ? `/products/${encodeURIComponent(item.productId)}?tab=materials`
+    : "/products";
 }
 
 export function ExceptionQueuePreview({ items }: { items: ExceptionItem[] }) {

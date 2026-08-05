@@ -1,5 +1,5 @@
 import { preflightPublishContent, rewriteJuejinContentOnce } from "@/lib/publish-content-preflight";
-import { preparePublishContentWithAi } from "@/lib/workbench-store";
+import { preparePublishContent, preparePublishContentWithAi } from "@/lib/workbench-store";
 import { serializePublishMutation } from "@/lib/publish-mutation-queue";
 import type { DirectPublishPlatformKey } from "@/lib/types";
 
@@ -14,6 +14,10 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, message: "Unsupported publish platform." }, { status: 400 });
   }
   if (typeof input.draftId === "string") {
+    if (input.rewriteMode === "deterministic") {
+      const result = await serializePublishMutation(() => preparePublishContent({ ...input, autoRewrite: true }));
+      return Response.json(result, { status: result.ok ? 200 : 422 });
+    }
     const result = await serializePublishMutation(() => preparePublishContentWithAi(input));
     return Response.json(result, { status: result.ok ? 200 : 422 });
   }

@@ -1,10 +1,10 @@
 "use client";
 
 import { BookOutlined, CheckOutlined, ReloadOutlined, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
-import { Alert, Button, Empty, message, Space, Spin, Tag } from "antd";
+import { Alert, Button, Card, Empty, message, Space, Spin, Tag } from "antd";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 import { MonthlyFlowNav } from "@/components/MonthlyFlowNav";
 import { MonthlyStrategyTable } from "@/components/MonthlyMatrixTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -14,8 +14,10 @@ import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
 
 const loadingPlan = { month: "", businessGoal: "", targetDeliverableCount: 0, questionVersionIds: [], quotaRules: [], groups: [] };
 
-export default function MonthlyMatrixPage() {
+function MonthlyMatrixWorkspace() {
   const embedded = usePathname() === "/monthly-plan";
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [messageApi, messageContext] = message.useMessage();
   const [mutating, setMutating] = useState<"preview" | "approval">();
   const { workspace, loading, error, refresh, preflightStrategy, approveStrategy } = useMonthlyWorkspace();
@@ -26,6 +28,35 @@ export default function MonthlyMatrixPage() {
   const target = Number(config.targetDeliverableCount || 0);
   const awaitingMaterial = strategy?.preflightResults.filter((item) => item.status === "awaiting_material").reduce((total, item) => total + item.deliverableCount, 0) || 0;
   const generatable = strategy?.preflightResults.filter((item) => item.status === "generatable").reduce((total, item) => total + item.deliverableCount, 0) || 0;
+  const strategyProducts = useMemo(() => {
+    const packageByVersion = new Map((workspace?.rulePackages || []).map((item) => [item.id, item]));
+    const questionProduct = new Map((workspace?.targetQuestions || []).map((item) => [item.questionVersionId, item.productId]));
+    const groups = new Map<string, { productId: string; productName: string; rules: ContentQuotaRule[] }>();
+    for (const rule of strategy?.quotaRules || []) {
+      const snapshot = rule as ContentQuotaRule & { productId?: string; productNameSnapshot?: string };
+      const rulePackage = packageByVersion.get(rule.rulePackageVersionId);
+      const productId = snapshot.productId || rulePackage?.productId || questionProduct.get(rule.questionVersionId) || "unassigned";
+      const productName = snapshot.productNameSnapshot || rulePackage?.productName || (productId === "unassigned" ? "待确认产品" : productId);
+      const group = groups.get(productId) || { productId, productName, rules: [] };
+      group.rules.push(rule);
+      groups.set(productId, group);
+    }
+    return Array.from(groups.values()).sort((left, right) => left.productName.localeCompare(right.productName, "zh-CN"));
+  }, [strategy?.quotaRules, workspace?.rulePackages, workspace?.targetQuestions]);
+  const selectedProductId = searchParams.get("productId") || "all";
+  const selectedProduct = strategyProducts.find((group) => group.productId === selectedProductId);
+  const visibleStrategy = strategy && selectedProduct ? {
+    ...strategy,
+    quotaRules: selectedProduct.rules,
+    preflightResults: strategy.preflightResults.filter((result) => selectedProduct.rules.some((rule) => rule.quotaRuleId === result.quotaRuleId))
+  } : strategy;
+
+  function selectProduct(productId: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("step", "strategy");
+    if (productId === "all") params.delete("productId"); else params.set("productId", productId);
+    router.replace(`/monthly-plan?${params.toString()}`, { scroll: false });
+  }
 
   async function mutate(type: "preview" | "approval") {
     setMutating(type);
@@ -76,17 +107,34 @@ export default function MonthlyMatrixPage() {
         { label: "待补资料", value: awaitingMaterial, helper: "仅关键事实缺失" }
       ]} />
 
+      <section className="product-orchestration-switcher" aria-label="按产品查看内容策略">
+        <button type="button" className={selectedProductId === "all" ? "is-active" : ""} onClick={() => selectProduct("all")}><span>全部产品</span><strong>{strategy?.targetDeliverableCount || 0} 篇</strong><small>{strategyProducts.length} 个产品</small></button>
+        {strategyProducts.map((group) => {
+          const deliverables = group.rules.reduce((sum, rule) => sum + rule.expandedDeliverableCount, 0);
+          const blocked = strategy?.preflightResults.filter((result) => group.rules.some((rule) => rule.quotaRuleId === result.quotaRuleId) && result.status !== "generatable").length || 0;
+          return <button key={group.productId} type="button" className={selectedProductId === group.productId ? "is-active" : ""} onClick={() => selectProduct(group.productId)}><span>{group.productName}</span><strong>{deliverables} 篇</strong><small>{blocked ? `${blocked} 个策略项待处理` : "生产条件正常"}</small></button>;
+        })}
+      </section>
+
       <section className="v5-strategy-workspace" aria-labelledby="strategy-heading">
         <div className="v5-section-heading">
-          <div><span className="v5-kicker">内容策略包</span><h2 id="strategy-heading">{config.businessGoal || "尚未配置月度业务目标"}</h2></div>
+          <div><span className="v5-kicker">{selectedProduct ? "当前产品策略" : "全部产品策略"}</span><h2 id="strategy-heading">{selectedProduct?.productName || config.businessGoal || "尚未配置月度业务目标"}</h2></div>
           <Space wrap>
             <Button icon={<SafetyCertificateOutlined />} disabled={!strategy || ["approved", "partially_approved"].includes(strategy.status)} loading={mutating === "preview"} onClick={() => void mutate("preview")}>运行生产预检</Button>
             <Button type="primary" icon={<CheckOutlined />} disabled={strategy?.status !== "preview_ready" || allocated !== target} loading={mutating === "approval"} onClick={() => void mutate("approval")}>人工确认当前版本</Button>
           </Space>
         </div>
-        {strategy ? <MonthlyStrategyTable strategyPackage={strategy} tasks={tasks} onDelete={deleteRule} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="先配置目标问题、内容类型组合和渠道配额" />}
+        {selectedProduct && visibleStrategy ? <MonthlyStrategyTable strategyPackage={visibleStrategy} tasks={tasks.filter((task) => selectedProduct.rules.some((rule) => rule.quotaRuleId === task.quotaRuleId))} onDelete={deleteRule} /> : strategy ? <div className="product-orchestration-grid">{strategyProducts.map((group) => {
+          const deliverables = group.rules.reduce((sum, rule) => sum + rule.expandedDeliverableCount, 0);
+          const ready = strategy.preflightResults.filter((result) => group.rules.some((rule) => rule.quotaRuleId === result.quotaRuleId) && result.status === "generatable").reduce((sum, result) => sum + result.deliverableCount, 0);
+          return <Card key={group.productId} bordered={false} className="product-orchestration-card"><div className="product-orchestration-card-heading"><div><span>产品内容策略</span><h3>{group.productName}</h3></div><Tag color={ready === deliverables ? "success" : "gold"}>{ready}/{deliverables} 篇可生产</Tag></div><div className="strategy-product-summary"><strong>{group.rules.length}</strong><span>个目标问题与内容类型组合</span></div><div className="product-orchestration-card-footer"><span>系统将按当前产品资料和 GEO 调研结果自动展开文章任务</span><Button type="link" onClick={() => selectProduct(group.productId)}>查看产品策略</Button></div></Card>;
+        })}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="先配置目标问题、内容类型组合和渠道配额" />}
         {strategy?.status === "preview_ready" && allocated !== target ? <Alert showIcon type="warning" message={`当前已分配 ${allocated} 篇，月度目标 ${target} 篇；配额平衡后才能批准。`} /> : null}
       </section>
     </>
   );
+}
+
+export default function MonthlyMatrixPage() {
+  return <Suspense fallback={<div className="v5-loading-row"><Spin /><span>正在读取产品内容策略</span></div>}><MonthlyMatrixWorkspace /></Suspense>;
 }

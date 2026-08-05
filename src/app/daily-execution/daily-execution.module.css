@@ -1,3 +1,137 @@
+.commandCenter {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.needAction,
+.allClear {
+  min-height: 172px;
+  border-radius: 8px;
+}
+
+.needAction {
+  border-color: #ffccc7;
+  background: #fff7f6;
+}
+
+.allClear {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+}
+
+.kicker {
+  display: inline-block;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.verdict {
+  margin: 12px 0 6px !important;
+  color: #101828 !important;
+  font-size: 38px !important;
+  line-height: 1.12 !important;
+}
+
+.verdictCopy {
+  display: block;
+  max-width: 640px;
+  color: #475467;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.simpleStats {
+  display: grid;
+  gap: 10px;
+}
+
+.simpleStats div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 50px;
+  padding: 12px 14px;
+  border: 1px solid #e5e9f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.simpleStats strong {
+  color: #101828;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.simpleStats span {
+  color: #667085;
+  font-size: 13px;
+}
+
+.focusGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.attentionCard,
+.autoCard {
+  border-radius: 8px;
+}
+
+.taskStack,
+.autoList {
+  display: grid;
+  gap: 10px;
+}
+
+.attentionItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #ffccc7;
+  border-radius: 8px;
+  background: #fffafa;
+}
+
+.attentionItem span,
+.autoItem span {
+  display: block;
+  color: #667085;
+  font-size: 12px;
+}
+
+.attentionItem strong,
+.autoItem strong {
+  display: block;
+  min-width: 0;
+  color: #101828;
+  line-height: 1.5;
+}
+
+.attentionItem p {
+  margin: 6px 0 0;
+  color: #b42318;
+  line-height: 1.55;
+}
+
+.autoItem {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid #e5e9f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .review {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
@@ -95,6 +229,8 @@
 }
 
 @media (max-width: 900px) {
+  .commandCenter,
+  .focusGrid,
   .review {
     grid-template-columns: 1fr;
   }

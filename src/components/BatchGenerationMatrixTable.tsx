@@ -149,7 +149,7 @@ export function BatchGenerationMatrixTable({
                   {
                     title: "操作", key: "action", width: 140,
                     render: (_: unknown, task) => {
-                      if (task.formalDraftId) return <Link href={`/monthly-plan?step=generation&draftId=${encodeURIComponent(task.formalDraftId)}`}><Button size="small" icon={<EyeOutlined />}>预览正文</Button></Link>;
+                      if (task.formalDraftId) return <Link href={`/monthly-plan?step=production&draftId=${encodeURIComponent(task.formalDraftId)}`}><Button size="small" icon={<EyeOutlined />}>预览正文</Button></Link>;
                       if (task.currentDraft || task.lastUsableDraft) return <Button size="small" icon={<EyeOutlined />} onClick={() => openPreview(task)}>预览正文</Button>;
                       if (task.status === "awaiting_material") return <Link href={`/knowledge?todo=${encodeURIComponent(task.knowledgeTodoId || task.taskId)}`}><Button size="small" icon={<FileAddOutlined />}>补充资料</Button></Link>;
                       if (task.formal && ["ready_for_generation", "system_recovering"].includes(task.status)) return <Button size="small" type="primary" disabled={!onGenerate} onClick={() => void onGenerate?.(task)}>立即生成</Button>;

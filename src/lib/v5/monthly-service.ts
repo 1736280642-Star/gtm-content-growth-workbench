@@ -32,6 +32,7 @@ import {
   listArticleTypeProfiles
 } from "./article-type-service";
 import { readV5FoundationSnapshot } from "./foundation-repository";
+import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 import { readV5MonthlyState, updateV5MonthlyState } from "./monthly-repository";
 import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
 import { persistFormalApprovedStrategy, persistFormalMonthlyPlan, removeFormalProductionTasks, saveFormalPublishResult, scheduleFormalProductionTask } from "./monthly-execution-repository";
@@ -366,6 +367,7 @@ function validateMonthlyPlan(
     if (!rule.quotaRuleId || quotaRuleIds.has(rule.quotaRuleId)) issues.push("每条配额必须使用唯一标识。");
     quotaRuleIds.add(rule.quotaRuleId);
     if (!question || question.question !== rule.question) issues.push("配额中的目标问题与已选问题版本不一致。");
+    if (rulePackage && question?.productId && rulePackage.productId !== question.productId) issues.push(`${rule.question || "目标问题"} 的目标问题与产品规则包不属于同一产品。`);
     if (!articleTypeVersion) issues.push(`${rule.question || "目标问题"} 使用的内容类型版本不存在。`);
     if (articleTypeVersion && (rule.contentType !== articleTypeVersion.name || rule.articleTypeNameSnapshot !== articleTypeVersion.name)) {
       issues.push(`${rule.question || "目标问题"} 的内容类型名称快照与版本不一致。`);
@@ -389,6 +391,8 @@ function validateMonthlyPlan(
     if (!sourceHashes[0] || new Set(sourceHashes).size !== 1) issues.push(`${rule.question || "目标问题"} 的策略包、知识索引和 EvidencePack 快照不一致。`);
     normalizedQuotaRules.push({
       quotaRuleId: rule.quotaRuleId,
+      productId: rulePackage?.productId || rule.productId || question?.productId,
+      productNameSnapshot: rulePackage?.productName || rule.productNameSnapshot,
       questionVersionId: rule.questionVersionId,
       question: rule.question.trim(),
       contentType: rule.contentType.trim(),
@@ -692,12 +696,61 @@ export function parseSavePublishResultRequest(value: unknown): SavePublishResult
 export async function saveV5PublishResult(taskId: string, request: SavePublishResultRequest) {
   if (!Number.isInteger(request.expectedVersion) || request.expectedVersion < 0) throw new V5ServiceError(422, "INVALID_EXPECTED_VERSION", "发布结果版本号不正确。");
   if (!request.auditReason || request.auditReason.length > 200) throw new V5ServiceError(422, "INVALID_AUDIT_REASON", "请填写 200 个字符以内的回传原因。");
+  if (request.status === "published" && !/^https?:\/\//i.test(request.publicUrl || "")) throw new V5ServiceError(422, "PUBLIC_URL_REQUIRED", "确认发布时必须填写可访问的 http(s) URL。");
+  if (request.status !== "published" && !request.failureReason?.trim()) throw new V5ServiceError(422, "FAILURE_REASON_REQUIRED", "失败或人工接管必须填写原因。");
   const actor = await getWritableActor();
-  return saveFormalPublishResult({
-    taskId,
-    request,
-    actor: { actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason }
-  });
+  try {
+    return await saveFormalPublishResult({
+      taskId,
+      request,
+      actor: { actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: request.auditReason }
+    });
+  } catch (error) {
+    if (!(error instanceof V5GovernanceRepositoryError) || error.code !== "formal_task_not_found") throw error;
+    return updateV5MonthlyState((state) => {
+      const entry = Object.entries(state.plans).find(([, plan]) => (plan.matrixTasks || []).some((task) => task.taskId === taskId));
+      if (!entry) throw error;
+      const [month, plan] = entry;
+      const taskIndex = (plan.matrixTasks || []).findIndex((task) => task.taskId === taskId);
+      const task = plan.matrixTasks![taskIndex];
+      const currentVersion = task.publishResultVersion || 0;
+      if (currentVersion !== request.expectedVersion) {
+        throw new V5ServiceError(409, "PUBLISH_RESULT_VERSION_CONFLICT", `发布结果当前 version 为 ${currentVersion}。`);
+      }
+      const now = new Date().toISOString();
+      plan.matrixTasks![taskIndex] = {
+        ...task,
+        status: request.status === "published" ? "published" : "scheduled",
+        publishResultVersion: currentVersion + 1,
+        publicUrl: request.status === "published" ? request.publicUrl : undefined,
+        externalContentId: request.externalContentId,
+        failureReason: request.status === "published" ? undefined : request.failureReason,
+        updatedAt: now
+      };
+      plan.status = plan.matrixTasks!.every((item) => item.status === "published") ? "completed" : "running";
+      plan.updatedAt = now;
+      plan.updatedBy = actor;
+      state.auditLog.unshift({
+        id: randomUUID(),
+        event: "publish_result_saved",
+        month,
+        actor,
+        version: plan.version,
+        createdAt: now,
+        auditReason: request.auditReason,
+        objectId: taskId,
+        summary: { status: request.status, hasPublicUrl: Boolean(request.publicUrl), source: "restored_monthly_snapshot" }
+      });
+      return {
+        publishResultId: `restored-${taskId}`,
+        taskId,
+        status: request.status,
+        version: currentVersion + 1,
+        publicUrl: request.publicUrl,
+        metrics: request.metrics
+      };
+    });
+  }
 }
 
 export async function scheduleV5ProductionTask(month: string, taskId: string, request: ScheduleTaskRequest) {

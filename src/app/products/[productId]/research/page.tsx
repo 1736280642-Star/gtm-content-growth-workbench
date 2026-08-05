@@ -4,7 +4,6 @@ import {
   ArrowLeftOutlined,
   EditOutlined,
   FileAddOutlined,
-  LinkOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   SendOutlined
@@ -362,9 +361,8 @@ export default function ProductResearchPage() {
         actions={
           <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={() => void refresh()}>刷新</Button>
-            <Link href="/products"><Button icon={<ArrowLeftOutlined />}>产品列表</Button></Link>
-            <Link href={`/knowledge/import/document?productId=${encodeURIComponent(productId)}`}><Button icon={<FileAddOutlined />}>上传资料</Button></Link>
-            <Link href={`/knowledge/import/url?productId=${encodeURIComponent(productId)}`}><Button icon={<LinkOutlined />}>导入网页</Button></Link>
+            <Link href={`/products/${encodeURIComponent(productId)}`}><Button icon={<ArrowLeftOutlined />}>返回产品</Button></Link>
+            <Link href={`/products/${encodeURIComponent(productId)}?tab=materials`}><Button icon={<FileAddOutlined />}>管理资料</Button></Link>
           </Space>
         }
       />

@@ -1,23 +1,21 @@
 "use client";
 
-import { EditOutlined, RobotOutlined } from "@ant-design/icons";
-import { Button, Drawer, Segmented, Space, message } from "antd";
+import { CheckCircleFilled, EditOutlined, RobotOutlined } from "@ant-design/icons";
+import { Button, Drawer, Segmented, Space, Tag, message } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import MonthlyMatrixPage from "@/app/monthly-matrix/page";
-import MonthlyMatrixTasksPage from "@/app/monthly-matrix/tasks/page";
 import MonthlyBatchGenerationPage from "@/app/monthly-matrix/batch-generation/page";
 import MonthlySchedulePage from "@/app/monthly-matrix/schedule/page";
 import MonthlyStrategyWorkspacePage from "@/app/monthly-matrix/strategy/page";
 import DailyExecutionPage from "@/app/daily-execution/page";
 
-type StepKey = "strategy" | "tasks" | "generation" | "execution";
+type StepKey = "strategy" | "production" | "execution";
 
 const stepOptions = [
-  { label: "1 月度策略", value: "strategy" },
-  { label: "2 内容任务", value: "tasks" },
-  { label: "3 内容生成", value: "generation" },
-  { label: "4 排程与执行", value: "execution" }
+  { label: "1 内容策略", value: "strategy" },
+  { label: "2 文章任务编排", value: "production" },
+  { label: "3 生成与发布", value: "execution" }
 ];
 
 function currentMonth() {
@@ -29,7 +27,8 @@ function MonthlyPlanWorkspace() {
   const searchParams = useSearchParams();
   const [running, setRunning] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
-  const requestedStep = searchParams.get("step");
+  const rawStep = searchParams.get("step");
+  const requestedStep = rawStep === "tasks" || rawStep === "generation" ? "production" : rawStep;
   const step = stepOptions.some((item) => item.value === requestedStep) ? requestedStep as StepKey : "strategy";
   const executionView = searchParams.get("view") === "schedule" ? "schedule" : "today";
   const strategyDrawerOpen = searchParams.get("drawer") === "strategy";
@@ -69,18 +68,18 @@ function MonthlyPlanWorkspace() {
           onChange={(value) => router.push(`/monthly-plan?step=${value}&month=${month}`)}
         />
         <Space wrap>
-          <Button type="primary" icon={<RobotOutlined />} loading={running} onClick={runAutomation}>
-            立即运行自动化
+          <Tag className="automation-running-tag" icon={<CheckCircleFilled />} color="success">自动化运行中</Tag>
+          <Button icon={<RobotOutlined />} loading={running} onClick={runAutomation}>
+            重新运行自动化
           </Button>
-          <Button icon={<EditOutlined />} onClick={() => router.push(`/monthly-plan?step=strategy&month=${month}&drawer=strategy`)}>
+          <Button type="primary" ghost icon={<EditOutlined />} onClick={() => router.push(`/monthly-plan?step=${step}&month=${month}&drawer=strategy`)}>
             人工修改策略
           </Button>
         </Space>
       </div>
 
       {step === "strategy" ? <MonthlyMatrixPage /> : null}
-      {step === "tasks" ? <MonthlyMatrixTasksPage /> : null}
-      {step === "generation" ? <MonthlyBatchGenerationPage /> : null}
+      {step === "production" ? <MonthlyBatchGenerationPage /> : null}
       {step === "execution" ? (
         <>
           <Space className="unified-workspace-subnav" wrap>
@@ -96,7 +95,7 @@ function MonthlyPlanWorkspace() {
         width="min(960px, 92vw)"
         open={strategyDrawerOpen}
         destroyOnClose
-        onClose={() => router.replace(`/monthly-plan?step=strategy&month=${month}`)}
+        onClose={() => router.replace(`/monthly-plan?step=${step}&month=${month}`)}
       >
         <MonthlyStrategyWorkspacePage />
       </Drawer>

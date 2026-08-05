@@ -1,16 +1,21 @@
 "use client";
 
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Form, Input, Select, Space, Typography, message } from "antd";
+import { ArrowLeftOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Form, Input, Radio, Typography } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import {
+  ProductMaterialImport,
+  type ProductMaterialDraft,
+  type ProductMaterialTarget
+} from "@/components/ProductMaterialImport";
 import { callJsonApi } from "@/lib/client-api";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
-import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
 import type { GeoResearchWorkspace } from "@/lib/v5/geo-research-contracts";
+import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
 
 interface OnboardResponse {
   ok: true;
@@ -18,156 +23,110 @@ interface OnboardResponse {
   workspace: GeoResearchWorkspace;
 }
 
-function splitValues(value?: string) {
-  return (value || "")
-    .split(/[\n,，]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+function firstUrl(urlsText?: string) {
+  return (urlsText || "").split(/\r?\n/).map((item) => item.trim()).find(Boolean);
 }
 
 export default function NewProductPage() {
   const router = useRouter();
   const [form] = Form.useForm();
-  const [messageApi, contextHolder] = message.useMessage();
-  const [saving, setSaving] = useState(false);
+  const [createdTarget, setCreatedTarget] = useState<ProductMaterialTarget>();
   const { state: { workspaceSetting } } = useWorkbenchSnapshot();
 
-  async function submit() {
+  async function createProduct(draft: ProductMaterialDraft): Promise<ProductMaterialTarget> {
+    if (createdTarget) return createdTarget;
     const values = await form.validateFields();
-    setSaving(true);
-    try {
-      const write = createV5WritePayload(
-        workspaceSetting.currentRole,
-        0,
-        "新增产品并创建 GEO 前置调研项目"
-      );
-      const result = await callJsonApi<OnboardResponse>("/api/v5/products", {
-        method: "POST",
-        headers: { "x-idempotency-key": write.idempotencyKey },
-        body: JSON.stringify({
-          ...write,
-          canonicalName: values.canonicalName,
-          displayName: values.displayName,
-          brandName: values.brandName,
-          officialEntity: values.officialEntity,
-          officialUrl: values.officialUrl,
-          productCategory: values.productCategory,
-          aliases: splitValues(values.aliases),
-          expressionFocus: values.expressionFocus,
-          forbiddenFocus: splitValues(values.forbiddenFocus),
-          researchMarkets: values.researchMarkets,
-          languages: values.languages,
-          targetChannels: values.targetChannels
-        })
-      });
-      messageApi.success("产品与 GEO 调研项目已创建");
-      router.push(`/products/${result.product.productId}/research`);
-    } catch (requestError) {
-      messageApi.error(requestError instanceof Error ? requestError.message : "产品创建失败");
-    } finally {
-      setSaving(false);
-    }
+    const description = values.description?.trim() || `围绕 ${values.canonicalName} 的真实资料建立产品认知与内容依据。`;
+    const write = createV5WritePayload(workspaceSetting.currentRole, 0, "创建产品或服务并导入第一批资料");
+    const result = await callJsonApi<OnboardResponse>("/api/v5/products", {
+      method: "POST",
+      headers: { "x-idempotency-key": write.idempotencyKey },
+      body: JSON.stringify({
+        ...write,
+        canonicalName: values.canonicalName,
+        displayName: values.canonicalName,
+        officialUrl: firstUrl(draft.urlsText),
+        productCategory: values.entityType,
+        aliases: [],
+        expressionFocus: description,
+        forbiddenFocus: [],
+        researchMarkets: ["CN"],
+        languages: ["zh-CN"],
+        targetChannels: ["wechat", "official_website"]
+      })
+    });
+    const target = { productId: result.product.productId, productName: result.product.displayName };
+    setCreatedTarget(target);
+    return target;
   }
 
   return (
     <>
-      {contextHolder}
       <PageHeader
-        title="新增产品与 GEO 调研"
-        subtitle="这里只收集人必须判断的信息；问题搜索、竞品研究、AI 前台测试和蓝图归纳由后续任务链完成。"
-        actions={<Link href="/products"><Button icon={<ArrowLeftOutlined />}>返回产品列表</Button></Link>}
+        title="创建产品/服务并导入资料"
+        subtitle="名称用于确定资料归属；第一批网页或文件会在同一次提交中进入系统处理。"
+        actions={<Link href="/products"><Button icon={<ArrowLeftOutlined />}>返回产品与资料</Button></Link>}
       />
       <Alert
         showIcon
         type="info"
-        message="创建后先导入真实产品资料"
-        description="系统只有在形成可追溯的资料快照后才允许启动联网调研，避免模型凭空推断产品能力。"
+        message="一次完成创建和资料导入"
+        description="填写名称、选择第一批资料，然后点击一次“创建并导入资料”。系统会自动建立产品归属、知识整理和索引任务。"
         style={{ marginBottom: 16 }}
       />
-      <Card bordered={false}>
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            researchMarkets: ["CN"],
-            languages: ["zh-CN"],
-            targetChannels: ["wechat", "official_website"]
-          }}
-        >
-          <Typography.Title level={4}>产品身份</Typography.Title>
-          <div className="knowledge-detail-two-column">
-            <div>
+      <Card bordered={false} className="product-create-card product-create-combined-card">
+        <div className="product-create-combined-grid">
+          <section className="product-create-identity">
+            <div className="product-create-section-heading">
+              <Typography.Text className="product-material-kicker">产品归属</Typography.Text>
+              <Typography.Title level={3}>确认名称</Typography.Title>
+              <Typography.Paragraph type="secondary">只填写用于识别和归档的最少信息。</Typography.Paragraph>
+            </div>
+            {createdTarget ? (
+              <Alert
+                showIcon
+                icon={<CheckCircleOutlined />}
+                type="success"
+                message={`“${createdTarget.productName}”已创建`}
+                description="产品信息已锁定；若资料导入失败，可直接在右侧重试，不会重复创建产品。"
+                style={{ marginBottom: 16 }}
+              />
+            ) : null}
+            <Form form={form} layout="vertical" disabled={Boolean(createdTarget)} initialValues={{ entityType: "product" }}>
+              <Form.Item name="entityType" label="创建类型" rules={[{ required: true }]}>
+                <Radio.Group optionType="button" buttonStyle="solid" options={[
+                  { value: "product", label: "产品" },
+                  { value: "service", label: "服务" }
+                ]} />
+              </Form.Item>
               <Form.Item
                 name="canonicalName"
-                label="产品规范名称"
-                rules={[{ required: true, message: "请填写产品规范名称" }]}
+                label="产品/服务名称"
+                rules={[{ required: true, message: "请填写产品或服务名称" }]}
               >
-                <Input maxLength={255} placeholder="例如：Acme Knowledge Assistant" />
+                <Input size="large" maxLength={255} autoFocus placeholder="例如：JOTO WorkBuddy" />
               </Form.Item>
-              <Form.Item name="displayName" label="工作台展示名称">
-                <Input maxLength={255} placeholder="不填则使用规范名称" />
+              <Form.Item
+                name="description"
+                label="一句话说明（选填）"
+                extra="简单说明它服务谁、解决什么问题；也可以在资料处理后继续补充。"
+              >
+                <Input.TextArea autoSize={{ minRows: 4, maxRows: 7 }} maxLength={500} showCount />
               </Form.Item>
-              <Form.Item name="brandName" label="品牌名称">
-                <Input maxLength={255} />
-              </Form.Item>
-              <Form.Item name="productCategory" label="产品品类">
-                <Input maxLength={128} placeholder="例如：enterprise_ai_service" />
-              </Form.Item>
-            </div>
-            <div>
-              <Form.Item name="officialEntity" label="官方主体">
-                <Input maxLength={255} placeholder="公司或官方产品主体" />
-              </Form.Item>
-              <Form.Item name="officialUrl" label="产品官网">
-                <Input type="url" placeholder="https://example.com/product" />
-              </Form.Item>
-              <Form.Item name="aliases" label="产品别名" extra="每行一个，或用逗号分隔。用于搜索与实体识别。">
-                <Input.TextArea rows={5} />
-              </Form.Item>
-            </div>
-          </div>
+            </Form>
+          </section>
 
-          <Typography.Title level={4}>研究边界</Typography.Title>
-          <Form.Item
-            name="expressionFocus"
-            label="希望市场记住的表达重点"
-            rules={[{ required: true, message: "请说明产品的表达重点" }]}
-            extra="描述产品为谁解决什么问题、最希望建立的认知，以及必须讲清楚的差异。"
-          >
-            <Input.TextArea rows={6} maxLength={4000} showCount />
-          </Form.Item>
-          <Form.Item
-            name="forbiddenFocus"
-            label="禁止或谨慎表达"
-            extra="每行一个，例如尚未上线能力、未经证实的效果数字、不能公开的客户名称。"
-          >
-            <Input.TextArea rows={4} />
-          </Form.Item>
-          <div className="knowledge-detail-two-column">
-            <Form.Item name="researchMarkets" label="研究市场">
-              <Select mode="tags" tokenSeparators={[","]} />
-            </Form.Item>
-            <Form.Item name="languages" label="研究语言">
-              <Select mode="tags" tokenSeparators={[","]} />
-            </Form.Item>
-          </div>
-          <Form.Item name="targetChannels" label="目标内容渠道">
-            <Select
-              mode="multiple"
-              options={[
-                { value: "wechat", label: "微信公众号" },
-                { value: "official_website", label: "官网/博客" },
-                { value: "zhihu", label: "知乎" },
-                { value: "xiaohongshu", label: "小红书" },
-                { value: "csdn", label: "CSDN" }
-              ]}
+          <section className="product-create-materials">
+            <ProductMaterialImport
+              title="上传第一批资料"
+              description="网页链接和文件可单独或同时添加，系统会自动归入左侧产品。"
+              submitLabel="创建并导入资料"
+              beforeImport={createProduct}
+              onTargetResolved={setCreatedTarget}
+              onImported={(target) => router.replace(`/products/${encodeURIComponent(target.productId)}?tab=materials`)}
             />
-          </Form.Item>
-          <Space>
-            <Button type="primary" loading={saving} onClick={submit}>创建并进入资料准备</Button>
-            <Link href="/products"><Button>取消</Button></Link>
-          </Space>
-        </Form>
+          </section>
+        </div>
       </Card>
     </>
   );

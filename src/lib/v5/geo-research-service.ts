@@ -182,7 +182,7 @@ export async function getGeoResearchWorkspace(productId: string) {
       actionLabel: latestSourceSnapshot ? undefined : "导入产品资料",
       actionHref: latestSourceSnapshot
         ? undefined
-        : `/knowledge/import/document?productId=${encodeURIComponent(productId)}`
+        : `/products/${encodeURIComponent(productId)}?tab=materials`
     },
     {
       key: "live_search_provider",

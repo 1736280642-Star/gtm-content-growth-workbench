@@ -140,8 +140,8 @@ export default function KnowledgeRulePackagesPage() {
         subtitle="从已有知识库生成允许表达、禁止表达和边界提示；草稿确认后才进入业务生成链路。"
         actions={
           <Space>
-            <Link href="/knowledge/import">
-              <Button>返回内容导入</Button>
+            <Link href="/products">
+              <Button>返回产品与资料</Button>
             </Link>
             <Link href="/knowledge">
               <Button>知识库列表</Button>

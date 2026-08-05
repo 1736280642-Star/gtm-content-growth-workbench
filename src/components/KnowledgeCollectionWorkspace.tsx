@@ -298,7 +298,6 @@ export function KnowledgeCollectionWorkspace({ initialImportType }: KnowledgeCol
       <div className="foundation-panel">
         <Tabs
           defaultActiveKey="today"
-          tabBarExtraContent={<Space wrap><Button icon={<GlobalOutlined />} onClick={() => openImport("site")}>导入站点</Button><Button className="wechat-source-button" icon={<WechatOutlined />} onClick={() => openImport("wechat_account")}>订阅公众号</Button></Space>}
           items={[
             { key: "today", label: `今日采集 ${workspace?.todaySnapshots.length || 0}`, children: todayTab },
             { key: "sources", label: `采集来源 ${workspace?.sources.length || 0}`, children: sourcesTab }

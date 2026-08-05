@@ -115,8 +115,8 @@ export default function KnowledgeVectorizePage() {
         subtitle="集中处理待向量化知识库；未单独选择策略时使用全局 RAG 预设配置。"
         actions={
           <Space>
-            <Link href="/knowledge/import">
-              <Button>返回内容导入</Button>
+            <Link href="/products">
+              <Button>返回产品与资料</Button>
             </Link>
             <Link href="/knowledge">
               <Button>知识库列表</Button>

@@ -1,13 +1,12 @@
 "use client";
 
-import { ReloadOutlined, RocketOutlined, SafetyCertificateOutlined, SyncOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Col, Empty, Progress, Row, Select, Space, Spin, Statistic, Tag, Typography, message } from "antd";
+import { DownOutlined, LinkOutlined, ReloadOutlined, RocketOutlined, SyncOutlined, UpOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Col, Empty, Progress, Row, Select, Space, Spin, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { PublishLifecycleRail } from "@/components/PublishLifecycleRail";
 import type { DirectPublishPlatformKey, PublishAttempt, PublishSchedule, PublishScheduleStatus } from "@/lib/types";
 
-interface PublishJobView { schedule: PublishSchedule; attempts: PublishAttempt[] }
+interface PublishJobView { schedule: PublishSchedule; attempts: PublishAttempt[]; title: string; productName: string }
 interface PublishCandidate { id: string; title: string; channel: string; version: number; updatedAt?: string; existingPlatforms: DirectPublishPlatformKey[] }
 interface ReliabilityMetric {
   platform: DirectPublishPlatformKey; submitted: number; publicObserved: number; stablePublished: number;
@@ -43,6 +42,15 @@ function timeText(value?: string) {
 
 function rateText(value: number | null) { return value === null ? "待样本" : `${Math.round(value * 100)}%`; }
 
+const compactLifecycleSteps = ["发布", "URL 确认", "公开核验", "72h 稳定"];
+
+function compactLifecycleStage(schedule: PublishSchedule) {
+  if (schedule.status === "stable_published" || schedule.stablePublishedAt) return 3;
+  if (schedule.publicUrl || schedule.firstPublicObservedAt) return 2;
+  if (["published_verified", "published_pending_url", "pending_verify", "public_observed"].includes(schedule.status)) return 1;
+  return 0;
+}
+
 export default function PublishingPage() {
   const [messageApi, messageContext] = message.useMessage();
   const [jobs, setJobs] = useState<PublishJobView[]>([]);
@@ -53,6 +61,10 @@ export default function PublishingPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string>();
   const [error, setError] = useState<string>();
+  const [selectedProduct, setSelectedProduct] = useState("all");
+  const [showAutomated, setShowAutomated] = useState(false);
+  const [showAllAttention, setShowAllAttention] = useState(false);
+  const [expandedJobId, setExpandedJobId] = useState<string>();
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -76,6 +88,20 @@ export default function PublishingPage() {
     const timer = window.setInterval(() => void refresh(true), 15_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    const roots = [document.querySelector(".unified-workspace-nav.is-monitor"), document.querySelector(".publishing-page")].filter(Boolean) as Element[];
+    const stripNativeHints = () => {
+      for (const root of roots) root.querySelectorAll("[title]").forEach((element) => element.removeAttribute("title"));
+    };
+    stripNativeHints();
+    const observers = roots.map((root) => {
+      const observer = new MutationObserver(stripNativeHints);
+      observer.observe(root, { attributes: true, attributeFilter: ["title"], childList: true, subtree: true });
+      return observer;
+    });
+    return () => observers.forEach((observer) => observer.disconnect());
+  }, []);
 
   async function createAndDispatch() {
     if (!candidateId || !platforms.length) return;
@@ -106,28 +132,92 @@ export default function PublishingPage() {
 
   const stats = useMemo(() => ({
     total: jobs.length,
-    running: jobs.filter((item) => ["scheduled", "publishing"].includes(item.schedule.status)).length,
-    public: jobs.filter((item) => ["public_observed", "stable_published"].includes(item.schedule.status)).length,
+    running: jobs.filter((item) => !dangerStatuses.has(item.schedule.status) && item.schedule.status !== "stable_published").length,
+    stable: jobs.filter((item) => item.schedule.status === "stable_published" || Boolean(item.schedule.stablePublishedAt)).length,
     risk: jobs.filter((item) => dangerStatuses.has(item.schedule.status)).length
   }), [jobs]);
 
+  const productGroups = useMemo(() => {
+    const groups = new Map<string, { name: string; jobs: PublishJobView[] }>();
+    for (const job of jobs) {
+      const name = job.productName || "其他产品内容";
+      const group = groups.get(name) || { name, jobs: [] };
+      group.jobs.push(job);
+      groups.set(name, group);
+    }
+    return [...groups.values()].map((group) => {
+      const attention = group.jobs.filter((job) => dangerStatuses.has(job.schedule.status)).length;
+      const stable = group.jobs.filter((job) => job.schedule.status === "stable_published" || Boolean(job.schedule.stablePublishedAt)).length;
+      const published = group.jobs.filter((job) => Boolean(job.schedule.publicUrl || job.schedule.firstPublicObservedAt || job.schedule.stablePublishedAt)).length;
+      return { ...group, attention, stable, published, verifying: group.jobs.length - attention - stable };
+    }).sort((left, right) => right.attention - left.attention || right.jobs.length - left.jobs.length || left.name.localeCompare(right.name));
+  }, [jobs]);
+
+  const scopedJobs = useMemo(
+    () => selectedProduct === "all" ? jobs : jobs.filter((job) => job.productName === selectedProduct),
+    [jobs, selectedProduct]
+  );
+  const attentionJobs = useMemo(() => scopedJobs.filter((job) => dangerStatuses.has(job.schedule.status)), [scopedJobs]);
+  const automatedJobs = useMemo(() => scopedJobs.filter((job) => !dangerStatuses.has(job.schedule.status)), [scopedJobs]);
+  const visibleAttentionJobs = showAllAttention ? attentionJobs : attentionJobs.slice(0, 5);
+
+  function renderCompactJob(job: PublishJobView, needsAttention: boolean) {
+    const schedule = job.schedule;
+    const stage = compactLifecycleStage(schedule);
+    const expanded = expandedJobId === schedule.id;
+    return (
+      <article className={`publish-compact-job ${needsAttention ? "is-attention" : ""}`} key={schedule.id}>
+        <div className="publish-compact-row">
+          <div className="publish-compact-identity">
+            <strong>{job.title}</strong>
+            <span><Tag>{platformLabel[schedule.platform]}</Tag>{job.productName}</span>
+          </div>
+          <div className="publish-compact-status">
+            <Tag color={needsAttention ? "red" : schedule.status === "stable_published" ? "green" : "blue"}>{statusLabel[schedule.status]}</Tag>
+            {needsAttention && (schedule.failureReason || schedule.nextAction) ? <span>{schedule.failureReason || schedule.nextAction}</span> : null}
+          </div>
+          <div className="publish-compact-lifecycle" aria-label="发布进度">
+            {compactLifecycleSteps.map((label, index) => {
+              const completed = schedule.status === "stable_published" ? index <= stage : index < stage;
+              const active = schedule.status !== "stable_published" && index === stage;
+              return <span className={`${completed ? "is-done" : ""} ${active ? "is-active" : ""} ${needsAttention && active ? "is-failed" : ""}`} key={label}><i />{label}</span>;
+            })}
+          </div>
+          <div className="publish-compact-next">
+            <span>{needsAttention ? "需要人工确认" : schedule.status === "stable_published" ? "已稳定发布" : "下次自动核验"}</span>
+            <strong>{needsAttention ? statusLabel[schedule.status] : schedule.status === "stable_published" ? timeText(schedule.stablePublishedAt || schedule.updatedAt) : timeText(schedule.nextVerificationAt)}</strong>
+          </div>
+          <Button type="text" className="publish-compact-expand" onClick={() => setExpandedJobId(expanded ? undefined : schedule.id)} aria-expanded={expanded}>
+            {needsAttention ? "处理异常" : "查看详情"} {expanded ? <UpOutlined /> : <DownOutlined />}
+          </Button>
+        </div>
+        {expanded ? <div className="publish-compact-detail">
+          <div className="publish-detail-facts">
+            <span><b>公开地址</b>{schedule.publicUrl ? <a href={schedule.publicUrl} target="_blank" rel="noreferrer">打开文章 <LinkOutlined /></a> : "等待系统回填"}</span>
+            <span><b>下次核验</b>{timeText(schedule.nextVerificationAt)}</span>
+            <span><b>执行记录</b>{job.attempts.length} 次</span>
+            <span><b>任务编号</b><code>{schedule.id}</code></span>
+          </div>
+          {schedule.failureReason || schedule.nextAction ? <div className={`publish-detail-guidance ${needsAttention ? "is-attention" : ""}`}>
+            <div><b>{needsAttention ? "异常原因" : "当前说明"}</b><span>{schedule.failureReason || "系统正在继续处理"}</span></div>
+            {schedule.nextAction ? <div><b>建议操作</b><span>{schedule.nextAction}</span></div> : null}
+          </div> : null}
+          {needsAttention ? <Space wrap className="publish-detail-actions">
+            {reconcilable.has(schedule.status) ? <Button icon={<SyncOutlined />} loading={acting === `reconcile-dispatch:${schedule.id}`} onClick={() => void act(job, "reconcile-dispatch")}>重新核验</Button> : null}
+            {schedule.status === "scheduled" ? <Button icon={<RocketOutlined />} loading={acting === `dispatch:${schedule.id}`} onClick={() => void act(job, "dispatch")}>启动发布</Button> : null}
+            {schedule.publicUrl ? <Button type="link" href={schedule.publicUrl} target="_blank">打开公开文章</Button> : null}
+          </Space> : null}
+        </div> : null}
+      </article>
+    );
+  }
+
   return (
-    <>
+    <div className="publishing-page">
       {messageContext}
       <PageHeader title="发布状态监控" subtitle="前台只下发耐久任务并展示结果；Worker 负责发布，reconciliation 负责 URL 回填与 24h/72h 存活验证。" actions={<Button icon={<ReloadOutlined />} onClick={() => void refresh()} loading={loading}>刷新</Button>} />
-      <div className="publish-control-hero">
-        <div><span className="v5-kicker">MACHINE PUBLISHING</span><h2>一次下发，持续追踪到稳定发布</h2><p>按钮点击不等于成功；只有公开 URL 被观察并通过存活窗口，才进入可靠性样本。</p></div>
-        <div className={`publish-rollout-seal ${reliability?.rolloutReady ? "is-ready" : ""}`}><SafetyCertificateOutlined /><strong>{reliability?.rolloutReady ? "可规模化" : "验收中"}</strong><span>三平台 reliability</span></div>
-      </div>
 
       {error ? <Alert showIcon type="error" message="发布状态读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} style={{ marginBottom: 16 }} /> : null}
-      <Row gutter={[12, 12]} className="publish-stat-row">
-        <Col xs={12} lg={6}><Card size="small"><Statistic title="Publish Jobs" value={stats.total} /></Card></Col>
-        <Col xs={12} lg={6}><Card size="small"><Statistic title="队列 / 执行中" value={stats.running} /></Card></Col>
-        <Col xs={12} lg={6}><Card size="small"><Statistic title="公开可访问" value={stats.public} /></Card></Col>
-        <Col xs={12} lg={6}><Card size="small"><Statistic title="阻断 / 异常" value={stats.risk} valueStyle={{ color: stats.risk ? "#b42318" : undefined }} /></Card></Col>
-      </Row>
-
       <Card className="publish-launch-card" title="创建机器发布任务" extra={<Tag color="blue">Worker 异步执行</Tag>}>
         <Space wrap align="end">
           <div><Typography.Text type="secondary">已确认终稿</Typography.Text><Select showSearch optionFilterProp="label" value={candidateId} onChange={setCandidateId} placeholder="选择通过质检的终稿" style={{ width: 360 }} options={candidates.map((item) => ({ value: item.id, label: `${item.title} · v${item.version}` }))} /></div>
@@ -137,31 +227,34 @@ export default function PublishingPage() {
         <Typography.Paragraph type="secondary" style={{ margin: "12px 0 0" }}>月度生产与公众号生产中心的确认发布入口都会进入同一 Publish Job 队列，不再直接调用平台发布。</Typography.Paragraph>
       </Card>
 
-      <Card title="任务生命周期" className="publish-jobs-card" extra={<Typography.Text type="secondary">15 秒自动刷新</Typography.Text>}>
-        {loading && !jobs.length ? <div className="v5-loading-row"><Spin /><span>正在读取耐久任务</span></div> : !jobs.length ? <Empty description="暂无 Publish Job" /> : <div className="publish-job-list">
-          {jobs.map((job) => {
-            const schedule = job.schedule;
-            const metric = reliability?.metrics.find((item) => item.platform === schedule.platform);
-            return <article className="publish-job" key={schedule.id}>
-              <div className="publish-job-head">
-                <div><Space wrap><Tag>{platformLabel[schedule.platform]}</Tag><Tag color={dangerStatuses.has(schedule.status) ? "red" : schedule.status === "stable_published" ? "green" : "blue"}>{statusLabel[schedule.status]}</Tag><Typography.Text code>{schedule.id}</Typography.Text></Space><Typography.Text type="secondary">最近更新 {timeText(schedule.updatedAt || schedule.createdAt)} · {job.attempts.length} 次执行/核验</Typography.Text></div>
-                <Space wrap>
-                  {schedule.status === "scheduled" ? <Button size="small" icon={<RocketOutlined />} loading={acting === `dispatch:${schedule.id}`} onClick={() => void act(job, "dispatch")}>交给 Worker</Button> : null}
-                  {reconcilable.has(schedule.status) ? <Button size="small" icon={<SyncOutlined />} loading={acting === `reconcile-dispatch:${schedule.id}`} onClick={() => void act(job, "reconcile-dispatch")}>排队核验</Button> : null}
-                  {schedule.publicUrl ? <Button size="small" type="link" href={schedule.publicUrl} target="_blank">打开公开 URL</Button> : null}
-                </Space>
-              </div>
-              <PublishLifecycleRail schedule={schedule} />
-              <div className="publish-job-meta">
-                <span><b>URL</b>{schedule.publicUrl || "等待 reconciliation 回填"}</span>
-                <span><b>首次公开</b>{timeText(schedule.firstPublicObservedAt)}</span>
-                <span><b>下次核验</b>{timeText(schedule.nextVerificationAt)}</span>
-                <span><b>平台 72h</b>{rateText(metric?.survival72hRate ?? null)}</span>
-              </div>
-              {schedule.failureReason || schedule.nextAction ? <Alert type={dangerStatuses.has(schedule.status) ? "warning" : "info"} showIcon message={schedule.failureReason || schedule.nextAction} description={schedule.failureReason && schedule.nextAction ? schedule.nextAction : undefined} /> : null}
-            </article>;
-          })}
-        </div>}
+      <Card title="发布任务" className="publish-jobs-card publish-monitor-card" extra={<Typography.Text type="secondary"><span className="publish-live-dot" />15 秒自动刷新</Typography.Text>}>
+        {loading && !jobs.length ? <div className="v5-loading-row"><Spin /><span>正在同步发布任务</span></div> : !jobs.length ? <Empty description="暂无发布任务" /> : <>
+          <div className="publish-monitor-summary" aria-label="发布任务状态汇总">
+            <span><b>{stats.total}</b>全部任务</span>
+            <span><b>{stats.running}</b>自动运行</span>
+            <span><b>{stats.stable}</b>稳定发布</span>
+            <span className={stats.risk ? "is-attention" : ""}><b>{stats.risk}</b>需处理</span>
+          </div>
+          <div className="publish-product-filter">
+            <div><Typography.Text type="secondary">按产品查看</Typography.Text><Select value={selectedProduct} onChange={setSelectedProduct} options={[{ value: "all", label: `全部产品（${jobs.length}）` }, ...productGroups.map((group) => ({ value: group.name, label: `${group.name}（${group.jobs.length}）` }))]} /></div>
+            <span>正常任务由系统自动推进，仅在出现异常时需要人工处理。</span>
+          </div>
+          <div className="publish-product-overview" aria-label="产品发布概览">
+            {productGroups.map((group) => <button type="button" className={selectedProduct === group.name ? "is-selected" : ""} onClick={() => setSelectedProduct(selectedProduct === group.name ? "all" : group.name)} key={group.name}>
+              <span><strong>{group.name}</strong><em>{group.jobs.length} 篇</em></span>
+              <span>已公开 {group.published} · 核验中 {group.verifying} · 异常 {group.attention}</span>
+              <i><b style={{ width: `${group.jobs.length ? Math.round(group.published / group.jobs.length * 100) : 0}%` }} /></i>
+            </button>)}
+          </div>
+          <section className="publish-task-section is-attention" aria-labelledby="publish-attention-heading">
+            <div className="publish-task-section-head"><div><h3 id="publish-attention-heading">需处理任务 <Tag color={attentionJobs.length ? "red" : "green"}>{attentionJobs.length}</Tag></h3><p>{attentionJobs.length ? `优先显示最近 ${Math.min(5, attentionJobs.length)} 条，确认原因后再重新核验。` : "当前没有需要人工处理的发布异常。"}</p></div>{attentionJobs.length > 5 ? <Button type="text" onClick={() => setShowAllAttention((value) => !value)}>{showAllAttention ? "收起其余异常" : `查看全部 ${attentionJobs.length} 项`} {showAllAttention ? <UpOutlined /> : <DownOutlined />}</Button> : null}</div>
+            {attentionJobs.length ? <div className="publish-compact-list">{visibleAttentionJobs.map((job) => renderCompactJob(job, true))}</div> : null}
+          </section>
+          <section className="publish-task-section" aria-labelledby="publish-automated-heading">
+            <div className="publish-task-section-head"><div><h3 id="publish-automated-heading">自动运行中的任务 <Tag>{automatedJobs.length}</Tag></h3><p>发布、URL 回填和存活核验会持续自动执行。</p></div><Button type="text" onClick={() => setShowAutomated((value) => !value)}>{showAutomated ? "收起" : `展开 ${automatedJobs.length} 项`} {showAutomated ? <UpOutlined /> : <DownOutlined />}</Button></div>
+            {showAutomated ? <div className="publish-compact-list">{automatedJobs.map((job) => renderCompactJob(job, false))}</div> : null}
+          </section>
+        </>}
       </Card>
 
       <Card title="Reliability 验收" className="publish-reliability-card">
@@ -171,6 +264,6 @@ export default function PublishingPage() {
           return <Col xs={24} lg={8} key={platform}><div className="publish-reliability-platform"><div className="publish-reliability-title"><strong>{platformLabel[platform]}</strong><Tag color={readiness?.ready ? "green" : "gold"}>{readiness?.ready ? "已达标" : "样本验收中"}</Tag></div><Progress percent={metric?.survival72hRate == null ? 0 : Math.round(metric.survival72hRate * 100)} status={readiness?.ready ? "success" : "active"} /><div className="publish-reliability-grid"><span>受理 {metric?.submitted ?? 0}</span><span>公开 {metric?.publicObserved ?? 0}</span><span>24h {rateText(metric?.survival24hRate ?? null)}</span><span>72h {rateText(metric?.survival72hRate ?? null)}</span></div><Typography.Text type="secondary">{readiness?.blockers.length ? readiness.blockers.join(" · ") : "全部门槛通过"}</Typography.Text></div></Col>;
         })}</Row>
       </Card>
-    </>
+    </div>
   );
 }

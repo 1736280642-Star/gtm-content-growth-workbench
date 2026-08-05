@@ -42,6 +42,8 @@ export function expandApprovedStrategyTasks(input: {
       Array.from({ length: quota }, (_, index): ProductionMatrixTask => ({
         taskId: `task-${rule.quotaRuleId}-${encodeURIComponent(channel)}-${index + 1}`,
         monthlyPlanId: input.monthlyPlanId,
+        productId: rule.productId,
+        productNameSnapshot: rule.productNameSnapshot,
         strategyPackageId: input.strategyPackage.strategyPackageId,
         quotaRuleId: rule.quotaRuleId,
         questionVersionId: rule.questionVersionId,

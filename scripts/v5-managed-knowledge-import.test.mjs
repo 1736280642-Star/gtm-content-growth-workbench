@@ -10,8 +10,8 @@ test("workbench imports persist managed SourceRevision content and queue formal 
   const repository = fs.readFileSync(path.join(root, "src/lib/v5/rag/source-import-repository.ts"), "utf8");
   const indexBuild = fs.readFileSync(path.join(root, "src/lib/v5/rag/index-build-service.ts"), "utf8");
   const refreshWorker = fs.readFileSync(path.join(root, "workers/knowledge-refresh-worker.mjs"), "utf8");
-  const documentPage = fs.readFileSync(path.join(root, "src/app/knowledge/import/document/page.tsx"), "utf8");
-  const urlPage = fs.readFileSync(path.join(root, "src/app/knowledge/import/url/page.tsx"), "utf8");
+  const importWorkspace = fs.readFileSync(path.join(root, "src/components/ProductMaterialImport.tsx"), "utf8");
+  const legacyImportPage = fs.readFileSync(path.join(root, "src/app/knowledge/import/page.tsx"), "utf8");
 
   assert.match(migration, /CREATE TABLE IF NOT EXISTS source_revision_content/);
   assert.match(migration, /normalized_text LONGTEXT NOT NULL/);
@@ -20,14 +20,14 @@ test("workbench imports persist managed SourceRevision content and queue formal 
   assert.match(repository, /deferAutomaticClaims/);
   assert.match(refreshWorker, /extractManagedClaimsForProduct/);
   assert.match(indexBuild, /new DefaultRagRawAssetStore\(\)/);
-  assert.match(documentPage, /\/api\/v5\/knowledge-imports\/documents/);
-  assert.match(urlPage, /\/api\/v5\/knowledge-imports\/urls/);
-  assert.match(documentPage, /showUploadList=\{false\}/);
-  assert.match(documentPage, /解析并预览/);
-  assert.match(documentPage, /knowledge-upload-file-list/);
-  assert.match(documentPage, /parsedFileSignature === currentFileSignature/);
-  assert.doesNotMatch(documentPage, /\/api\/knowledge-bases"/);
-  assert.doesNotMatch(urlPage, /\/api\/knowledge-bases"/);
+  assert.match(importWorkspace, /\/api\/v5\/knowledge-imports\/documents/);
+  assert.match(importWorkspace, /\/api\/v5\/knowledge-imports\/urls/);
+  assert.match(importWorkspace, /productId/);
+  assert.match(importWorkspace, /导入资料/);
+  assert.doesNotMatch(importWorkspace, /解析并预览/);
+  assert.doesNotMatch(importWorkspace, /所属产品/);
+  assert.doesNotMatch(importWorkspace, /\/api\/knowledge-bases"/);
+  assert.match(legacyImportPage, /redirect/);
 });
 
 test("normal workbench imports do not require local RAG source roots", () => {
@@ -39,4 +39,5 @@ test("normal workbench imports do not require local RAG source roots", () => {
   assert.doesNotMatch(template, /^RAG_IMPORT_/m);
   assert.match(managedReference, /mysql:\/\/source-revision/);
   assert.doesNotMatch(managedService, /RAG_SOURCE_ROOT_/);
+  assert.match(managedService, /stableId\("kb-product-", input\.productId/);
 });

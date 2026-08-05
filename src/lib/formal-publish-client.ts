@@ -50,7 +50,7 @@ function getBridgeUrl() {
 function isLocalBridgeUrl(value: string) {
   try {
     const url = new URL(value);
-    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
+    return ["localhost", "127.0.0.1", "::1", "[::1]", "host.docker.internal"].includes(url.hostname);
   } catch {
     return false;
   }

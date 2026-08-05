@@ -23,7 +23,8 @@ export interface V5MonthlyAuditEvent {
     | "strategy_item_removed"
     | "production_tasks_removed"
     | "generation_batch_created"
-    | "generation_batch_status_changed";
+    | "generation_batch_status_changed"
+    | "publish_result_saved";
   month: string;
   actor: string;
   version: number;

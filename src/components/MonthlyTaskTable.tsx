@@ -4,8 +4,8 @@ import { DeleteOutlined, EyeOutlined, PauseOutlined, PlayCircleOutlined, ToolOut
 import { Button, Drawer, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
 import { MarkdownArticle } from "@/components/MarkdownArticle";
+import type { ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
 
 export type TaskBusinessStatus = "not_generated" | "generating" | "generated" | "scheduled" | "published";
 
@@ -36,6 +36,7 @@ function getBlockingReason(task: ProductionMatrixTask) {
 interface MonthlyTaskTableProps {
   items: ProductionMatrixTask[];
   mode: "tasks" | "generation";
+  productContextByTaskId?: Record<string, { productId: string; productName: string }>;
   selectedTaskIds: string[];
   onSelectionChange: (taskIds: string[]) => void;
   onGenerate?: (task: ProductionMatrixTask) => void;
@@ -47,7 +48,21 @@ interface MonthlyTaskTableProps {
   onAdmitSchedule?: (tasks: ProductionMatrixTask[]) => void;
 }
 
-export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChange, onGenerate, onPause, onRepair, onDelete, onFilteredChange, initialPreviewDraftId, onAdmitSchedule }: MonthlyTaskTableProps) {
+export function MonthlyTaskTable({
+  items,
+  mode,
+  productContextByTaskId,
+  selectedTaskIds,
+  onSelectionChange,
+  onGenerate,
+  onPause,
+  onRepair,
+  onDelete,
+  onFilteredChange,
+  initialPreviewDraftId,
+  onAdmitSchedule
+}: MonthlyTaskTableProps) {
+  const [productId, setProductId] = useState<string>();
   const [channel, setChannel] = useState<string>();
   const [status, setStatus] = useState<TaskBusinessStatus>();
   const [contentType, setContentType] = useState<string>();
@@ -58,9 +73,18 @@ export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChan
   const [previewMarkdown, setPreviewMarkdown] = useState("");
 
   const channels = useMemo(() => Array.from(new Set(items.map((item) => item.channel))).sort(), [items]);
+  const productOptions = useMemo(() => {
+    const products = new Map<string, string>();
+    for (const item of items) {
+      const product = productContextByTaskId?.[item.taskId];
+      if (product) products.set(product.productId, product.productName);
+    }
+    return Array.from(products, ([value, label]) => ({ value, label })).sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+  }, [items, productContextByTaskId]);
   const contentTypes = useMemo(() => Array.from(new Set(items.map((item) => item.articleTypeNameSnapshot || item.contentType))).sort(), [items]);
   const ctaTypes = useMemo(() => Array.from(new Set(items.map((item) => item.ctaType).filter(Boolean) as string[])).sort(), [items]);
   const filteredItems = useMemo(() => items.filter((item) => {
+    if (productId && productContextByTaskId?.[item.taskId]?.productId !== productId) return false;
     if (channel && item.channel !== channel) return false;
     if (status && getTaskBusinessStatus(item) !== status) return false;
     if (contentType && (item.articleTypeNameSnapshot || item.contentType) !== contentType) return false;
@@ -68,9 +92,10 @@ export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChan
     if (ctaStatus && (item.ctaValidationStatus || "pending") !== ctaStatus) return false;
     const keyword = query.trim().toLowerCase();
     return !keyword || item.title.toLowerCase().includes(keyword) || item.question.toLowerCase().includes(keyword);
-  }), [channel, contentType, ctaStatus, ctaType, items, query, status]);
+  }), [channel, contentType, ctaStatus, ctaType, items, productContextByTaskId, productId, query, status]);
 
   const clearFilters = () => {
+    setProductId(undefined);
     setChannel(undefined);
     setStatus(undefined);
     setContentType(undefined);
@@ -88,14 +113,37 @@ export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChan
   }, [initialPreviewDraftId, items]);
 
   async function openPreview(task: ProductionMatrixTask) {
-    setPreviewTask(task);
-    setPreviewMarkdown((task.currentDraft || task.lastUsableDraft)?.markdown || "");
-    if (!task.formalDraftId) return;
+    let nextTask = task;
+    let nextDraft = nextTask.currentDraft || nextTask.lastUsableDraft;
+    let nextMarkdown = nextDraft?.bodyIncluded !== false ? nextDraft?.markdown || "" : "";
+    setPreviewTask(nextTask);
+    setPreviewMarkdown(nextMarkdown);
+
     try {
-      const response = await fetch(`/api/v5/drafts/${encodeURIComponent(task.formalDraftId)}`, { cache: "no-store" });
-      const body = await response.json() as { ok?: boolean; data?: { markdown?: string } };
-      if (response.ok && body.ok) setPreviewMarkdown(body.data?.markdown || "");
-    } catch { /* The drawer keeps a precise empty state when the formal draft cannot be read. */ }
+      if (!nextMarkdown.trim()) {
+        const taskResponse = await fetch(`/api/v5/monthly-workspace/tasks?taskId=${encodeURIComponent(nextTask.taskId)}`, { cache: "no-store" });
+        const taskBody = await taskResponse.json() as { ok?: boolean; data?: { task?: ProductionMatrixTask } };
+        if (taskResponse.ok && taskBody.ok && taskBody.data?.task) {
+          nextTask = taskBody.data.task;
+          nextDraft = nextTask.currentDraft || nextTask.lastUsableDraft;
+          nextMarkdown = nextDraft?.markdown || "";
+          setPreviewTask(nextTask);
+          setPreviewMarkdown(nextMarkdown);
+        }
+      }
+
+      if (!nextMarkdown.trim() && nextTask.formalDraftId) {
+        const response = await fetch(`/api/v5/drafts/${encodeURIComponent(nextTask.formalDraftId)}`, { cache: "no-store" });
+        const body = await response.json() as { ok?: boolean; data?: { markdown?: string } };
+        if (response.ok && body.ok && body.data?.markdown) setPreviewMarkdown(body.data.markdown);
+      }
+    } catch {
+      setPreviewMarkdown(nextMarkdown);
+    }
+  }
+
+  function hasPreviewDraft(task: ProductionMatrixTask) {
+    return Boolean(task.formalDraftId || task.currentDraft || task.lastUsableDraft);
   }
 
   function quickAction(task: ProductionMatrixTask) {
@@ -105,13 +153,21 @@ export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChan
     if (mode === "generation") {
       if (businessStatus === "not_generated") return <Button size="small" type="primary" icon={<PlayCircleOutlined />} onClick={() => onGenerate?.(task)}>生成</Button>;
       if (businessStatus === "generating") return <Button size="small" icon={<PauseOutlined />} onClick={() => onPause?.(task)}>查看进度</Button>;
-      if (businessStatus === "generated") return <Button size="small" icon={<EyeOutlined />} onClick={() => void openPreview(task)}>预览正文</Button>;
+      if (hasPreviewDraft(task)) return <>
+        <Button size="small" icon={<EyeOutlined />} onClick={() => void openPreview(task)}>查看正文</Button>
+        {businessStatus === "scheduled" ? <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">排程</Button></Link> : null}
+        {businessStatus === "published" ? <Link href="/monthly-plan?step=execution&view=today"><Button size="small">发布结果</Button></Link> : null}
+      </>;
       if (businessStatus === "scheduled") return <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">查看排程</Button></Link>;
       return <Link href="/monthly-plan?step=execution&view=today"><Button size="small">查看发布结果</Button></Link>;
     }
-    if (businessStatus === "not_generated") return <Link href="/monthly-plan?step=generation"><Button size="small">去内容生成</Button></Link>;
-    if (businessStatus === "generating") return <Link href="/monthly-plan?step=generation"><Button size="small">查看进度</Button></Link>;
-    if (businessStatus === "generated") return <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">查看自动排程</Button></Link>;
+    if (businessStatus === "not_generated") return <Link href="/monthly-plan?step=production"><Button size="small">查看任务编排</Button></Link>;
+    if (businessStatus === "generating") return <Link href="/monthly-plan?step=production"><Button size="small">查看进度</Button></Link>;
+    if (hasPreviewDraft(task)) return <>
+      <Button size="small" icon={<EyeOutlined />} onClick={() => void openPreview(task)}>查看正文</Button>
+      {businessStatus === "scheduled" ? <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">排程</Button></Link> : null}
+      {businessStatus === "published" ? <Link href="/monthly-plan?step=execution&view=today"><Button size="small">发布结果</Button></Link> : null}
+    </>;
     if (businessStatus === "scheduled") return <Link href="/monthly-plan?step=execution&view=schedule"><Button size="small">查看排程</Button></Link>;
     return <Link href="/monthly-plan?step=execution&view=today"><Button size="small">查看发布结果</Button></Link>;
   }
@@ -124,6 +180,7 @@ export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChan
       <div className="v5-task-table-shell">
         <div className="v5-task-filter-bar">
           <Input.Search allowClear value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文章标题" />
+          {productOptions.length ? <Select allowClear value={productId} onChange={setProductId} placeholder="全部产品" options={productOptions} /> : null}
           <Select allowClear value={channel} onChange={setChannel} placeholder="全部渠道" options={channels.map((value) => ({ value, label: value }))} />
           <Select allowClear value={status} onChange={setStatus} placeholder={mode === "generation" ? "全部生成状态" : "全部状态"} options={Object.entries(statusMeta).map(([value, meta]) => ({ value, label: meta.label }))} />
           <Select allowClear value={contentType} onChange={setContentType} placeholder="全部文章类型" options={contentTypes.map((value) => ({ value, label: value }))} />
@@ -155,6 +212,7 @@ export function MonthlyTaskTable({ items, mode, selectedTaskIds, onSelectionChan
           rowSelection={{ selectedRowKeys: selectedTaskIds, preserveSelectedRowKeys: true, onChange: (keys) => onSelectionChange(keys.map(String)), getCheckboxProps: (task) => ({ disabled: getTaskBusinessStatus(task) === "published" }) }}
           columns={[
             { title: "文章标题", dataIndex: "title", render: (value: string, task) => <div className="v5-task-title-wrap"><strong>{value}</strong>{getBlockingReason(task) ? <Tag color="error">{getBlockingReason(task)}</Tag> : null}</div> },
+            ...(productContextByTaskId ? [{ title: "产品", key: "product", width: 150, render: (_: unknown, task: ProductionMatrixTask) => productContextByTaskId[task.taskId]?.productName || "待确认产品" }] : []),
             { title: "文章类型", key: "contentType", width: 160, render: (_, task) => task.articleTypeNameSnapshot || task.contentType },
             { title: "渠道", dataIndex: "channel", width: 110, render: (value: string) => <Tag>{value}</Tag> },
             { title: mode === "generation" ? "生成状态" : "状态", key: "businessStatus", width: 140, render: (_, task) => { const meta = statusMeta[getTaskBusinessStatus(task)]; return <div className="v5-status-with-reason"><Tag color={meta.color}>{meta.label}</Tag>{task.generationProgress !== undefined ? <span>{task.generationProgress}%</span> : null}</div>; } },
