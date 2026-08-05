@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { GeoResearchTaskType } from "./geo-research-contracts";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 
@@ -36,9 +36,9 @@ export interface GeoResearchProviderContext {
 }
 
 export interface GeoResearchProviderResult {
-  provider: "openai";
+  provider: "zhipu";
   model: string;
-  toolName: "responses.web_search" | "responses";
+  toolName: "zhipu.web_search" | "zhipu.chat.completions";
   responseId?: string;
   outputText: string;
   structured: Record<string, unknown>;
@@ -55,19 +55,16 @@ const LIVE_SEARCH_TASKS = new Set<GeoResearchTaskType>([
 ]);
 
 export function getGeoResearchProviderReadiness() {
-  const hasApiKey = Boolean(
-    process.env.GEO_RESEARCH_OPENAI_API_KEY?.trim()
-    || process.env.OPENAI_API_KEY?.trim()
-  );
-  const hasModel = Boolean(process.env.GEO_RESEARCH_OPENAI_MODEL?.trim());
+  const hasApiKey = Boolean(process.env.GEO_RESEARCH_ZHIPU_API_KEY?.trim());
+  const hasModel = Boolean(process.env.GEO_RESEARCH_ZHIPU_MODEL?.trim());
   const missingConfig = [
-    !hasApiKey ? "GEO_RESEARCH_OPENAI_API_KEY（或 OPENAI_API_KEY）" : undefined,
-    !hasModel ? "GEO_RESEARCH_OPENAI_MODEL" : undefined
+    !hasApiKey ? "GEO_RESEARCH_ZHIPU_API_KEY" : undefined,
+    !hasModel ? "GEO_RESEARCH_ZHIPU_MODEL" : undefined
   ].filter((item): item is string => Boolean(item));
   return {
     status: missingConfig.length ? "pending_config" as const : "ready" as const,
-    provider: "openai" as const,
-    liveSearchTool: "responses.web_search" as const,
+    provider: "zhipu" as const,
+    liveSearchTool: "zhipu.web_search" as const,
     missingConfig
   };
 }
@@ -108,22 +105,44 @@ The output is a draft only and must not claim approval or activation.`;
   }
 }
 
+const ZHIPU_SEARCH_ENGINES = new Set(["search_std", "search_pro", "search_pro_sogou", "search_pro_quark"]);
+const ZHIPU_RECENCY_FILTERS = new Set(["oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"]);
+
+interface ZhipuProviderConfig {
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  searchEngine: string;
+  searchCount: number;
+  searchRecency: string;
+  contentSize: "medium" | "high";
+  maxQueries: number;
+}
+
+interface ZhipuSearchResult {
+  title?: unknown;
+  content?: unknown;
+  link?: unknown;
+  media?: unknown;
+  publish_date?: unknown;
+}
+
 function extractOutputText(response: Record<string, unknown>) {
-  if (typeof response.output_text === "string") return response.output_text;
-  const output = Array.isArray(response.output) ? response.output : [];
-  const texts: string[] = [];
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const content = Array.isArray((item as { content?: unknown }).content)
-      ? (item as { content: unknown[] }).content
-      : [];
-    for (const part of content) {
-      if (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string") {
-        texts.push((part as { text: string }).text);
-      }
-    }
-  }
-  return texts.join("\n").trim();
+  const choices = Array.isArray(response.choices) ? response.choices : [];
+  const first = choices[0];
+  if (!first || typeof first !== "object") return "";
+  const message = (first as { message?: unknown }).message;
+  if (!message || typeof message !== "object") return "";
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item) => item && typeof item === "object" && typeof (item as { text?: unknown }).text === "string"
+      ? (item as { text: string }).text
+      : "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 }
 
 function parseStructuredOutput(outputText: string) {
@@ -147,117 +166,90 @@ function parseStructuredOutput(outputText: string) {
   );
 }
 
-function collectSources(value: unknown, sources: Map<string, GeoResearchProviderSource>, currentQuery?: string) {
-  if (Array.isArray(value)) {
-    for (const item of value) collectSources(item, sources, currentQuery);
-    return;
-  }
-  if (!value || typeof value !== "object") return;
-  const record = value as Record<string, unknown>;
-  const nextQuery = typeof record.query === "string"
-    ? record.query
-    : Array.isArray(record.queries) && typeof record.queries[0] === "string"
-      ? record.queries[0]
-      : currentQuery;
-  const url = typeof record.url === "string" ? record.url : undefined;
-  if (url && /^https?:\/\//i.test(url)) {
-    const existing = sources.get(url);
-    sources.set(url, {
-      url,
-      title: typeof record.title === "string" ? record.title : existing?.title,
-      query: nextQuery || existing?.query,
-      publisher: typeof record.publisher === "string" ? record.publisher : existing?.publisher
-    });
-  }
-  for (const child of Object.values(record)) collectSources(child, sources, nextQuery);
-}
-
 function assertProviderConfig() {
-  const apiKey = process.env.GEO_RESEARCH_OPENAI_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim();
-  const model = process.env.GEO_RESEARCH_OPENAI_MODEL?.trim();
-  const baseUrl = (process.env.GEO_RESEARCH_OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const apiKey = process.env.GEO_RESEARCH_ZHIPU_API_KEY?.trim();
+  const model = process.env.GEO_RESEARCH_ZHIPU_MODEL?.trim();
+  const baseUrl = (process.env.GEO_RESEARCH_ZHIPU_BASE_URL?.trim() || "https://open.bigmodel.cn/api/paas/v4").replace(/\/+$/, "");
+  const searchEngine = process.env.GEO_RESEARCH_ZHIPU_SEARCH_ENGINE?.trim() || "search_pro";
+  const requestedCount = Number(process.env.GEO_RESEARCH_ZHIPU_SEARCH_COUNT || 10);
+  const searchRecency = process.env.GEO_RESEARCH_ZHIPU_SEARCH_RECENCY?.trim() || "noLimit";
+  const contentSize = process.env.GEO_RESEARCH_ZHIPU_CONTENT_SIZE?.trim() === "medium" ? "medium" : "high";
+  const requestedMaxQueries = Number(process.env.GEO_RESEARCH_ZHIPU_MAX_QUERIES || 3);
   const missing = getGeoResearchProviderReadiness().missingConfig;
+  if (!ZHIPU_SEARCH_ENGINES.has(searchEngine)) missing.push("GEO_RESEARCH_ZHIPU_SEARCH_ENGINE");
+  if (!ZHIPU_RECENCY_FILTERS.has(searchRecency)) missing.push("GEO_RESEARCH_ZHIPU_SEARCH_RECENCY");
   if (missing.length) {
     throw new V5GovernanceRepositoryError(
       "pending_config",
       `GEO 联网研究 Provider 尚未配置：${missing.join(", ")}`,
       503,
-      "配置 OpenAI Responses API 凭证与模型后重新执行任务。"
+      "配置智谱 API Key、GLM 模型和 Web Search 参数后重新执行任务。"
     );
   }
-  return { apiKey: apiKey as string, model: model as string, baseUrl };
+  return {
+    apiKey: apiKey as string,
+    model: model as string,
+    baseUrl,
+    searchEngine,
+    searchCount: Number.isFinite(requestedCount) ? Math.min(50, Math.max(1, Math.floor(requestedCount))) : 10,
+    searchRecency,
+    contentSize,
+    maxQueries: Number.isFinite(requestedMaxQueries) ? Math.min(5, Math.max(1, Math.floor(requestedMaxQueries))) : 3
+  } satisfies ZhipuProviderConfig;
 }
 
-export async function runGeoResearchProvider(context: GeoResearchProviderContext): Promise<GeoResearchProviderResult> {
-  const config = assertProviderConfig();
-  const requiresLiveSearch = LIVE_SEARCH_TASKS.has(context.taskType);
-  const body: Record<string, unknown> = {
-    model: config.model,
-    store: false,
-    input: [
-      {
-        role: "developer",
-        content: [
-          {
-            type: "input_text",
-            text: "You are a GEO research agent. Use only supplied product facts and evidence from this run. Return strict JSON, never markdown. Preserve uncertainty and do not approve business rules."
-          }
-        ]
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: JSON.stringify({
-              instruction: taskInstruction(context.taskType),
-              product: context.product,
-              researchBoundary: context.project,
-              sourceSnapshotHash: context.sourceSnapshotHash,
-              previousOutputs: context.previousOutputs
-            })
-          }
-        ]
-      }
-    ]
-  };
-  if (requiresLiveSearch) {
-    const market = context.project.researchMarkets[0] || "CN";
-    body.tools = [{
-      type: "web_search",
-      search_context_size: "high",
-      user_location: {
-        type: "approximate",
-        country: /^[A-Za-z]{2}$/.test(market) ? market.toUpperCase() : "CN",
-        timezone: "Asia/Shanghai"
-      }
-    }];
-    body.max_tool_calls = 20;
-  }
+function clipSearchQuery(value: string) {
+  return Array.from(value.replace(/\s+/g, " ").trim()).slice(0, 70).join("");
+}
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 180_000);
+function buildSearchQueries(context: GeoResearchProviderContext, maxQueries: number) {
+  const product = context.product.displayName || context.product.canonicalName;
+  const category = context.product.productCategory || context.project.expressionFocus || "同类产品";
+  const aliases = context.product.aliases.slice(0, 2).join(" ");
+  const candidates = context.taskType === "live_question_discovery"
+    ? [
+        `${product} ${aliases} 用户问题 社区 论坛 评价`,
+        `${category} 选型 价格 部署 集成 安全 常见问题`,
+        `${product} 使用 故障 实施 售后 支持`
+      ]
+    : context.taskType === "live_competitor_discovery"
+      ? [
+          `${product} 竞品 对比 替代方案`,
+          `${category} 产品推荐 品牌比较`,
+          `${product} 市场评价 内容渠道`
+        ]
+      : [
+          `${product} 用户评价 常见问题`,
+          `${product} ${category} 对比 推荐`,
+          `${category} 选型 采购 真实体验`
+        ];
+  return Array.from(new Set(candidates.map(clipSearchQuery).filter(Boolean))).slice(0, maxQueries);
+}
+
+async function requestZhipu(
+  config: ZhipuProviderConfig,
+  path: "/web_search" | "/chat/completions",
+  body: Record<string, unknown>,
+  signal: AbortSignal
+) {
   let response: Response;
   try {
-    response = await fetch(`${config.baseUrl}/responses`, {
+    response = await fetch(`${config.baseUrl}${path}`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${config.apiKey}`,
         "content-type": "application/json"
       },
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal
     });
   } catch (error) {
     throw new V5GovernanceRepositoryError(
       "research_provider_unreachable",
-      error instanceof Error ? `GEO 联网研究请求失败：${error.message}` : "GEO 联网研究请求失败。",
+      error instanceof Error ? `智谱 GEO 联网研究请求失败：${error.message}` : "智谱 GEO 联网研究请求失败。",
       502
     );
-  } finally {
-    clearTimeout(timeout);
   }
-
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
     const providerError = payload.error && typeof payload.error === "object"
@@ -266,41 +258,117 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
     throw new V5GovernanceRepositoryError(
       "research_provider_failed",
       typeof providerError === "string"
-        ? `GEO 联网研究 Provider 返回错误：${providerError}`
-        : `GEO 联网研究 Provider 返回 HTTP ${response.status}。`,
+        ? `智谱 GEO 联网研究返回错误：${providerError}`
+        : `智谱 GEO 联网研究返回 HTTP ${response.status}。`,
       502
     );
   }
-  const outputText = extractOutputText(payload);
-  const structured = parseStructuredOutput(outputText);
-  const sourceMap = new Map<string, GeoResearchProviderSource>();
-  collectSources(payload.output, sourceMap);
-  const output = Array.isArray(payload.output) ? payload.output : [];
-  const webSearchCallCompleted = output.some((item) => (
-    item && typeof item === "object"
-    && String((item as { type?: unknown }).type) === "web_search_call"
-    && String((item as { status?: unknown }).status) === "completed"
-  ));
-  const sources = [...sourceMap.values()];
-  const liveSearchVerified = webSearchCallCompleted && sources.length > 0;
-  if (requiresLiveSearch && !liveSearchVerified) {
-    throw new V5GovernanceRepositoryError(
-      "live_search_evidence_missing",
-      "任务要求联网搜索，但 Provider 结果中没有可核验的搜索调用和来源 URL。",
-      502,
-      "检查模型是否支持 web_search，并重试；禁止用模型记忆结果替代。"
-    );
+  return payload;
+}
+
+function searchEvidenceForPrompt(
+  searchPayloads: Array<{ query: string; payload: Record<string, unknown> }>,
+  sourceMap: Map<string, GeoResearchProviderSource>
+) {
+  const evidence: Array<Record<string, string>> = [];
+  for (const { query, payload } of searchPayloads) {
+    const results = Array.isArray(payload.search_result) ? payload.search_result : [];
+    for (const item of results) {
+      if (!item || typeof item !== "object") continue;
+      const result = item as ZhipuSearchResult;
+      const url = typeof result.link === "string" ? result.link : "";
+      if (!/^https?:\/\//i.test(url)) continue;
+      const title = typeof result.title === "string" ? result.title : undefined;
+      const publisher = typeof result.media === "string" ? result.media : undefined;
+      sourceMap.set(url, { url, title, publisher, query });
+      evidence.push({
+        query,
+        title: title || "未命名网页",
+        url,
+        publisher: publisher || "",
+        publishDate: typeof result.publish_date === "string" ? result.publish_date : "",
+        excerpt: typeof result.content === "string" ? result.content.slice(0, 1600) : ""
+      });
+    }
   }
-  return {
-    provider: "openai",
-    model: config.model,
-    toolName: requiresLiveSearch ? "responses.web_search" : "responses",
-    responseId: typeof payload.id === "string" ? payload.id : undefined,
-    outputText,
-    structured,
-    sources,
-    liveSearchVerified,
-    rawResponse: payload,
-    payloadHash: createHash("sha256").update(JSON.stringify(payload)).digest("hex")
-  };
+  return evidence.slice(0, 60);
+}
+
+export async function runGeoResearchProvider(context: GeoResearchProviderContext): Promise<GeoResearchProviderResult> {
+  const config = assertProviderConfig();
+  const requiresLiveSearch = LIVE_SEARCH_TASKS.has(context.taskType);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180_000);
+  const searchQueries = requiresLiveSearch ? buildSearchQueries(context, config.maxQueries) : [];
+  let searchPayloads: Array<{ query: string; payload: Record<string, unknown> }> = [];
+  let completionPayload: Record<string, unknown>;
+  try {
+    searchPayloads = await Promise.all(searchQueries.map(async (query) => ({
+      query,
+      payload: await requestZhipu(config, "/web_search", {
+        search_query: query,
+        search_engine: config.searchEngine,
+        search_intent: false,
+        count: config.searchCount,
+        search_recency_filter: config.searchRecency,
+        content_size: config.contentSize,
+        request_id: randomUUID(),
+        user_id: "joto-geo-research"
+      }, controller.signal)
+    })));
+
+    const sourceMap = new Map<string, GeoResearchProviderSource>();
+    const searchEvidence = searchEvidenceForPrompt(searchPayloads, sourceMap);
+    const liveSearchVerified = searchPayloads.length > 0 && sourceMap.size > 0;
+    if (requiresLiveSearch && !liveSearchVerified) {
+      throw new V5GovernanceRepositoryError(
+        "live_search_evidence_missing",
+        "任务要求联网搜索，但智谱 Web Search 没有返回可核验的来源 URL。",
+        502,
+        "检查搜索引擎、查询范围和账户额度后重试；禁止用模型记忆结果替代。"
+      );
+    }
+
+    completionPayload = await requestZhipu(config, "/chat/completions", {
+      model: config.model,
+      stream: false,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content: "You are a GEO research agent. Return strict JSON only, never markdown. Use only supplied product facts, previous outputs, and search evidence from this run. Every cited URL must exist in searchEvidence. Preserve uncertainty and do not approve business rules."
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            instruction: taskInstruction(context.taskType),
+            product: context.product,
+            researchBoundary: context.project,
+            sourceSnapshotHash: context.sourceSnapshotHash,
+            previousOutputs: context.previousOutputs,
+            searchEvidence
+          })
+        }
+      ]
+    }, controller.signal);
+
+    const outputText = extractOutputText(completionPayload);
+    const structured = parseStructuredOutput(outputText);
+    const sources = [...sourceMap.values()];
+    const rawResponse = { searchQueries, searchResponses: searchPayloads, completion: completionPayload };
+    return {
+      provider: "zhipu",
+      model: config.model,
+      toolName: requiresLiveSearch ? "zhipu.web_search" : "zhipu.chat.completions",
+      responseId: typeof completionPayload.id === "string" ? completionPayload.id : undefined,
+      outputText,
+      structured,
+      sources,
+      liveSearchVerified,
+      rawResponse,
+      payloadHash: createHash("sha256").update(JSON.stringify(rawResponse)).digest("hex")
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

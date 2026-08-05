@@ -50,8 +50,10 @@ test("research run cannot start without a governed source snapshot", async () =>
 test("live research requires provider web-search traces and persists raw artifacts", async () => {
   const provider = await read("src/lib/v5/geo-research-provider.ts");
   const repository = await read("src/lib/v5/geo-research-repository.ts");
-  assert.match(provider, /type: "web_search"/);
-  assert.match(provider, /webSearchCallCompleted && sources\.length > 0/);
+  assert.match(provider, /GEO_RESEARCH_ZHIPU_API_KEY/);
+  assert.match(provider, /"\/web_search"/);
+  assert.match(provider, /searchPayloads\.length > 0 && sourceMap\.size > 0/);
+  assert.match(provider, /provider: "zhipu"/);
   assert.match(provider, /live_search_evidence_missing/);
   assert.match(repository, /INSERT INTO geo_research_artifact/);
   assert.match(repository, /INSERT INTO geo_research_evidence/);
