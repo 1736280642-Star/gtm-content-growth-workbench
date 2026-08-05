@@ -8,6 +8,7 @@ import { resolveWeixinArticleContent } from "./lib/wechatsync-content.mjs";
 import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
 import { createBrowserPublishJobStore } from "./lib/browser-publish-job-store.mjs";
 import { createCsdnGatewayHeaders } from "./lib/csdn-api-gateway.mjs";
+import { enforceCsdnContentFields, prepareCsdnArticleContent } from "./lib/csdn-content-format.mjs";
 import { submitAndPollWechatPublish, verifyWechatPublish } from "./lib/wechat-formal-publish.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -766,7 +767,10 @@ async function syncCsdnArticle(input) {
     };
   }
 
-  const article = getPlatformInput(input);
+  const baseArticle = getPlatformInput(input);
+  const csdnContent = prepareCsdnArticleContent(baseArticle);
+  const requestedArticleId = String(input.externalDraftId || input.platformArticleId || "").trim();
+  const article = { ...baseArticle, ...csdnContent, articleId: requestedArticleId };
   const inputCheck = assertArticleInput(article);
   if (!inputCheck.ok) return inputCheck;
 
@@ -825,10 +829,11 @@ async function syncCsdnArticle(input) {
     }),
     ...getExtraHeaders("CSDN_HEADERS_JSON")
   };
+  const resolvedDraftPayload = enforceCsdnContentFields(applyTemplate(draftPayload, replacements), article);
   const { response, payload } = await fetchJson(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(applyTemplate(draftPayload, replacements))
+    body: JSON.stringify(resolvedDraftPayload)
   });
 
   if (!isBusinessSuccess(response, payload)) {
@@ -841,7 +846,8 @@ async function syncCsdnArticle(input) {
     payload?.data?.id ||
     payload?.article_id ||
     payload?.articleId ||
-    payload?.id;
+    payload?.id ||
+    requestedArticleId;
   const editorUrl = externalDraftId ? `https://editor.csdn.net/md?articleId=${externalDraftId}` : "https://editor.csdn.net/";
 
   return {
