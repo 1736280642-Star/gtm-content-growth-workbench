@@ -30,6 +30,6 @@ export default function MonthlyMatrixSchedulePage() {
     <MonthlyFlowNav />
     {error ? <Alert showIcon type="error" message="排程工作区读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} /> : null}
     {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取发布排程</span></div> : null}
-    {schedules.length ? <ScheduleCalendarLite items={schedules} month={workspace?.month || new Date().toISOString().slice(0, 7)} onSchedule={saveSchedule} /> : <div className="v5-action-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可排程正文。返回“内容生成”完成正文生成与校验后，再安排发布日期。" /><Button onClick={() => router.push("/monthly-matrix/batch-generation")}>返回内容生成</Button></div>}
+    {schedules.length ? <ScheduleCalendarLite items={schedules} month={workspace?.month || new Date().toISOString().slice(0, 7)} onSchedule={saveSchedule} /> : <div className="v5-action-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可排程正文。系统会在正文生成与校验完成后自动安排发布日期。" /><Button onClick={() => router.push("/monthly-plan?step=production")}>查看文章任务编排</Button></div>}
   </>;
 }

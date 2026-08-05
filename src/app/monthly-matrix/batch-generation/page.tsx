@@ -1,10 +1,10 @@
 "use client";
 
-import { CheckCircleOutlined, PauseOutlined, PlayCircleOutlined, ScheduleOutlined, ToolOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, PauseOutlined, PlayCircleOutlined, ScheduleOutlined, ToolOutlined, WarningOutlined } from "@ant-design/icons";
 import { Alert, Button, Empty, message, Modal, Progress, Space, Spin, Tag } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MonthlyFlowNav } from "@/components/MonthlyFlowNav";
 import { getTaskBusinessStatus, MonthlyTaskTable } from "@/components/MonthlyTaskTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -14,27 +14,35 @@ import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
 
 const batchLabels = { queued: "等待开始", running: "正在生成", pausing: "正在暂停", paused: "已暂停", completed: "已完成", failed: "部分失败", cancelled: "已取消" } as const;
 
-export default function MonthlyBatchGenerationPage() {
+function MonthlyBatchGenerationWorkspace() {
   const router = useRouter();
   const [messageApi, messageContext] = message.useMessage();
   const { workspace, loading, error, refresh } = useMonthlyWorkspace();
-  const [admittedIds, setAdmittedIds] = useState<string[]>([]);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<ProductionMatrixTask[]>([]);
   const [activeBatch, setActiveBatch] = useState<GenerationBatchRecord>();
   const [initialPreviewDraftId, setInitialPreviewDraftId] = useState<string>();
   const processingRef = useRef(false);
-  const tasks = useMemo(
-    () => (workspace?.productionTasks || []).filter((task) => admittedIds.includes(task.taskId) || task.formalDraftId === initialPreviewDraftId),
-    [admittedIds, initialPreviewDraftId, workspace?.productionTasks],
-  );
+  const allTasks = useMemo(() => workspace?.productionTasks || [], [workspace?.productionTasks]);
+  const packageByVersion = useMemo(() => new Map((workspace?.rulePackages || []).map((item) => [item.id, item])), [workspace?.rulePackages]);
+  const questionProduct = useMemo(() => new Map((workspace?.targetQuestions || []).map((item) => [item.questionVersionId, item.productId])), [workspace?.targetQuestions]);
+  const productGroups = useMemo(() => {
+    const groups = new Map<string, { productId: string; productName: string; tasks: ProductionMatrixTask[] }>();
+    for (const task of allTasks) {
+      const snapshot = task as ProductionMatrixTask & { productId?: string; productNameSnapshot?: string };
+      const rulePackage = packageByVersion.get(task.rulePackageVersionId);
+      const productId = snapshot.productId || rulePackage?.productId || questionProduct.get(task.questionVersionId) || "unassigned";
+      const productName = snapshot.productNameSnapshot || rulePackage?.productName || (productId === "unassigned" ? "待确认产品" : productId);
+      const group = groups.get(productId) || { productId, productName, tasks: [] };
+      group.tasks.push(task);
+      groups.set(productId, group);
+    }
+    return Array.from(groups.values()).sort((left, right) => left.productName.localeCompare(right.productName, "zh-CN"));
+  }, [allTasks, packageByVersion, questionProduct]);
+  const productContextByTaskId = useMemo(() => Object.fromEntries(productGroups.flatMap((group) => group.tasks.map((task) => [task.taskId, { productId: group.productId, productName: group.productName }]))), [productGroups]);
+  const tasks = allTasks;
   const fallbackBatch = workspace?.generationBatches?.find((batch) => ["queued", "running", "pausing", "paused"].includes(batch.status));
   const currentBatch = activeBatch || fallbackBatch;
-
-  useEffect(() => {
-    if (!workspace?.month) return;
-    try { setAdmittedIds(JSON.parse(localStorage.getItem(`monthly-generation-admission:${workspace.month}`) || "[]") as string[]); } catch { setAdmittedIds([]); }
-  }, [workspace?.month]);
 
   useEffect(() => setInitialPreviewDraftId(new URLSearchParams(window.location.search).get("draftId") || undefined), []);
 
@@ -108,8 +116,6 @@ export default function MonthlyBatchGenerationPage() {
     const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(workspace.month)}/tasks`, { method: "DELETE", headers: { "content-type": "application/json", "x-idempotency-key": crypto.randomUUID() }, body: JSON.stringify({ taskIds: selected.map((task) => task.taskId), expectedVersion: workspace.plan.version, auditReason: "用户从内容生成页批量删除未发布任务" }) });
     const body = await response.json() as { ok?: boolean; data?: { quotaGap?: number }; error?: { message?: string } };
     if (!response.ok || !body.ok) throw new Error(body.error?.message || "任务删除失败。");
-    const removedIds = new Set(selected.map((task) => task.taskId));
-    const nextAdmissions = admittedIds.filter((id) => !removedIds.has(id)); setAdmittedIds(nextAdmissions); localStorage.setItem(`monthly-generation-admission:${workspace.month}`, JSON.stringify(nextAdmissions));
     await refresh(workspace.month); setSelectedTaskIds([]); messageApi.success(`任务已软删除；策略配额缺口 ${body.data?.quotaGap || 0} 篇。`);
   }
 
@@ -125,16 +131,54 @@ export default function MonthlyBatchGenerationPage() {
   const ready = tasks.filter((task) => getTaskBusinessStatus(task) === "not_generated").length;
   const generating = tasks.filter((task) => getTaskBusinessStatus(task) === "generating").length;
   const generated = tasks.filter((task) => getTaskBusinessStatus(task) === "generated").length;
-  const failed = tasks.filter((task) => task.status === "system_recovering" || task.ctaValidationStatus === "failed").length;
+  const anomalies = allTasks.filter((task) => task.status === "awaiting_material" || task.status === "system_recovering" || task.ctaValidationStatus === "failed");
+
+  function productForTask(task: ProductionMatrixTask) {
+    return productGroups.find((group) => group.tasks.some((item) => item.taskId === task.taskId));
+  }
+
+  const scheduled = tasks.filter((task) => getTaskBusinessStatus(task) === "scheduled").length;
+  const published = tasks.filter((task) => getTaskBusinessStatus(task) === "published").length;
+  const visibleAnomalies = anomalies;
 
   return <>
     {messageContext}
-    <PageHeader title="内容生成" titleExtra={<Space size={6}><Tag color="blue">{workspace?.month || "读取中"}</Tag>{currentBatch ? <Tag color={currentBatch.status === "running" ? "processing" : currentBatch.status === "paused" ? "gold" : "default"}>{batchLabels[currentBatch.status]}</Tag> : null}</Space>} subtitle="系统持续生成、校验和修复已准入正文；这里保留人工补跑、暂停和预览能力。" actions={<Space wrap><Button type="primary" icon={<PlayCircleOutlined />} onClick={currentBatch?.status === "paused" ? () => void runBatch(currentBatch) : oneClickGenerate}>{currentBatch?.status === "paused" ? "继续生成" : "立即补跑"}</Button><Button icon={<PauseOutlined />} disabled={!currentBatch || !["queued", "running"].includes(currentBatch.status)} onClick={() => void pauseBatch()}>暂停生成</Button><Button icon={<ToolOutlined />} onClick={() => checkAndRepair()}>格式检查与修复</Button><Link href="/monthly-plan?step=execution&view=schedule"><Button icon={<ScheduleOutlined />}>查看发布排程</Button></Link></Space>} />
+    <PageHeader
+      title="文章任务编排"
+      titleExtra={<Tag color="blue">{workspace?.month || "读取中"}</Tag>}
+      subtitle="所有产品的文章任务集中展示；系统自动推进，你可按产品和状态快速筛选。"
+      actions={<Space wrap>
+        {visibleAnomalies.length ? <Button icon={<WarningOutlined />} danger onClick={() => document.getElementById("production-exceptions")?.scrollIntoView({ behavior: "smooth" })}>异常处理 {visibleAnomalies.length}</Button> : null}
+        <Link href="/monthly-plan?step=execution&view=schedule"><Button icon={<ScheduleOutlined />}>查看生成与发布</Button></Link>
+      </Space>}
+    />
     <MonthlyFlowNav />
     {error ? <Alert showIcon type="error" message="生产工作区读取失败" description={error} action={<Button size="small" onClick={() => void refresh()}>重试</Button>} /> : null}
-    {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取内容生成任务</span></div> : null}
-    {currentBatch ? <div className="v5-generation-batch-strip"><div><strong>{batchLabels[currentBatch.status]}</strong><span>{currentBatch.status === "pausing" ? "等待当前 Provider 请求完成并保存，不再领取下一篇" : `${currentBatch.completedTaskIds.length} / ${currentBatch.taskIds.length} 篇完成`}</span></div><Progress percent={batchProgress} status={currentBatch.status === "failed" ? "exception" : currentBatch.status === "completed" ? "success" : "active"} /><Tag icon={currentBatch.status === "completed" ? <CheckCircleOutlined /> : undefined}>{currentBatch.failedTaskIds.length} 篇失败</Tag></div> : null}
-    <V5StatusRail items={[{ label: "待生成", value: ready, helper: "已完成生产准入" }, { label: "生成中", value: generating, helper: "Provider 正在处理" }, { label: "已生成", value: generated, helper: "可预览并准入排程" }, { label: "阻塞", value: failed, helper: "生成或 CTA 校验失败" }]} />
-    {tasks.length ? <MonthlyTaskTable items={tasks} mode="generation" initialPreviewDraftId={initialPreviewDraftId} selectedTaskIds={selectedTaskIds} onSelectionChange={setSelectedTaskIds} onFilteredChange={setFilteredTasks} onGenerate={(task) => void createAndRun([task])} onPause={() => messageApi.info(currentBatch ? `${batchLabels[currentBatch.status]}，已完成 ${batchProgress}%` : "当前没有运行中的生成批次。")} onRepair={(task) => checkAndRepair([task])} onDelete={(selected) => void deleteTasks(selected)} onAdmitSchedule={admitSchedule} /> : <div className="v5-action-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已准入任务。返回“矩阵任务”选择文章并准入内容生成。" /><Link href="/monthly-matrix/tasks"><Button>返回矩阵任务</Button></Link></div>}
+    {loading && !workspace ? <div className="v5-loading-row"><Spin /><span>正在读取文章任务编排</span></div> : null}
+
+    <V5StatusRail items={[{ label: "全部任务", value: tasks.length, helper: `${productGroups.length} 个产品` }, { label: "待生成", value: ready, helper: "系统自动领取" }, { label: "生成中", value: generating, helper: "正在形成正文" }, { label: "已生成", value: generated, helper: "等待自动排程" }, { label: "已排程", value: scheduled, helper: "等待发布" }, { label: "已发布", value: published, helper: "进入复盘" }]} />
+
+    {currentBatch ? <div className="v5-generation-batch-strip"><div><strong>{batchLabels[currentBatch.status]}</strong><span>{currentBatch.status === "pausing" ? "当前任务完成后自动暂停" : `${currentBatch.completedTaskIds.length} / ${currentBatch.taskIds.length} 篇完成`}</span></div><Progress percent={batchProgress} status={currentBatch.status === "failed" ? "exception" : currentBatch.status === "completed" ? "success" : "active"} /><Tag icon={currentBatch.status === "completed" ? <CheckCircleOutlined /> : undefined}>{currentBatch.failedTaskIds.length} 篇失败</Tag></div> : null}
+
+    {tasks.length ? <MonthlyTaskTable items={tasks} mode="generation" productContextByTaskId={productContextByTaskId} initialPreviewDraftId={initialPreviewDraftId} selectedTaskIds={selectedTaskIds} onSelectionChange={setSelectedTaskIds} onFilteredChange={setFilteredTasks} onGenerate={(task) => void createAndRun([task])} onPause={() => messageApi.info(currentBatch ? `${batchLabels[currentBatch.status]}，已完成 ${batchProgress}%` : "当前没有运行中的生成批次。")} onRepair={(task) => checkAndRepair([task])} onDelete={(selected) => void deleteTasks(selected)} onAdmitSchedule={admitSchedule} /> : (!loading ? <div className="v5-action-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前月份还没有文章任务，系统会在产品策略确认后自动创建。" /></div> : null)}
+
+    {visibleAnomalies.length ? <section id="production-exceptions" className="production-exception-panel" aria-labelledby="production-exception-title">
+      <div className="production-exception-heading"><div><span>异常处理</span><h2 id="production-exception-title">{visibleAnomalies.length} 项需要关注</h2></div><Tag color="error">系统已暂停受影响任务</Tag></div>
+      <div className="production-exception-list">{visibleAnomalies.slice(0, 8).map((task) => {
+        const product = productForTask(task);
+        const awaitingMaterial = task.status === "awaiting_material";
+        const reason = awaitingMaterial ? "缺少正文成立所需的产品资料" : task.failureReason || (task.ctaValidationStatus === "failed" ? "CTA 校验未通过" : "正文生成失败");
+        return <div key={task.taskId}><div><Tag>{product?.productName || "待确认产品"}</Tag><strong>{task.title}</strong><span>{reason}</span></div>{awaitingMaterial && product?.productId && product.productId !== "unassigned" ? <Link href={`/products/${encodeURIComponent(product.productId)}?tab=materials`}><Button size="small" type="primary">补充产品资料</Button></Link> : <Button size="small" onClick={() => void createAndRun([task])}>重新运行</Button>}</div>;
+      })}</div>
+    </section> : null}
+
+    <details className="production-manual-details">
+      <summary>人工操作</summary>
+      <div className="production-manual-controls"><span>仅用于补跑、暂停或修复异常批次。</span><Space wrap><Button icon={<PlayCircleOutlined />} onClick={currentBatch?.status === "paused" ? () => void runBatch(currentBatch) : oneClickGenerate}>{currentBatch?.status === "paused" ? "继续生成" : "手动补跑"}</Button><Button icon={<PauseOutlined />} disabled={!currentBatch || !["queued", "running"].includes(currentBatch.status)} onClick={() => void pauseBatch()}>暂停批次</Button><Button icon={<ToolOutlined />} onClick={() => checkAndRepair()}>检查与修复</Button></Space></div>
+    </details>
   </>;
+}
+
+export default function MonthlyBatchGenerationPage() {
+  return <Suspense fallback={<div className="v5-loading-row"><Spin /><span>正在读取文章任务编排</span></div>}><MonthlyBatchGenerationWorkspace /></Suspense>;
 }

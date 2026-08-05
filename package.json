@@ -78,7 +78,8 @@
     "worker:import-channel-metrics": "node workers/import-channel-metrics.mjs",
     "worker:run-pipeline": "node workers/run-pipeline.mjs",
     "worker:schedule-pipeline": "node workers/schedule-pipeline.mjs",
-    "worker:direct-publish": "node workers/direct-publish-worker.mjs"
+    "worker:direct-publish": "node workers/direct-publish-worker.mjs",
+    "publish:restored-monthly": "node scripts/publish-restored-monthly-snapshot.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5.3.7",

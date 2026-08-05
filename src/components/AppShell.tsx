@@ -14,7 +14,7 @@ const contentStyle: CSSProperties = { minWidth: 0, padding: 24 };
 
 const navItems = [
   { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
-  { key: "/knowledge", icon: <BookOutlined />, label: <Link href="/knowledge">知识库</Link> },
+  { key: "/products", icon: <BookOutlined />, label: <Link href="/products">产品与资料</Link> },
   { key: "/monthly-plan", icon: <ControlOutlined />, label: <Link href="/monthly-plan">GEO 内容中心</Link> },
   { key: "/free-production", icon: <WechatOutlined />, label: <Link href="/free-production">公众号生产中心</Link> },
   { key: "/geo-monitor", icon: <FundProjectionScreenOutlined />, label: <Link href="/geo-monitor">GEO 监控塔</Link> },
@@ -57,7 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Sider>
       <Layout style={mainLayoutStyle}>
         <Header className="app-header" style={{ background: "#fff", borderBottom: "1px solid #e6e8ef", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Typography.Text strong>知识采集 → GEO 调研 → 内容生产 → 自动排程 → 发布与复盘</Typography.Text>
+          <Typography.Text strong>产品与资料 → GEO 调研 → 内容生产 → 自动排程 → 生成与发布</Typography.Text>
           <Space><Typography.Text type="secondary">默认自动运行 · 异常才需人工处理</Typography.Text></Space>
         </Header>
         <Content style={contentStyle}>{children}</Content>

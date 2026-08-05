@@ -47,6 +47,8 @@ const requiredFiles = [
   "src/app/monthly-plan/page.tsx",
   "src/app/geo-monitor/page.tsx",
   "src/app/today/page.tsx",
+  "src/app/products/[productId]/page.tsx",
+  "src/components/ProductMaterialImport.tsx",
   "src/app/knowledge/import/page.tsx",
   "src/app/knowledge/import/url/page.tsx",
   "src/app/knowledge/import/document/page.tsx",
@@ -85,7 +87,8 @@ const requiredFiles = [
 for (const filePath of requiredFiles) addFileCheck(`required file: ${filePath}`, filePath);
 
 addContentCheck("monthly navigation", "src/components/AppShell.tsx", [
-  "知识库",
+  "产品与资料",
+  "/products",
   "/monthly-plan",
   "GEO 内容中心",
   "/geo-monitor",
@@ -132,17 +135,25 @@ addContentCheck("monthly review", "src/app/monthly-review/page.tsx", [
   "MonthlyQuestionReviewTable",
   "createProposal"
 ]);
-addContentCheck("managed URL import", "src/app/knowledge/import/url/page.tsx", [
+addContentCheck("unified product material import", "src/components/ProductMaterialImport.tsx", [
   "/api/v5/knowledge-imports/urls",
-  "publicUseConfirmed",
-  "idempotencyKey",
-  "托管并启动治理"
-]);
-addContentCheck("managed document import", "src/app/knowledge/import/document/page.tsx", [
   "/api/v5/knowledge-imports/documents",
   "publicUseConfirmed",
   "idempotencyKey",
-  "托管并启动治理"
+  "导入资料"
+]);
+addContentCheck("single-page product onboarding", "src/app/products/new/page.tsx", [
+  "ProductMaterialImport",
+  "beforeImport={createProduct}",
+  "创建并导入资料"
+]);
+addContentCheck("product GEO progress entry", "src/app/products/page.tsx", [
+  "GEO 进程",
+  "/research"
+]);
+addContentCheck("legacy knowledge import redirects", "src/app/knowledge/import/page.tsx", [
+  "redirect",
+  "tab=materials"
 ]);
 addContentCheck("managed source service", "src/lib/v5/rag/managed-source-import-service.ts", [
   "managedContent",
@@ -163,10 +174,30 @@ addContentCheck("knowledge refresh worker", "workers/knowledge-refresh-worker.mj
 ]);
 addContentCheck("unified GEO content center", "src/app/monthly-plan/page.tsx", [
   "MonthlyMatrixPage",
-  "MonthlyMatrixTasksPage",
   "MonthlyBatchGenerationPage",
   "MonthlySchedulePage",
+  "文章任务编排",
   "人工修改策略"
+]);
+addContentCheck("product-first content orchestration", "src/app/monthly-matrix/batch-generation/page.tsx", [
+  "productGroups",
+  "productContextByTaskId",
+  "文章任务编排",
+  "异常处理"
+]);
+addContentCheck("product-first home content pipeline", "src/app/page.tsx", [
+  "productProduction",
+  "生产产品",
+  "自动化运行中",
+  "查看任务",
+  "处理异常"
+]);
+addContentCheck("exception-first publishing monitor", "src/app/publishing/page.tsx", [
+  "productGroups",
+  "按产品查看",
+  "需处理任务",
+  "自动运行中的任务",
+  "处理异常"
 ]);
 addContentCheck("unified GEO monitor tower", "src/app/geo-monitor/page.tsx", [
   "发布状态",

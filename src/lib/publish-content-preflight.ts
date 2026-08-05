@@ -39,7 +39,7 @@ export function preflightPublishContent(input: {
   const externalLinkCount = countMatches(markdown, /https?:\/\/[^\s)>]+/gi);
   const promotionMatches = countMatches(
     `${title}\n${markdown}`,
-    /扫码|二维码|加微信|私信我|立即购买|限时|免费领取|咨询我们|联系我们|点击下单|官网购买/gi
+    /扫码|二维码|加微信|私信我|立即购买|限时(?:优惠|活动|折扣|抢购|秒杀|福利|免费)|免费领取|咨询我们|联系我们|点击下单|官网购买/gi
   );
   const technicalSignals =
     countMatches(markdown, /(^|\n)#{1,4}\s*(实现|原理|配置|代码|验证|测试|排查|步骤|架构|接口|部署)/gim) +
@@ -94,7 +94,7 @@ export function rewriteJuejinContentOnce(input: { title: string; markdown: strin
     .slice(0, 80);
   const lines = input.markdown
     .split(/\r?\n/)
-    .filter((line) => !/扫码|二维码|加微信|私信我|立即购买|限时|免费领取|咨询我们|联系我们|点击下单|官网购买/i.test(line))
+    .filter((line) => !/扫码|二维码|加微信|私信我|立即购买|限时(?:优惠|活动|折扣|抢购|秒杀|福利|免费)|免费领取|咨询我们|联系我们|点击下单|官网购买/i.test(line))
     .map((line) => line.replace(/\[([^\]]+)]\(https?:\/\/[^)]+\)/g, "$1"));
   let markdown = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   if (!/(^|\n)#{1,4}\s*(实现|原理|配置|代码|验证|测试|排查|步骤|架构|接口|部署)/im.test(markdown)) {

@@ -200,6 +200,133 @@
 .masterProgress { overflow: hidden; height: 7px; margin: 9px 0 15px; border-radius: 8px; background: #edf1f6; }
 .masterProgress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2768d7, #3aa8c1); transition: width 500ms ease; }
 
+.pipelineOverview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  margin-bottom: 10px;
+  border: 1px solid #e5ebf3;
+  border-radius: 10px;
+  background: #f9fbfd;
+}
+
+.pipelineOverview > div {
+  padding: 9px 12px;
+  border-right: 1px solid #e8edf4;
+}
+
+.pipelineOverview > div:last-child { border-right: 0; }
+.pipelineOverview strong { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.pipelineOverview span { color: var(--home-muted); font-size: 10px; }
+.pipelineOverview .overviewAttention strong { color: #b76b09; }
+.pipelineOverview .overviewClear strong { color: #23815b; }
+
+.pipelineAutomationMeta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
+  color: #728197;
+  font-size: 11px;
+}
+
+.pipelineAutomationMeta .liveDot { width: 6px; height: 6px; }
+.pipelineAutomationMeta strong { color: #23815b; }
+
+.productPipelineGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.productPipelineCard {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid #dfe6ef;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #fff, #fbfdff);
+}
+
+.productPipelineCardAttention {
+  border-color: #e6c98d;
+  background: linear-gradient(145deg, #fff, #fffaf0);
+}
+
+.productPipelineHeading,
+.productPipelineNumbers,
+.productPipelineFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.productPipelineHeading > div { min-width: 0; }
+.productPipelineHeading > div > span { display: block; color: #8290a3; font-size: 9px; font-weight: 700; letter-spacing: 0.09em; }
+.productPipelineHeading h3 { overflow: hidden; margin: 2px 0 0; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.productPipelineHeading :global(.ant-tag) { flex: 0 0 auto; margin: 0; }
+
+.productPipelineNumbers { margin-top: 13px; }
+.productPipelineNumbers strong { font-size: 15px; }
+.productPipelineNumbers span { color: #607089; font-size: 11px; }
+
+.productPipelineStages {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto 1fr auto;
+  align-items: center;
+  gap: 5px;
+  margin: 12px 0 8px;
+}
+
+.productPipelineStages span { color: #68788e; font-size: 9px; white-space: nowrap; }
+.productPipelineStages i { height: 1px; background: #dce4ee; }
+
+.productPipelineBar {
+  display: flex;
+  overflow: hidden;
+  width: 100%;
+  height: 6px;
+  border-radius: 6px;
+  background: #eef2f6;
+}
+
+.productPipelineBar > span { display: block; flex: 0 0 auto; height: 100%; }
+.segmentPublished { background: #36a173; }
+.segmentScheduled { background: #7258b7; }
+.segmentProduced { background: #3a8dd8; }
+.segmentPending { background: #cbd5e1; }
+.segmentAttention { background: #d48820; }
+
+.productPipelineLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 7px;
+  color: #718096;
+  font-size: 9px;
+}
+
+.productPipelineLegend span { display: inline-flex; align-items: center; gap: 4px; }
+.productPipelineLegend i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+
+.productPipelineEmpty {
+  min-height: 48px;
+  margin: 15px 0;
+  color: #7d8b9f;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.productPipelineFooter {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid #edf1f6;
+  color: #7b899c;
+  font-size: 9px;
+}
+
+.productPipelineFooter a { flex: 0 0 auto; color: #2768d7; font-size: 10px; font-weight: 650; }
+
 .breakdownList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 18px; }
 .breakdownList > div { display: grid; grid-template-columns: auto 1fr auto 36px; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f3f7; font-size: 12px; }
 .breakdownList strong { font-variant-numeric: tabular-nums; }
@@ -272,6 +399,13 @@
   .kpiItem:nth-child(even) { border-right: 0; }
   .kpiItem:last-child { border-bottom: 0; }
   .liveMeta { display: grid; justify-items: end; text-align: right; }
+  .pipelineOverview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pipelineOverview > div:nth-child(2) { border-right: 0; }
+  .pipelineOverview > div:nth-child(-n+2) { border-bottom: 1px solid #e8edf4; }
+  .productPipelineGrid { grid-template-columns: 1fr; }
+  .productPipelineStages { grid-template-columns: 1fr; gap: 3px; }
+  .productPipelineStages i { width: 1px; height: 6px; margin-left: 3px; }
+  .productPipelineFooter { align-items: flex-start; flex-direction: column; }
   .breakdownList { grid-template-columns: 1fr; }
   .activityList > a { grid-template-columns: auto minmax(0, 1fr) auto; }
   .activityList time { display: none; }

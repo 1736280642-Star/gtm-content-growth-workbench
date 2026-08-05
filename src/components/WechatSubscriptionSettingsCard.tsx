@@ -67,7 +67,7 @@ export function WechatSubscriptionSettingsCard() {
       />
 
       <Space wrap>
-        <Link href="/knowledge?view=assets&import=wechat"><Button type="primary" className="wechat-settings-action" icon={<WechatOutlined />}>管理公众号来源</Button></Link>
+        <Link href="/products/sources?import=wechat"><Button type="primary" className="wechat-settings-action" icon={<WechatOutlined />}>管理公众号来源</Button></Link>
         <Button href="https://weixinzs.org/features/mp-article-ai-skill" target="_blank" rel="noreferrer">查看订阅服务说明</Button>
         {status?.latestCollectedAt ? <Typography.Text type="secondary">最近采集：{new Date(status.latestCollectedAt).toLocaleString("zh-CN", { hour12: false })}</Typography.Text> : null}
       </Space>

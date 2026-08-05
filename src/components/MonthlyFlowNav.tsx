@@ -4,10 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const steps: ReadonlyArray<{ href: string; label: string; exact?: boolean }> = [
-  { href: "/monthly-plan?step=strategy", label: "月度策略" },
-  { href: "/monthly-plan?step=tasks", label: "内容任务" },
-  { href: "/monthly-plan?step=generation", label: "内容生成" },
-  { href: "/monthly-plan?step=execution", label: "自动排程与执行" }
+  { href: "/monthly-plan?step=strategy", label: "内容策略" },
+  { href: "/monthly-plan?step=production", label: "文章任务编排" },
+  { href: "/monthly-plan?step=execution", label: "生成与发布" }
 ] as const;
 
 export function MonthlyFlowNav() {
@@ -16,7 +15,7 @@ export function MonthlyFlowNav() {
   if (pathname === "/monthly-plan") return null;
 
   return (
-    <nav className="v5-monthly-flow-rail" aria-label="月度内容生产四步流程">
+    <nav className="v5-monthly-flow-rail" aria-label="月度内容生产三步流程">
       {steps.map((step, index) => {
         const active = step.exact ? pathname === step.href : false;
         return (

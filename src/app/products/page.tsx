@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, ExperimentOutlined, GlobalOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Card, Progress, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -16,16 +16,6 @@ interface ProductListResponse {
   products: ProductRegistryItem[];
   overviews: ProductGeoOverview[];
 }
-
-const nextActionCopy: Record<ProductGeoOverview["nextAction"], string> = {
-  create_project: "补充研究边界",
-  add_sources: "导入产品资料",
-  configure_provider: "配置联网研究",
-  review_blueprint: "审核 GEO 蓝图",
-  open_run: "查看研究进度",
-  start_research: "启动 GEO 调研",
-  monthly_strategy: "进入月度策略"
-};
 
 function stageProgress(overview?: ProductGeoOverview) {
   if (!overview?.projectStatus) return 15;
@@ -63,13 +53,12 @@ export default function ProductsPage() {
   return (
     <>
       <PageHeader
-        title="产品与 GEO 调研"
-        subtitle="先确认产品身份与表达重点，再用真实资料和联网证据形成 GEO 内容铺设蓝图。"
-        actions={
-          <Link href="/products/new">
-            <Button type="primary" icon={<PlusOutlined />}>新增产品并创建调研</Button>
-          </Link>
-        }
+        title="产品与资料"
+        subtitle="先创建产品或服务，再在对应页面持续补充资料；知识整理、索引和治理由系统自动完成。"
+        actions={<Space wrap>
+          <Link href="/products/sources"><Button icon={<GlobalOutlined />}>持续采集</Button></Link>
+          <Link href="/products/new"><Button type="primary" icon={<PlusOutlined />}>创建产品/服务</Button></Link>
+        </Space>}
       />
       <PageErrorState message={error} loading={loading && !products.length} onRetry={refresh} />
       <Card className="foundation-panel" bordered={false}>
@@ -81,8 +70,8 @@ export default function ProductsPage() {
             emptyText: (
               <ActionEmpty
                 title="还没有已登记产品"
-                description="新增第一个产品，提交基础资料与表达重点后进入 GEO 前置调研。"
-                action={<Link href="/products/new"><Button type="primary">新增产品</Button></Link>}
+                description="先创建产品或服务，再直接导入第一批真实资料。"
+                action={<Link href="/products/new"><Button type="primary">创建产品/服务</Button></Link>}
               />
             )
           }}
@@ -91,7 +80,7 @@ export default function ProductsPage() {
               title: "产品",
               render: (_, record) => (
                 <Space direction="vertical" size={2}>
-                  <Link href={`/products/${record.productId}/research`}>
+                  <Link href={`/products/${record.productId}`}>
                     <Typography.Text strong>{record.displayName}</Typography.Text>
                   </Link>
                   <Typography.Text type="secondary">{record.canonicalName}</Typography.Text>
@@ -99,7 +88,7 @@ export default function ProductsPage() {
               )
             },
             {
-              title: "GEO 准入进度",
+              title: "资料准备",
               width: 240,
               render: (_, record) => {
                 const overview = overviews.find((item) => item.productId === record.productId);
@@ -113,14 +102,14 @@ export default function ProductsPage() {
                       strokeColor={progress === 100 ? "#15916f" : "#3867b7"}
                     />
                     <Typography.Text type="secondary">
-                      {overview ? nextActionCopy[overview.nextAction] : "读取状态"}
+                      {overview?.hasSourceSnapshot ? "资料已进入系统治理" : "等待第一批真实资料"}
                     </Typography.Text>
                   </div>
                 );
               }
             },
             {
-              title: "资料与运行",
+              title: "资料状态",
               width: 200,
               render: (_, record) => {
                 const overview = overviews.find((item) => item.productId === record.productId);
@@ -142,14 +131,22 @@ export default function ProductsPage() {
             },
             {
               title: "操作",
-              width: 180,
-              render: (_, record) => (
-                <Link href={`/products/${record.productId}/research`}>
-                  <Button icon={<ArrowRightOutlined />} iconPosition="end" size="small">
-                    {nextActionCopy[overviews.find((item) => item.productId === record.productId)?.nextAction || "create_project"]}
-                  </Button>
-                </Link>
-              )
+              width: 270,
+              render: (_, record) => {
+                const overview = overviews.find((item) => item.productId === record.productId);
+                return (
+                  <Space wrap>
+                    <Link href={`/products/${record.productId}?tab=materials`}>
+                      <Button icon={<ArrowRightOutlined />} iconPosition="end" size="small">
+                        {overview?.hasSourceSnapshot ? "管理资料" : "导入资料"}
+                      </Button>
+                    </Link>
+                    <Link href={`/products/${record.productId}/research`}>
+                      <Button icon={<ExperimentOutlined />} size="small">GEO 进程</Button>
+                    </Link>
+                  </Space>
+                );
+              }
             }
           ]}
         />

@@ -120,7 +120,7 @@ test("preview stays in a drawer while generation and schedule share the GEO cont
   assert.match(page, /href="\/monthly-plan\?step=execution&view=schedule"/);
   assert.doesNotMatch(page, /<Tabs|key: "schedule"/);
   assert.match(schedulePage, /ScheduleCalendarLite/);
-  assert.match(draftCompat, /monthly-plan\?step=generation&draftId=/);
+  assert.match(draftCompat, /monthly-plan\?step=production&draftId=/);
 });
 
 test("schedule mutation only accepts available tasks and does not edit strategy fields", async () => {
@@ -132,7 +132,7 @@ test("schedule mutation only accepts available tasks and does not edit strategy 
   assert.match(service, /only system checks passed|只有系统检查通过|TASK_NOT_AVAILABLE/);
   assert.match(service, /lastUsableDraft/);
   assert.match(schedule, /日期、时间、平台账号和发布方式由排程决定，不会修改已批准策略/);
-  assert.match(legacy, /redirect\("\/monthly-plan\?step=generation"\)/);
+  assert.match(legacy, /redirect\("\/monthly-plan\?step=production"\)/);
 });
 
 test("generation batch pause waits for the active provider task before becoming paused", async () => {

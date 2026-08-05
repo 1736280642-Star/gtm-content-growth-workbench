@@ -8,8 +8,6 @@ const nextConfig = {
   poweredByHeader: false,
   async redirects() {
     return [
-      { source: "/products", destination: "/knowledge?view=products", permanent: false },
-      { source: "/questions-keywords", destination: "/knowledge?view=questions", permanent: false },
       { source: "/monthly-matrix", destination: "/monthly-plan?step=strategy", permanent: false },
       { source: "/monthly-matrix/strategy", destination: "/monthly-plan?step=strategy&drawer=strategy", permanent: false },
       { source: "/monthly-matrix/tasks", destination: "/monthly-plan?step=tasks", permanent: false },

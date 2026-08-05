@@ -28,14 +28,9 @@ const contracts = [
     includes: ["useMonthlyObservationReview", "MonthlyQuestionReviewTable", "createProposal"]
   },
   {
-    name: "managed_document_import",
-    file: "src/app/knowledge/import/document/page.tsx",
-    includes: ["/api/v5/knowledge-imports/documents", "publicUseConfirmed", "idempotencyKey"]
-  },
-  {
-    name: "managed_url_import",
-    file: "src/app/knowledge/import/url/page.tsx",
-    includes: ["/api/v5/knowledge-imports/urls", "publicUseConfirmed", "idempotencyKey"]
+    name: "unified_product_material_import",
+    file: "src/components/ProductMaterialImport.tsx",
+    includes: ["/api/v5/knowledge-imports/documents", "/api/v5/knowledge-imports/urls", "publicUseConfirmed", "idempotencyKey"]
   },
   {
     name: "monthly_permissions",

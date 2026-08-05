@@ -71,7 +71,8 @@ function buildCandidate(
   product: ProductRegistryItem
 ): RagSourceImportCandidate {
   const knowledgeBaseName = input.knowledgeBaseName.trim();
-  const knowledgeBaseId = stableId("kb-managed-", `${input.productId}:${knowledgeBaseName.toLowerCase()}`, 32);
+  // A product owns one default managed knowledge base. Its name may change without splitting future imports.
+  const knowledgeBaseId = stableId("kb-product-", input.productId, 32);
   const canonicalSourceKey = source.canonicalUrl?.trim().toLowerCase() || source.sourceKey.trim().toLowerCase();
   const sourceId = stableId("src-managed-", `${knowledgeBaseId}:${canonicalSourceKey}`, 32);
   const markdown = normalizedMarkdown(source.markdown);

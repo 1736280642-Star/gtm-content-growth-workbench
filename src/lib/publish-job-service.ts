@@ -13,15 +13,34 @@ import type { DirectPublishPlatformKey, PublishAttempt, PublishSchedule } from "
 import type { ApprovedPublishContentInput } from "@/lib/workbench-store";
 import { serializePublishMutation } from "@/lib/publish-mutation-queue";
 import { backfillPublishJob } from "@/lib/publish-job-backfill";
+import { productLabels } from "@/lib/labels";
 
 export interface PublishJobView {
   schedule: PublishSchedule;
   attempts: PublishAttempt[];
+  title: string;
+  productName: string;
 }
 
-function viewForSchedule(schedule: PublishSchedule, attempts: PublishAttempt[]): PublishJobView {
+function inferProductName(title: string, fallback?: string) {
+  if (/腾讯云\s*ADP|Tencent\s+Cloud\s+ADP/i.test(title)) return "Tencent Cloud ADP x JOTO";
+  if (/WorkBuddy/i.test(title)) return "WorkBuddy x JOTO";
+  if (/NoteFlow/i.test(title)) return "Noteflow";
+  if (/Pharaoh\s+Command/i.test(title)) return "Pharaoh Command";
+  if (/唯客|Weike|Guardrail|AI\s*护栏/i.test(title) || fallback === productLabels.weike_guardrails) return "Weike AI Guardrail";
+  return fallback || "其他产品内容";
+}
+
+function viewForSchedule(schedule: PublishSchedule, attempts: PublishAttempt[], state: ReturnType<typeof readWorkbenchState>): PublishJobView {
+  const draft = state.drafts.find((item) => item.id === schedule.draftId);
+  const task = draft ? state.tasks.find((item) => item.id === draft.taskId) : undefined;
+  const publishRecord = state.publishRecords.find((item) => item.id === schedule.publishRecordId || item.draftId === schedule.draftId);
+  const platformVariant = state.platformDraftVariants.find((item) => item.id === schedule.platformVariantId || item.articleDraftId === schedule.draftId);
+  const title = platformVariant?.title || draft?.title || publishRecord?.title || `发布任务 ${schedule.id}`;
   return {
     schedule,
+    title,
+    productName: inferProductName(title, task ? productLabels[task.product] : undefined),
     attempts: attempts
       .filter((attempt) => attempt.scheduleId === schedule.id)
       .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
@@ -33,13 +52,13 @@ export function listPublishJobs(filters: { platform?: string; status?: string } 
   return state.publishSchedules
     .filter((schedule) => !filters.platform || schedule.platform === filters.platform)
     .filter((schedule) => !filters.status || schedule.status === filters.status)
-    .map((schedule) => viewForSchedule(schedule, state.publishAttempts));
+    .map((schedule) => viewForSchedule(schedule, state.publishAttempts, state));
 }
 
 export function getPublishJob(id: string): PublishJobView | undefined {
   const state = readWorkbenchState();
   const schedule = state.publishSchedules.find((candidate) => candidate.id === id);
-  return schedule ? viewForSchedule(schedule, state.publishAttempts) : undefined;
+  return schedule ? viewForSchedule(schedule, state.publishAttempts, state) : undefined;
 }
 
 export function listPublishCandidates() {

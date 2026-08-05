@@ -94,6 +94,7 @@ function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string
   return {
     taskId: item.matrixItemId,
     monthlyPlanId: item.monthlyPlanId,
+    productNameSnapshot: item.product,
     strategyPackageId: strategyPackageId || `formal-strategy-${item.monthlyPlanId}`,
     quotaRuleId: `formal-${item.matrixItemId}`,
     questionVersionId: "formal-matrix-snapshot",
