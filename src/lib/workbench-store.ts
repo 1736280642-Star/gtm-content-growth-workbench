@@ -148,6 +148,8 @@ interface SaveWorkspaceSettingInput {
   logMode?: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
   publishAccountByChannel?: Partial<Record<ChannelKey, string>>;
+  publishPolicyByChannel?: WorkspaceSetting["publishPolicyByChannel"];
+  notificationMethods?: WorkspaceSetting["notificationMethods"];
 }
 
 interface DraftEvidenceSelection {
@@ -382,6 +384,8 @@ function createInitialWorkspaceSetting(): WorkspaceSetting {
     finalReviewMode: "default_final",
     logMode: "demo_csv",
     publishAccountByChannel: {},
+    publishPolicyByChannel: {},
+    notificationMethods: ["in_app"],
     updatedAt: nowIso()
   };
 }
@@ -538,6 +542,20 @@ export function normalizeWorkbenchState(value: Partial<WorkbenchState>): Workben
               .filter(([channel, account]) => normalizedChannels.includes(channel as ChannelKey) && typeof account === "string" && account.trim())
               .map(([channel, account]) => [channel, String(account).trim().slice(0, 120)])
           ),
+          publishPolicyByChannel: Object.fromEntries(
+            Object.entries(value.workspaceSetting.publishPolicyByChannel || {})
+              .filter(([channel]) => normalizedChannels.includes(channel as ChannelKey))
+              .map(([channel, policy]) => {
+                const value = policy as { dailyLimit?: number; publishWindows?: string[]; minIntervalMinutes?: number };
+                return [channel, {
+                  dailyLimit: Math.max(1, Math.min(50, Number(value.dailyLimit) || 2)),
+                  publishWindows: (value.publishWindows || ["10:00", "15:00"]).filter((item) => /^([01]\d|2[0-3]):[0-5]\d$/.test(item)).slice(0, 12),
+                  minIntervalMinutes: Math.max(15, Math.min(1440, Number(value.minIntervalMinutes) || 180))
+                }];
+              })
+          ),
+          notificationMethods: (value.workspaceSetting.notificationMethods || ["in_app"])
+            .filter((item): item is "in_app" | "email" | "webhook" => ["in_app", "email", "webhook"].includes(item)),
           knowledgeRagConfig: normalizeKnowledgeRagConfig(value.workspaceSetting.knowledgeRagConfig)
         }
       : base.workspaceSetting,
@@ -4762,6 +4780,17 @@ export function saveWorkspaceSetting(input: SaveWorkspaceSettingInput) {
         .filter(([channel, account]) => enabledChannels.includes(channel as ChannelKey) && typeof account === "string" && account.trim())
         .map(([channel, account]) => [channel, String(account).trim().slice(0, 120)])
     ),
+    publishPolicyByChannel: Object.fromEntries(
+      Object.entries(input.publishPolicyByChannel ?? state.workspaceSetting.publishPolicyByChannel ?? {})
+        .filter(([channel]) => enabledChannels.includes(channel as ChannelKey))
+        .map(([channel, policy]) => [channel, {
+          dailyLimit: Math.max(1, Math.min(50, Number(policy?.dailyLimit) || 2)),
+          publishWindows: (policy?.publishWindows || ["10:00", "15:00"]).filter((item) => /^([01]\d|2[0-3]):[0-5]\d$/.test(item)).slice(0, 12),
+          minIntervalMinutes: Math.max(15, Math.min(1440, Number(policy?.minIntervalMinutes) || 180))
+        }])
+    ),
+    notificationMethods: (input.notificationMethods ?? state.workspaceSetting.notificationMethods ?? ["in_app"])
+      .filter((item): item is "in_app" | "email" | "webhook" => ["in_app", "email", "webhook"].includes(item)),
     knowledgeRagConfig:
       input.knowledgeRagConfig === undefined
         ? state.workspaceSetting.knowledgeRagConfig
@@ -7110,6 +7139,8 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
   const retryFailureIsBeforePublish = Boolean(
     retryAttemptForRetry &&
       (retryAttemptForRetry.failureCode === "payload_invalid" ||
+        retryAttemptForRetry.failureCode === "auth_required" ||
+        retryAttemptForRetry.failureCode === "pending_config" ||
         (retryAttemptForRetry.failureCode === "adapter_failed" &&
           retryAttemptForRetry.failureReason?.startsWith("BrowserConnectError")) ||
         (schedule.platform === "csdn" &&

@@ -126,6 +126,7 @@ test("real adapter sends the idempotent payload through the authenticated local 
 
 test("hybrid bridge creates one platform draft and passes its identity to the browser runner", () => {
   const source = readFileSync(new URL("./wechatsync-bridge.mjs", import.meta.url), "utf8");
+  const clientSource = readFileSync(new URL("../src/lib/formal-publish-client.ts", import.meta.url), "utf8");
   const authFunction = source.slice(source.indexOf("async function checkFormalPublishAuth"), source.indexOf("async function syncCsdnArticle"));
   const publishFunction = source.slice(source.indexOf("async function publishFormalArticle"), source.indexOf("async function verifyFormalArticle"));
   assert.match(authFunction, /const draftApiAuth = await checkAuth\(platform\)/);
@@ -134,6 +135,9 @@ test("hybrid bridge creates one platform draft and passes its identity to the br
   assert.match(source, /externalDraftId: String\(draft\.payload\.externalDraftId\)/);
   assert.match(source, /editorUrl: String\(draft\.payload\.editorUrl\)/);
   assert.match(source, /failureCode: input\.externalDraftId \? "publish_action_unconfirmed" : "adapter_failed"/);
+  assert.match(source, /const directPublicObservation = await verifyKnownPublicArticle\(input\)/);
+  assert.match(source, /status: "public_observed"/);
+  assert.match(clientSource, /publicUrl: result\.publicUrl/);
 });
 
 test("CSDN requires tags but keeps categories optional", async () => {
@@ -692,8 +696,8 @@ test("unpublished verification backs off instead of polling every minute for sev
   const lifecycle = resolvePublishVerificationLifecycle(
     lifecycleSchedule({
       verificationStartedAt: "2026-07-31T00:00:00.000Z",
-      verificationCount: 8,
-      consecutiveVerificationFailures: 8
+      verificationCount: 4,
+      consecutiveVerificationFailures: 4
     }),
     {
       ok: false,
@@ -707,6 +711,53 @@ test("unpublished verification backs off instead of polling every minute for sev
   );
   assert.equal(lifecycle.nextVerificationAt, "2026-07-31T03:00:00.000Z");
   assert.equal(lifecycle.status, "pending_verify");
+});
+
+test("verification stops automatically after the consecutive failure limit", () => {
+  const lifecycle = resolvePublishVerificationLifecycle(
+    lifecycleSchedule({
+      verificationStartedAt: "2026-07-31T00:00:00.000Z",
+      verificationCount: 5,
+      consecutiveVerificationFailures: 5
+    }),
+    {
+      ok: false,
+      status: "pending_verify",
+      publishStatus: "failed",
+      verifyStatus: "pending",
+      failureCode: "publish_action_unconfirmed",
+      failureReason: "not public"
+    },
+    "2026-07-31T02:00:00.000Z"
+  );
+  assert.equal(lifecycle.status, "manual_takeover_required");
+  assert.equal(lifecycle.failureCode, "manual_takeover_required");
+  assert.equal(lifecycle.nextVerificationAt, undefined);
+});
+
+test("failed public verification after 72 hours keeps a 24 hour backoff", () => {
+  const lifecycle = resolvePublishVerificationLifecycle(
+    lifecycleSchedule({
+      status: "public_observed",
+      publicUrl: "https://zhuanlan.zhihu.com/p/123",
+      urlStatus: "provisional",
+      firstPublicObservedAt: "2026-07-31T00:00:00.000Z",
+      verificationStartedAt: "2026-07-31T00:00:00.000Z",
+      verificationCount: 3,
+      consecutiveVerificationFailures: 0
+    }),
+    {
+      ok: false,
+      status: "pending_verify",
+      publishStatus: "failed",
+      verifyStatus: "pending",
+      failureCode: "publish_action_unconfirmed",
+      failureReason: "temporary verification failure"
+    },
+    "2026-08-03T01:00:00.000Z"
+  );
+  assert.equal(lifecycle.status, "pending_verify");
+  assert.equal(lifecycle.nextVerificationAt, "2026-08-04T01:00:00.000Z");
 });
 
 test("public liveness scheduling lands on the stability threshold instead of overshooting it", () => {

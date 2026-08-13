@@ -25,7 +25,7 @@ export function CaptureComparisonWorkspace({ tasks, initialTaskIds, result, load
     baseline.adapterVersion !== comparison.adapterVersion
   ));
   const questionOptions = Array.from(new Map(completed.map((item) => [item.questionKey, item.questionText])).entries()).map(([value, label]) => ({ value, label }));
-  const taskOptions = questionTasks.map((item) => ({ value: item.id, label: `${new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })} / ChatGPT / ${item.condition.region}` }));
+  const taskOptions = questionTasks.map((item) => ({ value: item.id, label: `${new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })} / ${{ doubao: "豆包", deepseek: "DeepSeek", qwen: "千问", chatgpt: "ChatGPT" }[item.platform] || item.platform} / ${item.condition.region}` }));
 
   if (!completed.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="至少完成两次同一问题的单次采集后，才能生成任务对比。" />;
 

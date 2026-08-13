@@ -47,14 +47,26 @@ test("research run cannot start without a governed source snapshot", async () =>
   }
 });
 
-test("live research requires provider web-search traces and persists raw artifacts", async () => {
+test("live research requires multi-provider evidence, deterministic citation verification, and raw artifacts", async () => {
   const provider = await read("src/lib/v5/geo-research-provider.ts");
+  const adapters = await read("src/lib/v5/geo-search-adapters.ts");
+  const verifier = await read("src/lib/v5/geo-evidence-verifier.ts");
   const repository = await read("src/lib/v5/geo-research-repository.ts");
-  assert.match(provider, /GEO_RESEARCH_ZHIPU_API_KEY/);
-  assert.match(provider, /"\/web_search"/);
-  assert.match(provider, /searchPayloads\.length > 0 && sourceMap\.size > 0/);
-  assert.match(provider, /provider: "zhipu"/);
-  assert.match(provider, /live_search_evidence_missing/);
+  assert.match(adapters, /GEO_RESEARCH_ZHIPU_API_KEY/);
+  assert.match(adapters, /GEO_RESEARCH_DOUBAO_API_KEY/);
+  assert.match(adapters, /GEO_RESEARCH_QWEN_API_KEY/);
+  assert.match(adapters, /requiredSuccessfulProviders = 2/);
+  assert.match(adapters, /requiredIndependentSources = 2/);
+  assert.match(provider, /provider: "zhipu_synthesis"/);
+  assert.match(provider, /runMultiProviderWebSearch/);
+  assert.match(provider, /multi_search_evidence_gate_failed/);
+  assert.match(provider, /verifyGeoResearchEvidence/);
+  assert.match(provider, /response_format:\s*\{\s*type:\s*"json_object"\s*\}/);
+  assert.match(provider, /searchController/);
+  assert.match(provider, /synthesisController/);
+  assert.match(verifier, /invalidUrls/);
+  assert.match(verifier, /missingCitationPaths/);
+  assert.match(verifier, /"conflicted"/);
   assert.match(repository, /INSERT INTO geo_research_artifact/);
   assert.match(repository, /INSERT INTO geo_research_evidence/);
   assert.match(repository, /INSERT INTO geo_research_finding/);
@@ -84,16 +96,22 @@ test("verified GEO questions can enter the pool by system policy while retaining
   assert.match(runPage, /确认并收录问题池/);
 });
 
-test("blueprint approval distinguishes manual review from the audited system policy", async () => {
+test("research synthesis cannot approve business strategy and hands off to the human strategy gate", async () => {
   const service = await read("src/lib/v5/geo-research-service.ts");
-  const repository = await read("src/lib/v5/geo-research-repository.ts");
-  assert.match(service, /actor\.actorType !== "human"/);
-  assert.match(service, /human_approval_required/);
-  assert.match(service, /approvalMode === "system_policy"/);
+  const automation = await read("src/lib/v5/product-automation-service.ts");
+  const strategyRepository = await read("src/lib/v5/product-strategy-pack-repository.ts");
+  const strategyService = await read("src/lib/v5/product-strategy-pack-service.ts");
+  const orchestration = service.slice(
+    service.indexOf("export async function runAutomaticGeoResearchOrchestration"),
+    service.indexOf("export async function requestGeoBlueprintChanges")
+  );
   assert.match(service, /runAutomaticGeoResearchOrchestration/);
-  assert.match(repository, /status = 'approved'/);
-  assert.match(repository, /status = 'ready_for_monthly_strategy'/);
-  assert.match(repository, /geo_blueprint_approved/);
+  assert.match(orchestration, /research_synthesis_ready/);
+  assert.doesNotMatch(orchestration, /approveGeoBlueprint/);
+  assert.match(automation, /compileProductStrategyPack/);
+  assert.match(automation, /compileProductGeoStrategyContentPlan/);
+  assert.match(strategyRepository, /pending_strategy_review/);
+  assert.match(strategyService, /human_strategy_approval_required/);
 });
 
 test("managed imports resolve products from product_entity instead of a code allowlist", async () => {
@@ -115,17 +133,18 @@ test("the UI exposes product onboarding and research execution routes", async ()
   const productPage = await read("src/app/products/page.tsx");
   const onboardingPage = await read("src/app/products/new/page.tsx");
   const researchPage = await read("src/app/products/[productId]/research/page.tsx");
+  const researchWorkspace = await read("src/components/ProductGeoResearchWorkspace.tsx");
   const runPage = await read("src/app/products/[productId]/research/[runId]/page.tsx");
   const readinessPanel = await read("src/components/geo/GeoReadinessPanel.tsx");
   const researchRail = await read("src/components/geo/GeoResearchRail.tsx");
   const apiRoute = await read("src/app/api/v5/products/route.ts");
-  assert.match(productPage, /新增产品并创建调研/);
+  assert.match(productPage, /\/products\/new/);
   assert.match(onboardingPage, /expressionFocus/);
-  assert.match(researchPage, /启动调研/);
-  assert.match(researchPage, /创建任务并等待配置/);
-  assert.match(researchPage, /退回修改/);
-  assert.match(runPage, /公开来源/);
-  assert.match(runPage, /研究发现/);
+  assert.match(researchPage, /ProductGeoResearchWorkspace/);
+  assert.match(researchWorkspace, /research-runs/);
+  assert.match(researchWorkspace, /readiness\.canCreateRun/);
+  assert.match(runPage, /question-catalog/);
+  assert.match(runPage, /GeoResearchRail/);
   assert.match(readinessPanel, /missingConfig/);
   assert.match(researchRail, /frontend_baseline/);
   assert.match(apiRoute, /onboardProductForGeoResearch/);
@@ -147,11 +166,39 @@ test("GEO setup can be inspected and reviewed before API credentials are configu
   assert.match(requestChangesRoute, /requestGeoBlueprintChanges/);
 });
 
-test("approved GEO blueprint is visible as a candidate in the monthly strategy workspace", async () => {
+test("automatic orchestration versions project idempotency and does not duplicate a failed run on the same snapshot", async () => {
+  const service = await readFile("src/lib/v5/geo-research-service.ts", "utf8");
+  const worker = await readFile("workers/geo-research-orchestrator.mjs", "utf8");
+  assert.match(service, /auto-geo-project:\$\{product\.productId\}:\$\{hashV5GovernancePayload\(projectRequest\)/);
+  assert.match(service, /failedAgainstCurrentSnapshot/);
+  assert.match(service, /status: "requires_attention"/);
+  assert.match(service, /不自动创建重复 run/);
+  assert.doesNotMatch(worker, /waiting_for_sources[^\n]+process\.exitCode\s*=\s*2/);
+});
+
+test("formal GEO research rejects test sources and requires traceable A1/A2 product truth", async () => {
+  const contracts = await read("src/lib/v5/geo-research-contracts.ts");
+  const quality = await read("src/lib/v5/geo-source-quality.ts");
+  const repository = await read("src/lib/v5/geo-research-repository.ts");
+  const service = await read("src/lib/v5/geo-research-service.ts");
+  const automation = await read("src/lib/v5/product-automation-service.ts");
+  assert.match(contracts, /GeoSourceSnapshotQuality/);
+  assert.match(quality, /test_source_detected/);
+  assert.match(quality, /official_product_source_required/);
+  assert.match(quality, /approved_for_claim_extraction/);
+  assert.match(quality, /safetyStatus === "passed"/);
+  assert.doesNotMatch(quality, /WorkBuddy|腾讯云\s*ADP/);
+  assert.match(repository, /research_source_quality_blocked/);
+  assert.match(repository, /GEO_SOURCE_QUALITY_QUERY/);
+  assert.match(service, /sourceSnapshotReady/);
+  assert.match(automation, /snapshot\?\.quality\.status !== "ready"/);
+});
+
+test("only the human-confirmed product GEO strategy is visible in the monthly strategy workspace", async () => {
   const handoff = await read("src/components/geo/GeoMonthlyStrategyHandoff.tsx");
   const strategyPage = await read("src/app/monthly-matrix/strategy/page.tsx");
-  assert.match(handoff, /geoBlueprintVersionId/);
-  assert.match(handoff, /blueprint\.status !== "approved"/);
+  assert.match(handoff, /currentStrategyPack/);
+  assert.match(handoff, /strategyPackId/);
   assert.match(handoff, /不是已批准的 MonthlyPlan/);
   assert.match(strategyPage, /GeoMonthlyStrategyHandoff/);
 });

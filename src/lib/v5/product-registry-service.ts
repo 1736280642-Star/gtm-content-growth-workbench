@@ -6,15 +6,20 @@ import {
 } from "./geo-research-repository";
 import { getGeoResearchProviderReadiness } from "./geo-research-provider";
 import type { ProductGeoOverview } from "./geo-research-contracts";
-import type { CreateProductRegistryInput } from "./product-registry-contracts";
+import type { CreateProductRegistryInput, UpdateProductRegistryInput } from "./product-registry-contracts";
 import {
   assertActiveProductRegistryRecord,
   createProductRegistryRecord,
   listProductRegistryRecords,
-  readProductRegistryRecord
+  readProductRegistryRecord,
+  updateProductRegistryRecord,
+  updateProductPromotionRecord
 } from "./product-registry-repository";
 import { V5GovernanceServiceError } from "./knowledge-governance-service";
 import type { V5GovernanceActor } from "./knowledge-governance-repository";
+import { readLatestProductStrategyPack } from "./product-strategy-pack-repository";
+import { readProductKnowledgeProfile } from "./product-knowledge-profile";
+import { compileProductWorkflowSummary } from "./product-workflow-summary";
 
 function assertText(value: string | undefined, field: string, maxLength = 255) {
   if (!value?.trim()) {
@@ -54,6 +59,7 @@ function assertProductInput(product: CreateProductRegistryInput) {
   if (product.brandName !== undefined) assertText(product.brandName, "brandName");
   if (product.officialEntity !== undefined) assertText(product.officialEntity, "officialEntity");
   if (product.productCategory !== undefined) assertText(product.productCategory, "productCategory", 128);
+  if (product.entityRelationship !== undefined) assertText(product.entityRelationship, "entityRelationship", 2000);
   assertStringList(product.aliases, "aliases");
   if (product.officialUrl) {
     let parsed: URL;
@@ -65,6 +71,25 @@ function assertProductInput(product: CreateProductRegistryInput) {
     if (!["http:", "https:"].includes(parsed.protocol)) {
       throw new V5GovernanceServiceError("invalid_contract", "officialUrl 只允许 HTTP 或 HTTPS。", 400);
     }
+  }
+}
+
+function assertKnowledgeProfileOverride(product: UpdateProductRegistryInput) {
+  if (!product.knowledgeProfile) return;
+  const categories = ["positioning", "audiences", "capabilities", "scenarios", "boundaries"] as const;
+  for (const category of categories) {
+    const items = product.knowledgeProfile[category];
+    if (!Array.isArray(items) || items.some((item) => typeof item !== "string" || !item.trim())) {
+      throw new V5GovernanceServiceError(
+        "invalid_product_profile_override",
+        `${category} 必须是非空文本数组。`,
+        400,
+        "删除空白条目后重新保存。"
+      );
+    }
+  }
+  if (!Number.isInteger(product.knowledgeProfile.sourceFactCount) || product.knowledgeProfile.sourceFactCount < 0) {
+    throw new V5GovernanceServiceError("invalid_product_profile_override", "sourceFactCount 不合法。", 400);
   }
 }
 
@@ -80,41 +105,81 @@ export async function listProducts(input?: { includeInactive?: boolean }) {
   return listProductRegistryRecords(input);
 }
 
+export async function getProductWorkflowSummary(productId: string) {
+  const product = await getProduct(productId);
+  const [workspace, snapshot, latestStrategyPack, productProfile] = await Promise.all([
+    readGeoResearchWorkspace(product.productId),
+    readLatestGeoSourceSnapshot(product.productId),
+    readLatestProductStrategyPack(product.productId),
+    readProductKnowledgeProfile(product.productId, product.displayName)
+  ]);
+  return compileProductWorkflowSummary({
+    product,
+    profile: productProfile,
+    snapshot,
+    workspace,
+    strategyPack: latestStrategyPack,
+    providerReady: getGeoResearchProviderReadiness().status === "ready"
+  });
+}
+
 export async function listProductsWithGeoOverview(input?: { includeInactive?: boolean }) {
   const products = await listProductRegistryRecords(input);
   const providerReady = getGeoResearchProviderReadiness().status === "ready";
-  const overviews = await Promise.all(products.map(async (product): Promise<ProductGeoOverview> => {
-    const [workspace, snapshot] = await Promise.all([
+  const compiled = await Promise.all(products.map(async (product) => {
+    const [workspace, snapshot, latestStrategyPack, productProfile] = await Promise.all([
       readGeoResearchWorkspace(product.productId),
-      readLatestGeoSourceSnapshot(product.productId)
+      readLatestGeoSourceSnapshot(product.productId),
+      readLatestProductStrategyPack(product.productId),
+      readProductKnowledgeProfile(product.productId, product.displayName)
     ]);
     const blueprint = workspace?.currentBlueprint;
+    const hasFormalSourceSnapshot = snapshot?.quality.status === "ready";
     const openRun = workspace?.latestRun
       && !["completed", "failed", "cancelled"].includes(workspace.latestRun.status);
     const nextAction: ProductGeoOverview["nextAction"] = !workspace
       ? "create_project"
-      : !snapshot
+      : !hasFormalSourceSnapshot
         ? "add_sources"
-        : blueprint?.status === "pending_review"
-          ? "review_blueprint"
-          : blueprint?.status === "approved"
+        : latestStrategyPack?.status === "pending_strategy_review"
+          ? "review_strategy"
+          : product.strategyPackId
             ? "monthly_strategy"
             : openRun
               ? "open_run"
               : !providerReady
                 ? "configure_provider"
                 : "start_research";
-    return {
+    const overview: ProductGeoOverview = {
       productId: product.productId,
       projectStatus: workspace?.project.status,
       latestRunStatus: workspace?.latestRun?.status,
       blueprintStatus: blueprint?.status,
-      hasSourceSnapshot: Boolean(snapshot),
+      hasSourceSnapshot: hasFormalSourceSnapshot,
       sourceCount: snapshot?.sourceCount || 0,
+      isPromoting: product.isPromoting,
+      strategyPackId: product.strategyPackId,
+      latestStrategyPackId: latestStrategyPack?.id,
+      strategyPackStatus: latestStrategyPack?.status,
       nextAction
     };
+    return {
+      overview,
+      workflowSummary: compileProductWorkflowSummary({
+        product,
+        profile: productProfile,
+        snapshot,
+        workspace,
+        strategyPack: latestStrategyPack,
+        providerReady
+      })
+    };
   }));
-  return { products, overviews };
+  return {
+    products,
+    overviews: compiled.map((item) => item.overview),
+    workflowSummaries: compiled.map((item) => item.workflowSummary)
+  };
 }
 
 export async function getProduct(productId: string) {
@@ -129,6 +194,37 @@ export async function getProduct(productId: string) {
 export async function getActiveProduct(productId: string) {
   assertText(productId, "productId", 64);
   return assertActiveProductRegistryRecord(productId);
+}
+
+export async function updateProductPromotion(input: {
+  productId: string;
+  isPromoting: boolean;
+  actor: V5GovernanceActor;
+}) {
+  assertText(input.productId, "productId", 64);
+  assertActor(input.actor);
+  return updateProductPromotionRecord(input);
+}
+
+export async function updateProduct(input: {
+  productId: string;
+  product: UpdateProductRegistryInput;
+  expectedVersion: number;
+  idempotencyKey: string;
+  actor: V5GovernanceActor;
+}) {
+  assertText(input.productId, "productId", 64);
+  assertText(input.idempotencyKey, "idempotencyKey", 128);
+  assertActor(input.actor);
+  if (input.actor.actorType !== "human" || !["product_owner", "business_owner", "developer_admin"].includes(input.actor.actorRole)) {
+    throw new V5GovernanceServiceError("permission_denied", "只有产品负责人可以修改产品信息。", 403);
+  }
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+    throw new V5GovernanceServiceError("invalid_contract", "expectedVersion 必须是正整数。", 400);
+  }
+  assertProductInput(input.product);
+  assertKnowledgeProfileOverride(input.product);
+  return updateProductRegistryRecord(input);
 }
 
 export async function onboardProductForGeoResearch(input: {

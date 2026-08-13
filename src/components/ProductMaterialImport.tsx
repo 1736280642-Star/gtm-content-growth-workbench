@@ -1,6 +1,6 @@
 "use client";
 
-import { FileTextOutlined, LinkOutlined } from "@ant-design/icons";
+import { CloseOutlined, FileTextOutlined, LinkOutlined, PaperClipOutlined } from "@ant-design/icons";
 import { Alert, Button, Checkbox, Form, Input, Select, Space, Tag, Upload, message } from "antd";
 import type { RcFile, UploadFile } from "antd/es/upload/interface";
 import { useMemo, useRef, useState } from "react";
@@ -21,13 +21,15 @@ export interface ProductMaterialDraft {
   fileCount: number;
 }
 
+export interface ProductMaterialImportResult {
+  pipelineStatus: "queued" | "pending_config";
+  missingConfiguration: string[];
+  sourceIds: string[];
+}
+
 interface ManagedImportResponse {
   message?: string;
-  data?: {
-    pipelineStatus: "queued" | "pending_config";
-    missingConfiguration: string[];
-    sourceIds: string[];
-  };
+  data?: ProductMaterialImportResult;
 }
 
 const authorityOptions = [
@@ -55,7 +57,7 @@ export function ProductMaterialImport({
   submitLabel?: string;
   beforeImport?: (draft: ProductMaterialDraft) => Promise<ProductMaterialTarget>;
   onTargetResolved?: (target: ProductMaterialTarget) => void;
-  onImported?: (target: ProductMaterialTarget) => void | Promise<void>;
+  onImported?: (target: ProductMaterialTarget, result: ProductMaterialImportResult) => void | Promise<void>;
 }) {
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -147,7 +149,7 @@ export function ProductMaterialImport({
       resetImport();
       setImportResult(combinedResult);
       messageApi.success(formatApiMessage(results[results.length - 1], "资料已导入，系统正在整理和建立索引。"));
-      await onImported?.(target);
+      await onImported?.(target, combinedResult);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "资料导入失败，请检查资料后重试。";
       if (target && !productId) {
@@ -195,23 +197,50 @@ export function ProductMaterialImport({
               <div><strong id="product-material-file-title">上传文件</strong><span>支持 PDF、Word、Markdown 和文本，一次最多 10 份。</span></div>
             </div>
             <div className="knowledge-document-upload product-material-source-field">
-            <Dragger
-              multiple
-              accept=".pdf,.docx,.md,.markdown,.txt"
-              fileList={fileList}
-              beforeUpload={() => false}
-              onChange={({ fileList: nextFileList }) => {
-                setFileList(nextFileList.slice(0, 10));
-                resetImport();
-              }}
-            >
-              <p className="ant-upload-drag-icon"><FileTextOutlined /></p>
-              <p>点击或拖拽上传资料</p>
-              <p>可以和左侧网页链接一起导入。</p>
-            </Dragger>
-            {fileList.length ? <Tag color="blue" className="product-material-file-count">已选择 {fileList.length} 份资料</Tag> : null}
-            {hasLegacyDoc ? <Alert showIcon type="warning" message="旧版 .doc 暂不支持，请转换为 .docx 后上传。" /> : null}
-          </div>
+              <Dragger
+                multiple
+                accept=".pdf,.docx,.md,.markdown,.txt"
+                fileList={fileList}
+                showUploadList={false}
+                beforeUpload={() => false}
+                onChange={({ fileList: nextFileList }) => {
+                  setFileList(nextFileList.slice(0, 10));
+                  resetImport();
+                }}
+              >
+                <p className="ant-upload-drag-icon"><FileTextOutlined /></p>
+                <p>点击或拖拽上传资料</p>
+                <p>可以和左侧网页链接一起导入。</p>
+              </Dragger>
+              {fileList.length ? (
+                <div className="product-material-selected-files" aria-label={`已选择 ${fileList.length} 份资料`}>
+                  <div className="product-material-selected-files-heading">
+                    <span>已选择的资料</span>
+                    <Tag color="blue">{fileList.length} / 10</Tag>
+                  </div>
+                  <ul>
+                    {fileList.map((file) => (
+                      <li key={file.uid}>
+                        <PaperClipOutlined aria-hidden="true" />
+                        <span className="product-material-selected-file-name" title={file.name}>{file.name}</span>
+                        <Button
+                          type="text"
+                          size="small"
+                          danger
+                          icon={<CloseOutlined />}
+                          aria-label={`移除 ${file.name}`}
+                          onClick={() => {
+                            setFileList((current) => current.filter((item) => item.uid !== file.uid));
+                            resetImport();
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {hasLegacyDoc ? <Alert showIcon type="warning" message="旧版 .doc 暂不支持，请转换为 .docx 后上传。" /> : null}
+            </div>
           </section>
         </div>
 

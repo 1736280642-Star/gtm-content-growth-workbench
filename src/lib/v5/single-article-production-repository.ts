@@ -88,6 +88,8 @@ function mapGenerationRun(row: RowDataPacket): FormalGenerationRun {
     taskVersion: Number(row.task_version),
     matrixItemId: String(row.matrix_item_id),
     finalEvidencePackId: String(row.final_evidence_pack_id),
+    productionContractId: String(row.production_contract_id || ""),
+    productionContractHash: String(row.production_contract_hash || ""),
     provider: String(row.provider),
     model: row.model ? String(row.model) : undefined,
     status: String(row.status) as FormalGenerationRun["status"],
@@ -110,6 +112,8 @@ function mapDraft(row: RowDataPacket): FormalDraftVersion {
     taskVersion: Number(row.task_version),
     matrixItemId: String(row.matrix_item_id),
     finalEvidencePackId: String(row.final_evidence_pack_id),
+    productionContractId: String(row.production_contract_id || ""),
+    productionContractHash: String(row.production_contract_hash || ""),
     rulePackageVersionId: String(row.rule_package_version_id),
     versionNumber: Number(row.version_number),
     title: String(row.title),
@@ -134,8 +138,11 @@ export async function claimSingleArticleOperation(input: {
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [taskRows] = await connection.query<RowDataPacket[]>(
-      "SELECT version FROM content_matrix_item WHERE id = ? FOR UPDATE",
-      [input.taskId]
+      `SELECT version FROM content_matrix_item WHERE id = ?
+       UNION ALL
+       SELECT row_version AS version FROM product_sample_article_task WHERE id = ?
+       LIMIT 1 FOR UPDATE`,
+      [input.taskId, input.taskId]
     );
     if (!taskRows[0]) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式矩阵项不存在。", 404, "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
     const taskVersion = Number(taskRows[0].version);
@@ -226,19 +233,27 @@ export async function recordSingleArticleFailure(input: {
 
 export async function readFormalGenerationContext(taskId: string): Promise<FormalGenerationContext> {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
-    `SELECT i.id, i.version AS task_version, i.prompt_group_id, i.prompt_group_version_id, i.channel_rule_version_id, i.rule_package_version_id,
+    `SELECT i.id, i.task_version, i.prompt_group_id, i.prompt_group_version_id, i.channel_rule_version_id, i.rule_package_version_id,
       pg.status AS prompt_group_status, pg.active_version_id, pgv.status AS prompt_version_status,
       pgv.system_prompt, pgv.user_prompt_template, pgv.hard_rules, pgv.immutable_at AS prompt_immutable_at,
       crv.status AS channel_rule_status, crv.required_format, crv.prohibited_patterns, crv.cta_boundary,
       crv.immutable_at AS channel_rule_immutable_at, r.status AS rule_status, r.immutable_at AS rule_immutable_at,
       r.allowed_expressions, r.conditional_expressions, r.blocked_expressions, r.evidence_requirements
-     FROM content_matrix_item i
+     FROM (
+       SELECT id, version AS task_version, prompt_group_id, prompt_group_version_id,
+              channel_rule_version_id, rule_package_version_id
+       FROM content_matrix_item WHERE id = ?
+       UNION ALL
+       SELECT id, row_version AS task_version, prompt_group_id, prompt_group_version_id,
+              channel_rule_version_id, rule_package_version_id
+       FROM product_sample_article_task WHERE id = ?
+     ) i
      LEFT JOIN prompt_group pg ON pg.id = i.prompt_group_id
      LEFT JOIN prompt_group_version pgv ON pgv.id = i.prompt_group_version_id
      LEFT JOIN channel_rule_version crv ON crv.id = i.channel_rule_version_id
      LEFT JOIN rule_package_version r ON r.id = i.rule_package_version_id
-     WHERE i.id = ? LIMIT 1`,
-    [taskId]
+     LIMIT 1`,
+    [taskId, taskId]
   );
   const row = rows[0];
   if (!row) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式矩阵项不存在。", 404, "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
@@ -278,6 +293,8 @@ export async function beginFormalGenerationRun(input: {
   idempotencyKey: string;
   pack: RagFinalEvidencePack;
   context: FormalGenerationContext;
+  productionContractId: string;
+  productionContractHash: string;
   provider: string;
   actor: SingleArticleActor;
 }) {
@@ -286,11 +303,12 @@ export async function beginFormalGenerationRun(input: {
     const startedAt = new Date();
     await connection.query(
       `INSERT INTO generation_run
-       (id, task_id, task_version, matrix_item_id, final_evidence_pack_id, prompt_group_version_id, rule_package_version_id,
+       (id, task_id, task_version, matrix_item_id, final_evidence_pack_id, production_contract_id, production_contract_hash, prompt_group_version_id, rule_package_version_id,
         channel_rule_version_id, provider, status, correlation_id, idempotency_key, hard_rule_result, actor_id, audit_reason, test_only, started_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', correlation_id, ?, ?, ?, ?, FALSE, ?
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', correlation_id, ?, ?, ?, ?, FALSE, ?
        FROM single_article_operation WHERE id = ? AND status = 'running'`,
       [generationRunId, input.pack.taskId, input.pack.taskVersion, input.pack.matrixItemId, input.pack.evidencePackId,
+        input.productionContractId, input.productionContractHash,
         input.context.promptGroupVersionId, input.context.rulePackageVersionId, input.context.channelRuleVersionId, input.provider,
         input.idempotencyKey, stringifyV5Json({ passed: false, blockers: [], checkedRuleCount: 0, traceableFactCount: 0 }),
         input.actor.actorId, input.actor.auditReason, startedAt, input.operationId]
@@ -344,6 +362,8 @@ export async function completeFormalGeneration(input: {
   generationRunId: string;
   pack: RagFinalEvidencePack;
   context: FormalGenerationContext;
+  productionContractId: string;
+  productionContractHash: string;
   title: string;
   markdown: string;
   factTraces: FormalDraftVersion["factTraces"];
@@ -358,10 +378,11 @@ export async function completeFormalGeneration(input: {
     const versionNumber = Number(versionRows[0]?.version_number || 0) + 1;
     await connection.query(
       `INSERT INTO draft_version
-       (id, generation_run_id, task_id, task_version, matrix_item_id, final_evidence_pack_id, rule_package_version_id,
+       (id, generation_run_id, task_id, task_version, matrix_item_id, final_evidence_pack_id, production_contract_id, production_contract_hash, rule_package_version_id,
         version_number, title, markdown, fact_traces, hard_rule_result, copy_allowed, test_only, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, FALSE, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, FALSE, ?)`,
       [draftVersionId, input.generationRunId, input.pack.taskId, input.pack.taskVersion, input.pack.matrixItemId, input.pack.evidencePackId,
+        input.productionContractId, input.productionContractHash,
         input.context.rulePackageVersionId, versionNumber, input.title, input.markdown, stringifyV5Json(input.factTraces), stringifyV5Json(input.hardRuleResult), input.actor.actorId]
     );
     await connection.query(
@@ -376,6 +397,17 @@ export async function completeFormalGeneration(input: {
     await connection.query(
       "UPDATE content_matrix_item SET status = 'generated', updated_at = NOW() WHERE id = ? AND version = ?",
       [input.pack.taskId, input.pack.taskVersion]
+    );
+    await connection.query(
+      "UPDATE product_sample_article_task SET status = 'generated', updated_at = NOW() WHERE id = ? AND row_version = ?",
+      [input.pack.taskId, input.pack.taskVersion]
+    );
+    await connection.query(
+      `UPDATE product_strategy_packs sp
+       JOIN production_contract_snapshot pc ON pc.product_strategy_pack_id = sp.id
+       SET sp.status = 'pending_sample_review', sp.row_version = sp.row_version + 1, sp.updated_at = NOW()
+       WHERE pc.id = ? AND pc.production_mode = 'sample' AND sp.status = 'strategy_approved'`,
+      [input.productionContractId]
     );
     await writeV5GovernanceAudit(connection, {
       ...input.actor,
@@ -418,19 +450,21 @@ export async function createEditedFormalDraftVersion(input: {
     const pendingRuleResult = { passed: false, blockers: ["人工编辑后等待系统自动复检。"], checkedRuleCount: 0, traceableFactCount: 0 };
     await connection.query(
       `INSERT INTO generation_run
-       (id, task_id, task_version, matrix_item_id, final_evidence_pack_id, prompt_group_version_id, rule_package_version_id,
+       (id, task_id, task_version, matrix_item_id, final_evidence_pack_id, production_contract_id, production_contract_hash, prompt_group_version_id, rule_package_version_id,
         channel_rule_version_id, provider, status, correlation_id, idempotency_key, hard_rule_result, actor_id, audit_reason, test_only, started_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual_edit', 'running', ?, ?, ?, ?, ?, FALSE, NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual_edit', 'running', ?, ?, ?, ?, ?, FALSE, NOW())`,
       [generationRunId, current.task_id, current.task_version, current.matrix_item_id, current.final_evidence_pack_id,
+        current.production_contract_id, current.production_contract_hash,
         current.prompt_group_version_id, current.rule_package_version_id, current.channel_rule_version_id, current.correlation_id,
         `manual-edit-${draftVersionId}`, stringifyV5Json(pendingRuleResult), input.actor.actorId, input.actor.auditReason]
     );
     await connection.query(
       `INSERT INTO draft_version
-       (id, generation_run_id, task_id, task_version, matrix_item_id, final_evidence_pack_id, rule_package_version_id,
+       (id, generation_run_id, task_id, task_version, matrix_item_id, final_evidence_pack_id, production_contract_id, production_contract_hash, rule_package_version_id,
         version_number, title, markdown, fact_traces, hard_rule_result, copy_allowed, test_only, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, ?)`,
       [draftVersionId, generationRunId, current.task_id, current.task_version, current.matrix_item_id, current.final_evidence_pack_id,
+        current.production_contract_id, current.production_contract_hash,
         current.rule_package_version_id, versionNumber, current.title, input.markdown, current.fact_traces,
         stringifyV5Json(pendingRuleResult), input.actor.actorId]
     );
@@ -534,7 +568,8 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
     return {
       id: String(row.id), monthlyPlanId: String(row.monthly_plan_id), matrixVersionId: String(row.matrix_version_id), matrixItemId: String(row.id),
       title: String(row.title), primaryDistilledTerm: String(row.primary_distilled_term_id || "未设置"), priority: "P0" as const,
-      contentType: String(row.content_type), product: String(row.product_display_name || row.product_canonical_name || row.product_id),
+      contentType: String(row.content_type), productId: String(row.product_id),
+      product: String(row.product_display_name || row.product_canonical_name || row.product_id),
       rulePackageVersion: String(row.rule_version || row.rule_package_version_id || ""), channel: String(row.channel),
       platformExpressionType: String(row.platform_content_type || row.content_type), titleConfirmed: ["approved", "ready_for_generation", "generated"].includes(String(row.status)),
       evidencePreview, finalEvidenceGate,

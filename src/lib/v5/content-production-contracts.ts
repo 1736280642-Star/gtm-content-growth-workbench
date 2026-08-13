@@ -163,6 +163,26 @@ export interface ExpressionRuleSnapshot {
   expressionProfileVersionId: string;
   prohibitedTerms: string[];
   humanizerDirectives: string[];
+  calibrationVersionId?: string;
+  calibrationDirectives?: string[];
+}
+
+export interface RequiredFixedExpression {
+  text: string;
+  positions: Array<"opening" | "body" | "ending">;
+  channel: string;
+}
+
+export interface ProductionGovernanceSnapshot {
+  productId: string;
+  productStrategyPackId: string;
+  productStrategyVersion: number;
+  productStrategyHash: string;
+  articleTypeVersionId: string;
+  articleTypeDefinitionHash: string;
+  expressionCalibrationVersionId?: string;
+  promptCompilerVersion: "production-contract-compiler.v2";
+  productionMode: "sample" | "batch" | "single";
 }
 
 export interface ProductionValidatorPolicy {
@@ -180,8 +200,9 @@ export interface ProductionValidatorPolicy {
 }
 
 export interface ProductionContractSnapshot {
-  contractVersion: "content-production.v1";
+  contractVersion: "content-production.v2";
   contractHash: string;
+  governance: ProductionGovernanceSnapshot;
   task: ContentTaskSnapshot;
   evidencePack: FinalEvidencePackSnapshot;
   productRule: ProductRuleSnapshot;
@@ -189,6 +210,7 @@ export interface ProductionContractSnapshot {
   channelRule: ChannelRuleSnapshot;
   expressionRule: ExpressionRuleSnapshot;
   ctaPlan: CTAPlan;
+  fixedExpressions?: RequiredFixedExpression[];
   validatorPolicy: ProductionValidatorPolicy;
   allowedExpressions: string[];
   conditionalExpressions: string[];
@@ -221,10 +243,14 @@ export type ProductionValidationCode =
   | "cta_modified"
   | "cta_limit_exceeded"
   | "cta_position_invalid"
+  | "fixed_expression_missing"
+  | "fixed_expression_position_invalid"
+  | "fixed_expression_count_invalid"
   | "url_not_allowed"
   | "sensitive_output"
   | "duplicate_paragraph"
   | "chat_residue"
+  | "human_writing_style"
   | "cross_channel_similarity";
 
 export interface ProductionValidationIssue {

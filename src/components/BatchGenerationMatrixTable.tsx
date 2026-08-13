@@ -9,6 +9,7 @@ import type { ProductionDraftSummary, ProductionMatrixTask } from "@/lib/v5/mont
 import { WechatPresentationPanel } from "@/components/WechatPresentationPanel";
 import { WechatTemplateSelectionPanel } from "@/components/WechatTemplateSelectionPanel";
 import { resolveWechatPlatformKey } from "@/lib/v5/wechat-presentation-contracts";
+import { SampleArticleReviewPanel } from "@/components/SampleArticleReviewPanel";
 
 const statusMeta: Record<ProductionMatrixTask["status"], { label: string; color: string }> = {
   ready_for_generation: { label: "待生成", color: "blue" },
@@ -125,6 +126,7 @@ export function BatchGenerationMatrixTable({
         {editing ? <Button type="primary" onClick={async () => { await onSaveDraft?.(selectedTask, markdown); setEditing(false); }}>保存并自动复检</Button> : <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>}
         {editing ? <Button onClick={() => { setEditing(false); setMarkdown(selectedDraft?.markdown || ""); }}>取消</Button> : null}
       </Space>
+      {selectedDraft?.draftId ? <SampleArticleReviewPanel draftVersionId={selectedDraft.draftId} /> : null}
     </div>
   ) : null;
 

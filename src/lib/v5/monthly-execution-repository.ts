@@ -14,6 +14,7 @@ import type {
   ScheduleTaskRequest,
   V5MonthlyPlanRecord
 } from "./monthly-workspace-contracts";
+import { createPublishedContentRetestTasks } from "./capture-repository";
 
 function summarizePlan(record: V5MonthlyPlanRecord) {
   const productQuotas = Object.fromEntries(record.config.groups.map((item) => [item.productId, item.articleQuota]));
@@ -28,6 +29,18 @@ function summarizePlan(record: V5MonthlyPlanRecord) {
 
 function stableId(prefix: string, value: string) {
   return `${prefix}-${createHash("sha256").update(value).digest("hex").slice(0, 32)}`;
+}
+
+function toDatabaseDate(value?: string) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function comparableTimestamp(value: unknown) {
+  if (!value) return "";
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
 }
 
 function normalizeChannel(channel: string) {
@@ -315,6 +328,13 @@ export async function saveFormalPublishResult(input: {
     }
     const matrixStatus = input.request.status === "published" ? "published" : input.request.status === "failed" ? "publish_failed" : "scheduled";
     await connection.query("UPDATE content_matrix_item SET status = ?, version = version + 1 WHERE id = ?", [matrixStatus, input.taskId]);
+    const captureTaskIds = input.request.status === "published" ? await createPublishedContentRetestTasks(connection, {
+      productId: String(item.product_id),
+      question: String(item.source_problem || item.title),
+      questionVersionId: item.question_version_id ? String(item.question_version_id) : undefined,
+      publishedContentId: input.taskId,
+      sourcePublishResultId: resultId
+    }) : [];
     const [remainingRows] = await connection.query<RowDataPacket[]>(
       "SELECT COUNT(*) AS remaining FROM content_matrix_item WHERE monthly_plan_id = ? AND status NOT IN ('published', 'cancelled')", [String(item.plan_id)]
     );
@@ -324,7 +344,7 @@ export async function saveFormalPublishResult(input: {
       afterSummary: { taskId: input.taskId, status: input.request.status, publicUrl: input.request.publicUrl, metricKeys: Object.keys(input.request.metrics) },
       correlationId: String(item.plan_id)
     });
-    return { publishResultId: resultId, taskId: input.taskId, status: input.request.status, version: currentVersion + 1, publicUrl: input.request.publicUrl, metrics: input.request.metrics };
+    return { publishResultId: resultId, taskId: input.taskId, status: input.request.status, version: currentVersion + 1, publicUrl: input.request.publicUrl, metrics: input.request.metrics, captureTaskIds };
   });
 }
 
@@ -334,10 +354,18 @@ export async function backfillFormalPublishJobResult(input: {
   publicUrl?: string;
   externalContentId?: string;
   failureReason?: string;
+  publishScheduleId?: string;
+  publishedAt?: string;
+  urlStatus?: string;
+  firstPublicObservedAt?: string;
+  lastVerifiedAt?: string;
+  stablePublishedAt?: string;
+  removedAt?: string;
+  verificationCount?: number;
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [itemRows] = await connection.query<RowDataPacket[]>(
-      "SELECT id, monthly_plan_id, channel FROM content_matrix_item WHERE id = ? FOR UPDATE",
+      "SELECT id, monthly_plan_id, product_id, question_version_id, source_problem, title, channel FROM content_matrix_item WHERE id = ? FOR UPDATE",
       [input.taskId]
     );
     const item = itemRows[0];
@@ -347,8 +375,34 @@ export async function backfillFormalPublishJobResult(input: {
       [input.taskId]
     );
     const current = resultRows[0];
-    if (current && String(current.status) === input.status && String(current.public_url || "") === String(input.publicUrl || "")) {
-      return { synced: true, unchanged: true };
+    const publishedAt = input.status === "published"
+      ? toDatabaseDate(input.publishedAt) || current?.published_at || new Date()
+      : current?.published_at || null;
+    const firstPublicObservedAt = toDatabaseDate(input.firstPublicObservedAt) || current?.first_public_observed_at || null;
+    const lastVerifiedAt = toDatabaseDate(input.lastVerifiedAt) || current?.last_verified_at || null;
+    const stablePublishedAt = toDatabaseDate(input.stablePublishedAt) || current?.stable_published_at || null;
+    const removedAt = toDatabaseDate(input.removedAt) || current?.removed_at || null;
+    const verificationCount = Math.max(Number(current?.verification_count || 0), Number(input.verificationCount || 0));
+    const unchanged = current
+      && String(current.status) === input.status
+      && String(current.public_url || "") === String(input.publicUrl || "")
+      && String(current.external_content_id || "") === String(input.externalContentId || "")
+      && String(current.publish_schedule_id || "") === String(input.publishScheduleId || "")
+      && String(current.url_status || "") === String(input.urlStatus || "")
+      && comparableTimestamp(current.published_at) === comparableTimestamp(publishedAt)
+      && comparableTimestamp(current.first_public_observed_at) === comparableTimestamp(firstPublicObservedAt)
+      && comparableTimestamp(current.last_verified_at) === comparableTimestamp(lastVerifiedAt)
+      && comparableTimestamp(current.stable_published_at) === comparableTimestamp(stablePublishedAt)
+      && comparableTimestamp(current.removed_at) === comparableTimestamp(removedAt)
+      && Number(current.verification_count || 0) === verificationCount
+      && String(current.failure_reason || "") === String(input.failureReason || "");
+    if (unchanged) {
+      const captureTaskIds = input.status === "published" ? await createPublishedContentRetestTasks(connection, {
+        productId: String(item.product_id), question: String(item.source_problem || item.title),
+        questionVersionId: item.question_version_id ? String(item.question_version_id) : undefined,
+        publishedContentId: input.taskId, sourcePublishResultId: String(current.id)
+      }) : [];
+      return { synced: true, unchanged: true, captureTaskIds };
     }
     const resultId = current ? String(current.id) : `publish-${randomUUID()}`;
     const [draftRows] = await connection.query<RowDataPacket[]>(
@@ -357,22 +411,33 @@ export async function backfillFormalPublishJobResult(input: {
     );
     if (current) {
       await connection.query(
-        `UPDATE content_publish_result SET draft_version_id = ?, status = ?, public_url = ?, external_content_id = ?, failure_reason = ?,
-         published_at = ?, confirmed_by = 'publish_job_worker', version = version + 1 WHERE id = ?`,
+        `UPDATE content_publish_result SET draft_version_id = ?, status = ?, public_url = ?, external_content_id = ?,
+         publish_schedule_id = ?, url_status = ?, failure_reason = ?, published_at = ?, first_public_observed_at = ?,
+         last_verified_at = ?, stable_published_at = ?, removed_at = ?, verification_count = ?,
+         confirmed_by = 'publish_job_worker', version = version + 1 WHERE id = ?`,
         [draftRows[0]?.id || null, input.status, input.publicUrl || null, input.externalContentId || null,
-          input.failureReason || null, input.status === "published" ? new Date() : null, resultId]
+          input.publishScheduleId || null, input.urlStatus || null, input.failureReason || null, publishedAt,
+          firstPublicObservedAt, lastVerifiedAt, stablePublishedAt, removedAt, verificationCount, resultId]
       );
     } else {
       await connection.query(
         `INSERT INTO content_publish_result
-         (id, matrix_item_id, draft_version_id, channel, status, public_url, external_content_id, failure_reason, metrics, published_at, confirmed_by, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'publish_job_worker', 1)`,
+         (id, matrix_item_id, draft_version_id, channel, status, public_url, external_content_id, publish_schedule_id,
+          url_status, failure_reason, metrics, published_at, first_public_observed_at, last_verified_at,
+          stable_published_at, removed_at, verification_count, confirmed_by, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'publish_job_worker', 1)`,
         [resultId, input.taskId, draftRows[0]?.id || null, String(item.channel), input.status, input.publicUrl || null,
-          input.externalContentId || null, input.failureReason || null, stringifyV5Json({}), input.status === "published" ? new Date() : null]
+          input.externalContentId || null, input.publishScheduleId || null, input.urlStatus || null, input.failureReason || null,
+          stringifyV5Json({}), publishedAt, firstPublicObservedAt, lastVerifiedAt, stablePublishedAt, removedAt, verificationCount]
       );
     }
     const matrixStatus = input.status === "published" ? "published" : input.status === "failed" ? "publish_failed" : "scheduled";
     await connection.query("UPDATE content_matrix_item SET status = ?, version = version + 1 WHERE id = ?", [matrixStatus, input.taskId]);
+    const captureTaskIds = input.status === "published" ? await createPublishedContentRetestTasks(connection, {
+      productId: String(item.product_id), question: String(item.source_problem || item.title),
+      questionVersionId: item.question_version_id ? String(item.question_version_id) : undefined,
+      publishedContentId: input.taskId, sourcePublishResultId: resultId
+    }) : [];
     await writeV5GovernanceAudit(connection, {
       actorId: "publish_job_worker",
       actorRole: "system",
@@ -381,10 +446,21 @@ export async function backfillFormalPublishJobResult(input: {
       eventType: "publish_job_result_backfilled",
       objectType: "content_publish_result",
       objectId: resultId,
-      afterSummary: { taskId: input.taskId, status: input.status, publicUrl: input.publicUrl },
+      afterSummary: {
+        taskId: input.taskId,
+        status: input.status,
+        publicUrl: input.publicUrl,
+        publishScheduleId: input.publishScheduleId,
+        urlStatus: input.urlStatus,
+        firstPublicObservedAt: input.firstPublicObservedAt,
+        lastVerifiedAt: input.lastVerifiedAt,
+        stablePublishedAt: input.stablePublishedAt,
+        removedAt: input.removedAt,
+        verificationCount
+      },
       correlationId: String(item.monthly_plan_id)
     });
-    return { synced: true, unchanged: false };
+    return { synced: true, unchanged: false, captureTaskIds };
   });
 }
 
@@ -394,7 +470,9 @@ export async function readFormalObservationRows() {
       "SELECT id, plan_month, question_version_ids, workspace_config FROM monthly_plan ORDER BY plan_month"
     );
     const [published] = await connection.query<RowDataPacket[]>(
-      `SELECT r.id, r.matrix_item_id, i.question_version_id, i.title, i.channel, r.public_url, r.metrics, r.published_at
+      `SELECT r.id, r.matrix_item_id, i.question_version_id, i.title, i.channel, r.public_url, r.metrics, r.published_at,
+              r.publish_schedule_id, r.url_status, r.first_public_observed_at, r.last_verified_at,
+              r.stable_published_at, r.removed_at, r.verification_count
        FROM content_publish_result r JOIN content_matrix_item i ON i.id = r.matrix_item_id WHERE r.status = 'published' ORDER BY r.published_at`
     );
     return { plans, published };

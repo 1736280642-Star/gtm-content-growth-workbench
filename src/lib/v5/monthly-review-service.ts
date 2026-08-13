@@ -3,6 +3,7 @@ import type { CreateNextMonthProposalRequest, MonthlyQuestionReview, MonthlyRevi
 import { appendObservationAudit, hashObservationPayload, readV5ObservationState, updateV5ObservationState } from "./observation-repository";
 import { readObservationReferenceSnapshot } from "./observation-reference-adapter";
 import { assertMonth, assertObservationMutationContext, ObservationServiceError } from "./observation-service";
+import { listFormalCaptureObservations } from "./capture-repository";
 
 function getNextMonth(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
@@ -13,7 +14,21 @@ function getNextMonth(month: string) {
 export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
   assertMonth(month);
   const [state, reference] = await Promise.all([readV5ObservationState(), readObservationReferenceSnapshot()]);
-  const tasks = Object.values(state.tasks).filter((task) => task.createdAt.startsWith(month));
+  const formalCapture = reference.source === "formal_adapter" ? await listFormalCaptureObservations({ month }) : [];
+  const tasks = reference.source === "formal_adapter"
+    ? formalCapture.map((item) => ({
+        ...item.task,
+        questionKey: item.task.questionVersionId
+          ? reference.questions.find((question) => question.questionVersionId === item.task.questionVersionId)?.questionKey || item.task.questionKey
+          : item.task.questionKey
+      }))
+    : Object.values(state.tasks).filter((task) => task.createdAt.startsWith(month));
+  const answers = reference.source === "formal_adapter"
+    ? Object.fromEntries(formalCapture.flatMap((item) => item.answer ? [[item.answer.id, item.answer] as const] : []))
+    : state.answers;
+  const gaps = reference.source === "formal_adapter"
+    ? Object.fromEntries(formalCapture.flatMap((item) => item.gaps.map((gap) => [gap.id, gap] as const)))
+    : state.gaps;
   const published = reference.publishedContent.filter((item) => item.publishedAt.startsWith(month));
   const plans = reference.monthlyPlans.filter((item) => item.month === month);
   const questionKeys = new Set([
@@ -31,15 +46,20 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
         questionTasks.flatMap((task) => {
           const answerId = task.answerId;
           if (!answerId) return [];
-          return Object.values(state.gaps)
+          return Object.values(gaps)
             .filter((gap) => gap.answerId === answerId && gap.status === "confirmed")
             .map((gap) => gap.code);
         })
       )
     );
     const completedTasks = questionTasks.filter((task) => task.status === "completed");
-    const entityMentionCount = completedTasks.filter((task) => task.answerId && state.answers[task.answerId]?.targetEntityMentioned).length;
-    const recommendation = confirmedGapCodes.includes("evidence_gap")
+    const entityMentionCount = completedTasks.filter((task) => task.answerId && answers[task.answerId]?.targetEntityMentioned).length;
+    const publishLivenessFailed = questionPublished.some((item) => item.liveness24h === "failed" || item.liveness72h === "failed");
+    const livenessObservationComplete = questionPublished.length > 0
+      && questionPublished.every((item) => item.liveness72h && item.liveness72h !== "pending");
+    const recommendation = publishLivenessFailed
+      ? "先处理发布存活异常并核验平台回执，不自动增加下月发布配额。"
+      : confirmedGapCodes.includes("evidence_gap")
       ? "先补公开证据，再由下月 MonthlyPlan 判断是否安排内容。"
       : confirmedGapCodes.some((code) => code === "entity_gap" || code === "citation_gap" || code === "answer_coverage_gap")
         ? "形成内容候选 Proposal，由下月计划人工审批。"
@@ -51,11 +71,17 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
       questionText: referenceQuestion?.text || questionTasks[0]?.questionText || questionKey,
       monthlyPlanIds: monthlyPlans.map((item) => item.monthlyPlanId),
       plannedContentCount: monthlyPlans.reduce((sum, item) => sum + item.plannedContentCount, 0),
-      publishedContent: questionPublished.map(({ contentId, title, channel, publishedAt, metricSummary }) => ({
+      publishedContent: questionPublished.map(({ contentId, title, channel, publishedAt, publicUrl, publishScheduleId, liveness24h, liveness72h, removedAt, hasMetricReturn, metricSummary }) => ({
         contentId,
         title,
         channel,
         publishedAt,
+        publicUrl,
+        publishScheduleId,
+        liveness24h,
+        liveness72h,
+        removedAt,
+        hasMetricReturn,
         metricSummary
       })),
       captureTaskIds: questionTasks.map((item) => item.id),
@@ -63,12 +89,25 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
         ? `${completedTasks.length} 次有效采集，${entityMentionCount} 次出现目标实体。`
         : "本月尚无完成的 AI 前台测试。",
       confirmedGapCodes,
+      recommendationEvidenceRefs: [
+        ...questionPublished.map((item) => `published_content:${item.contentId}`),
+        ...questionPublished.map((item) => `publish_liveness_24h:${item.contentId}:${item.liveness24h || "pending"}`),
+        ...questionPublished.map((item) => `publish_liveness_72h:${item.contentId}:${item.liveness72h || "pending"}`),
+        ...completedTasks.map((item) => `geo_capture_task:${item.id}`),
+        ...completedTasks.flatMap((item) => (item.sourcePublishedContentIds || [])
+          .filter((contentId) => questionPublished.some((publishedItem) => publishedItem.contentId === contentId))
+          .map((contentId) => `geo_retest_link:${item.id}:${contentId}`)),
+        ...confirmedGapCodes.map((code) => `confirmed_gap:${code}`)
+      ],
       recommendation,
-      dataStatus: reference.source === "pending_config" ? "pending_config" : questionPublished.length && completedTasks.length ? "complete" : "partial"
+      dataStatus: reference.source === "pending_config"
+        ? "pending_config"
+        : questionPublished.length && completedTasks.length && livenessObservationComplete ? "complete" : "partial"
     };
   });
   const proposals = Object.values(state.proposals)
     .filter((item) => item.sourceMonth === month)
+    .map((item) => ({ ...item, evidenceRefs: Array.isArray(item.evidenceRefs) ? item.evidenceRefs : [] }))
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const review: MonthlyReview = {
     id: `monthly-review-${month}`,
@@ -78,9 +117,13 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
     metrics: {
       plannedContent: plans.reduce((sum, item) => sum + item.plannedContentCount, 0),
       publishedContent: published.length,
-      effectiveMetricReturns: published.filter((item) => Boolean(item.metricSummary)).length,
+      effectiveMetricReturns: published.filter((item) => item.hasMetricReturn === true).length,
+      survival24hPassed: published.filter((item) => item.liveness24h === "passed").length,
+      survival24hEligible: published.filter((item) => item.liveness24h !== "pending").length,
+      survival72hPassed: published.filter((item) => item.liveness72h === "passed").length,
+      survival72hEligible: published.filter((item) => item.liveness72h !== "pending").length,
       captureTasks: tasks.length,
-      pendingGaps: Object.values(state.gaps).filter((item) => item.status === "candidate" && state.answers[item.answerId]?.createdAt.startsWith(month)).length
+      pendingGaps: Object.values(gaps).filter((item) => item.status === "candidate" && answers[item.answerId]?.createdAt.startsWith(month)).length
     },
     questions,
     proposals,
@@ -94,7 +137,21 @@ export async function createNextMonthProposal(month: string, input: CreateNextMo
   assertObservationMutationContext(input);
   const review = await getMonthlyReview(month);
   const question = review.questions.find((item) => item.id === input.questionReviewId);
+  if (question && !question.publishedContent.length) {
+    throw new ObservationServiceError(
+      409,
+      "FORMAL_PUBLISHED_EVIDENCE_REQUIRED",
+      "该问题本月没有正式发布内容，不能据此生成下月调整 Proposal。"
+    );
+  }
   if (!question) throw new ObservationServiceError(404, "MONTHLY_QUESTION_REVIEW_NOT_FOUND", "未找到对应的问题级月度复盘。");
+  if (review.source === "formal_adapter" && question.publishedContent.some((item) => item.liveness72h === "pending" || !item.liveness72h)) {
+    throw new ObservationServiceError(
+      409,
+      "FORMAL_LIVENESS_EVIDENCE_PENDING",
+      "该问题的正式发布内容尚未完成 72 小时存活观察，不能提前形成下月调整 Proposal。"
+    );
+  }
   if (!input.recommendation.trim() || !input.rationale.trim()) {
     throw new ObservationServiceError(422, "PROPOSAL_CONTENT_REQUIRED", "请填写下月建议和形成依据。");
   }
@@ -112,6 +169,7 @@ export async function createNextMonthProposal(month: string, input: CreateNextMo
       questionKey: question.questionKey,
       recommendation: input.recommendation.trim(),
       rationale: input.rationale.trim(),
+      evidenceRefs: question.recommendationEvidenceRefs,
       status: "proposal",
       monthlyTaskCreated: false,
       quotaChanged: false,

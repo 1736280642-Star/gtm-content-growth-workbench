@@ -65,7 +65,7 @@ export default function NewProductPage() {
       <PageHeader
         title="创建产品/服务并导入资料"
         subtitle="名称用于确定资料归属；第一批网页或文件会在同一次提交中进入系统处理。"
-        actions={<Link href="/products"><Button icon={<ArrowLeftOutlined />}>返回产品与资料</Button></Link>}
+        actions={<Link href="/products"><Button icon={<ArrowLeftOutlined />}>返回产品知识库</Button></Link>}
       />
       <Alert
         showIcon
@@ -123,7 +123,7 @@ export default function NewProductPage() {
               submitLabel="创建并导入资料"
               beforeImport={createProduct}
               onTargetResolved={setCreatedTarget}
-              onImported={(target) => router.replace(`/products/${encodeURIComponent(target.productId)}?tab=materials`)}
+              onImported={(target) => router.replace(`/products/${encodeURIComponent(target.productId)}?tab=knowledge`)}
             />
           </section>
         </div>

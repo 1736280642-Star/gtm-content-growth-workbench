@@ -34,6 +34,7 @@ export async function POST(request: Request) {
         officialEntity: readString(payload.officialEntity),
         officialUrl: readString(payload.officialUrl),
         productCategory: readString(payload.productCategory),
+        entityRelationship: readString(payload.entityRelationship),
         aliases: readStringArray(payload.aliases)
       },
       research: {

@@ -859,7 +859,7 @@ export async function readV5ReadinessContext(productId: string) {
     [productId]
   );
   const [readinessRows] = await pool.query<RowDataPacket[]>(
-    "SELECT id, version FROM monthly_production_readiness WHERE product_id = ? AND rule_package_version_id = ? LIMIT 1",
+    "SELECT * FROM monthly_production_readiness WHERE product_id = ? AND rule_package_version_id = ? LIMIT 1",
     [productId, String(version.id)]
   );
   return {
@@ -867,8 +867,8 @@ export async function readV5ReadinessContext(productId: string) {
     rulePackageVersionId: String(version.id),
     rulePackageVersion: String(version.version),
     rulePackageStatus: String(version.status),
-    sourceSnapshotId: snapshotRows[0] ? String(snapshotRows[0].id) : undefined,
-    sourceSnapshotHash: snapshotRows[0] ? String(snapshotRows[0].snapshot_hash) : undefined,
+    sourceSnapshotId: snapshotRows[0] ? String(snapshotRows[0].id) : readinessRows[0]?.source_snapshot_id ? String(readinessRows[0].source_snapshot_id) : undefined,
+    sourceSnapshotHash: snapshotRows[0] ? String(snapshotRows[0].snapshot_hash) : readinessRows[0]?.source_snapshot_hash ? String(readinessRows[0].source_snapshot_hash) : undefined,
     monthlyMatrixScope: parseV5Json<Record<string, unknown>>(version.monthly_matrix_scope, {}),
     knowledgeBaseIds,
     knowledgeBases: knowledgeBaseRows.map((row) => ({
@@ -878,7 +878,13 @@ export async function readV5ReadinessContext(productId: string) {
       // sufficient to generate auditable drafts even when external vector
       // infrastructure is not configured. Keep the raw status in governance;
       // expose an effective ready state only for this bounded local path.
-      status: String(row.status) === "pending_config" && snapshotRows[0] && readinessRows[0]
+      status: ["active", "enabled", "pending_config"].includes(String(row.status))
+        && readinessRows[0]
+        && Boolean(readinessRows[0].monthly_production_ready)
+        && String(readinessRows[0].status) === "approved"
+        && readinessRows[0].approved_by
+        && readinessRows[0].approved_at
+        && String(readinessRows[0].source_snapshot_hash || "") === String(version.source_snapshot_hash || "")
         ? "ready"
         : String(row.status)
     })),

@@ -244,6 +244,12 @@ export interface WorkspaceSetting {
   logMode: LogMode;
   knowledgeRagConfig?: KnowledgeRagConfig;
   publishAccountByChannel?: Partial<Record<ChannelKey, string>>;
+  publishPolicyByChannel?: Partial<Record<ChannelKey, {
+    dailyLimit: number;
+    publishWindows: string[];
+    minIntervalMinutes: number;
+  }>>;
+  notificationMethods?: Array<"in_app" | "email" | "webhook">;
   updatedAt?: string;
 }
 

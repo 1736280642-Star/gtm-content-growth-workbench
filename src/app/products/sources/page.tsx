@@ -16,7 +16,7 @@ function ProductSourcesWorkspace() {
       <PageHeader
         title="持续资料采集"
         subtitle="为产品资料接入站点或公众号来源，系统按计划持续归档新内容。"
-        actions={<Link href="/products"><Button icon={<ArrowLeftOutlined />}>返回产品与资料</Button></Link>}
+        actions={<Link href="/products"><Button icon={<ArrowLeftOutlined />}>返回产品知识库</Button></Link>}
       />
       <KnowledgeCollectionWorkspace initialImportType={initialImportType} />
     </>

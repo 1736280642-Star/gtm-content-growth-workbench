@@ -1,14 +1,20 @@
 import http from "node:http";
+import { createHash } from "node:crypto";
 import { loadProjectEnv } from "../../scripts/load-project-env.mjs";
 
 loadProjectEnv();
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.V5_CAPTURE_RUNNER_PORT || 17321);
-const WORKBENCH_URL = (process.env.V5_WORKBENCH_BASE_URL || "http://127.0.0.1:3050").replace(/\/$/, "");
+const WORKBENCH_URL = (process.env.V5_WORKBENCH_BASE_URL || "http://127.0.0.1:3027").replace(/\/$/, "");
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
 const activeTaskIds = new Set();
+const DEVICE_ID = process.env.V5_CAPTURE_DEVICE_ID || "local-chrome-companion";
+const WORKSPACE_ID = process.env.V5_CAPTURE_WORKSPACE_ID || "local-workbench";
+const USER_ID = process.env.V5_CAPTURE_USER_ID || "local-user";
 let extensionHeartbeat;
+let lastTaskFailure;
+let lastNextTaskPoll;
 
 function send(response, status, body, origin) {
   response.writeHead(status, {
@@ -68,27 +74,36 @@ function runnerContext(task, reason, scope) {
 }
 
 async function nextTask() {
-  const workspace = await workbench("/api/v5/frontend-capture/tasks");
-  const task = workspace.tasks.find((item) => ["queued", "waiting_for_browser", "environment_checking"].includes(item.status) && !activeTaskIds.has(item.id));
-  if (task) activeTaskIds.add(task.id);
-  return task;
+  const response = await workbench("/api/v5/capture-tasks");
+  const supported = new Set((extensionHeartbeat?.adapters || []).filter((item) => item.status === "ready").map((item) => item.platform));
+  if (!supported.size) return undefined;
+  const task = response.tasks.find((item) =>
+    (item.status === "pending" || (item.status === "leased" && item.deviceId === DEVICE_ID))
+    && !activeTaskIds.has(item.taskId)
+    && (!supported.size || supported.has(item.platform))
+  );
+  if (!task) return undefined;
+  await workbench(`/api/v5/capture-tasks/${encodeURIComponent(task.taskId)}/lease`, {
+    method: "POST", body: JSON.stringify({ deviceId: DEVICE_ID, durationMs: 10 * 60 * 1000 })
+  });
+  activeTaskIds.add(task.taskId);
+  return { ...task, id: task.taskId, questionText: task.question, version: task.attemptCount + 1, condition: task.captureCondition };
 }
 
 async function forwardStatus(taskId, payload) {
   if (!payload.task || payload.task.id !== taskId) throw Object.assign(new Error("Task identity mismatch."), { status: 422 });
-  const data = await workbench(`/api/v5/frontend-capture/tasks/${encodeURIComponent(taskId)}/status`, {
-    method: "POST",
-    body: JSON.stringify({
-      ...runnerContext(payload.task, payload.note || "Runner 更新采集任务状态", "runner-status"),
+  const data = { taskId, status: payload.status, note: payload.note || "Runner 更新采集任务状态" };
+  if (["waiting_for_browser", "needs_login", "adapter_mismatch", "interrupted", "timed_out", "capture_failed", "cancelled"].includes(payload.status)) {
+    activeTaskIds.delete(taskId);
+    lastTaskFailure = {
+      taskId,
+      platform: payload.task.platform,
       status: payload.status,
-      note: payload.note || "Runner 更新采集任务状态",
+      note: payload.note,
       failure: payload.failure,
-      adapterVersion: payload.adapterVersion,
-      browserVersion: payload.browserVersion,
-      manualIntervention: payload.manualIntervention === true
-    })
-  });
-  if (["waiting_for_browser", "needs_login", "adapter_mismatch", "interrupted", "timed_out", "capture_failed", "cancelled"].includes(payload.status)) activeTaskIds.delete(taskId);
+      receivedAt: new Date().toISOString()
+    };
+  }
   return data;
 }
 
@@ -96,10 +111,36 @@ async function forwardResult(taskId, payload) {
   if (!payload.task || payload.task.id !== taskId || payload.manifest?.taskId !== taskId) throw Object.assign(new Error("Capture result identity mismatch."), { status: 422 });
   const forbidden = sensitivePaths(payload.manifest);
   if (forbidden.length) throw Object.assign(new Error(`Capture result contains forbidden sensitive fields: ${forbidden.join(", ")}`), { status: 422 });
+  const manifest = payload.manifest;
+  const evidence = {
+    contractVersion: "frontend-capture-evidence.v1",
+    answerText: String(manifest.answerText || ""),
+    answerHtmlSanitized: manifest.answerHtmlSanitized,
+    citations: Array.isArray(manifest.citations) ? manifest.citations : [],
+    gaps: Array.isArray(manifest.gaps) ? manifest.gaps : [],
+    targetEntity: manifest.targetEntity,
+    targetEntityMentioned: manifest.targetEntityMentioned,
+    adapterVersion: manifest.adapterVersion,
+    browserVersion: manifest.browserVersion,
+    manifest: {
+      captureSessionId: manifest.captureSessionId,
+      startedAt: manifest.startedAt,
+      completedAt: manifest.completedAt,
+      completionSignals: manifest.completionSignals,
+      captureWarnings: manifest.captureWarnings,
+      screenshot: manifest.screenshot ? {
+        mimeType: manifest.screenshot.mimeType,
+        redactionsApplied: manifest.screenshot.redactionsApplied,
+        viewport: manifest.screenshot.viewport,
+        sha256: createHash("sha256").update(String(manifest.screenshot.dataBase64 || ""), "base64").digest("hex")
+      } : undefined
+    }
+  };
+  const artifactHash = createHash("sha256").update(JSON.stringify(evidence)).digest("hex");
   try {
-    return await workbench(`/api/v5/frontend-capture/tasks/${encodeURIComponent(taskId)}/artifact`, {
+    return await workbench("/api/v5/capture-evidence", {
       method: "POST",
-      body: JSON.stringify({ manifest: payload.manifest, context: runnerContext(payload.task, "Runner 上传经过筛选的不可变采集包", "runner-artifact") })
+      body: JSON.stringify({ taskId, artifactHash, deviceId: DEVICE_ID, collectedBy: "local-chrome-companion", payload: evidence })
     });
   } finally {
     activeTaskIds.delete(taskId);
@@ -126,8 +167,13 @@ const server = http.createServer(async (request, response) => {
         checkedAt: new Date().toISOString(),
         source: "local_runner",
         extension: { status: connected ? "connected" : "disconnected", version: extensionHeartbeat?.extensionVersion, lastHeartbeatAt: extensionHeartbeat?.receivedAt, privacy: { cookieUpload: false, passwordUpload: false, tokenUpload: false, taskPageOnly: true } },
-        runner: { status: "ready", endpoint: `http://${HOST}:${PORT}`, queueDepth: activeTaskIds.size, recoveryAction: "无需处理" },
-        adapters: connected ? extensionHeartbeat.adapters : [{ platform: "chatgpt", status: "pending_config", message: "等待 Chrome 浏览器伴侣心跳。", recoveryAction: "加载扩展并打开 ChatGPT 页面。" }]
+        runner: { status: "ready", endpoint: `http://${HOST}:${PORT}`, queueDepth: activeTaskIds.size, recoveryAction: "无需处理", lastTaskFailure, lastNextTaskPoll },
+        adapters: connected ? extensionHeartbeat.adapters : [
+          { platform: "doubao", status: "pending_config", message: "等待豆包适配器心跳。", recoveryAction: "加载扩展并打开豆包页面。" },
+          { platform: "deepseek", status: "pending_config", message: "等待 DeepSeek 适配器心跳。", recoveryAction: "加载扩展并打开 DeepSeek 页面。" },
+          { platform: "chatgpt", status: "pending_config", message: "等待 ChatGPT 适配器心跳。", recoveryAction: "加载扩展并打开 ChatGPT 页面。" },
+          { platform: "qwen", status: "pending_config", message: "等待千问适配器心跳。", recoveryAction: "加载扩展并打开千问页面。" }
+        ]
       });
       return;
     }
@@ -138,11 +184,22 @@ const server = http.createServer(async (request, response) => {
       const forbidden = sensitivePaths(payload);
       if (forbidden.length) throw Object.assign(new Error(`Heartbeat contains forbidden fields: ${forbidden.join(", ")}`), { status: 422 });
       extensionHeartbeat = { extensionVersion: String(payload.extensionVersion || "unknown"), adapters: Array.isArray(payload.adapters) ? payload.adapters : [], receivedAt: new Date().toISOString() };
+      const platforms = extensionHeartbeat.adapters.map((item) => item.platform).filter(Boolean);
+      try {
+        await workbench("/api/v5/capture-devices", { method: "POST", body: JSON.stringify({ deviceId: DEVICE_ID, workspaceId: WORKSPACE_ID, userId: USER_ID, platforms }) });
+      } catch (error) {
+        if (error.status !== 409) throw error;
+      }
+      await workbench(`/api/v5/capture-devices/${encodeURIComponent(DEVICE_ID)}/heartbeat`, {
+        method: "PUT", body: JSON.stringify({ status: "online", adapterVersion: extensionHeartbeat.extensionVersion })
+      });
       send(response, 200, { ok: true }, origin);
       return;
     }
-    if (request.method === "GET" && url.pathname === "/tasks/next") {
-      send(response, 200, { ok: true, task: await nextTask() || null }, origin);
+    if (request.method === "POST" && url.pathname === "/tasks/next") {
+      const task = await nextTask();
+      lastNextTaskPoll = { receivedAt: new Date().toISOString(), taskId: task?.id || null, platform: task?.platform || null };
+      send(response, 200, { ok: true, task: task || null }, origin);
       return;
     }
     const statusMatch = url.pathname.match(/^\/tasks\/([^/]+)\/status$/);

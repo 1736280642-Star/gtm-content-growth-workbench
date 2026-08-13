@@ -89,6 +89,20 @@ try {
       fail("product_not_unique", `需要且只能找到一个已确认产品 ${productId}，当前为 ${productRows.length} 个。`, "完成 Source Import 与产品实体人工确认后重试。");
     }
     const product = productRows[0];
+    const [strategyRows] = await connection.query(
+      `SELECT sp.id AS strategy_pack_id, sp.status AS strategy_status, atv.article_type_version_id,
+        atv.name AS article_type_name, atv.definition_hash
+       FROM product_strategy_packs sp
+       JOIN product_strategy_article_type_versions atv ON atv.strategy_pack_id = sp.id AND atv.status IN ('active', 'frozen')
+       WHERE sp.id = ? AND sp.status IN ('strategy_approved', 'pending_sample_review', 'production_ready')
+       ORDER BY CASE WHEN atv.name LIKE '%场景%' OR atv.name LIKE '%实施%' THEN 0 ELSE 1 END, atv.portfolio_item_id
+       LIMIT 1`,
+      [product.strategy_pack_id]
+    );
+    if (!strategyRows[0]) {
+      fail("product_strategy_not_ready", "产品尚未绑定用户确认的 GEO 策略和文章类型。", "先完成真实 GEO 调研并在产品页确认策略包，再创建正式样稿任务。");
+    }
+    const strategyArticleType = strategyRows[0];
     const [snapshotRows] = await connection.query(
       `SELECT s.*, m.status AS manifest_status, m.active_rule_package_version_id, m.approved_claim_ids,
         m.knowledge_base_ids, m.monthly_production_readiness_id, m.matrix_scope_version
@@ -253,9 +267,9 @@ try {
         platform_content_type, title, target_audience, primary_distilled_term_id, secondary_distilled_term_ids, knowledge_base_ids,
         rule_package_version_id, prompt_group_id, prompt_group_version_id, channel_rule_version_id, production_scope,
         platform_expression_snapshot, source_problem, status, approved_at, approved_by, version)
-       VALUES (?, ?, ?, ?, '10:00:00', 1, ?, 'wechat', 'explicit_product_intro', 'explicit_product_intro', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, 1)
+       VALUES (?, ?, ?, ?, '10:00:00', 1, ?, 'wechat', ?, 'explicit_product_intro', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, 1)
        ON DUPLICATE KEY UPDATE id = id`,
-      [matrixItemId, monthlyPlanId, matrixVersionId, `${month}-01`, product.id, String(titleClaim.normalized_claim).trim(),
+      [matrixItemId, monthlyPlanId, matrixVersionId, `${month}-01`, product.id, String(strategyArticleType.article_type_version_id), String(titleClaim.normalized_claim).trim(),
         "正在评估企业 AI 产品与内容生产方案的负责人", primaryDistilledTermId, JSON.stringify([]), JSON.stringify(parseJson(snapshot.knowledge_base_ids, [])),
         rule.id, promptGroupId, promptGroupVersionId, channelRuleVersionId, scope,
         JSON.stringify({ platformContentType: "explicit_product_intro", titleClaimId: titleClaim.id, channelRuleSnapshot }),
@@ -277,7 +291,7 @@ try {
       || String(binding.matrix_version_id) !== matrixVersionId
       || String(binding.product_id) !== String(product.id)
       || String(binding.channel) !== "wechat"
-      || String(binding.content_type) !== "explicit_product_intro"
+      || String(binding.content_type) !== String(strategyArticleType.article_type_version_id)
       || String(binding.platform_content_type) !== "explicit_product_intro"
       || String(binding.rule_package_version_id) !== String(rule.id)
       || String(binding.prompt_group_id) !== promptGroupId

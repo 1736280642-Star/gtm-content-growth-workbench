@@ -20,6 +20,7 @@ import {
   V5FoundationServiceError
 } from "./foundation-service";
 import type { V5WriteEnvelope } from "./knowledge-governance-service";
+import { getMultiSearchProviderReadiness } from "./geo-search-adapters";
 
 export const V5_ARTICLE_EXPRESSION_SYSTEM_RULE_VERSION = "article-expression-system.v1.0.0";
 export const V5_ARTICLE_EXPRESSION_SYSTEM_FORBIDDEN_STYLES = ["绝对排名", "泛化承诺", "无证据数据"];
@@ -52,7 +53,17 @@ function mapConfigurationCapability(capability: RuntimeCapability): V5Configurat
 }
 
 export function getV5ConfigurationStatus() {
-  const items = getRuntimeConfigStatus().capabilities.flatMap((item) => mapConfigurationCapability(item) || []);
+  const runtimeItems = getRuntimeConfigStatus().capabilities.flatMap((item) => mapConfigurationCapability(item) || []);
+  const geoProviderLabels = { zhipu: "智谱 GEO 搜索与语义综合", doubao: "豆包 GEO 联网搜索", qwen: "千问 GEO 联网搜索" };
+  const geoItems: V5ConfigurationStatusItem[] = getMultiSearchProviderReadiness().providers.map((provider) => ({
+    key: `geo_search_${provider.provider}`,
+    label: geoProviderLabels[provider.provider],
+    purpose: provider.provider === "zhipu" ? "事实搜索、检索规划、语义综合与策略编排" : "事实层联网搜索与原始来源召回",
+    category: "model",
+    status: provider.status,
+    nextAction: provider.status === "ready" ? "已配置；执行时仍会校验原始 URL 和证据门禁。" : `补充 ${provider.missingConfig.join("、")}。`
+  }));
+  const items = [...runtimeItems, ...geoItems];
   return { ok: true as const, status: "success" as const, data: { items } };
 }
 

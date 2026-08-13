@@ -325,12 +325,13 @@ export async function readRagRetrievalRunRecord(id: string): Promise<{ request: 
 }
 
 export async function readRagMatrixItemContextRecord(matrixItemId: string) {
-  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+  let [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT i.*, v.status AS matrix_status, v.version_number AS matrix_version_number, v.approved_by AS matrix_approved_by,
       v.approved_at AS matrix_approved_at, p.status AS plan_status, p.strategy_package_version_id,
       r.status AS rule_status, r.source_snapshot_hash, r.immutable_at AS rule_immutable_at,
       pe.display_name AS product_display_name, pe.canonical_name AS product_canonical_name,
-      mr.id AS readiness_id, mr.monthly_production_ready, mr.status AS readiness_status
+      mr.id AS readiness_id, mr.monthly_production_ready, mr.status AS readiness_status,
+      'monthly_matrix' AS task_scope
      FROM content_matrix_item i
      JOIN content_matrix_version v ON v.id = i.matrix_version_id
      JOIN monthly_plan p ON p.id = i.monthly_plan_id
@@ -340,6 +341,23 @@ export async function readRagMatrixItemContextRecord(matrixItemId: string) {
      WHERE i.id = ? LIMIT 1`,
     [matrixItemId]
   );
+  if (!rows[0]) {
+    [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+      `SELECT i.*, i.row_version AS version, i.id AS monthly_plan_id, i.id AS matrix_version_id,
+              'approved' AS matrix_status, 1 AS matrix_version_number,
+              i.approved_by AS matrix_approved_by, i.approved_at AS matrix_approved_at,
+              'approved' AS plan_status, i.product_strategy_pack_id AS strategy_package_version_id,
+              r.status AS rule_status, r.source_snapshot_hash, r.immutable_at AS rule_immutable_at,
+              pe.display_name AS product_display_name, pe.canonical_name AS product_canonical_name,
+              NULL AS readiness_id, TRUE AS monthly_production_ready, 'approved' AS readiness_status,
+              i.article_type_version_id AS content_type, 'product_sample' AS task_scope
+       FROM product_sample_article_task i
+       JOIN product_entity pe ON pe.id = i.product_id
+       JOIN rule_package_version r ON r.id = i.rule_package_version_id
+       WHERE i.id = ? LIMIT 1`,
+      [matrixItemId]
+    );
+  }
   const row = rows[0];
   if (!row) return undefined;
   return {
@@ -376,7 +394,8 @@ export async function readRagMatrixItemContextRecord(matrixItemId: string) {
     sourceSnapshotHash: row.source_snapshot_hash ? String(row.source_snapshot_hash) : undefined,
     readinessId: row.readiness_id ? String(row.readiness_id) : undefined,
     monthlyProductionReady: Boolean(row.monthly_production_ready),
-    readinessStatus: row.readiness_status ? String(row.readiness_status) : undefined
+    readinessStatus: row.readiness_status ? String(row.readiness_status) : undefined,
+    taskScope: String(row.task_scope || "monthly_matrix") as "monthly_matrix" | "product_sample"
   };
 }
 
@@ -424,7 +443,15 @@ export async function writeFinalEvidencePackRecord(pack: RagFinalEvidencePack, a
        WHERE id = ? AND matrix_version_id = ? AND version = ?`,
       [pack.evidencePackId, pack.decision, nextItemStatus, pack.taskVersion, pack.matrixItemId, pack.matrixVersionId, pack.taskVersion - 1]
     );
-    if (updated.affectedRows !== 1) throw new Error("矩阵项版本已变化，Final EvidencePack 冻结失败。" );
+    const [sampleUpdated] = await connection.query<ResultSetHeader>(
+      `UPDATE product_sample_article_task
+       SET final_evidence_pack_id = ?, evidence_gate_status = ?, status = ?, row_version = ?
+       WHERE id = ? AND row_version = ?`,
+      [pack.evidencePackId, pack.decision, nextItemStatus, pack.taskVersion, pack.matrixItemId, pack.taskVersion - 1]
+    );
+    if (updated.affectedRows + sampleUpdated.affectedRows !== 1) {
+      throw new Error("内容任务版本已变化，Final EvidencePack 冻结失败。");
+    }
     const evidenceGateRunId = `gate-${randomUUID()}`;
     const blockers = pack.decision === "generatable" || pack.decision === "generatable_with_downgrade"
       ? []

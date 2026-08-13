@@ -4,13 +4,15 @@ import { ArrowLeftOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, Button, Empty, Spin } from "antd";
 import { useEffect, useState } from "react";
 import type { FreeProductionBatch } from "@/lib/v5/free-production-contracts";
+import type { WechatRenderableTemplateId } from "@/lib/v5/wechat-presentation-contracts";
 import type { SupplementValue } from "./InlineSupplementField";
 import { ConfirmAutoPublishButton } from "./ConfirmAutoPublishButton";
 import { CitationSourcePanel } from "./CitationSourcePanel";
 import { RiskAndGapPanel } from "./RiskAndGapPanel";
 import { WechatArticlePreview } from "./WechatArticlePreview";
+import { WechatPublishAccountBar } from "./WechatPublishAccountBar";
 
-export function GenerationResultWorkspace({ batch, working, onBack, onRetry, onSupplements, onPublish }: { batch: FreeProductionBatch; working?: "supplements" | "publish" | "retry"; onBack: () => void; onRetry: () => void; onSupplements: (values: Array<{ riskId: string; value: SupplementValue }>) => void; onPublish: () => void }) {
+export function GenerationResultWorkspace({ batch, working, onBack, onRetry, onSupplements, onChangeLayout, onEditContent, onBindVisual, onPublish }: { batch: FreeProductionBatch; working?: "supplements" | "visual" | "layout" | "content" | "publish" | "retry"; onBack: () => void; onRetry: () => void; onSupplements: (values: Array<{ riskId: string; value: SupplementValue }>) => void; onChangeLayout: (artifactId: string, templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (artifactId: string, input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (artifactId: string, suggestionId: string, mediaAssetId?: string) => Promise<void>; onPublish: () => void }) {
   const artifact = batch.draftArtifacts.find((item) => item.id === batch.currentDraftArtifactId);
   const [step, setStep] = useState<"sources" | "publish">("sources");
   useEffect(() => setStep("sources"), [artifact?.id]);
@@ -24,9 +26,10 @@ export function GenerationResultWorkspace({ batch, working, onBack, onRetry, onS
       {batch.status === "compiling" || batch.status === "generating" ? <div className="generation-progress"><Spin /><strong>正在编译表达并生成安全草稿</strong><span>系统自动解析产品、知识、标题、受众、渠道和发布配置。</span></div> : null}
       {artifact ? (
         <>
+          {batch.channelConfig.channel === "wechat_official_account" ? <WechatPublishAccountBar batch={batch} publishing={working === "publish"} onPublish={onPublish} /> : null}
           <div className="generation-result-columns">
-            <WechatArticlePreview artifact={artifact} />
-            {step === "sources" ? <CitationSourcePanel sources={artifact.sourceExcerpts} onContinue={() => setStep("publish")} /> : <aside className="publication-prep-panel"><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setStep("sources")}>返回引用来源</Button><RiskAndGapPanel risks={batch.risks} saving={working === "supplements"} onSubmit={onSupplements} /><ConfirmAutoPublishButton batch={batch} loading={working === "publish"} onConfirm={onPublish} /></aside>}
+            <WechatArticlePreview artifact={artifact} productId={batch.productId} changingLayout={working === "layout"} savingContent={working === "content"} onChangeLayout={(templateId) => onChangeLayout(artifact.id, templateId)} onEditContent={(input) => onEditContent(artifact.id, input)} onBindVisual={(suggestionId, mediaAssetId) => onBindVisual(artifact.id, suggestionId, mediaAssetId)} />
+            {step === "sources" ? <CitationSourcePanel sources={artifact.sourceExcerpts} onContinue={() => setStep("publish")} /> : <aside className="publication-prep-panel"><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setStep("sources")}>返回引用来源</Button><RiskAndGapPanel risks={batch.risks} saving={working === "supplements"} onSubmit={onSupplements} />{batch.channelConfig.channel !== "wechat_official_account" ? <ConfirmAutoPublishButton batch={batch} loading={working === "publish"} onConfirm={onPublish} /> : null}</aside>}
           </div>
         </>
       ) : batch.status !== "generation_failed" ? <Empty description="正文产物尚未生成" /> : null}

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { V5GovernanceRepositoryError, type V5GovernanceActor } from "../knowledge-governance-repository";
 import { assertActiveProductRegistryRecord } from "../product-registry-repository";
+import { confirmProductIdentityFromSourceRecord } from "../product-registry-repository";
 import type { ProductRegistryItem } from "../product-registry-contracts";
 import type { RagSourceImportCandidate } from "./source-registry";
 import { getRagInfrastructureStatus } from "./infrastructure";
@@ -45,6 +46,58 @@ function stableId(prefix: string, value: string, length = 24) {
 
 function normalizedMarkdown(markdown: string) {
   return markdown.replace(/\r\n/g, "\n").trim();
+}
+
+export function inferOfficialUrlFromConfirmedSources(input: Pick<ManagedSourceImportInput, "authorityLevel" | "sources">) {
+  if (input.authorityLevel !== "A2") return undefined;
+  const candidates = input.sources.flatMap((source) => {
+    if (!source.canonicalUrl) return [];
+    try {
+      const parsed = new URL(source.canonicalUrl);
+      if (!["http:", "https:"].includes(parsed.protocol)) return [];
+      const host = parsed.hostname.toLowerCase();
+      if (["localhost", "0.0.0.0", "127.0.0.1", "::1"].includes(host)) return [];
+      parsed.hash = "";
+      return [{ url: parsed.toString(), host }];
+    } catch {
+      return [];
+    }
+  });
+  if (!candidates.length || new Set(candidates.map((item) => item.host)).size !== 1) return undefined;
+  return [...new Set(candidates.map((item) => item.url))]
+    .sort((left, right) => left.length - right.length || left.localeCompare(right))[0];
+}
+
+function oneUnambiguousValue(values: Array<string | undefined>) {
+  const normalized = [...new Map(values
+    .map((value) => value?.replace(/\s+/g, " ").trim())
+    .filter((value): value is string => Boolean(value))
+    .map((value) => [value.toLocaleLowerCase(), value])).values()];
+  return normalized.length === 1 ? normalized[0] : undefined;
+}
+
+export function inferProductIdentityFromConfirmedSources(
+  input: Pick<ManagedSourceImportInput, "authorityLevel" | "sources">
+) {
+  if (input.authorityLevel !== "A2") return {};
+  const brandName = oneUnambiguousValue(input.sources.map((source) => {
+    const parts = source.title.split(/\s*[|｜]\s*/).map((part) => part.trim()).filter(Boolean);
+    const candidate = parts.length > 1 ? parts.at(-1) : undefined;
+    return candidate && candidate.length <= 80 ? candidate : undefined;
+  }));
+  const entityCandidates = input.sources.flatMap((source) => {
+    const labeled = [...source.markdown.matchAll(/(?:公司|运营主体|开发者|Company)\s*[:：]\s*([^\n|]{2,120})/gi)]
+      .map((match) => match[1]);
+    const legalNames = source.markdown.match(/[\u4e00-\u9fff（）()·]{2,60}(?:有限责任公司|有限公司)|\b[A-Z][A-Za-z0-9&.,' -]{1,80}\s(?:Inc\.?|Ltd\.?|LLC|Corporation|Corp\.?)\b/g) || [];
+    return [...labeled, ...legalNames]
+      .map((value) => value.replace(/^[·•\-—\s]+|[·•\-—\s]+$/g, "").trim())
+      .filter((value) => /有限责任公司|有限公司|\b(?:Inc\.?|Ltd\.?|LLC|Corporation|Corp\.?)\b/i.test(value));
+  });
+  return {
+    brandName,
+    officialEntity: oneUnambiguousValue(entityCandidates),
+    officialUrl: inferOfficialUrlFromConfirmedSources(input)
+  };
 }
 
 function assertInput(input: ManagedSourceImportInput) {
@@ -123,6 +176,16 @@ export async function importManagedSources(input: ManagedSourceImportInput) {
   const candidates = input.sources.map((source) => buildCandidate(input, source, product));
   const plan = prepareRagSourceImport(candidates);
   const stored = await writeRagSourceImport({ plan, idempotencyKey: input.idempotencyKey, actor: input.actor, deferAutomaticClaims: true });
+  const inferredIdentity = inferProductIdentityFromConfirmedSources(input);
+  const hasIdentityCandidate = Object.values(inferredIdentity).some(Boolean);
+  const identityWrite = hasIdentityCandidate
+    ? await confirmProductIdentityFromSourceRecord({
+        productId: input.productId,
+        ...inferredIdentity,
+        sourceIds: candidates.map((candidate) => candidate.sourceId),
+        actor: { ...input.actor, auditReason: `${input.actor.auditReason}；从已确认 A2 来源补全产品身份空缺` }
+      })
+    : undefined;
   const infrastructure = getRagInfrastructureStatus();
   return {
     knowledgeBaseId: candidates[0].knowledgeBaseId,
@@ -133,6 +196,11 @@ export async function importManagedSources(input: ManagedSourceImportInput) {
     createdSources: stored.createdSources,
     createdRevisions: stored.createdRevisions,
     generatedClaims: stored.generatedClaims,
+    brandName: product.brandName || identityWrite?.brandName,
+    officialEntity: product.officialEntity || identityWrite?.officialEntity,
+    officialUrl: product.officialUrl || identityWrite?.officialUrl,
+    productIdentityUpdated: identityWrite?.updated === true,
+    officialUrlUpdated: identityWrite?.updated === true && !product.officialUrl && Boolean(identityWrite.officialUrl),
     pipelineStatus: infrastructure.status === "ready" ? "queued" as const : "pending_config" as const,
     missingConfiguration: infrastructure.status === "ready"
       ? []

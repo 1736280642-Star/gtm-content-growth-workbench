@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Card, Checkbox, Form, Input, Radio, Segmented, Select, Space, Table, Tag, message } from "antd";
+import { Alert, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Radio, Segmented, Select, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageErrorState } from "@/components/PageErrorState";
@@ -9,10 +9,11 @@ import { channelLabels, productLabels } from "@/lib/labels";
 import { callJsonApi, formatApiMessage } from "@/lib/client-api";
 import { getVisibleRoutesForRole, workspaceRoleLabels, workspaceRouteLabels } from "@/lib/permissions";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { ChannelKey, ProductKey, ProductPlanConfig, WorkspaceRole } from "@/lib/types";
 import ConfigurationPage from "@/app/configuration/page";
 import OperationsPage from "@/app/operations/page";
+import { ActionEmpty } from "@/components/ActionEmpty";
 import { WechatSubscriptionSettingsCard } from "@/components/WechatSubscriptionSettingsCard";
 
 const finalReviewModeLabels = {
@@ -391,14 +392,26 @@ function WorkspaceRulesSettings({ section }: { section: "rules" | "permissions" 
               style={{ marginBottom: 16 }}
             />
             {previewChannels.map((channel) => (
-              <Form.Item
-                key={channel}
-                label={`${channelLabels[channel]}默认发布账号`}
-                name={["publishAccountByChannel", channel]}
-              >
-                <Input placeholder="填写平台账号 ID 或连接别名" maxLength={120} />
-              </Form.Item>
+              <Card key={channel} size="small" title={channelLabels[channel]} style={{ marginBottom: 12 }}>
+                <Form.Item label="默认发布账号" name={["publishAccountByChannel", channel]}>
+                  <Input placeholder="填写平台账号 ID 或连接别名" maxLength={120} />
+                </Form.Item>
+                <Space align="start" wrap>
+                  <Form.Item label="保守日上限" name={["publishPolicyByChannel", channel, "dailyLimit"]} initialValue={2}>
+                    <InputNumber min={1} max={50} precision={0} />
+                  </Form.Item>
+                  <Form.Item label="最小间隔（分钟）" name={["publishPolicyByChannel", channel, "minIntervalMinutes"]} initialValue={180}>
+                    <InputNumber min={15} max={1440} precision={0} />
+                  </Form.Item>
+                </Space>
+                <Form.Item label="可发布时间窗" name={["publishPolicyByChannel", channel, "publishWindows"]} initialValue={["10:00", "15:00"]}>
+                  <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="例如 10:00、15:00" options={["09:00", "10:00", "14:00", "15:00", "19:00"].map((value) => ({ value }))} />
+                </Form.Item>
+              </Card>
             ))}
+            <Form.Item label="异常通知方式" name="notificationMethods" initialValue={["in_app"]}>
+              <Checkbox.Group options={[{ label: "工作台内", value: "in_app" }, { label: "邮件", value: "email" }, { label: "Webhook", value: "webhook" }]} />
+            </Form.Item>
           </Card>
           ) : null}
           {section === "permissions" ? (
@@ -513,15 +526,142 @@ function WorkspaceRulesSettings({ section }: { section: "rules" | "permissions" 
   );
 }
 
-type SettingsTab = "models" | "connections" | "rules" | "permissions" | "logs";
+type SettingsTab = "models" | "connections" | "rules" | "permissions" | "capture-devices" | "logs";
 
 const settingsTabs = [
-  { label: "模型", value: "models" },
   { label: "连接", value: "connections" },
   { label: "默认规则", value: "rules" },
   { label: "权限", value: "permissions" },
+  { label: "采集设备", value: "capture-devices" },
+  { label: "模型", value: "models" },
   { label: "日志", value: "logs" }
 ];
+
+// Phase 0: 采集设备 — 设备配对/在线状态/撤销
+function CaptureDevicesSettings() {
+  const [messageApi, contextHolder] = message.useMessage();
+  const [devices, setDevices] = useState<Array<{
+    deviceId: string;
+    userId: string;
+    status: string;
+    platforms: string[];
+    lastHeartbeatAt?: string;
+    adapterVersion?: string;
+    currentTaskId?: string;
+    lastSuccessfulCaptureAt?: string;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [pairing, setPairing] = useState<{ pairingCode: string; expiresAt: string }>();
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await callJsonApi<{ ok: boolean; data?: { devices?: Array<{ deviceId: string; userId: string; status: string; platforms: string[]; lastHeartbeatAt?: string; adapterVersion?: string; currentTaskId?: string; lastSuccessfulCaptureAt?: string }> } }>("/api/v5/capture-devices", { cache: "no-store" });
+      if (result.ok) setDevices(result.data?.devices || []);
+    } catch {
+      // 采集设备 API 尚未部署时显示空状态
+      setDevices([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function revokeDevice(deviceId: string) {
+    try {
+      await callJsonApi(`/api/v5/capture-devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+      messageApi.success("设备已撤销");
+      await refresh();
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "撤销失败");
+    }
+  }
+
+  async function createPairingCode() {
+    try {
+      const result = await callJsonApi<{ ok: boolean; data?: { pairingCode: string; expiresAt: string } }>("/api/v5/capture-pairing-codes", { method: "POST" });
+      if (!result.data) throw new Error("配对码生成失败");
+      setPairing(result.data);
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "配对码生成失败");
+    }
+  }
+
+  return (
+    <>
+      {contextHolder}
+      <PageHeader
+        title="采集设备"
+        subtitle="管理已配对的采集设备。采集设备用于执行 AI 前台回答采集任务，不上传平台凭证。"
+        actions={<Space><Button type="primary" onClick={() => void createPairingCode()}>生成一次性配对码</Button><Button onClick={refresh} loading={loading}>刷新</Button></Space>}
+      />
+      <Card className="foundation-panel" bordered={false}>
+        <Table
+          rowKey="deviceId"
+          loading={loading}
+          dataSource={devices}
+          locale={{
+            emptyText: (
+              <ActionEmpty
+                title="暂无采集设备"
+                description="安装浏览器扩展并完成配对后，设备会出现在这里。"
+                action={<Button type="primary" onClick={() => void createPairingCode()}>生成一次性配对码</Button>}
+              />
+            )
+          }}
+          columns={[
+            { title: "设备 ID", dataIndex: "deviceId", width: 180, render: (value: string) => <code>{value.slice(0, 12)}</code> },
+            { title: "登录状态", width: 110, render: () => <Tag color="blue">凭证留在本机</Tag> },
+            { title: "当前任务", dataIndex: "currentTaskId", width: 150, render: (value?: string) => value ? <code>{value.slice(0, 12)}</code> : "空闲" },
+            { title: "最近成功采集", dataIndex: "lastSuccessfulCaptureAt", width: 180, render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "暂无" },
+            { title: "用户", dataIndex: "userId", width: 120 },
+            {
+              title: "状态",
+              dataIndex: "status",
+              width: 100,
+              render: (status: string) => <Tag color={status === "online" ? "green" : "default"}>{status === "online" ? "在线" : "离线"}</Tag>
+            },
+            {
+              title: "支持平台",
+              dataIndex: "platforms",
+              width: 180,
+              render: (platforms: string[]) => platforms?.length ? platforms.map((p) => <Tag key={p}>{p}</Tag>) : <Tag>未配置</Tag>
+            },
+            {
+              title: "最近心跳",
+              dataIndex: "lastHeartbeatAt",
+              width: 160,
+              render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "—"
+            },
+            {
+              title: "适配器版本",
+              dataIndex: "adapterVersion",
+              width: 120,
+              render: (value?: string) => value || "—"
+            },
+            {
+              title: "操作",
+              width: 100,
+              render: (_, record) => (
+                <Button size="small" danger onClick={() => void revokeDevice(record.deviceId)}>
+                  撤销
+                </Button>
+              )
+            }
+          ]}
+        />
+      </Card>
+      <Modal title="一次性设备配对码" open={Boolean(pairing)} footer={<Button type="primary" onClick={() => setPairing(undefined)}>完成</Button>} onCancel={() => setPairing(undefined)}>
+        <Alert showIcon type="warning" message="配对码仅显示一次，10 分钟后过期" description="在采集扩展中输入配对码。平台登录凭证始终保留在本机，不会上传工作台。" />
+        <Typography.Title level={2} copyable style={{ textAlign: "center", letterSpacing: 3 }}>{pairing?.pairingCode}</Typography.Title>
+        <Typography.Text type="secondary">有效期至：{pairing ? new Date(pairing.expiresAt).toLocaleString("zh-CN") : "-"}</Typography.Text>
+      </Modal>
+    </>
+  );
+}
 
 function SettingsHub() {
   const router = useRouter();
@@ -552,6 +692,7 @@ function SettingsHub() {
         </>
       ) : null}
       {!showSystemStatus && tab === "permissions" ? <WorkspaceRulesSettings section="permissions" /> : null}
+      {!showSystemStatus && tab === "capture-devices" ? <CaptureDevicesSettings /> : null}
       {!showSystemStatus && tab === "logs" ? (
         <>
           <Space style={{ marginBottom: 12 }} wrap>

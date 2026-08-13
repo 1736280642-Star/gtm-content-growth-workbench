@@ -20,7 +20,7 @@ const stages: Array<{
   { type: "live_competitor_discovery", label: "竞品研究", helper: "拆解竞品内容占位" },
   { type: "frontend_baseline", label: "AI 基线", helper: "记录回答、提及和引用" },
   { type: "evidence_alignment", label: "证据归并", helper: "对齐回答与公开来源" },
-  { type: "blueprint_synthesis", label: "蓝图草案", helper: "形成可审核策略输入" }
+  { type: "blueprint_synthesis", label: "策略综合", helper: "形成产品 GEO 策略依据" }
 ];
 
 const labels: Record<GeoResearchTaskStatus, string> = {

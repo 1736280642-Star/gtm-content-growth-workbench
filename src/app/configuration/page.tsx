@@ -200,6 +200,9 @@ function ConfigurationPageContent() {
     observation: configurationItems.filter((item) => item.category === "observation_connection")
   }), [configurationItems]);
 
+  const geoModelItems = grouped.models.filter((item) => item.key.startsWith("geo_search_"));
+  const geoModelsReady = geoModelItems.length === 3 && geoModelItems.every((item) => item.status === "ready");
+
   function statusTable(items: V5ConfigurationStatusItem[], emptyTitle: string) {
     return (
       <Card className="foundation-panel" bordered={false}>
@@ -219,6 +222,24 @@ function ConfigurationPageContent() {
       </Card>
     );
   }
+
+  const modelStatusContent = (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Alert
+        showIcon
+        type={geoModelsReady ? "success" : "warning"}
+        message={geoModelsReady ? "三家 GEO 联网模型已就绪" : "GEO 联网调研还需要完成模型配置"}
+        description={(
+          <Space direction="vertical" size={4}>
+            <Typography.Text>智谱负责事实搜索、检索规划和最终语义综合；豆包与千问只补充事实搜索和原始来源，三家结果不会简单拼接。</Typography.Text>
+            {!geoModelsReady ? <Typography.Text>请由部署人员把表格中的缺失字段写入项目 <Typography.Text code>.env.local</Typography.Text>，然后执行 <Typography.Text code>npm.cmd run docker:3027</Typography.Text> 重新创建容器，再点击“重新检查”。</Typography.Text> : null}
+            <Typography.Text type="secondary">API Key 不在页面填写或回显，也不要粘贴到聊天、文档或代码仓库。</Typography.Text>
+          </Space>
+        )}
+      />
+      {statusTable(grouped.models, "暂无模型服务")}
+    </Space>
+  );
 
   const profilesTab = (
     <Card className="foundation-panel" bordered={false}>
@@ -268,7 +289,7 @@ function ConfigurationPageContent() {
   }[embeddedSection] : undefined;
 
   const embeddedContent = embeddedSection === "models"
-    ? statusTable(grouped.models, "暂无模型服务")
+    ? modelStatusContent
     : embeddedSection === "connections"
       ? (
           <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -305,7 +326,7 @@ function ConfigurationPageContent() {
           activeKey={activeTab}
           onChange={setActiveTab}
           items={[
-            { key: "models", label: "模型服务", icon: <SettingOutlined />, children: statusTable(grouped.models, "暂无模型服务") },
+            { key: "models", label: "模型服务", icon: <SettingOutlined />, children: modelStatusContent },
             { key: "expression_profiles", label: "文章表达预设", children: profilesTab },
             { key: "publish_connections", label: "发布连接", icon: <CloudSyncOutlined />, children: statusTable(grouped.publish, "暂无发布连接") },
             { key: "observation_connections", label: "前台测试连接", children: <><Alert showIcon type="warning" message="本分支只聚合连接状态，不运行 AI 前台采集" style={{ marginBottom: 12 }} />{statusTable(grouped.observation, "暂无前台测试连接")}</> },

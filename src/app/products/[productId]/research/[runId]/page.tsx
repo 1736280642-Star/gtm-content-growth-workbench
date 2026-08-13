@@ -146,7 +146,7 @@ export default function GeoResearchRunPage() {
         actions={
           <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={() => void refresh()}>刷新</Button>
-            <Link href={`/products/${encodeURIComponent(productId)}/research`}><Button icon={<ArrowLeftOutlined />}>返回产品调研</Button></Link>
+            <Link href={`/products/${encodeURIComponent(productId)}?tab=geo&geoView=research`}><Button icon={<ArrowLeftOutlined />}>返回 GEO 调研</Button></Link>
           </Space>
         }
       />

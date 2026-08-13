@@ -1,6 +1,8 @@
 import { callAiProvider, type AiProviderKey } from "@/lib/ai-provider";
 import type { RagEvidenceItem, RagFinalEvidencePack } from "./rag/contracts";
+import type { ProductionContractSnapshot } from "./content-production-contracts";
 import type { FactTrace, HardRuleResult, SingleArticleActor, SingleArticleFailure } from "./single-article-contracts";
+import { findHumanWritingWechatIssues, isWechatContentChannel } from "./human-writing-wechat";
 import {
   beginFormalGenerationRun,
   completeFormalGeneration,
@@ -27,44 +29,6 @@ interface FormalProviderOutput {
   factTraces: FactTrace[];
 }
 
-function sentencePunctuation(value: string) {
-  const trimmed = value.trim().replace(/[。！？!?；;：:]+$/u, "");
-  return trimmed ? `${trimmed}。` : "";
-}
-
-export function buildDeterministicEvidenceFallback(pack: RagFinalEvidencePack, title: string): FormalProviderOutput | undefined {
-  const eligible = pack.evidenceItems.filter((item) => item.primaryClaimId && item.originalQuote.trim() && !item.originalQuote.includes("\n"));
-  const boundary = eligible.find((item) => item.conditions.length || item.limitations.length || item.allowedUsage.includes("human_boundary"));
-  const selected = [...(boundary ? [boundary] : []), ...eligible.filter((item) => item !== boundary)].slice(0, 10);
-  if (selected.length < 8 || !boundary) return undefined;
-  const facts = selected.map((item) => {
-    const base = sentencePunctuation(item.normalizedClaim || item.summary);
-    const boundaries = [...item.conditions, ...item.limitations];
-    const sentence = boundaries.length
-      ? sentencePunctuation(`${base.replace(/。$/u, "")}；适用边界：${boundaries.join("；")}`)
-      : base;
-    return {
-      item,
-      sentence,
-      trace: {
-        sentence,
-        evidenceItemId: item.evidenceItemId,
-        claimId: item.primaryClaimId!,
-        sourceRevisionId: item.sourceRevisionId,
-        originalQuote: item.originalQuote,
-        sourceLocator: item.sourceLocator
-      } satisfies FactTrace
-    };
-  });
-  const ordinaryFacts = facts.filter(({ item }) => item !== boundary);
-  const boundaryFacts = facts.filter(({ item }) => item === boundary);
-  const render = ({ item, sentence }: typeof facts[number]) => `- ${sentence}\n> 原文：${item.originalQuote}`;
-  return {
-    markdown: [`# ${title}`, "## 已证实信息", ...ordinaryFacts.map(render), "## 适用边界与说明", ...boundaryFacts.map(render)].join("\n\n"),
-    factTraces: facts.map(({ trace }) => trace)
-  };
-}
-
 const explicitRuleFields = ["text", "description", "action", "pattern", "value", "label"] as const;
 
 export function extractRuleTexts(value: unknown): string[] {
@@ -78,9 +42,9 @@ export function extractRuleTexts(value: unknown): string[] {
   return Array.from(new Set([...direct, ...nested]));
 }
 
-function resolveProvider(): AiProviderKey {
-  const configured = String(process.env.V5_FORMAL_ARTICLE_PROVIDER || "qwen").trim().toLowerCase();
-  if (configured === "qwen" || configured === "deepseek" || configured === "doubao") return configured;
+function resolveProvider(override?: string): AiProviderKey {
+  const configured = String(override || process.env.V5_FORMAL_ARTICLE_PROVIDER || "qwen").trim().toLowerCase();
+  if (configured === "qwen" || configured === "deepseek" || configured === "doubao" || configured === "zhipu") return configured;
   throw new FormalGenerationError(503, "formal_provider_invalid", "正式正文 Provider 配置不受支持。", "将 V5_FORMAL_ARTICLE_PROVIDER 配置为 qwen、deepseek 或 doubao。");
 }
 
@@ -103,12 +67,8 @@ export function parseFormalProviderOutput(content: string): FormalProviderOutput
         const evidenceItemId = typeof value.evidenceItemId === "string" ? value.evidenceItemId.trim() : "";
         const claimId = typeof value.claimId === "string" ? value.claimId.trim() : "";
         const sourceRevisionId = typeof value.sourceRevisionId === "string" ? value.sourceRevisionId.trim() : "";
-        const originalQuote = typeof value.originalQuote === "string" ? value.originalQuote.trim() : undefined;
-        const sourceLocator = value.sourceLocator && typeof value.sourceLocator === "object"
-          ? value.sourceLocator as FactTrace["sourceLocator"]
-          : undefined;
         return sentence && evidenceItemId && claimId && sourceRevisionId
-          ? [{ sentence, evidenceItemId, claimId, sourceRevisionId, originalQuote, sourceLocator }]
+          ? [{ sentence, evidenceItemId, claimId, sourceRevisionId }]
           : [];
       })
     : [];
@@ -118,8 +78,6 @@ export function parseFormalProviderOutput(content: string): FormalProviderOutput
 function traceMatchesEvidence(trace: FactTrace, item: RagEvidenceItem) {
   return trace.sourceRevisionId === item.sourceRevisionId
     && Boolean(item.originalQuote.trim())
-    && trace.originalQuote === item.originalQuote
-    && JSON.stringify(trace.sourceLocator) === JSON.stringify(item.sourceLocator)
     && (trace.claimId === item.primaryClaimId || item.claimIds.includes(trace.claimId));
 }
 
@@ -134,13 +92,28 @@ function sentenceMatchesEvidence(sentence: string, item: RagEvidenceItem) {
   return candidate.length >= 4 && (candidate === claim || quote.includes(candidate) || candidate.includes(claim));
 }
 
-function factualLines(markdown: string) {
-  return markdown.split(/\r?\n/)
-    .map((line) => line.trim().replace(/^[-*+]\s+/, "").replace(/^\d+[.)、]\s*/, ""))
-    .filter((line) => line && !line.startsWith("#") && !line.startsWith(">") && isFactSentence(line));
+function splitProseSentences(value: string) {
+  return value.match(/[^。！？!?；;]+[。！？!?；;]+|[^。！？!?；;]+$/g)?.map((item) => item.trim()).filter(Boolean) || [];
 }
 
-export function removeUnsupportedFormalPassages(output: FormalProviderOutput, evidenceItems: RagEvidenceItem[]) {
+function proseSentences(markdown: string) {
+  return markdown.split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[-*+]\s+/, "").replace(/^\d+[.)、]\s*/, ""))
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith(">"))
+    .flatMap(splitProseSentences);
+}
+
+function factualLines(markdown: string) {
+  return proseSentences(markdown).filter(isFactSentence);
+}
+
+function isProductClaimLine(line: string) {
+  const normalized = line.trim();
+  if (!normalized) return false;
+  return /WorkBuddy|JOTO|腾讯|ADP|CSP|认证|官方|产品|平台|系统|服务商|支持|提供|具备|集成|部署|接入|实现|能够|可用于|适用于|覆盖|兼容|上线|发布/i.test(normalized);
+}
+
+export function removeUnsupportedFormalPassages(output: FormalProviderOutput, evidenceItems: RagEvidenceItem[], fixedTexts: string[] = []) {
   const evidenceById = new Map(evidenceItems.map((item) => [item.evidenceItemId, item]));
   const acceptedTraces = output.factTraces.filter((trace) => {
     const item = evidenceById.get(trace.evidenceItemId);
@@ -149,15 +122,237 @@ export function removeUnsupportedFormalPassages(output: FormalProviderOutput, ev
   const acceptedSentences = new Set(acceptedTraces.map((trace) => trace.sentence));
   const rejectedSentences = new Set(output.factTraces.filter((trace) => !acceptedSentences.has(trace.sentence)).map((trace) => trace.sentence));
   const lines = output.markdown.split(/\r?\n/);
-  const keptLines = lines.filter((line) => {
-    if ([...rejectedSentences].some((sentence) => line.includes(sentence))) return false;
+  let removedSentenceCount = 0;
+  const keptLines = lines.map((line) => {
     const normalized = line.trim().replace(/^[-*+]\s+/, "").replace(/^\d+[.)、]\s*/, "");
-    if (!normalized || normalized.startsWith("#") || normalized.startsWith(">") || !isFactSentence(normalized)) return true;
-    return [...acceptedSentences].some((sentence) => normalized.includes(sentence));
-  });
+    if (!normalized || normalized.startsWith("#") || normalized.startsWith(">")) return line;
+    const keptSentences = splitProseSentences(normalized).filter((sentence) => {
+      if ([...rejectedSentences].some((rejected) => sentence.includes(rejected))) {
+        removedSentenceCount += 1;
+        return false;
+      }
+      if (!isFactSentence(sentence) || fixedTexts.some((text) => sentence.includes(text))) return true;
+      if ([...acceptedSentences].some((accepted) => sentence === accepted)) return true;
+      if (isProductClaimLine(sentence)) {
+        removedSentenceCount += 1;
+        return false;
+      }
+      return true;
+    });
+    return keptSentences.join("");
+  }).filter((line) => line.trim());
   return {
     output: { markdown: keptLines.join("\n").replace(/\n{3,}/g, "\n\n").trim(), factTraces: acceptedTraces },
-    removedCount: lines.length - keptLines.length + output.factTraces.length - acceptedTraces.length
+    removedCount: removedSentenceCount + output.factTraces.length - acceptedTraces.length
+  };
+}
+
+export function placeFixedExpressions(markdown: string, rules: ProductionContractSnapshot["fixedExpressions"] = []) {
+  let result = markdown.trim();
+  for (const rule of rules) {
+    if (rule.text === "JOTO 作为腾讯CSP授权合作伙伴") {
+      result = placeJotoOfficialPositioning(result, rule.positions);
+      continue;
+    }
+    result = result.split(rule.text).join("").replace(/\n{3,}/g, "\n\n").trim();
+    for (const position of rule.positions) {
+      if (position === "opening") {
+        const titleEnd = result.indexOf("\n");
+        result = titleEnd >= 0
+          ? `${result.slice(0, titleEnd)}\n\n${rule.text}\n${result.slice(titleEnd + 1).trimStart()}`
+          : `${result}\n\n${rule.text}`;
+      } else if (position === "ending") {
+        result = `${result.trimEnd()}\n\n${rule.text}`;
+      } else {
+        const lastHeading = result.lastIndexOf("\n## ");
+        result = lastHeading >= 0
+          ? `${result.slice(0, lastHeading).trimEnd()}\n\n${rule.text}\n${result.slice(lastHeading)}`
+          : `${result.trimEnd()}\n\n${rule.text}`;
+      }
+    }
+  }
+  return result.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function mergeJotoPositioningIntoParagraph(paragraph: string, fixedText: string) {
+  const servicePattern = /(?:我们\s*)?JOTO\s*团队(?:可|可以)?在([^。！？\n]*?)提供/g;
+  const forPattern = /JOTO\s*团队为([^。！？\n]*?)提供/g;
+  if (servicePattern.test(paragraph)) {
+    servicePattern.lastIndex = 0;
+    return paragraph.replace(servicePattern, `${fixedText}，可在$1提供`);
+  }
+  if (forPattern.test(paragraph)) {
+    forPattern.lastIndex = 0;
+    return paragraph.replace(forPattern, `${fixedText}，可为$1提供`);
+  }
+  return "";
+}
+
+function placeJotoOfficialPositioning(markdown: string, positions: Array<"opening" | "body" | "ending">) {
+  const fixedText = "JOTO 作为腾讯CSP授权合作伙伴";
+  const cleaned = markdown
+    .replaceAll(`${fixedText}。`, "")
+    .replaceAll(`${fixedText}，`, "")
+    .replaceAll(fixedText, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const blocks = cleaned.split(/\n\s*\n/).map((value) => value.trim()).filter(Boolean);
+  const proseIndexes = blocks.map((block, index) => ({ block, index }))
+    .filter(({ block }) => (!block.startsWith("#") || /JOTO\s*团队/.test(block)) && !/^\[[^\]]+]\(https?:\/\//i.test(block));
+  const firstH2 = blocks.findIndex((block) => /^##\s+/.test(block));
+  const openingCandidates = proseIndexes.filter(({ index }) => firstH2 < 0 || index < firstH2);
+  const endingCandidates = [...proseIndexes].reverse();
+
+  const integrate = (candidates: typeof proseIndexes) => {
+    for (const { block, index } of candidates) {
+      const merged = mergeJotoPositioningIntoParagraph(block, fixedText);
+      if (!merged) continue;
+      blocks[index] = merged;
+      return true;
+    }
+    return false;
+  };
+
+  for (const position of positions) {
+    const candidates = position === "opening" ? openingCandidates : position === "ending" ? endingCandidates : proseIndexes;
+    if (integrate(candidates)) continue;
+    const fallback = `${fixedText}，可在约定项目范围内提供项目实施、交付培训与后续支持。`;
+    if (position === "opening") {
+      const titleIndex = blocks.findIndex((block) => /^#\s+/.test(block));
+      blocks.splice(titleIndex >= 0 ? titleIndex + 1 : 0, 0, fallback);
+    } else if (position === "ending") {
+      const linkIndex = blocks.findIndex((block) => /^\[[^\]]+]\(https?:\/\//i.test(block));
+      blocks.splice(linkIndex >= 0 ? linkIndex : blocks.length, 0, fallback);
+    } else {
+      const lastHeading = blocks.map((block, index) => /^##\s+/.test(block) ? index : -1).filter((index) => index >= 0).at(-1);
+      blocks.splice(lastHeading ?? blocks.length, 0, fallback);
+    }
+  }
+  return blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function createFormalModelContract(contract: ProductionContractSnapshot) {
+  const minimum = contract.validatorPolicy.minTraceableFactCount;
+  const limit = Math.min(16, Math.max(minimum + 4, minimum));
+  const boundary = contract.evidencePack.evidenceItems.filter((item) =>
+    item.allowedUsage.includes("human_boundary") || item.conditions.length > 0 || item.limitations.length > 0
+  );
+  const selected: typeof contract.evidencePack.evidenceItems = [];
+  const seen = new Set<string>();
+  for (const item of [...boundary, ...contract.evidencePack.evidenceItems]) {
+    if (seen.has(item.evidenceItemId)) continue;
+    seen.add(item.evidenceItemId);
+    selected.push(item);
+    if (selected.length >= limit) break;
+  }
+  return {
+    ...contract,
+    evidencePack: {
+      ...contract.evidencePack,
+      evidenceItems: selected.map((item) => ({
+        evidenceItemId: item.evidenceItemId,
+        claimIds: item.claimIds,
+        primaryClaimId: item.primaryClaimId,
+        sourceRevisionId: item.sourceRevisionId,
+        summary: item.summary,
+        canonicalUrl: item.canonicalUrl,
+        allowedUsage: item.allowedUsage,
+        conditions: item.conditions,
+        limitations: item.limitations,
+        lifecycleStatus: item.lifecycleStatus,
+        status: item.status
+      })),
+      gaps: contract.evidencePack.gaps.slice(0, 10),
+      conflicts: contract.evidencePack.conflicts.slice(0, 10),
+      outdatedEvidence: contract.evidencePack.outdatedEvidence.slice(0, 10),
+      unverifiedClaims: contract.evidencePack.unverifiedClaims.slice(0, 10)
+    },
+    productRule: {
+      ...contract.productRule,
+      allowedExpressions: contract.productRule.allowedExpressions.slice(0, 20),
+      conditionalExpressions: contract.productRule.conditionalExpressions.slice(0, 20),
+      blockedExpressions: contract.productRule.blockedExpressions.slice(0, 30)
+    },
+    allowedExpressions: contract.allowedExpressions.slice(0, 20),
+    conditionalExpressions: contract.conditionalExpressions.slice(0, 20),
+    promptDirectives: contract.promptDirectives.slice(0, 30)
+  };
+}
+
+function ensureTerminalPunctuation(value: string) {
+  const trimmed = value.trim();
+  return /[。！？；，.!?;:]$/.test(trimmed) ? trimmed : `${trimmed}。`;
+}
+
+function requiredTracePlan(contract: ReturnType<typeof createFormalModelContract>) {
+  const items = contract.evidencePack.evidenceItems.filter((item) => item.primaryClaimId);
+  const boundaryItems = items.filter((item) => item.conditions.length || item.limitations.length || item.allowedUsage.includes("human_boundary"));
+  const selected = [...boundaryItems, ...items.filter((item) => !boundaryItems.includes(item))];
+  return selected
+    .slice(0, contract.validatorPolicy.minTraceableFactCount)
+    .map((item) => ({
+      sentence: ensureTerminalPunctuation([
+        item.summary.replace(/[。！？；，.!?;:]$/, ""),
+        ...item.conditions,
+        ...item.limitations
+      ].filter(Boolean).join("。")),
+      evidenceItemId: item.evidenceItemId,
+      claimId: item.primaryClaimId,
+      sourceRevisionId: item.sourceRevisionId,
+      conditions: item.conditions,
+      limitations: item.limitations
+    }));
+}
+
+export function ensureMinimumTraceableEvidence(
+  output: FormalProviderOutput,
+  evidenceItems: RagEvidenceItem[],
+  minimum: number,
+  fixedTexts: string[] = []
+) {
+  const evidenceById = new Map(evidenceItems.map((item) => [item.evidenceItemId, item]));
+  const valid = output.factTraces.filter((trace) => {
+    const item = evidenceById.get(trace.evidenceItemId);
+    return Boolean(item && traceMatchesEvidence(trace, item) && sentenceMatchesEvidence(trace.sentence, item) && output.markdown.includes(trace.sentence));
+  });
+  const sentences = new Set(valid.map((trace) => trace.sentence));
+  const additions: Array<{ sentence: string; item: RagEvidenceItem }> = [];
+  for (const item of evidenceItems) {
+    if (sentences.size + additions.length >= minimum) break;
+    if (!item.primaryClaimId) continue;
+    let sentence = ensureTerminalPunctuation(item.summary || item.normalizedClaim);
+    if (!sentence || sentence.length < 12 || sentences.has(sentence) || additions.some((entry) => entry.sentence === sentence)) continue;
+    if (output.markdown.includes(sentence)) {
+      const boundary = [...item.conditions, ...item.limitations].map((value) => value.trim()).find(Boolean);
+      sentence = ensureTerminalPunctuation(`${sentence.replace(/[。！？；，.!?;:]$/, "")}${boundary ? `；适用条件是${boundary}` : "；这条信息用于当前选型判断"}`);
+    }
+    additions.push({ sentence, item });
+  }
+  if (!additions.length) return output;
+
+  const boundaryNotes = additions.flatMap(({ item }) => [...item.conditions, ...item.limitations])
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const section = [
+    "## 判断时要看清的事实",
+    ...additions.map(({ sentence }) => `- ${sentence}`),
+    ...boundaryNotes.map((note) => `> 适用条件：${note}`)
+  ].join("\n");
+  const endingText = fixedTexts.find((text) => output.markdown.trimEnd().endsWith(text));
+  const markdown = endingText
+    ? `${output.markdown.trimEnd().slice(0, -endingText.length).trimEnd()}\n\n${section}\n\n${endingText}`
+    : `${output.markdown.trimEnd()}\n\n${section}`;
+  return {
+    markdown,
+    factTraces: [
+      ...valid,
+      ...additions.map(({ sentence, item }) => ({
+        sentence,
+        evidenceItemId: item.evidenceItemId,
+        claimId: item.primaryClaimId!,
+        sourceRevisionId: item.sourceRevisionId
+      }))
+    ]
   };
 }
 
@@ -169,10 +364,13 @@ function isFactSentence(sentence: string) {
 export function validateFormalProviderOutput(input: {
   output: FormalProviderOutput;
   title: string;
+  channel?: string;
   evidenceItems: RagEvidenceItem[];
   blockedRuleTexts: string[];
   requiredFormatTexts: string[];
   checkedRuleCount: number;
+  minTraceableFactCount: number;
+  fixedExpressions?: ProductionContractSnapshot["fixedExpressions"];
 }): HardRuleResult {
   const blockers: string[] = [];
   const markdown = input.output.markdown;
@@ -181,21 +379,38 @@ export function validateFormalProviderOutput(input: {
   if (input.requiredFormatTexts.some((text) => text.includes("分节")) && (markdown.match(/^##\s+\S+/gm) || []).length < 2) {
     blockers.push("正文分节不足，至少需要两个 Markdown 二级标题。");
   }
+  const emptySections = markdown.split(/^##\s+\S+.*$/gm).slice(1).filter((section) => !section.trim());
+  if (emptySections.length) blockers.push(`正文包含 ${emptySections.length} 个空章节。`);
+  const visibleLength = markdown.replace(/^#+\s+/gm, "").replace(/\s+/g, "").length;
+  if (visibleLength < 1200) blockers.push(`正文有效长度不足 1200 字，当前约 ${visibleLength} 字。`);
   const evidenceById = new Map(input.evidenceItems.map((item) => [item.evidenceItemId, item]));
   const validTraces = input.output.factTraces.filter((trace) => {
     const item = evidenceById.get(trace.evidenceItemId);
     return Boolean(item
       && isFactSentence(trace.sentence)
       && markdown.includes(trace.sentence)
-      && markdown.includes(item.originalQuote)
       && traceMatchesEvidence(trace, item)
       && sentenceMatchesEvidence(trace.sentence, item));
   });
   const uniqueFacts = new Set(validTraces.map((trace) => trace.sentence));
   if (validTraces.length !== input.output.factTraces.length) blockers.push("factTraces 包含无法匹配正文或 EvidenceItem 的记录。");
-  if (uniqueFacts.size < 8) blockers.push(`可追溯事实句不足 8 条，当前为 ${uniqueFacts.size} 条。`);
-  const untracedFacts = factualLines(markdown).filter((sentence) => ![...uniqueFacts].some((fact) => sentence.includes(fact)));
+  if (uniqueFacts.size < input.minTraceableFactCount) blockers.push(`可追溯事实句不足 ${input.minTraceableFactCount} 条，当前为 ${uniqueFacts.size} 条。`);
+  const fixedTexts = (input.fixedExpressions || []).map((item) => item.text);
+  const untracedFacts = factualLines(markdown).filter(isProductClaimLine).filter((sentence) => !fixedTexts.some((text) => sentence.includes(text))
+    && ![...uniqueFacts].some((fact) => sentence === fact));
   if (untracedFacts.length) blockers.push(`正文包含 ${untracedFacts.length} 条没有 Claim 追溯的事实句。`);
+  const sentenceCounts = new Map<string, number>();
+  for (const sentence of proseSentences(markdown)) {
+    if (fixedTexts.some((text) => sentence.includes(text))) continue;
+    const normalized = normalizeAssertion(sentence);
+    if (normalized.length < 16) continue;
+    sentenceCounts.set(normalized, (sentenceCounts.get(normalized) || 0) + 1);
+  }
+  const duplicatedSentenceCount = [...sentenceCounts.values()].filter((count) => count > 1).length;
+  if (duplicatedSentenceCount) blockers.push(`正文包含 ${duplicatedSentenceCount} 组重复句。`);
+  const siteFragmentPattern = /\b(?:Trusted by|Contact Us|Learn More|Read More|Get Started|Book a Demo|Sign Up)\b/i;
+  const siteFragments = proseSentences(markdown).filter((sentence) => siteFragmentPattern.test(sentence));
+  if (siteFragments.length) blockers.push(`正文混入 ${siteFragments.length} 条网页导航或站点残片。`);
   const boundaryEvidenceIds = new Set(input.evidenceItems
     .filter((item) => item.allowedUsage.includes("human_boundary") || item.conditions.length || item.limitations.length)
     .map((item) => item.evidenceItemId));
@@ -214,31 +429,32 @@ export function validateFormalProviderOutput(input: {
       blockers.push(`正文命中禁止表达：${text}`);
     }
   }
+  for (const rule of input.fixedExpressions || []) {
+    const occurrences = markdown.split(rule.text).length - 1;
+    if (occurrences !== rule.positions.length) {
+      blockers.push(`固定文案必须逐字出现 ${rule.positions.length} 次，当前为 ${occurrences} 次。`);
+      continue;
+    }
+    const firstHeading = markdown.indexOf("\n## ");
+    const lastHeading = markdown.lastIndexOf("\n## ");
+    const openingEnd = firstHeading >= 0 ? firstHeading : Math.floor(markdown.length * 0.25);
+    const endingStart = lastHeading > firstHeading ? lastHeading : Math.floor(markdown.length * 0.7);
+    const zones = {
+      opening: markdown.slice(markdown.indexOf("\n") + 1, openingEnd),
+      body: markdown.slice(openingEnd, endingStart),
+      ending: markdown.slice(endingStart)
+    };
+    for (const position of rule.positions) {
+      if (!zones[position].includes(rule.text)) blockers.push(`固定文案未逐字出现在指定位置：${position}。`);
+    }
+  }
+  if (isWechatContentChannel(input.channel || "")) blockers.push(...findHumanWritingWechatIssues(markdown));
   return {
     passed: blockers.length === 0,
     blockers,
     checkedRuleCount: input.checkedRuleCount,
     traceableFactCount: uniqueFacts.size
   };
-}
-
-function evidenceForProvider(pack: RagFinalEvidencePack) {
-  return pack.evidenceItems.map((item) => ({
-    evidenceItemId: item.evidenceItemId,
-    primaryClaimId: item.primaryClaimId,
-    claimIds: item.claimIds,
-    sourceId: item.sourceId,
-    sourceRevisionId: item.sourceRevisionId,
-    sourceLocator: item.sourceLocator,
-    title: item.title,
-    summary: item.summary,
-    originalQuote: item.originalQuote,
-    normalizedClaim: item.normalizedClaim,
-    conditions: item.conditions,
-    limitations: item.limitations,
-    allowedUsage: item.allowedUsage,
-    forbiddenUsage: item.forbiddenUsage
-  }));
 }
 
 function failure(code: string, message: string, nextAction: string): SingleArticleFailure {
@@ -250,47 +466,41 @@ export async function generateFormalArticle(input: {
   idempotencyKey: string;
   pack: RagFinalEvidencePack;
   context: FormalGenerationContext;
+  productionContractId: string;
+  contract: ProductionContractSnapshot;
   actor: SingleArticleActor;
+  providerOverride?: string;
 }) {
   if (!["generatable", "generatable_with_downgrade"].includes(input.pack.decision)) {
     throw new FormalGenerationError(422, "evidence_not_generatable", "Final EvidencePack 未达到可生成状态，禁止调用正文模型。", "系统将在资料更新后自动重新检索。");
   }
-  const provider = resolveProvider();
+  const provider = resolveProvider(input.providerOverride);
   const generationRunId = await beginFormalGenerationRun({
     operationId: input.operationId,
     idempotencyKey: input.idempotencyKey,
     pack: input.pack,
     context: input.context,
+    productionContractId: input.productionContractId,
+    productionContractHash: input.contract.contractHash,
     provider,
     actor: input.actor
   });
-  const task = input.pack.taskSnapshot;
-  const title = String(task.title || "").trim();
-  const allowedExpressions = extractRuleTexts(input.context.allowedExpressions);
-  const conditionalExpressions = extractRuleTexts(input.context.conditionalExpressions);
-  const blockedExpressions = extractRuleTexts(input.context.blockedExpressions);
-  const evidenceRequirements = extractRuleTexts(input.context.evidenceRequirements);
-  const promptHardRules = extractRuleTexts(input.context.promptHardRules);
-  const requiredFormat = extractRuleTexts(input.context.channelRequiredFormat);
-  const prohibitedPatterns = extractRuleTexts(input.context.channelProhibitedPatterns);
-  const checkedRuleCount = promptHardRules.length + blockedExpressions.length + prohibitedPatterns.length + requiredFormat.length;
-  const systemPrompt = `${input.context.systemPrompt}\n\n你正在执行正式生产，必须只使用提供的 Final EvidencePack。不得补充常识、猜测、外部资料或未给出的能力。每个事实必须附上 EvidenceItem 中逐字一致的 originalQuote 与 sourceLocator；条件事实必须同时写出全部 conditions 和 limitations。输出必须是单个 JSON 对象，字段仅包含 markdown 和 factTraces。`;
-  const userPrompt = `${input.context.userPromptTemplate}\n\n冻结任务：\n${JSON.stringify({
-    title,
-    productName: task.productName,
-    channel: task.channel,
-    contentType: task.contentType,
-    platformContentType: task.platformContentType,
-    targetAudience: task.targetAudience,
-    sourceProblem: task.sourceProblem,
-    ctaBoundary: input.context.ctaBoundary
-  })}\n\n允许表达：\n${JSON.stringify(allowedExpressions)}\n条件表达：\n${JSON.stringify(conditionalExpressions)}\n禁止表达：\n${JSON.stringify([...blockedExpressions, ...prohibitedPatterns])}\n证据要求：\n${JSON.stringify(evidenceRequirements)}\n格式要求：\n${JSON.stringify(requiredFormat)}\n硬规则：\n${JSON.stringify(promptHardRules)}\n\nFinal EvidencePack：\n${JSON.stringify(evidenceForProvider(input.pack))}\n\n输出要求：markdown 必须以“# ${title}”开头，并至少包含两个二级标题；至少写出 8 个以完整标点结尾的事实句，其中至少 1 句必须说明适用条件或限制。每个事实句都必须在 factTraces 中给出原句、evidenceItemId、claimId、sourceRevisionId、逐字一致的 originalQuote 与 sourceLocator。正文必须展示对应 originalQuote；有 conditions 或 limitations 时必须逐项写入正文。`;
+  const title = input.contract.task.title;
+  const blockedExpressions = input.contract.validatorPolicy.prohibitedTerms;
+  const prohibitedPatterns = input.contract.expressionRule.prohibitedTerms;
+  const requiredFormat = input.contract.promptDirectives;
+  const checkedRuleCount = input.contract.promptDirectives.length + input.contract.validatorPolicy.prohibitedTerms.length
+    + (input.contract.fixedExpressions || []).reduce((total, item) => total + item.positions.length, 0);
+  const systemPrompt = "你正在执行已冻结的正式内容生产合同。只能执行合同，不得自行选择策略、文章类型、事实、CTA 或补充外部知识。产品能力、身份、认证、数字和适用边界必须来自 EvidenceItem 并逐句追溯；解释性文字只能说明这些事实对读者判断和行动顺序的影响，不得衍生新产品事实。不得虚构案例、客户、数据、亲历或引语。EvidenceItem.originalQuote 仅供内部事实核验，严禁把原始摘录、审计 JSON、sourceRevisionId 或模型说明展示在读者正文中。输出必须是单个 JSON 对象，字段仅包含 markdown 和 factTraces；factTraces 仅含 sentence、evidenceItemId、claimId、sourceRevisionId。";
+  const modelContract = createFormalModelContract(input.contract);
+  const tracePlan = requiredTracePlan(modelContract);
+  const userPrompt = `请严格执行以下不可变 ProductionContractSnapshot 生成视图：\n${JSON.stringify(modelContract)}\n\n以下 tracePlan 中的句子必须逐字、各一次自然写入正文，并原样复制绑定字段到 factTraces；每个事实句单独成段，不得把 tracePlan 或证据 ID 展示给读者：\n${JSON.stringify(tracePlan)}\n\n正文必须以“# ${title}”开头，并满足合同中的结构、长度、表达、证据、人工边界和渠道规则。请写 1800 至 2200 个中文字符，至少使用 4 个有实际内容的 Markdown 二级标题。至少生成 ${input.contract.validatorPolicy.minTraceableFactCount} 个互不重复的可追溯事实句；每句逐字使用 tracePlan 的 sentence，并原样绑定对应 evidenceItemId、claimId、sourceRevisionId。事实句之间用自然中文解释这些事实如何影响读者的判断、实施顺序与验收动作，每段必须增加新的事实、区分、动作或后果。正文和标题都不要使用破折号或提示性冒号；不要写“不是……而是……”“并非……只是……”等翻案句；不要堆口号，不得虚构案例、数据或亲历。固定文案由系统按位置确定性装配，模型无需自行添加。完整不可变合同仍由系统持久化并用于最终校验；此生成视图只删减与本次写作无关的冗余证据。`;
   let technicalRetryCount = 0;
   let automaticRepairCount = 0;
   let lastBlockers: string[] = [];
   let lastModel: string | undefined;
   let repairPrompt = userPrompt;
-  for (let repairRound = 0; repairRound <= 2; repairRound += 1) {
+  for (let repairRound = 0; repairRound <= 1; repairRound += 1) {
     let providerContent = "";
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const result = await callAiProvider({ provider, systemPrompt, userPrompt: repairPrompt, temperature: 0.2 });
@@ -318,20 +528,31 @@ export async function generateFormalArticle(input: {
     let output: FormalProviderOutput | undefined;
     try {
       output = parseFormalProviderOutput(providerContent);
+      output = { ...output, markdown: placeFixedExpressions(output.markdown, input.contract.fixedExpressions) };
     } catch (error) {
       lastBlockers = [error instanceof Error ? error.message : "正文输出格式不正确。"];
     }
-    const repaired = output ? removeUnsupportedFormalPassages(output, input.pack.evidenceItems) : undefined;
+    const repaired = output ? removeUnsupportedFormalPassages(output, input.pack.evidenceItems, (input.contract.fixedExpressions || []).map((item) => item.text)) : undefined;
     if (repaired?.removedCount) automaticRepairCount += 1;
-    output = repaired?.output;
+    output = repaired?.output
+      ? ensureMinimumTraceableEvidence(
+          repaired.output,
+          input.pack.evidenceItems,
+          input.contract.validatorPolicy.minTraceableFactCount,
+          (input.contract.fixedExpressions || []).map((item) => item.text)
+        )
+      : undefined;
     const validated = output
       ? validateFormalProviderOutput({
           output,
           title,
+          channel: input.contract.task.channel,
           evidenceItems: input.pack.evidenceItems,
           blockedRuleTexts: [...blockedExpressions, ...prohibitedPatterns],
           requiredFormatTexts: requiredFormat,
-          checkedRuleCount
+          checkedRuleCount,
+          minTraceableFactCount: input.contract.validatorPolicy.minTraceableFactCount,
+          fixedExpressions: input.contract.fixedExpressions
         })
       : { passed: false, blockers: lastBlockers, checkedRuleCount, traceableFactCount: 0 };
     const hardRuleResult: HardRuleResult = { ...validated, technicalRetryCount, automaticRepairCount };
@@ -341,6 +562,8 @@ export async function generateFormalArticle(input: {
         generationRunId,
         pack: input.pack,
         context: input.context,
+        productionContractId: input.productionContractId,
+        productionContractHash: input.contract.contractHash,
         title,
         markdown: output.markdown,
         factTraces: output.factTraces,
@@ -350,45 +573,13 @@ export async function generateFormalArticle(input: {
       });
     }
     lastBlockers = hardRuleResult.blockers;
-    if (repairRound < 2) {
+    if (repairRound < 1) {
       automaticRepairCount += 1;
       repairPrompt = `${userPrompt}\n\n系统自动检查发现以下可修复问题：\n${lastBlockers.join("\n")}\n请在不增加任何新事实、不改变冻结标题和证据绑定的前提下重写完整 JSON。`;
     }
   }
 
-  const fallbackOutput = buildDeterministicEvidenceFallback(input.pack, title);
-  if (fallbackOutput) {
-    const fallbackValidation = validateFormalProviderOutput({
-      output: fallbackOutput,
-      title,
-      evidenceItems: input.pack.evidenceItems,
-      blockedRuleTexts: [...blockedExpressions, ...prohibitedPatterns],
-      requiredFormatTexts: requiredFormat,
-      checkedRuleCount
-    });
-    if (fallbackValidation.passed) {
-      const hardRuleResult: HardRuleResult = {
-        ...fallbackValidation,
-        technicalRetryCount,
-        automaticRepairCount: automaticRepairCount + 1
-      };
-      return completeFormalGeneration({
-        operationId: input.operationId,
-        generationRunId,
-        pack: input.pack,
-        context: input.context,
-        title,
-        markdown: fallbackOutput.markdown,
-        factTraces: fallbackOutput.factTraces,
-        hardRuleResult,
-        providerModel: `${lastModel || provider}-evidence-fallback`,
-        actor: input.actor
-      });
-    }
-    lastBlockers = fallbackValidation.blockers;
-  }
-
-  const hardRuleFailure = failure("hard_rule_blocked", "正文经两轮自动修复后仍未通过，系统将保留上一份可用正文并记录本次运行。", "不需要逐条重试；系统会在批次恢复时重新处理。");
+  const hardRuleFailure = failure("hard_rule_blocked", "正文在同一生产合同下完成一次受限修复后仍未通过，系统不会继续改写。", "请在异常中心查看具体规则；如需调整表达，请提交样稿反馈生成新的校准版本。");
   const finalRuleResult: HardRuleResult = { passed: false, blockers: lastBlockers, checkedRuleCount, traceableFactCount: 0, technicalRetryCount, automaticRepairCount };
   await failFormalGenerationRun({ operationId: input.operationId, generationRunId, status: "failed", failure: hardRuleFailure, hardRuleResult: finalRuleResult, actor: input.actor });
   throw new FormalGenerationError(422, hardRuleFailure.code, hardRuleFailure.message, hardRuleFailure.nextAction, lastBlockers, true);

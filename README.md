@@ -9,6 +9,56 @@
 
 系统随后自动完成 GEO 调研、真实问题与关键词沉淀、策略包生成、内容矩阵、正文生产、发布排程、发布状态回传、AI 前台测试与数据复盘。所有自动结果都保留人工修改入口，但日常使用默认只处理异常和关键判断。
 
+> 当前版本定位：V5 内部试运行版（2026-08-13）。Phase 0、Phase 1 已完成基础验收；Phase 2A–2G 的领域契约、Graph Shadow、准入门禁和发布生命周期代码已进入集成测试。当前真实产品试点处于 **Phase 2D：WorkBuddy 单篇样文生成与人工内容质量验收**，尚未进入无人值守批量发布验收。
+
+## 当前开发与测试阶段
+
+当前建设遵循“先单篇证明质量，再扩大到问题 × 渠道矩阵，最后开放自动发布”的顺序。代码完成不等于真实业务闭环完成，当前状态如下：
+
+| 阶段 | 已落地能力 | 当前验收状态 |
+| --- | --- | --- |
+| Phase 0：真实数据基线 | 产品、知识、自然月计划、任务、发布和复盘统一使用 V5 数据模型 | 已完成基础结构与历史状态迁移验收 |
+| Phase 1：MCP 与采集契约 | Knowledge、GEO Research、RAG Retrieval、Observation、Capture、Publish MCP；采集设备、租约、证据与审计模型 | 契约、结构和本地集成测试已通过 |
+| Phase 2A：产品 GEO 策略 | 产品定位、推广目的、问题机会、文章类型组合、固定文案和人工确认 | 已实现；WorkBuddy 策略已进入真实试点 |
+| Phase 2B：多模型联网调研 | 智谱、豆包、千问负责事实搜索；智谱负责语义理解、冲突整理与策略编排 | 适配器和测试已实现；真实效果仍按 Provider 配置逐项验收 |
+| Phase 2C：动态文章类型 | AI 匹配、调整或生成文章类型定义，并冻结到策略版本 | 已实现合同与版本治理 |
+| Phase 2D：正式生产合同与样稿校准 | EvidencePack、不可变生产合同、样稿、人工反馈和表达校准版本 | **当前真实验收阶段**；WorkBuddy 策略已确认，单篇样文仍受 Embedding Provider 连通性阻塞 |
+| Phase 2E：Graph Shadow | 图工作流、MySQL checkpoint、shadow ledger、旁路和失败恢复 | 代码与集成测试已完成；尚未作为生产唯一编排路径 |
+| Phase 2F：发布准入 | 账号绑定、证据门禁、策略/样稿状态和 rollout readiness | 代码门禁已实现；真实渠道授权仍需逐账号验证 |
+| Phase 2G：发布观察与月度复盘 | Publish Job、结果回填、24h/72h 存活检查、归因和 MonthlyReview 证据 | 生命周期契约与集成测试已完成；真实全渠道长期运行数据尚不足 |
+
+当前 WorkBuddy 试点的事实状态：
+
+- 已生成并确认新的产品 GEO 策略版本；
+- 固定文案按逐字规则限定为开篇和结尾、适用微信公众号；
+- 单篇样文必须通过真实 RAG、事实追溯、硬规则和人工内容质量验收后，才允许生成问题 × 渠道批次；
+- 当前样文生成在真实 Embedding 调用阶段失败，因此没有把旧样文或失败结果标记为通过；
+- 微信公众号 AppID、AppSecret、IP 白名单和封面处理不等于发布权限，草稿/发布 API 是否可用仍以公众号后台实际权限和官方返回结果为准。
+
+## 能力边界
+
+### 当前能够完成
+
+- 绑定产品、导入文档或 URL、配置受控站点与公众号来源，并把资料转换为可治理的 Claim、Chunk、Snapshot 和 EvidencePack；
+- 通过多供应商联网搜索补充事实，再由指定语义模型整理 GEO 机会、真实问题、竞品信息和内容建议；
+- 将调研结果直接编译为产品 GEO 策略包，不要求用户额外理解独立的 GeoBlueprint 页面对象；
+- 由 AI 匹配、调整或新建多种文章类型，人工选择后冻结到策略版本；
+- 由用户限定一段逐字固定文案、出现位置和适用渠道，生成时禁止改写、遗漏或擅自扩展；
+- 为单篇或自然月矩阵任务生成不可变生产合同、检索证据、正文、风险项和审计记录；
+- 在人工确认样文后编排批量生成、排程、发布任务、失败重试、结果回填和月度复盘；
+- 在 Docker `full` Profile 中运行 Web、MySQL、OpenSearch 和职能 Worker，并提供健康检查与结构化故障状态。
+
+### 当前不能承诺
+
+- 不能在 Embedding、搜索、生成模型或 OpenSearch 不可用时伪造“已生成”结果，也不会自动降级为无证据正文；
+- 不能保证联网搜索结果天然真实，跨来源冲突、时效性和产品归属仍需要证据治理与必要的人工确认；
+- 不能仅凭模型自评确认内容质量；真实推广前必须完成人工样文验收，批量生产沿用已确认的策略和校准版本；
+- 不能绕过微信公众号、CSDN、掘金、知乎、头条等平台的登录、验证码、账号资质、接口权限、风控和内容审核；
+- 草稿箱写入、HTTP 200、本地 mock 或任务进入队列均不代表正式发布成功；成功必须有平台结果、公开标识或 URL，并通过后续存活检查；
+- Graph Workflow 当前提升的是可靠编排、checkpoint、审计和故障恢复，不替代业务规则、内容质量判断或外部渠道授权；
+- AgentTeams 当前未接入主链路。现阶段由确定性 Service、Worker、MCP 和 Graph Shadow 承担闭环，避免在单篇质量尚未通过前增加多 Agent 协作复杂度；
+- 当前版本是本地/内部试运行系统，未完成面向公网 SaaS 所需的完整租户隔离、统一身份认证、密钥托管、配额计费和合规运营能力。
+
 ## 当前产品形态
 
 侧栏只保留六个一级入口：
@@ -18,7 +68,7 @@
 | 首页 | `/` | 每 15 秒更新关键 KPI、七阶段自动化流程、内容产线、人工待办与最近流转，并提供“绑定产品”“上传知识”快捷入口 |
 | 知识库 | `/knowledge` | 统一承载产品绑定、知识导入、全网 GEO 调研、真实问题与关键词池、站点/公众号持续采集和知识治理 |
 | GEO 内容中心 | `/monthly-plan` | 在同一个自然月工作区完成策略、矩阵任务、正文生成和自动排程；筛选上下文跨步骤共享 |
-| 公众号生产中心 | `/free-production` | 保留 V5 单篇内容生产完整链路：表达预设、资料补充、正文生成、风险复检、人工确认与公众号发布队列 |
+| 公众号内容生产 | `/free-production` | 一级独立入口，保留 V5 单篇内容生产完整链路：文章类型、资料补充、正文生成、风险复检、人工确认与公众号发布队列 |
 | GEO 监控塔 | `/geo-monitor` | 统一查看发布状态与数据回传、官网博客监控、AI 前台测试和 GEO 数据复盘 |
 | 设置 | `/settings` | 模型、连接、默认规则、权限、日志五类配置，并提供公众号订阅 API 监控台；系统状态只在异常或管理员场景展示 |
 
@@ -79,7 +129,7 @@ AI 前台测试 + GEO 数据复盘
 
 业务页不再重复展示大面积 KPI 卡片，只保留紧凑状态条；完整指标统一回到首页查看。
 
-## 公众号生产中心
+## 微信公众号内容生产
 
 `/free-production` 承接原 V5 自由内容生产的完整能力，但以“公众号生产中心”作为用户入口：
 
@@ -112,21 +162,19 @@ AI 前台测试 + GEO 数据复盘
 
 外部平台是否发布成功，以平台公开结果、URL 回填和持续存活验证为准。草稿箱写入、HTTP 200 或本地模拟结果不等于正式发布。
 
-## 仓库内置的腾讯云 ADP 内容快照
+## 代码仓库与真实资料边界
 
-仓库中的 [`data/v5-monthly-workbench.json`](./data/v5-monthly-workbench.json) 保留了当前 2026-08 腾讯云 ADP 月度工作区快照：
+GitHub 仓库只承载应用代码、公开配置模板、数据库结构/迁移、自动化测试和不含业务事实的说明文档。真实产品知识、导入正文、生成文章、EvidencePack、向量、发布凭证和运行状态只存在于本地或部署环境，不随代码提交。
 
-| 项目 | 数量 |
-| --- | ---: |
-| 月度内容任务 | 42 篇 |
-| 含完整正文 | 42 篇 |
-| 已进入排程 | 42 篇 |
-| 微信公众号 | 6 篇 |
-| CSDN | 8 篇 |
-| 掘金 | 8 篇 |
-| 知乎/头条通用长文 | 20 篇 |
+| 可以进入 GitHub | 不得进入 GitHub |
+| --- | --- |
+| `src/`、`workers/`、`scripts/` 等源代码 | `.env`、`.env.local` 和任何真实 Key、Token、Cookie、密码 |
+| `.env.example`、`.env.local.example` 空值模板 | 用户上传文档、网页正文、公众号文章和会议材料 |
+| `database/schema.sql` 与版本化 migration | MySQL/OpenSearch 数据目录、向量、Claim/EvidencePack 实例 |
+| 不含真实业务内容的单元/契约测试 fixture | 生成正文、真实问题池、发布队列、公开 URL 与渠道回执 |
+| README、部署说明和公开开发文档 | 浏览器 profile、日志、备份、个人简历和本地工作记忆 |
 
-每个任务都保留知识库引用、来源快照、问题、文章类型、渠道、正文和排程信息。该文件用于本地恢复与产品验收，是一个明确时间点的数据快照，不代表外部平台的实时发布数量。
+本地运行时数据库可以包含 WorkBuddy、腾讯云 ADP 等真实试点资料，但这些数据不是开源代码的一部分。需要共享验收样本时，应单独制作脱敏且得到明确授权的 fixture，不能直接复制生产或本地数据库内容。
 
 ## 技术结构
 
@@ -135,7 +183,7 @@ src/app/                  Next.js App Router 页面与 API Routes
 src/components/           工作台通用 UI 与月度流程组件
 src/lib/v5/               月度策略、自动化、GEO 调研、知识治理与 RAG 领域服务
 workers/                  知识刷新、GEO 调研、内容生产、排程与发布 Worker
-data/                     可提交的产品数据、月度内容快照和测试数据
+data/                     本地运行状态与脱敏测试数据；真实资料不提交
 database/                 MySQL schema 与迁移
 scripts/                  校验、迁移、smoke、备份和验收脚本
 compose.yaml              core/full Docker Compose 编排
@@ -187,11 +235,25 @@ Compose Profile：
 要求 Node.js 22.14+、npm 10+：
 
 ```powershell
-npm.cmd install
-npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
+npm.cmd run dev:3027
 ```
 
-访问：<http://127.0.0.1:3047>
+访问：<http://127.0.0.1:3027>
+
+该命令自动启动 Docker Desktop、MySQL、OpenSearch、全部 Worker 和容器内的 Next.js 开发服务。页面、组件、样式与 API 源码保存后通过 Fast Refresh 同步到 3027；Worker、Service、脚本、数据库或配置源码保存后，开发守护进程自动重启 Worker supervisor。运行时数据继续保存在原有命名 Volume 中。
+
+```powershell
+# 停止开发 Web 和 Worker，保留 MySQL、OpenSearch
+npm.cmd run dev:3027:stop
+
+# 构建并把 3027 切回 production-like standalone 镜像
+npm.cmd run docker:3027
+
+# 类型、结构和月度命名一次验收
+npm.cmd run verify
+```
+
+修改 `package.json`、`package-lock.json`、Dockerfile 或 Compose 文件后，需要重新运行 `npm.cmd run dev:3027`，以更新开发镜像和依赖。开发模式追求修改反馈速度，不替代交付前的 production-like Docker 验收。
 
 ## 配置与数据边界
 
@@ -207,7 +269,7 @@ WECHAT_COLLECTION_API_KEY=<服务后台创建的 API Key>
 - `.env.example`、`.env.local.example` 只提供字段模板，可以提交；
 - `.env`、`.env.local`、任何真实密钥、Token、Cookie、密码和浏览器 profile 不得提交；
 - MySQL/OpenSearch Volume 属于运行时数据，不直接进入 Git；需要迁移时使用脱敏快照或项目备份脚本；
-- `data/v5-monthly-workbench.json` 是经过确认、允许随代码交付的月度内容快照；
+- 真实知识库、内容正文、EvidencePack、发布记录和本地运行状态不得随代码提交；
 - Provider 未配置时保持 `pending_config/failed`，不降级为无证据生成；
 - 运行状态、公开 URL 和渠道结果不得伪造。
 
@@ -216,8 +278,7 @@ WECHAT_COLLECTION_API_KEY=<服务后台创建的 API Key>
 提交前至少执行：
 
 ```powershell
-npm.cmd run typecheck
-npm.cmd run validate:structure
+npm.cmd run verify
 npm.cmd run build
 ```
 

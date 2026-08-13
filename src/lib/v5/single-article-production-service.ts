@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 import { generateFormalArticle, FormalGenerationError } from "./formal-generation-service";
+import { compileFormalProductionContract, persistProductionContractSnapshot } from "./formal-production-contract-service";
 import type { RagPlatformContentType, RagRetrievalRequest } from "./rag/contracts";
 import { readActiveRagIndexSnapshotRecord, readFinalEvidencePackRecord, readRagMatrixItemContextRecord } from "./rag/rag-repository";
 import { createFinalEvidencePack, RagServiceError, retrieveRag } from "./rag/rag-service";
@@ -51,6 +52,7 @@ export async function prepareAndGenerateSingleArticle(input: {
   taskId: string;
   idempotencyKey: string;
   actor: SingleArticleActor;
+  productionMode?: "sample" | "batch" | "single";
 }): Promise<SingleArticleResult> {
   validateIdempotencyKey(input.idempotencyKey);
   const claimed = await claimSingleArticleOperation(input);
@@ -135,7 +137,25 @@ export async function prepareAndGenerateSingleArticle(input: {
         ]
       );
     }
-    const result = await generateFormalArticle({ operationId: claimed.operation.operationId, idempotencyKey: input.idempotencyKey, pack, context, actor: input.actor });
+    const contract = await compileFormalProductionContract({
+      taskId: input.taskId,
+      pack,
+      context,
+      mode: input.productionMode || "sample"
+    });
+    const frozenContract = await persistProductionContractSnapshot({ contract, actor: input.actor });
+    const result = await generateFormalArticle({
+      operationId: claimed.operation.operationId,
+      idempotencyKey: input.idempotencyKey,
+      pack,
+      context,
+      productionContractId: frozenContract.productionContractId,
+      contract: frozenContract.contract,
+      actor: input.actor,
+      providerOverride: input.productionMode === "sample"
+        ? String(process.env.V5_SAMPLE_ARTICLE_PROVIDER || "qwen")
+        : undefined
+    });
     return {
       operationId: claimed.operation.operationId,
       correlationId: claimed.operation.correlationId,

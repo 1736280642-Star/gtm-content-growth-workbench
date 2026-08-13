@@ -186,7 +186,8 @@ export async function createFinalEvidencePack(input: { retrievalRunId: string; a
   if (!manifest || manifest.status !== "approved" || manifest.productId !== matrix.productId || manifest.activeRulePackageVersionId !== matrix.rulePackageVersionId) {
     throw new RagServiceError(409, "manifest_snapshot_mismatch", "active Snapshot 的 Manifest 与批准矩阵项不一致。" );
   }
-  if (![matrix.matrixVersionId, String(matrix.matrixVersionNumber)].includes(manifest.matrixScopeVersion)) {
+  if (matrix.taskScope !== "product_sample"
+    && ![matrix.matrixVersionId, String(matrix.matrixVersionNumber)].includes(manifest.matrixScopeVersion)) {
     throw new RagServiceError(409, "matrix_scope_mismatch", "Manifest 不覆盖当前批准矩阵版本。" );
   }
   const route = getRagRetrievalRoute(stored.request.platformContentType);

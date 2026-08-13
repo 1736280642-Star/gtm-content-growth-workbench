@@ -5,6 +5,7 @@ x-app-environment: &app-environment
   DEPLOYMENT_PROFILE: ${DEPLOYMENT_PROFILE:-full}
   WORKBENCH_BASE_URL: http://workbench-web:3027
   V5_WORKBENCH_BASE_URL: http://workbench-web:3027
+  V5_CAPTURE_RUNNER_URL: ${V5_CAPTURE_RUNNER_URL:-http://host.docker.internal:17321}
   WORKBENCH_STORAGE: ${WORKBENCH_STORAGE:-mysql}
   WORKBENCH_STATE_PATH: /app/data/workbench-state.json
   V5_FOUNDATION_STATE_PATH: /app/data/v5-foundation-state.json
@@ -29,7 +30,11 @@ x-app-environment: &app-environment
   QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v3}
   QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
   QWEN_EMBEDDING_BASE_URL: ${QWEN_EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+  DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+  DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+  DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
   V5_FORMAL_ARTICLE_PROVIDER: ${V5_FORMAL_ARTICLE_PROVIDER:-qwen}
+  V5_SAMPLE_ARTICLE_PROVIDER: ${V5_SAMPLE_ARTICLE_PROVIDER:-qwen}
   CONTENT_GENERATION_PROVIDER: ${CONTENT_GENERATION_PROVIDER:-qwen}
   ARTICLE_TYPE_AI_PROVIDER: ${ARTICLE_TYPE_AI_PROVIDER:-qwen}
   EMBEDDING_PROVIDER_TIMEOUT_MS: ${EMBEDDING_PROVIDER_TIMEOUT_MS:-60000}
@@ -42,6 +47,12 @@ x-app-environment: &app-environment
   GEO_RESEARCH_ZHIPU_SEARCH_RECENCY: ${GEO_RESEARCH_ZHIPU_SEARCH_RECENCY:-noLimit}
   GEO_RESEARCH_ZHIPU_CONTENT_SIZE: ${GEO_RESEARCH_ZHIPU_CONTENT_SIZE:-high}
   GEO_RESEARCH_ZHIPU_MAX_QUERIES: ${GEO_RESEARCH_ZHIPU_MAX_QUERIES:-3}
+  GEO_RESEARCH_DOUBAO_API_KEY: ${GEO_RESEARCH_DOUBAO_API_KEY:-}
+  GEO_RESEARCH_DOUBAO_MODEL: ${GEO_RESEARCH_DOUBAO_MODEL:-}
+  GEO_RESEARCH_DOUBAO_BASE_URL: ${GEO_RESEARCH_DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+  GEO_RESEARCH_QWEN_API_KEY: ${GEO_RESEARCH_QWEN_API_KEY:-}
+  GEO_RESEARCH_QWEN_MODEL: ${GEO_RESEARCH_QWEN_MODEL:-}
+  GEO_RESEARCH_QWEN_BASE_URL: ${GEO_RESEARCH_QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
   RAG_IMPORT_ACTOR_ID: ${RAG_IMPORT_ACTOR_ID:-docker-rag-source-import}
   RAG_IMPORT_ACTOR_ROLE: ${RAG_IMPORT_ACTOR_ROLE:-knowledge_production_worker}
   RAG_IMPORT_ACTOR_TYPE: system
@@ -149,6 +160,8 @@ services:
       # The web API owns the persisted publish ledger. Keep it on the mounted
       # JSON state unless an operator explicitly selects another web backend.
       WORKBENCH_STORAGE: ${WEB_WORKBENCH_STORAGE:-local_json}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${WORKBENCH_PORT:-3027}:3027"
     volumes: *app-volumes

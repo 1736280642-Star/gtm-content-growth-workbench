@@ -30,7 +30,7 @@ import {
 import { readObservationReferenceSnapshot } from "./observation-reference-adapter";
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-const SUPPORTED_PLATFORMS = new Set(["chatgpt"]);
+const SUPPORTED_PLATFORMS = new Set(["doubao", "deepseek", "qwen", "chatgpt"]);
 const TRANSIENT_TASK_STATES = new Set<FrontendCaptureTaskStatus>([
   "draft",
   "environment_checking",
@@ -188,7 +188,7 @@ export async function getCaptureEnvironmentStatus(): Promise<CaptureEnvironmentS
         recoveryAction: runner.runner.recoveryAction || "无需处理"
       },
       adapters: runner.adapters || [
-        { platform: "chatgpt", status: "pending_config", message: "浏览器伴侣尚未上报适配器状态。", recoveryAction: "打开 ChatGPT 页面并刷新浏览器伴侣状态。" }
+        { platform: "doubao", status: "pending_config", message: "浏览器伴侣尚未上报适配器状态。", recoveryAction: "打开豆包、DeepSeek、千问或 ChatGPT 页面并刷新状态。" }
       ]
     };
   }
@@ -207,10 +207,10 @@ export async function getCaptureEnvironmentStatus(): Promise<CaptureEnvironmentS
       recoveryAction: "运行 npm.cmd run capture-runner:start，再刷新采集环境。"
     },
     adapters: [
-      { platform: "chatgpt", status: "pending_config", message: "等待 Runner 与浏览器伴侣连接。", recoveryAction: "启动 Runner 并加载 Chrome 浏览器伴侣。" },
-      { platform: "yuanbao", status: "unsupported", message: "当前版本尚未支持元宝适配器。", recoveryAction: "等待适配器通过可靠性验证。" },
-      { platform: "doubao", status: "unsupported", message: "当前版本尚未支持豆包适配器。", recoveryAction: "等待适配器通过可靠性验证。" },
-      { platform: "kimi", status: "unsupported", message: "当前版本尚未支持 Kimi 适配器。", recoveryAction: "等待适配器通过可靠性验证。" }
+      { platform: "doubao", status: "pending_config", message: "等待 Runner 与豆包适配器连接。", recoveryAction: "启动 Runner 并打开已登录的豆包页面。" },
+      { platform: "deepseek", status: "pending_config", message: "等待 Runner 与 DeepSeek 适配器连接。", recoveryAction: "启动 Runner 并打开已登录的 DeepSeek 页面。" },
+      { platform: "chatgpt", status: "pending_config", message: "等待 Runner 与 ChatGPT 适配器连接。", recoveryAction: "启动 Runner 并打开已登录的 ChatGPT 页面。" },
+      { platform: "qwen", status: "pending_config", message: "等待 Runner 与千问适配器连接。", recoveryAction: "启动 Runner 并打开已登录的千问页面。" }
     ]
   };
 }
@@ -247,7 +247,7 @@ export async function createCaptureTasks(input: CreateCaptureTasksRequest): Prom
   const platforms = Array.from(new Set(input.platforms));
   const unsupported = platforms.filter((platform) => !SUPPORTED_PLATFORMS.has(platform));
   if (unsupported.length) {
-    throw new ObservationServiceError(422, "ADAPTER_UNSUPPORTED", `${unsupported.join("、")} 适配器尚未达到可靠性标准。`, undefined, "请选择 ChatGPT，或等待对应适配器完成验证。");
+    throw new ObservationServiceError(422, "ADAPTER_UNSUPPORTED", `${unsupported.join("、")} 不属于正式前台测试平台。`, undefined, "请选择豆包、DeepSeek、千问或 ChatGPT。");
   }
   if (input.condition?.conversationMode !== "new_conversation" || input.condition?.personalizationMode !== "off") {
     throw new ObservationServiceError(422, "UNCONTROLLED_CAPTURE_CONDITION", "P0 仅支持新会话且关闭个性化的可比采集条件。");
@@ -259,6 +259,20 @@ export async function createCaptureTasks(input: CreateCaptureTasksRequest): Prom
   const temporaryQuestion = !questionReference;
   const questionText = questionReference?.text || assertText(input.temporaryQuestionText, "临时测试问题", 500);
   const questionKey = questionReference?.questionKey || `temporary:${hashObservationPayload(questionText).slice(0, 16)}`;
+  const sourcePublishedContentIds = Array.from(new Set(input.sourcePublishedContentIds || []));
+  if (sourcePublishedContentIds.length > 20 || sourcePublishedContentIds.some((id) => typeof id !== "string" || !id.trim() || id.length > 128)) {
+    throw new ObservationServiceError(422, "PUBLISHED_CONTENT_LINK_INVALID", "GEO 复测最多关联 20 个有效 publishedContentId。");
+  }
+  const publishedById = new Map(reference.publishedContent.map((item) => [item.contentId, item]));
+  const invalidPublishedContentIds = sourcePublishedContentIds.filter((id) => publishedById.get(id)?.questionKey !== questionKey);
+  if (invalidPublishedContentIds.length) {
+    throw new ObservationServiceError(
+      422,
+      "PUBLISHED_CONTENT_LINK_MISMATCH",
+      "GEO 复测只能关联同一问题下已正式发布的内容。",
+      invalidPublishedContentIds
+    );
+  }
   const environment = await getCaptureEnvironmentStatus();
   const runnerReady = environment.runner.status === "ready";
   const requestHash = hashObservationPayload({ ...input, actor: undefined });
@@ -280,6 +294,7 @@ export async function createCaptureTasks(input: CreateCaptureTasksRequest): Prom
         version: 1,
         questionKey,
         questionVersionId: questionReference?.questionVersionId,
+        sourcePublishedContentIds,
         questionText,
         temporaryQuestion,
         platform,
@@ -304,7 +319,10 @@ export async function createCaptureTasks(input: CreateCaptureTasksRequest): Prom
         actorId: input.actor.actorId,
         actorRole: input.actor.actorRole,
         reason: input.reason,
-        sourceIds: questionReference ? [questionReference.questionVersionId] : [],
+        sourceIds: [
+          ...(questionReference ? [questionReference.questionVersionId] : []),
+          ...sourcePublishedContentIds
+        ],
         beforeVersion: 0,
         afterVersion: 1
       });

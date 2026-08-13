@@ -37,6 +37,8 @@ export interface FormalGenerationRun {
   taskVersion: number;
   matrixItemId: string;
   finalEvidencePackId: string;
+  productionContractId: string;
+  productionContractHash: string;
   provider: string;
   model?: string;
   status: "running" | "completed" | "pending_config" | "failed";
@@ -57,6 +59,8 @@ export interface FormalDraftVersion {
   taskVersion: number;
   matrixItemId: string;
   finalEvidencePackId: string;
+  productionContractId: string;
+  productionContractHash: string;
   rulePackageVersionId: string;
   versionNumber: number;
   title: string;

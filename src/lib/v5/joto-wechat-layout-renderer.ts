@@ -1,6 +1,7 @@
 import type { DraftSection, VisualMaterialSuggestion } from "./free-production-contracts";
 
 export const JOTO_OFFICIAL_WECHAT_TEMPLATE_ID = "joto-official-v1" as const;
+export const WORKBENCH_MEDIA_REF_PREFIX = "workbench-media:" as const;
 
 const JOTO_QR_CODE_URL = "https://mmbiz.qpic.cn/sz_mmbiz_jpg/Ex8RD14hF0re9XUqv9X3Oo2UaYWTLXKUM8Al6mJOibC9ebGF1ZJ0NvzicmiacMPtmphN2rmxkA1TSUv4euia0AHXqriaUBzibRYVqStrAiciaWNjlLI/640?wx_fmt=jpeg";
 
@@ -11,6 +12,17 @@ function escapeHtml(value: string) {
 function safeUrl(value: string) {
   const url = value.trim();
   return /^https:\/\//i.test(url) ? escapeHtml(url) : undefined;
+}
+
+function boundAssetUrl(value: string, mode: "preview" | "publish") {
+  const remote = safeUrl(value);
+  if (remote) return remote;
+  if (!value.startsWith(WORKBENCH_MEDIA_REF_PREFIX)) return undefined;
+  const mediaAssetId = value.slice(WORKBENCH_MEDIA_REF_PREFIX.length);
+  if (!/^media-asset-[0-9a-f-]{36}$/i.test(mediaAssetId)) return undefined;
+  return mode === "preview"
+    ? `/api/v5/free-production/assets/${encodeURIComponent(mediaAssetId)}/content`
+    : `workbench-media://${mediaAssetId}`;
 }
 
 function inlineMarkdown(value: string) {
@@ -123,8 +135,8 @@ function renderVisualSuggestion(suggestion: VisualMaterialSuggestion) {
   </section>`;
 }
 
-function renderBoundVisual(suggestion: VisualMaterialSuggestion) {
-  const src = suggestion.boundAssetRef ? safeUrl(suggestion.boundAssetRef) : undefined;
+function renderBoundVisual(suggestion: VisualMaterialSuggestion, mode: "preview" | "publish") {
+  const src = suggestion.boundAssetRef ? boundAssetUrl(suggestion.boundAssetRef, mode) : undefined;
   if (!src) return "";
   return `<figure style="margin:22px 20px 24px;padding:0;box-sizing:border-box;">
     <img src="${src}" alt="${escapeHtml(suggestion.captionSuggestion)}" style="display:block;width:100%;height:auto;margin:0 auto;box-sizing:border-box;" />
@@ -155,12 +167,14 @@ export function renderJotoOfficialWechatBody(input: {
   sections: DraftSection[];
   visualSuggestions?: VisualMaterialSuggestion[];
   includeVisualPlaceholders?: boolean;
+  assetReferenceMode?: "preview" | "publish";
 }) {
   const suggestions = input.visualSuggestions || [];
+  const assetReferenceMode = input.assetReferenceMode || "publish";
   const content = input.sections.map((section, index) => {
     const visualHtml = suggestions
       .filter((item) => item.placementAnchor === section.sectionKey)
-      .map((visual) => renderBoundVisual(visual) || (input.includeVisualPlaceholders ? renderVisualSuggestion(visual) : ""))
+      .map((visual) => renderBoundVisual(visual, assetReferenceMode) || (input.includeVisualPlaceholders ? renderVisualSuggestion(visual) : ""))
       .join("\n");
     return `${renderSectionHeading(section.heading, index)}\n${renderMarkdown(section.markdown)}\n${visualHtml}`;
   }).join("\n");
@@ -171,7 +185,7 @@ export function renderJotoOfficialWechatBody(input: {
   </section>`;
 }
 
-function markdownSections(title: string, markdown: string): DraftSection[] {
+export function markdownSections(title: string, markdown: string): DraftSection[] {
   const sections: DraftSection[] = [];
   let current: DraftSection = { sectionKey: "introduction", heading: "核心内容", markdown: "" };
   for (const rawLine of markdown.replace(/\r\n/g, "\n").split("\n")) {

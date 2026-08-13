@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { channelLabels } from "@/lib/labels";
 import { getWorkspaceSetting } from "@/lib/workbench-store";
 import type { ChannelKey } from "@/lib/types";
+import type { RowDataPacket } from "mysql2/promise";
 import {
   confirmQuestionTypeMatch,
   getArticleTypeVersionsByIds,
@@ -14,6 +15,11 @@ import {
   scheduleV5ProductionTask
 } from "./monthly-service";
 import { readV5MonthlyPlanRecord } from "./monthly-plan-repository";
+import { getV5GovernancePool, parseV5Json } from "./knowledge-governance-repository";
+import {
+  deriveProductStrategyMonthlyTypeQuotas,
+  type ProductGeoStrategyContentPlanV2
+} from "./product-strategy-pack-contracts";
 import { getMonthlyWorkspaceReadModel } from "./monthly-workspace-read-model";
 import type {
   ContentQuotaRule,
@@ -70,6 +76,24 @@ async function approveExistingDraft(month: string) {
     };
   }
   if (!strategy.quotaRules.length) return undefined;
+  const productStrategyPlan = await buildProductStrategyMonthlyQuotas({
+    month,
+    rulePackages: workspace.rulePackages.filter((item) => item.status === "active" && item.monthlyProductionReady),
+    knowledgeBases: workspace.knowledgeBases.filter((item) => item.status === "ready"),
+    targetQuestions: workspace.targetQuestions
+  });
+  const managedPlanProducts = new Set(strategy.quotaRules.map((rule) => rule.productId).filter((value): value is string => Boolean(value))
+    .filter((productId) => productStrategyPlan.managedProductIdentities.has(normalizeIdentity(productId))));
+  const blockedManagedProducts = [...managedPlanProducts].filter((productId) => !productStrategyPlan.eligibleProductIds.has(productId));
+  if (blockedManagedProducts.length) {
+    return {
+      month,
+      status: "attention" as const,
+      stage: "strategy" as const,
+      message: "已有月度草稿包含尚未通过产品级内容与账号门禁的产品，系统不会自动批准。",
+      issues: blockedManagedProducts.map((productId) => `${productId} 尚未完成策略确认、样稿验收和目标平台账号确认。`)
+    };
+  }
   if (strategy.status !== "preview_ready") {
     await preflightV5Strategy(month, {
       expectedVersion: workspace.plan.version,
@@ -102,8 +126,19 @@ export async function runAutomaticMonthlyPlan(month: string): Promise<MonthlyAut
   const workspace = await getMonthlyWorkspaceReadModel(month);
   const packages = workspace.rulePackages.filter((item) => item.status === "active" && item.monthlyProductionReady && item.allowedChannels.length > 0 && item.sourceSnapshotHash);
   const knowledgeBases = workspace.knowledgeBases.filter((item) => item.status === "ready" && item.sourceSnapshotHash);
-  const questions = workspace.targetQuestions.filter((item) => item.status === "monthly_ready").slice(0, 30);
-  const issues: string[] = [];
+  const productStrategyPlan = await buildProductStrategyMonthlyQuotas({
+    month,
+    rulePackages: packages,
+    knowledgeBases,
+    targetQuestions: workspace.targetQuestions
+  });
+  if (productStrategyPlan.quotaRules.length) {
+    return persistAutomaticQuotaPlan(month, workspace, productStrategyPlan.quotaRules, productStrategyPlan.issues);
+  }
+  const questions = workspace.targetQuestions
+    .filter((item) => item.status === "monthly_ready" && (!item.productId || !productStrategyPlan.managedProductIdentities.has(normalizeIdentity(item.productId))))
+    .slice(0, 30);
+  const issues: string[] = [...productStrategyPlan.issues];
   if (!questions.length) issues.push("问题池中暂无可用于本月计划的问题，请等待联网调研完成或人工补充问题。");
   if (!packages.length) issues.push("没有达到生产准入的产品规则包，请先完成产品绑定与规则包治理。");
   if (!knowledgeBases.length) issues.push("没有带正式来源快照的就绪知识库，请等待资料治理完成。");
@@ -233,16 +268,212 @@ function resolveChannelKey(channel: string): ChannelKey | undefined {
   return (Object.keys(channelLabels) as ChannelKey[]).find((key) => key === channel || channelLabels[key] === channel);
 }
 
-function scheduledAtFor(month: string, index: number) {
+interface PublishPolicy {
+  dailyLimit: number;
+  publishWindows: string[];
+  minIntervalMinutes: number;
+}
+
+async function buildProductStrategyMonthlyQuotas(input: {
+  month: string;
+  rulePackages: RulePackageOption[];
+  knowledgeBases: KnowledgeBaseOption[];
+  targetQuestions: TargetQuestionOption[];
+}) {
+  const [managedRows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT DISTINCT p.id AS product_id, p.canonical_name, p.display_name, p.aliases
+     FROM product_entity p
+     JOIN product_strategy_packs sp ON sp.product_id = p.id
+     WHERE sp.status IN ('pending_strategy_review', 'strategy_approved', 'pending_sample_review', 'production_ready', 'active')`
+  );
+  const managedProductIds = new Set(managedRows.map((row) => String(row.product_id)));
+  const managedProductIdentities = new Set(managedRows.flatMap((row) => [
+    String(row.product_id),
+    String(row.canonical_name || ""),
+    String(row.display_name || ""),
+    ...parseV5Json<string[]>(row.aliases, [])
+  ].map(normalizeIdentity).filter(Boolean)));
+  const [typeRows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT p.id AS product_id, p.canonical_name, p.display_name, p.aliases, sp.id AS strategy_pack_id, sp.content_plan_json,
+            atv.portfolio_item_id, atv.article_type_version_id, atv.name, atv.definition_json, atv.definition_hash
+     FROM product_entity p
+     JOIN product_strategy_packs sp ON sp.id = p.strategy_pack_id AND sp.status = 'production_ready'
+     JOIN expression_calibration_version ec ON ec.product_strategy_pack_id = sp.id AND ec.status = 'active'
+     JOIN product_strategy_article_type_versions atv ON atv.strategy_pack_id = sp.id
+       AND atv.status IN ('active', 'frozen')
+       AND JSON_UNQUOTE(JSON_EXTRACT(atv.definition_json, '$.evidenceReadiness')) = 'ready'
+     WHERE p.status = 'active'
+     ORDER BY p.id, atv.portfolio_item_id`
+  );
+  const [bindingRows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT product_id, channel, account_label FROM product_publish_account_binding WHERE status = 'confirmed'`
+  );
+  const configuredAccounts = getWorkspaceSetting().publishAccountByChannel || {};
+  const boundChannelsByProduct = new Map<string, Set<string>>();
+  for (const row of bindingRows) {
+    const productId = String(row.product_id);
+    const channel = String(row.channel) as ChannelKey;
+    if (!configuredAccounts[channel]?.trim() || configuredAccounts[channel]?.trim() !== String(row.account_label)) continue;
+    const channels = boundChannelsByProduct.get(productId) || new Set<string>();
+    channels.add(channel);
+    boundChannelsByProduct.set(productId, channels);
+  }
+  const rowsByPack = new Map<string, RowDataPacket[]>();
+  for (const row of typeRows) {
+    const packId = String(row.strategy_pack_id);
+    const values = rowsByPack.get(packId) || [];
+    values.push(row);
+    rowsByPack.set(packId, values);
+  }
+  const quotaRules: ContentQuotaRule[] = [];
+  const issues: string[] = [];
+  const eligibleProductIds = new Set<string>();
+  for (const [packId, rows] of rowsByPack) {
+    const productId = String(rows[0].product_id);
+    const productName = String(rows[0].display_name);
+    const plan = parseV5Json<ProductGeoStrategyContentPlanV2 | null>(rows[0].content_plan_json, null);
+    const productIdentities = new Set([
+      productId,
+      String(rows[0].canonical_name || ""),
+      productName,
+      ...parseV5Json<string[]>(rows[0].aliases, [])
+    ].map(normalizeIdentity).filter(Boolean));
+    const productQuestions = input.targetQuestions.filter((question) => question.status === "monthly_ready" && productIdentities.has(normalizeIdentity(question.productId)));
+    const rulePackage = input.rulePackages.find((item) => item.productId === productId);
+    const knowledgeBase = rulePackage ? selectKnowledgeBase(rulePackage, input.knowledgeBases) : undefined;
+    const boundChannels = boundChannelsByProduct.get(productId) || new Set<string>();
+    const channel = rulePackage?.allowedChannels.find((item) => boundChannels.has(item));
+    if (!plan || !productQuestions.length || !rulePackage || !knowledgeBase || !channel || !rulePackage.sourceSnapshotHash) {
+      const missing = [
+        ...(!plan ? ["策略内容不可读"] : []),
+        ...(!productQuestions.length ? ["没有 monthly_ready 问题"] : []),
+        ...(!rulePackage ? ["没有生产就绪规则包"] : []),
+        ...(!knowledgeBase ? ["没有同快照知识库"] : []),
+        ...(!channel ? ["没有由用户确认的目标平台账号"] : [])
+      ];
+      issues.push(`${productName} 尚不能进入月度批量生产：${missing.join("、")}。`);
+      continue;
+    }
+    const rowByPortfolioId = new Map(rows.map((row) => [String(row.portfolio_item_id), row]));
+    const allocations = deriveProductStrategyMonthlyTypeQuotas(plan, Math.min(30, productQuestions.length));
+    const clusterQuestions = new Map(plan.geoOpportunities.map((cluster) => [cluster.opportunityId, new Set(cluster.representativeQuestions.map((question) => normalizeIdentity(question)))]));
+    const usedQuestionIds = new Set<string>();
+    for (const allocation of allocations) {
+      const article = plan.articleTypePortfolio.find((item) => item.portfolioItemId === allocation.portfolioItemId);
+      const typeRow = rowByPortfolioId.get(allocation.portfolioItemId);
+      if (!article || !typeRow) continue;
+      const preferredQuestions = productQuestions.filter((question) => allocation.questionClusterIds.some((clusterId) => clusterQuestions.get(clusterId)?.has(normalizeIdentity(question.question))));
+      const candidates = [...preferredQuestions, ...productQuestions.filter((question) => !preferredQuestions.includes(question))]
+        .filter((question) => !usedQuestionIds.has(question.questionVersionId));
+      for (const question of candidates.slice(0, allocation.count)) {
+        usedQuestionIds.add(question.questionVersionId);
+        const promptSnapshot = typeof typeRow.definition_json === "string" ? typeRow.definition_json : JSON.stringify(typeRow.definition_json);
+        quotaRules.push({
+          quotaRuleId: `quota-${input.month}-${packId}-${question.questionVersionId}-${allocation.portfolioItemId}`.slice(0, 190),
+          productId,
+          productNameSnapshot: productName,
+          questionVersionId: question.questionVersionId,
+          question: question.question,
+          contentType: article.name,
+          articleTypeProfileVersionId: allocation.articleTypeVersionId,
+          articleTypeNameSnapshot: article.name,
+          typeMatchRunId: `product-strategy:${packId}`,
+          typeSelectionSource: "user_selected",
+          matchReasonSnapshot: article.recommendationReason,
+          articleTypePromptConstraintSnapshot: promptSnapshot,
+          articleTypePromptConstraintSnapshotHash: String(typeRow.definition_hash),
+          sameQuotaForAllChannels: false,
+          perChannelQuota: 1,
+          channelQuotas: { [channel]: 1 },
+          expandedDeliverableCount: 1,
+          rulePackageVersionId: rulePackage.id,
+          knowledgeBaseIds: [knowledgeBase.knowledgeBaseId],
+          sourceSnapshotHash: rulePackage.sourceSnapshotHash,
+          rulePackageSourceSnapshotHash: rulePackage.sourceSnapshotHash,
+          knowledgeIndexSourceSnapshotHash: rulePackage.sourceSnapshotHash,
+          evidencePackSourceSnapshotHash: rulePackage.sourceSnapshotHash
+        });
+      }
+    }
+    if (quotaRules.some((rule) => rule.productId === productId)) eligibleProductIds.add(productId);
+  }
+  for (const productId of managedProductIds) {
+    if (!eligibleProductIds.has(productId) && input.targetQuestions.some((question) => normalizeIdentity(question.productId) === normalizeIdentity(productId))) {
+      issues.push(`${productId} 正在等待产品策略确认、样稿验收或目标平台账号确认，不会回退到通用文章类型流程。`);
+    }
+  }
+  return { quotaRules, issues, managedProductIds, managedProductIdentities, eligibleProductIds };
+}
+
+async function persistAutomaticQuotaPlan(
+  month: string,
+  workspace: Awaited<ReturnType<typeof getMonthlyWorkspaceReadModel>>,
+  quotaRules: ContentQuotaRule[],
+  issues: string[]
+): Promise<MonthlyAutomationResult> {
+  const saved = await saveV5MonthlyPlan(month, {
+    expectedVersion: workspace.plan?.version || 0,
+    mutationSource: "system_policy",
+    config: {
+      month,
+      businessGoal: "围绕已确认产品 GEO 策略中的真实用户问题，自动生成可追溯、可发布的月度内容",
+      targetDeliverableCount: quotaRules.length,
+      questionVersionIds: quotaRules.map((item) => item.questionVersionId),
+      quotaRules,
+      groups: []
+    }
+  }, `auto-product-strategy-plan:${month}:${workspace.plan?.version || 0}`);
+  await preflightV5Strategy(month, {
+    expectedVersion: saved.version,
+    auditReason: "系统预检用户已确认的产品 GEO 策略、文章类型、知识快照和发布账号绑定",
+    mutationSource: "system_policy"
+  });
+  const preview = await getMonthlyWorkspaceReadModel(month);
+  const approved = await approveV5Strategy(month, {
+    expectedVersion: preview.plan!.version,
+    auditReason: "产品策略与样稿门禁通过后，系统生成月度内容矩阵",
+    mutationSource: "system_policy"
+  });
+  return {
+    month,
+    status: issues.length ? "attention" : "completed",
+    stage: "strategy",
+    message: "系统已按用户确认的产品 GEO 策略生成月度内容矩阵。",
+    issues,
+    generatedCount: approved.matrixTasks?.length || 0
+  };
+}
+
+function normalizedPublishPolicy(value?: Partial<PublishPolicy>): PublishPolicy {
+  const publishWindows = (value?.publishWindows || ["10:00", "15:00"])
+    .filter((item) => /^([01]\d|2[0-3]):[0-5]\d$/.test(item))
+    .sort();
+  return {
+    dailyLimit: Math.max(1, Math.min(50, Number(value?.dailyLimit) || 2)),
+    publishWindows: publishWindows.length ? publishWindows : ["10:00", "15:00"],
+    minIntervalMinutes: Math.max(15, Math.min(1440, Number(value?.minIntervalMinutes) || 180))
+  };
+}
+
+function nextAvailableSlot(month: string, occupied: string[], policy: PublishPolicy) {
   const [year, monthNumber] = month.split("-").map(Number);
   const days = new Date(year, monthNumber, 0).getDate();
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const startDay = currentMonth === month ? Math.min(days, now.getDate() + 1) : 1;
-  const availableDays = Math.max(1, days - startDay + 1);
-  const day = startDay + (Math.floor(index / 2) % availableDays);
-  const hour = index % 2 === 0 ? "10:00:00" : "15:00:00";
-  return `${month}-${String(day).padStart(2, "0")}T${hour}+08:00`;
+  const occupiedTimes = occupied.map((item) => Date.parse(item)).filter(Number.isFinite);
+  for (let day = startDay; day <= days; day += 1) {
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const daily = occupied.filter((item) => item.slice(0, 10) === date);
+    if (daily.length >= policy.dailyLimit) continue;
+    for (const window of policy.publishWindows) {
+      const candidate = `${date}T${window}:00+08:00`;
+      const candidateTime = Date.parse(candidate);
+      const intervalOk = occupiedTimes.every((time) => Math.abs(candidateTime - time) >= policy.minIntervalMinutes * 60_000);
+      if (intervalOk) return candidate;
+    }
+  }
+  return undefined;
 }
 
 export async function runAutomaticSchedule(month: string): Promise<MonthlyAutomationResult> {
@@ -251,7 +482,17 @@ export async function runAutomaticSchedule(month: string): Promise<MonthlyAutoma
   if (!available.length) {
     return { month, status: "already_ready", stage: "schedule", message: "当前没有等待排程的可用正文。", issues: [], scheduledCount: 0 };
   }
-  const accounts = getWorkspaceSetting().publishAccountByChannel || {};
+  const setting = getWorkspaceSetting();
+  const accounts = setting.publishAccountByChannel || {};
+  const policies = setting.publishPolicyByChannel || {};
+  const occupiedByAccount = new Map<string, string[]>();
+  for (const task of workspace.productionTasks) {
+    if (!task.scheduledAt) continue;
+    const key = `${task.channel}:${task.platformAccount || "default"}`;
+    const values = occupiedByAccount.get(key) || [];
+    values.push(task.scheduledAt);
+    occupiedByAccount.set(key, values);
+  }
   const issues: string[] = [];
   let scheduledCount = 0;
   for (const task of available) {
@@ -259,6 +500,14 @@ export async function runAutomaticSchedule(month: string): Promise<MonthlyAutoma
     const platformAccount = channelKey ? accounts[channelKey]?.trim() : undefined;
     if (!platformAccount) {
       issues.push(`${task.title}：${task.channel} 未配置默认发布账号。`);
+      continue;
+    }
+    const policy = normalizedPublishPolicy(channelKey ? policies[channelKey] : undefined);
+    const occupancyKey = `${task.channel}:${platformAccount}`;
+    const occupied = occupiedByAccount.get(occupancyKey) || [];
+    const scheduledAt = nextAvailableSlot(month, occupied, policy);
+    if (!scheduledAt) {
+      issues.push(`${task.title}：${task.channel} 在本月剩余时间内已无符合日上限、时间窗和最小间隔的档位，将保留为待迁移任务。`);
       continue;
     }
     const formalPlan = await readV5MonthlyPlanRecord(month);
@@ -270,11 +519,13 @@ export async function runAutomaticSchedule(month: string): Promise<MonthlyAutoma
     }
     await scheduleV5ProductionTask(month, task.taskId, {
       expectedVersion,
-      scheduledAt: scheduledAtFor(month, scheduledCount),
+      scheduledAt,
       platformAccount,
       auditReason: "系统根据月度工作区、渠道账号和可用正文自动生成发布排程",
       mutationSource: "system_policy"
     });
+    occupied.push(scheduledAt);
+    occupiedByAccount.set(occupancyKey, occupied);
     scheduledCount += 1;
   }
   return {

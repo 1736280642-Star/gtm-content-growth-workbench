@@ -25,7 +25,7 @@ function captureManifest(task, answerText, citations = []) {
   return {
     taskId: task.id,
     captureSessionId: task.captureSessionId,
-    adapterVersion: "chatgpt-dom@test",
+    adapterVersion: "qwen-dom@test",
     browserVersion: "test-browser",
     startedAt: "2026-07-23T01:00:00.000Z",
     completedAt: "2026-07-23T01:00:05.000Z",
@@ -60,10 +60,12 @@ test("V5 observation, review and site audit contracts", async (t) => {
   await t.test("Manifest V3 adapter is narrow and avoids credential APIs", async () => {
     const manifest = JSON.parse(await readFile(path.resolve("browser-extension/manifest.json"), "utf8"));
     const worker = await readFile(path.resolve("browser-extension/src/service-worker.js"), "utf8");
-    const adapter = await readFile(path.resolve("browser-extension/src/adapters/chatgpt.js"), "utf8");
+    const adapter = await readFile(path.resolve("browser-extension/src/adapters/china-ai.js"), "utf8");
     const localRunner = await readFile(path.resolve("capture-runner/src/server.mjs"), "utf8");
     assert.equal(manifest.manifest_version, 3);
-    assert.deepEqual(manifest.host_permissions, ["http://127.0.0.1:17321/*", "https://chatgpt.com/*"]);
+    assert.ok(manifest.host_permissions.includes("https://www.doubao.com/*"));
+    assert.ok(manifest.host_permissions.includes("https://chat.deepseek.com/*"));
+    assert.ok(manifest.host_permissions.includes("https://tongyi.aliyun.com/qianwen/*"));
     assert.equal(worker.includes("chrome.cookies"), false);
     assert.equal(adapter.includes("localStorage"), false);
     assert.match(adapter, /stableWindowMs/);
@@ -77,9 +79,9 @@ test("V5 observation, review and site audit contracts", async (t) => {
 
   const conditionA = { locale: "zh-CN", region: "上海", conversationMode: "new_conversation", personalizationMode: "off", modelLabel: "平台默认" };
   const conditionB = { ...conditionA, region: "北京" };
-  const [taskA] = await createCaptureTasks({ questionVersionId: "question-version-adp-001", platforms: ["chatgpt"], condition: conditionA, executionMode: "immediate_once", ...context("create-a") });
-  const [taskB] = await createCaptureTasks({ questionVersionId: "question-version-adp-001", platforms: ["chatgpt"], condition: conditionB, executionMode: "immediate_once", ...context("create-b") });
-  const [privacyTask] = await createCaptureTasks({ questionVersionId: "question-version-adp-001", platforms: ["chatgpt"], condition: conditionA, executionMode: "immediate_once", ...context("create-privacy") });
+  const [taskA] = await createCaptureTasks({ questionVersionId: "question-version-adp-001", sourcePublishedContentIds: ["published-fixture-001"], platforms: ["qwen"], condition: conditionA, executionMode: "immediate_once", ...context("create-a") });
+  const [taskB] = await createCaptureTasks({ questionVersionId: "question-version-adp-001", platforms: ["qwen"], condition: conditionB, executionMode: "immediate_once", ...context("create-b") });
+  const [privacyTask] = await createCaptureTasks({ questionVersionId: "question-version-adp-001", platforms: ["qwen"], condition: conditionA, executionMode: "immediate_once", ...context("create-privacy") });
 
   await t.test("Privacy guard rejects credential-shaped capture fields", async () => {
     const unsafe = { ...captureManifest(privacyTask, "test"), cookie: "must-not-pass" };
@@ -93,6 +95,7 @@ test("V5 observation, review and site audit contracts", async (t) => {
   }]), context("artifact-b", taskB.version, true));
 
   await t.test("Immutable artifacts retain SHA-256 and controlled screenshot metadata", () => {
+    assert.deepEqual(taskA.sourcePublishedContentIds, ["published-fixture-001"]);
     assert.equal(resultA.artifact.immutable, true);
     assert.equal(resultA.artifact.storageClass, "controlled_local");
     assert.match(resultA.artifact.sha256, /^[a-f0-9]{64}$/);
@@ -129,7 +132,8 @@ test("V5 observation, review and site audit contracts", async (t) => {
     assert.ok(question);
     assert.equal(question.monthlyPlanIds[0], "monthly-plan-fixture-2026-07");
     assert.equal(question.publishedContent.length, 1);
-    assert.equal(question.captureTaskIds.length, 3);
+    // Captures created in the current month must not leak into the July review fixture.
+    assert.equal(question.captureTaskIds.length, 0);
     const proposal = await createNextMonthProposal("2026-07", {
       questionReviewId: question.id,
       recommendation: "补充可引用的实施能力页面",
@@ -139,6 +143,7 @@ test("V5 observation, review and site audit contracts", async (t) => {
     assert.equal(proposal.status, "proposal");
     assert.equal(proposal.monthlyTaskCreated, false);
     assert.equal(proposal.quotaChanged, false);
+    assert.ok(proposal.evidenceRefs.some((item) => item.startsWith("published_content:")));
   });
 
   await t.test("Site audit keeps separate run, finding and remediation objects", async () => {
@@ -160,7 +165,7 @@ test("V5 observation, review and site audit contracts", async (t) => {
     for (const status of failureStatuses) {
       const [created] = await createCaptureTasks({
         questionVersionId: "question-version-adp-001",
-        platforms: ["chatgpt"],
+        platforms: ["qwen"],
         condition: conditionA,
         executionMode: "immediate_once",
         ...context(`failure-create-${status}`)

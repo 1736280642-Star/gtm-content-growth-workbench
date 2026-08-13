@@ -10,6 +10,7 @@ import { createBrowserPublishJobStore } from "./lib/browser-publish-job-store.mj
 import { createCsdnGatewayHeaders } from "./lib/csdn-api-gateway.mjs";
 import { enforceCsdnContentFields, prepareCsdnArticleContent } from "./lib/csdn-content-format.mjs";
 import { submitAndPollWechatPublish, verifyWechatPublish } from "./lib/wechat-formal-publish.mjs";
+import { rewriteWorkbenchMediaSources } from "./lib/workbench-media-rewrite.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -45,6 +46,12 @@ const port = Number(process.env.WECHATSYNC_BRIDGE_PORT || 9528);
 const bindHost = process.env.WECHATSYNC_BRIDGE_HOST || "127.0.0.1";
 const bridgeToken = process.env.WECHATSYNC_BRIDGE_TOKEN || "";
 const wechatApiBase = (process.env.WECHAT_MP_API_BASE_URL || "https://api.weixin.qq.com").replace(/\/$/, "");
+const mediaLibraryStatePath = isAbsolute(process.env.V5_MEDIA_LIBRARY_STATE_PATH || "")
+  ? process.env.V5_MEDIA_LIBRARY_STATE_PATH
+  : resolve(projectRoot, process.env.V5_MEDIA_LIBRARY_STATE_PATH || "data/v5-media-library.json");
+const mediaLibraryStoragePath = isAbsolute(process.env.V5_MEDIA_LIBRARY_STORAGE_PATH || "")
+  ? process.env.V5_MEDIA_LIBRARY_STORAGE_PATH
+  : resolve(projectRoot, process.env.V5_MEDIA_LIBRARY_STORAGE_PATH || "data/v5-media-library-assets");
 const externalPlatformTimeoutMs = Number(process.env.WECHATSYNC_PLATFORM_TIMEOUT_MS || 30_000);
 const implementedPlatforms = ["weixin", "csdn", "juejin", "zhihu"];
 const arcsRunnerUrl = process.env.ARCS_RUNNER_URL || "http://127.0.0.1:9530";
@@ -1094,7 +1101,38 @@ async function syncWeixinArticle(input) {
   const url = new URL(`${wechatApiBase}/cgi-bin/draft/add`);
   url.searchParams.set("access_token", token.accessToken);
 
-  const content = resolveWeixinArticleContent({ contentFormat, content: sourceContent }, markdownToWechatHtml);
+  let content = resolveWeixinArticleContent({ contentFormat, content: sourceContent }, markdownToWechatHtml);
+  try {
+    content = await rewriteWorkbenchMediaSources(content, async (mediaAssetId) => {
+      const state = JSON.parse(readFileSync(mediaLibraryStatePath, "utf8"));
+      const asset = state?.assets?.[mediaAssetId];
+      if (!asset || asset.status !== "active" || asset.storageKey !== mediaAssetId) throw new Error(`素材 ${mediaAssetId} 不存在、已移出图库或存储引用无效。`);
+      const assetPath = resolve(mediaLibraryStoragePath, asset.storageKey);
+      const relativeAssetPath = relative(resolve(mediaLibraryStoragePath), assetPath);
+      if (!relativeAssetPath || relativeAssetPath.startsWith("..") || isAbsolute(relativeAssetPath)) throw new Error(`素材 ${mediaAssetId} 的存储路径无效。`);
+      const data = readFileSync(assetPath);
+      const digest = createHash("sha256").update(data).digest("hex");
+      if (digest !== asset.contentHash) throw new Error(`素材 ${mediaAssetId} 完整性校验失败。`);
+      const uploadUrl = new URL(`${wechatApiBase}/cgi-bin/media/uploadimg`);
+      uploadUrl.searchParams.set("access_token", token.accessToken);
+      const form = new FormData();
+      form.append("media", new Blob([data], { type: asset.mimeType }), asset.originalFileName || `${mediaAssetId}.${asset.mimeType === "image/gif" ? "gif" : "png"}`);
+      const uploadResponse = await fetch(uploadUrl, { method: "POST", body: form });
+      const uploadPayload = await uploadResponse.json().catch(() => ({}));
+      if (!uploadResponse.ok || !uploadPayload.url) throw new Error(`素材 ${mediaAssetId} 上传微信正文失败：${uploadPayload.errmsg || `HTTP ${uploadResponse.status}`}`);
+      return uploadPayload.url;
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      statusCode: 502,
+      payload: {
+        errorCode: "article_image_upload_failed",
+        message: error instanceof Error ? error.message : "公众号正文图片上传失败。",
+        nextAction: "检查素材格式、公众号接口权限和网络后重试；草稿尚未创建。"
+      }
+    };
+  }
   const draftPayload = {
     articles: [
       {
@@ -1382,6 +1420,9 @@ async function publishFormalArticle(input) {
 
 async function verifyFormalArticle(input) {
   if (input.platform !== "weixin") {
+    const directPublicObservation = await verifyKnownPublicArticle(input);
+    if (directPublicObservation) return directPublicObservation;
+
     const browserJob =
       (input.externalTaskId && browserPublishJobStore.getById(String(input.externalTaskId))) ||
       (input.idempotencyKey && browserPublishJobStore.getByIdempotencyKey(String(input.idempotencyKey)));
@@ -1425,6 +1466,59 @@ async function verifyFormalArticle(input) {
   const result = await verifyWechatPublish({ apiBase: wechatApiBase, accessToken: token.accessToken, publishId, fetchJson });
   publishLedger.complete(input.idempotencyKey, result);
   return { statusCode: result.ok ? 200 : 502, payload: result };
+}
+
+async function verifyKnownPublicArticle(input) {
+  const platform = String(input.platform || "").trim();
+  const platformArticleId = String(input.platformArticleId || "").trim();
+  const configuredUrl = String(input.publicUrl || "").trim();
+  const platformRules = {
+    csdn: {
+      hosts: new Set(["blog.csdn.net"]),
+      buildUrl: (articleId) => articleId ? `https://blog.csdn.net/Kari11/article/details/${encodeURIComponent(articleId)}` : ""
+    },
+    juejin: {
+      hosts: new Set(["juejin.cn"]),
+      buildUrl: (articleId) => articleId ? `https://juejin.cn/post/${encodeURIComponent(articleId)}` : ""
+    },
+    zhihu: {
+      hosts: new Set(["zhuanlan.zhihu.com"]),
+      buildUrl: (articleId) => articleId ? `https://zhuanlan.zhihu.com/p/${encodeURIComponent(articleId)}` : ""
+    }
+  };
+  const rule = platformRules[platform];
+  if (!rule || (!configuredUrl && !platformArticleId)) return null;
+
+  let publicUrl = configuredUrl || rule.buildUrl(platformArticleId);
+  try {
+    const parsed = new URL(publicUrl);
+    if (parsed.protocol !== "https:" || !rule.hosts.has(parsed.hostname)) return null;
+    const response = await fetch(parsed, {
+      method: "GET",
+      redirect: "follow",
+      headers: { "User-Agent": process.env.WECHATSYNC_USER_AGENT || "Mozilla/5.0" },
+      signal: AbortSignal.timeout(externalPlatformTimeoutMs)
+    });
+    if (!response.ok) return null;
+    const finalUrl = new URL(response.url || parsed.href);
+    if (!rule.hosts.has(finalUrl.hostname)) return null;
+    publicUrl = finalUrl.href;
+    return {
+      statusCode: 200,
+      payload: {
+        ok: true,
+        status: "public_observed",
+        publishStatus: "confirmed",
+        platformArticleId: platformArticleId || undefined,
+        externalTaskId: input.externalTaskId,
+        publicUrl,
+        pendingCsvReturn: false,
+        nextAction: "Public URL verified from the platform article ID; title matching was not required."
+      }
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function handleRequest(request, response) {

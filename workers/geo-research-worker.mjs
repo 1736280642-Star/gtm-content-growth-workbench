@@ -34,7 +34,10 @@ const actor = {
 let leasedTask;
 
 try {
-  leasedTask = await leaseNextGeoResearchTask({ workerId, leaseSeconds: 300 });
+  leasedTask = await leaseNextGeoResearchTask({
+    workerId,
+    leaseSeconds: Math.max(600, Number(process.env.GEO_RESEARCH_TASK_LEASE_SECONDS || 600))
+  });
   if (!leasedTask) {
     console.log(JSON.stringify({ status: "idle", workerId }));
   } else if (leasedTask.taskType === "context_validation") {

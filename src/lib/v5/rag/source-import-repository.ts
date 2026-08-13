@@ -345,6 +345,26 @@ export async function writeRagSourceImport(input: {
           );
           result.updatedSources += 1;
         } else {
+          await connection.query(
+            `UPDATE source_asset SET document_type = ?, authority_level = ?, lifecycle_status = ?, visibility = ?, title = ?,
+             canonical_url = COALESCE(?, canonical_url), classification_reasons = ?, monthly_support = ?,
+             safety_status = ?, safety_risk_types = ?, isolated_reason = ?, row_version = row_version + 1
+             WHERE id = ?`,
+            [
+              candidate.documentType,
+              candidate.authorityLevel,
+              candidate.lifecycleStatus,
+              candidate.visibility,
+              candidate.title,
+              candidate.canonicalUrl || null,
+              stringifyV5Json(classificationReasons),
+              stringifyV5Json(monthlySupport),
+              candidate.safetyStatus,
+              stringifyV5Json(candidate.forbiddenUsage),
+              candidate.isolatedReason || null,
+              candidate.sourceId
+            ]
+          );
           result.unchangedSources += 1;
         }
 
@@ -493,6 +513,22 @@ export async function writeRagSourceImport(input: {
       );
     }
     const candidateBySource = new Map(claimExtractionCandidates.map((candidate) => [candidate.sourceId, candidate]));
+    for (const candidate of claimExtractionCandidates) {
+      const currentRevisionId = buildManagedSourceRevisionId(candidate.sourceId, candidate.contentHash);
+      await connection.query(
+        `UPDATE product_claim
+         SET review_status = 'rejected', limitations = ?, extractor_version = ?, reviewed_by = ?, reviewed_at = NOW()
+         WHERE source_id = ? AND source_revision_id = ? AND claim_type = 'automatic_fact'
+           AND extraction_model = 'deterministic_policy' AND reviewed_by LIKE 'automatic-knowledge-policy@%'`,
+        [
+          stringifyV5Json(["automatic_noise_filter:extractor_policy_replaced"]),
+          AUTOMATIC_CLAIM_EXTRACTOR_VERSION,
+          AUTOMATIC_KNOWLEDGE_POLICY_VERSION,
+          candidate.sourceId,
+          currentRevisionId
+        ]
+      );
+    }
     for (const claim of automaticClaims) {
       const candidate = candidateBySource.get(claim.sourceId);
       if (!candidate) continue;
@@ -507,8 +543,14 @@ export async function writeRagSourceImport(input: {
            conflict_group_id, supersedes_claim_id, reviewed_by, reviewed_at)
          VALUES (?, ?, 'product', 'automatic_fact', ?, ?, ?, ?, ?, ?, ?, 'current', 'public_product', ?, ?,
            0.9900, 'deterministic_policy', ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE review_status = VALUES(review_status), conflict_group_id = VALUES(conflict_group_id),
-           supersedes_claim_id = VALUES(supersedes_claim_id), reviewed_by = VALUES(reviewed_by), reviewed_at = NOW()`,
+         ON DUPLICATE KEY UPDATE normalized_claim = VALUES(normalized_claim), original_quote = VALUES(original_quote),
+           source_locator = VALUES(source_locator), support_mode = VALUES(support_mode), conditions = VALUES(conditions),
+           limitations = VALUES(limitations), extraction_prompt_version = VALUES(extraction_prompt_version),
+           extractor_version = VALUES(extractor_version),
+           review_status = IF(product_claim.reviewed_by LIKE 'automatic-knowledge-policy@%', VALUES(review_status), product_claim.review_status),
+           conflict_group_id = VALUES(conflict_group_id), supersedes_claim_id = VALUES(supersedes_claim_id),
+           reviewed_by = IF(product_claim.reviewed_by LIKE 'automatic-knowledge-policy@%', VALUES(reviewed_by), product_claim.reviewed_by),
+           reviewed_at = IF(product_claim.reviewed_by LIKE 'automatic-knowledge-policy@%', NOW(), product_claim.reviewed_at)`,
         [
           claim.claimId,
           claim.productId,

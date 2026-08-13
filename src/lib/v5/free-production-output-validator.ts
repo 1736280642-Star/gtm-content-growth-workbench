@@ -1,5 +1,6 @@
 import type { ContentDraftArtifact, DraftSection, FreeContentExpressionTypeVersion } from "./free-production-contracts";
 import { sanitizePublishMarkdown } from "./free-production-compiler";
+import { findHumanWritingWechatIssues, isWechatContentChannel } from "./human-writing-wechat";
 
 const forbiddenClaims = ["行业第一", "革命性", "颠覆性", "完全替代人", "100%", "绝对安全"];
 
@@ -30,6 +31,9 @@ export function validateFreeProductionOutput(input: { expression: FreeContentExp
   }
   const longParagraphs = article.split(/\n{2,}/).filter((paragraph) => paragraph.length > 350).length;
   if (longParagraphs) advisoryIssues.push(`${longParagraphs} 个段落偏长，建议发布前确认阅读节奏。`);
+  if (isWechatContentChannel(input.expression.channelBinding.channel)) {
+    repairableIssues.push(...findHumanWritingWechatIssues([input.titleCandidates[0] || "", input.summary, article].join("\n")));
+  }
   return { passed: repairableIssues.length === 0 && blockingIssues.length === 0, repairableIssues, blockingIssues, advisoryIssues };
 }
 

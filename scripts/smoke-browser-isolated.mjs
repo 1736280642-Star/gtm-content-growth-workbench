@@ -1,5 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { appendFileSync, rmSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { createConnection } from "node:net";
 import { resolve } from "node:path";
 import process from "node:process";
 
@@ -13,6 +15,7 @@ const keepState = Boolean(args["keep-state"]);
 const baseUrl = `http://${host}:${port}`;
 const root = process.cwd();
 const isolatedNextDir = `.next-smoke-browser-${port}`;
+const diagnosticLogPath = resolve(root, `.tmp-smoke-browser-${port}.log`);
 const devCommand = process.platform === "win32" ? "cmd.exe" : "npm";
 const devArgs =
   process.platform === "win32"
@@ -36,6 +39,14 @@ if (!Number.isFinite(port) || port <= 0) {
   throw new Error(`Invalid port: ${String(args.port)}`);
 }
 
+rmSync(diagnosticLogPath, { force: true });
+
+if (await isPortListening(host, port, 1000)) {
+  throw new Error(`Port ${port} is already listening. Choose another --port for isolated browser smoke.`);
+}
+
+await removeInsideWorkspaceWithTimeout(isolatedNextDir, 10000);
+
 if (!keepState) {
   const absoluteStatePath = resolve(root, statePath);
   const absoluteRoot = resolve(root);
@@ -54,12 +65,6 @@ if (!keepState) {
     throw new Error(`Refuse to remove V5 state file outside workspace: ${absoluteV5StatePath}`);
   }
   rmSync(absoluteV5StatePath, { force: true });
-}
-
-removeInsideWorkspace(isolatedNextDir);
-
-if (await isServerReady(`${baseUrl}/api/workbench-state`, 1000)) {
-  throw new Error(`Port ${port} already has a responding workbench server. Choose another --port for isolated browser smoke.`);
 }
 
 console.log(
@@ -85,35 +90,47 @@ const devProcess = spawn(devCommand, devArgs, {
   windowsHide: true
 });
 
+let devProcessStartupError;
+devProcess.on("error", (error) => {
+  devProcessStartupError = error;
+});
 devProcess.stdout.on("data", (chunk) => rememberLog(chunk));
 devProcess.stderr.on("data", (chunk) => rememberLog(chunk));
 
-let cleanedUp = false;
+let cleanupPromise;
 const cleanup = () => {
-  if (cleanedUp) return;
-  cleanedUp = true;
+  if (cleanupPromise) return cleanupPromise;
+  cleanupPromise = (async () => {
 
-  if (!devProcess.pid || devProcess.exitCode !== null) return;
+    if (devProcess.pid && devProcess.exitCode === null) {
+      if (process.platform === "win32") {
+        spawnSync("taskkill", ["/PID", String(devProcess.pid), "/T", "/F"], {
+          stdio: "ignore",
+          timeout: 10000,
+          windowsHide: true
+        });
+        terminateWindowsListener(port);
+        // On Windows the nested Next.js listener can appear a moment after
+        // the command-shell process tree exits. Recheck once so a failed
+        // smoke run never poisons the next run with an orphaned port.
+        await sleep(500);
+        terminateWindowsListener(port);
+      } else {
+        devProcess.kill("SIGTERM");
+      }
+    }
 
-  if (process.platform === "win32") {
-    spawnSync("taskkill", ["/PID", String(devProcess.pid), "/T", "/F"], { stdio: "ignore" });
-    removeInsideWorkspace(isolatedNextDir);
-    return;
-  }
-
-  devProcess.kill("SIGTERM");
-  removeInsideWorkspace(isolatedNextDir);
+    await removeInsideWorkspaceWithTimeout(isolatedNextDir, 10000);
+  })();
+  return cleanupPromise;
 };
 
 process.on("SIGINT", () => {
-  cleanup();
-  process.exit(130);
+  void cleanup().finally(() => process.exit(130));
 });
 process.on("SIGTERM", () => {
-  cleanup();
-  process.exit(143);
+  void cleanup().finally(() => process.exit(143));
 });
-process.on("exit", cleanup);
 
 try {
   await waitForServer(`${baseUrl}/api/workbench-state`, 120000);
@@ -131,10 +148,11 @@ try {
       )
     );
   }
-  cleanup();
+  await cleanup();
+  rmSync(diagnosticLogPath, { force: true });
   process.exit(exitCode);
 } catch (error) {
-  cleanup();
+  await cleanup();
   console.error(
     JSON.stringify(
       {
@@ -180,14 +198,35 @@ function parseArgs(argv = process.argv.slice(2)) {
 }
 
 function sanitizeEnv(input) {
-  return Object.fromEntries(Object.entries(input).filter(([, value]) => typeof value === "string"));
+  const output = {};
+  const normalizedKeys = new Map();
+
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value !== "string") continue;
+    const normalizedKey = process.platform === "win32" ? key.toLowerCase() : key;
+    const previousKey = normalizedKeys.get(normalizedKey);
+    if (previousKey) {
+      // Windows treats environment keys case-insensitively. Prefer the native
+      // `Path` spelling when both Path and PATH leak into the parent process.
+      if (normalizedKey === "path" && key === "Path") {
+        delete output[previousKey];
+        output[key] = value;
+        normalizedKeys.set(normalizedKey, key);
+      }
+      continue;
+    }
+    output[key] = value;
+    normalizedKeys.set(normalizedKey, key);
+  }
+
+  return output;
 }
 
 function printUsage() {
   console.log("Usage: node scripts/smoke-browser-isolated.mjs [--scope content] [--port 3058] [--state-path data/workbench-browser-smoke-state.json] [--keep-state]");
 }
 
-function removeInsideWorkspace(relativePath) {
+async function removeInsideWorkspaceWithTimeout(relativePath, timeoutMs) {
   const absoluteTarget = resolve(root, relativePath);
   const absoluteRoot = resolve(root);
   const isInsideRoot =
@@ -199,13 +238,49 @@ function removeInsideWorkspace(relativePath) {
     throw new Error(`Refuse to remove path outside workspace: ${absoluteTarget}`);
   }
 
-  rmSync(absoluteTarget, { recursive: true, force: true });
+  let timer;
+  await Promise.race([
+    rm(absoluteTarget, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 }),
+    new Promise((resolveTimeout) => {
+      timer = setTimeout(resolveTimeout, timeoutMs);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+
+function isPortListening(hostname, targetPort, timeoutMs) {
+  return new Promise((resolveListening) => {
+    const socket = createConnection({ host: hostname, port: targetPort });
+    const finish = (listening) => {
+      socket.destroy();
+      resolveListening(listening);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+  });
+}
+
+function terminateWindowsListener(targetPort) {
+  const netstat = spawnSync("netstat", ["-ano"], {
+    encoding: "utf8",
+    timeout: 10000,
+    windowsHide: true
+  });
+  const expression = new RegExp(`^\\s*TCP\\s+\\S+:${targetPort}\\s+\\S+\\s+LISTENING\\s+(\\d+)\\s*$`, "mi");
+  const listenerPid = Number.parseInt(String(netstat.stdout || "").match(expression)?.[1] || "", 10);
+  if (!Number.isInteger(listenerPid) || listenerPid <= 0 || listenerPid === process.pid) return;
+  spawnSync("taskkill", ["/PID", String(listenerPid), "/T", "/F"], {
+    stdio: "ignore",
+    timeout: 10000,
+    windowsHide: true
+  });
 }
 
 function rememberLog(chunk) {
   const text = chunk.toString("utf8").trim();
   if (!text) return;
 
+  appendFileSync(diagnosticLogPath, `${text}\n`, "utf8");
   recentLogs.push(text);
   while (recentLogs.length > 20) recentLogs.shift();
 }
@@ -214,11 +289,17 @@ async function waitForServer(url, timeoutMs) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
+    if (devProcessStartupError) {
+      throw new Error(`Unable to start dev server: ${devProcessStartupError.message}`);
+    }
     if (devProcess.exitCode !== null) {
       throw new Error(`Dev server exited before ready with code ${devProcess.exitCode}.`);
     }
 
-    if (await isServerReady(url, 2000)) {
+    // Next.js development mode can spend several seconds compiling the first
+    // API request. A two-second client timeout can therefore reject a real
+    // HTTP 200 response repeatedly and report a false startup failure.
+    if (await isServerReady(url, 10000)) {
       return;
     }
 

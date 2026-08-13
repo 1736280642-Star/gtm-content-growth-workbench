@@ -1,0 +1,58 @@
+name: joto-gtm-workbench
+
+x-dev-source-volumes: &dev-source-volumes
+  - type: bind
+    source: .
+    target: /app
+  - type: volume
+    source: workbench_dev_node_modules
+    target: /app/node_modules
+
+x-dev-worker: &dev-worker
+  working_dir: /app
+  command: ["node", "scripts/watch-worker-development.mjs"]
+  volumes: *dev-source-volumes
+
+services:
+  db-init:
+    working_dir: /app
+    command: ["node", "scripts/init-mysql-schema.mjs"]
+    volumes: *dev-source-volumes
+
+  workbench-web:
+    image: joto-gtm-workbench-worker:${WORKBENCH_IMAGE_TAG:-0.1.0}
+    working_dir: /app
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3027"]
+    environment:
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_DIST_DIR: .next-dev-3027
+      WATCHPACK_POLLING: "true"
+      WATCHPACK_POLLING_INTERVAL: "1000"
+    # A cold Next.js development compilation can exceed the production
+    # readiness budget. Keep the production health contract strict in
+    # compose.yaml, but prevent false-negative restarts in this dev overlay.
+    healthcheck:
+      interval: 20s
+      timeout: 30s
+      retries: 6
+      start_period: 120s
+    volumes: *dev-source-volumes
+
+  rag-index-worker:
+    <<: *dev-worker
+
+  knowledge-worker:
+    <<: *dev-worker
+
+  content-worker:
+    <<: *dev-worker
+
+  monitor-worker:
+    <<: *dev-worker
+
+  publish-worker:
+    <<: *dev-worker
+
+volumes:
+  workbench_dev_node_modules:

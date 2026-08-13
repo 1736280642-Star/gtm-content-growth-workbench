@@ -21,6 +21,7 @@ const expressionService = await import("../src/lib/v5/free-content-expression-ty
 const productionService = await import("../src/lib/v5/free-production-service.ts");
 const productionRepository = await import("../src/lib/v5/free-production-repository.ts");
 const jotoWechatLayout = await import("../src/lib/v5/joto-wechat-layout-renderer.ts");
+const wechatLayout = await import("../src/lib/v5/wechat-layout-renderer.ts");
 const wechatValidator = await import("../src/lib/v5/wechat-layout-validator.ts");
 
 after(async () => {
@@ -78,14 +79,20 @@ test("workspace type inherits a system structure without binding a product", asy
 });
 
 test("free production UI uses typed inputs and a compact source snapshot rail", async () => {
-  const [pageSource, inputSource, sourcePanelSource, resultSource, presetListSource, settingsDrawerSource] = await Promise.all([
+  const [pageSource, inputSource, sourcePanelSource, resultSource, presetListSource, settingsDrawerSource, appShellSource, serviceSource] = await Promise.all([
     readFile(new URL("../src/app/free-production/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/ProductionInputPanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/CitationSourcePanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/GenerationResultWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/free-production/ExpressionPresetList.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/components/free-production/ExpressionSettingsDrawer.tsx", import.meta.url), "utf8")
+    readFile(new URL("../src/components/free-production/ExpressionSettingsDrawer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/free-production-service.ts", import.meta.url), "utf8")
   ]);
+  const mainNavBlock = appShellSource.slice(appShellSource.indexOf("const mainNavItems"), appShellSource.indexOf("const allNavKeys"));
+  assert.match(pageSource, /微信公众号内容生产/);
+  assert.match(mainNavBlock, /href="\/free-production">公众号内容生产/);
+  assert.doesNotMatch(appShellSource, /更多工具|href="\/daily-execution"|href="\/publishing"/);
   assert.match(pageSource, /新建类型/);
   assert.match(pageSource, /ProductionInputPanel/);
   assert.match(inputSource, /只粘贴纯文本或 Markdown，不上传文件/);
@@ -100,6 +107,10 @@ test("free production UI uses typed inputs and a compact source snapshot rail", 
   assert.match(settingsDrawerSource, /生产规则/);
   assert.match(settingsDrawerSource, /正文结构/);
   assert.match(settingsDrawerSource, /发布设置/);
+  assert.match(serviceSource, /FROM product_entity WHERE status = 'active'/);
+  assert.match(serviceSource, /knowledge_base_product_link/);
+  assert.match(serviceSource, /source_revision_content/);
+  assert.match(serviceSource, /source\.safety_status = 'passed'/);
 });
 
 test("knowledge, human facts, and meeting text become traceable source snapshots", () => {
@@ -199,20 +210,74 @@ test("JOTO 官方预览和正式 HTML 使用同一渲染器且正式产物不含
   assert.equal(wechatValidator.validateWechatHtml(publishHtml).passed, true);
 });
 
-test("自由内容公众号产物契约和发布服务固定使用正式 wechat_html", async () => {
-  const [contractSource, serviceSource, previewSource] = await Promise.all([
+test("公众号自由生产使用 human-writing 成稿检查", async () => {
+  const state = await expressionRepository.readFreeContentExpressionTypeState();
+  const expression = Object.values(state.versions).find((item) => item.presetKey === "industry_insight");
+  assert.ok(expression);
+  const sections = expression.structureModules.map((sectionKey, index) => ({
+    sectionKey,
+    heading: `章节 ${index + 1}`,
+    markdown: index === 0 ? "先说结论：这不是工具问题，而是业务问题。" : "团队先记录实际处理时间，再决定是否扩大使用范围。"
+  }));
+  const result = validator.validateFreeProductionOutput({ expression, productName: "JOTO", titleCandidates: ["标题一", "标题二", "标题三"], summary: "摘要", sections });
+  assert.equal(result.repairableIssues.some((item) => item.includes("human-writing") || item.includes("翻案腔") || item.includes("提示性冒号")), true);
+});
+
+test("八套公众号风格使用不同结构而不是只更换标题颜色", () => {
+  const markers = {
+    "official-command": "DECISION BRIEF",
+    "official-blueprint": "IMPLEMENTATION BLUEPRINT",
+    "official-cobalt": "CAPABILITY NOTE",
+    "official-graphite": "BUSINESS REVIEW",
+    "natural-fieldnotes": "FIELD NOTES",
+    "natural-notebook": "研究手记",
+    "natural-column": "JOTO 专栏",
+    "natural-calm": "慢一点，想清楚"
+  };
+  const outputs = Object.entries(markers).map(([templateId, marker]) => {
+    const html = wechatLayout.renderWechatHtml({ title: "企业 AI 落地判断", markdown: "## 第一部分\n\n正文内容。\n\n> 关键判断\n\n- 条目一", templateId });
+    assert.match(html, new RegExp(marker));
+    assert.equal(wechatValidator.validateWechatHtml(html).passed, true);
+    return html;
+  });
+  assert.equal(new Set(outputs).size, 8);
+});
+
+test("自由内容公众号产物支持多风格、人工编辑和已绑定账号草稿发布", async () => {
+  const [contractSource, serviceSource, previewSource, pageSource, routeSource, contentRouteSource, workspaceSource, accountBarSource] = await Promise.all([
     readFile(new URL("../src/lib/v5/free-production-contracts.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/free-production-service.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/components/free-production/WechatArticlePreview.tsx", import.meta.url), "utf8")
+    readFile(new URL("../src/components/free-production/WechatArticlePreview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/free-production/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/free-production/batches/[id]/layout/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/free-production/batches/[id]/content/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/GenerationResultWorkspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/WechatPublishAccountBar.tsx", import.meta.url), "utf8")
   ]);
 
   assert.match(contractSource, /wechatPresentation\?:/);
-  assert.match(contractSource, /templateId:\s*"joto-official-v1"/);
+  assert.match(contractSource, /templateId:\s*WechatRenderableTemplateId/);
   assert.match(serviceSource, /contentFormat:\s*isWechat\s*\?\s*"wechat_html"\s*:\s*"markdown"/);
   assert.match(serviceSource, /renderJotoOfficialWechatPreviewDocument/);
+  assert.match(serviceSource, /renderWechatHtml/);
+  assert.match(serviceSource, /selectFreeProductionWechatLayout/);
   assert.match(serviceSource, /process\.env\.CONTENT_GENERATION_PROVIDER/);
   assert.match(serviceSource, /callAiProvider\(\{ provider,/);
   assert.match(previewSource, /artifact\.wechatPresentation\.previewHtml/);
+  assert.match(previewSource, /WECHAT_LAYOUT_TEMPLATES/);
+  assert.match(previewSource, /选择公众号排版风格/);
+  assert.match(previewSource, /编辑正文/);
+  assert.match(previewSource, /保存并更新预览/);
+  assert.match(pageSource, /\/layout/);
+  assert.match(pageSource, /\/content/);
+  assert.match(routeSource, /selectFreeProductionWechatLayout/);
+  assert.match(contentRouteSource, /editFreeProductionArticle/);
+  assert.match(serviceSource, /free_production_article_edited/);
+  assert.match(serviceSource, /FREE_PRODUCTION_WECHAT_ACCOUNT_NOT_BOUND/);
+  assert.match(workspaceSource, /WechatPublishAccountBar/);
+  assert.match(accountBarSource, /新增账号绑定/);
+  assert.match(accountBarSource, /去发布/);
+  assert.match(accountBarSource, /publish-account-binding/);
   assert.equal((previewSource.match(/ConfirmAutoPublishButton/g) || []).length, 0);
 });
 

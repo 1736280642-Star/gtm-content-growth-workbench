@@ -6,6 +6,10 @@ coverage/
 backups/
 .obsidian/
 .tmp/
+.workbuddy/
+Resume/
+GEOForge-*.html
+UTF8
 .env
 .env.local
 publish-extension/runtime-config.js
@@ -16,6 +20,9 @@ data/workbench-state.before-*.json
 data/v5-free-production.json
 data/v5-free-content-expression-types.json
 data/free-production-assets/
+data/v5-media-library.json
+data/v5-media-library-assets/
+public/wechat/
 artifacts/v5-generation/
 *.log
 *.tsbuildinfo

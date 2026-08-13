@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import {
   getV5GovernancePool,
@@ -14,6 +15,13 @@ import { AUTOMATIC_CLAIM_EXTRACTOR_VERSION } from "./automatic-knowledge-product
 
 function iso(value: unknown) {
   return value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
+}
+
+export function buildManagedClaimExtractionIdempotencyKey(productId: string, planHash: string) {
+  const versionedPlanHash = createHash("sha256")
+    .update(`${productId}:${planHash}:${AUTOMATIC_CLAIM_EXTRACTOR_VERSION}`)
+    .digest("hex");
+  return `managed-claim-extraction:${versionedPlanHash}`;
 }
 
 export async function extractManagedClaimsForProduct(productId: string, actor: V5GovernanceActor) {
@@ -81,7 +89,7 @@ export async function extractManagedClaimsForProduct(productId: string, actor: V
   const plan = prepareRagSourceImport(candidates);
   const stored = await writeRagSourceImport({
     plan,
-    idempotencyKey: `managed-claim-extraction:${productId}:${plan.planHash}`,
+    idempotencyKey: buildManagedClaimExtractionIdempotencyKey(productId, plan.planHash),
     actor
   });
   const originalBatchIds = [...new Set(rows.map((row) => String(row.batch_id)))];

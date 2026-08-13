@@ -1,14 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { RowDataPacket } from "mysql2/promise";
 import { callAiProvider, type AiProviderKey } from "@/lib/ai-provider";
 import { checkFormalPublishAuth } from "@/lib/formal-publish-client";
 import { createPublishJobFromApprovedContent, dispatchPublishJob } from "@/lib/publish-job-service";
 import { getRuntimeConfigStatus } from "@/lib/runtime-config";
 import type { DirectPublishPlatformKey } from "@/lib/types";
+import { getWorkspaceSetting } from "@/lib/workbench-store";
 import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
 import type { ProductionMatrixTask, V5MonthlyPlanRecord } from "./monthly-workspace-contracts";
 import { readV5FoundationState } from "./foundation-repository";
+import { getV5GovernancePool } from "./knowledge-governance-repository";
 import type {
   ChannelReadinessItem,
   ContentDraftArtifact,
@@ -31,13 +34,20 @@ import { assertPublishPayloadSanitized, validateFreeProductionOutput } from "./f
 import { getActiveFreeContentExpressionTypeVersion, listFreeContentExpressionTypes, markFreeExpressionUsed } from "./free-content-expression-type-service";
 import { readFreeExpressionBrandBaseline } from "./free-content-expression-type-repository";
 import { readFreeProductionState, updateFreeProductionState, type FreeProductionState } from "./free-production-repository";
+import { readMediaLibraryState } from "./media-library-repository";
 import {
   JOTO_OFFICIAL_WECHAT_TEMPLATE_ID,
+  WORKBENCH_MEDIA_REF_PREFIX,
+  markdownSections,
   renderJotoOfficialWechatBody,
   renderJotoOfficialWechatPreviewDocument
 } from "./joto-wechat-layout-renderer";
 import { updateV5MonthlyState } from "./monthly-repository";
+import type { WechatRenderableTemplateId } from "./wechat-presentation-contracts";
+import { getActiveWechatTemplate } from "./wechat-layout-selector";
+import { renderWechatHtml } from "./wechat-layout-renderer";
 import { validateWechatHtml } from "./wechat-layout-validator";
+import { HUMAN_WRITING_WECHAT_DIRECTIVES, HUMAN_WRITING_WECHAT_PROFILE_VERSION, isWechatContentChannel } from "./human-writing-wechat";
 
 export const MAXIMUM_FREE_PRODUCTION_REPAIR_COUNT = 1;
 
@@ -106,7 +116,7 @@ function channelReadiness(): ChannelReadinessItem[] {
   ];
 }
 
-function catalogProducts(): FreeProductionCatalogProduct[] {
+function legacyCatalogProducts(): FreeProductionCatalogProduct[] {
   const state = readV5FoundationState();
   const versionById = new Map(state.questionVersions.map((version) => [version.questionVersionId, version]));
   return state.knowledgeBases.filter((knowledgeBase) => knowledgeBase.productionStatus === "ready").map((knowledgeBase) => {
@@ -122,8 +132,96 @@ function catalogProducts(): FreeProductionCatalogProduct[] {
   }).filter((product) => product.rulePackages.length);
 }
 
+function renderFreeProductionWechatPresentation(artifact: Pick<ContentDraftArtifact, "selectedTitle" | "summary" | "sections" | "articleBody" | "visualSuggestions">, templateId: WechatRenderableTemplateId) {
+  if (templateId === JOTO_OFFICIAL_WECHAT_TEMPLATE_ID) {
+    const previewBodyHtml = renderJotoOfficialWechatBody({ sections: artifact.sections, visualSuggestions: artifact.visualSuggestions, includeVisualPlaceholders: true, assetReferenceMode: "preview" });
+    const publishHtml = renderJotoOfficialWechatBody({ sections: artifact.sections, visualSuggestions: artifact.visualSuggestions, includeVisualPlaceholders: false, assetReferenceMode: "publish" });
+    return {
+      templateId,
+      previewHtml: renderJotoOfficialWechatPreviewDocument({ title: artifact.selectedTitle, summary: artifact.summary, bodyHtml: previewBodyHtml }),
+      publishHtml,
+      htmlHash: contentDigest(publishHtml),
+      validation: validateWechatHtml(publishHtml)
+    };
+  }
+  const publishHtml = renderWechatHtml({ title: artifact.selectedTitle, markdown: artifact.articleBody, templateId });
+  return {
+    templateId,
+    previewHtml: `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#f3f3f3}body{padding:24px 0}</style></head><body>${publishHtml}</body></html>`,
+    publishHtml,
+    htmlHash: contentDigest(publishHtml),
+    validation: validateWechatHtml(publishHtml)
+  };
+}
+
+async function formalCatalogProducts(): Promise<FreeProductionCatalogProduct[]> {
+  const pool = getV5GovernancePool();
+  const [productResult, materialResult, ruleResult] = await Promise.all([
+    pool.query<RowDataPacket[]>(
+      "SELECT id, display_name FROM product_entity WHERE status = 'active' ORDER BY updated_at DESC, display_name"
+    ),
+    pool.query<RowDataPacket[]>(
+      `SELECT product_link.product_id, knowledge_base.id AS knowledge_base_id,
+              COALESCE(source.title, source.file_name, source.canonical_url, knowledge_base.name) AS source_name,
+              revision.id AS source_revision_id, revision.content_hash
+       FROM knowledge_base_product_link product_link
+       JOIN knowledge_base ON knowledge_base.id = product_link.knowledge_base_id
+       JOIN knowledge_base_source_asset source_link ON source_link.knowledge_base_id = knowledge_base.id
+       JOIN source_asset source ON source.id = source_link.source_id
+       JOIN source_revision revision ON revision.source_id = source.id AND revision.parse_status = 'parsed'
+       JOIN source_revision_content content ON content.source_revision_id = revision.id
+       WHERE product_link.status = 'active'
+         AND source.safety_status = 'passed'
+         AND source.status = 'approved_for_claim_extraction'
+         AND NOT EXISTS (
+           SELECT 1 FROM source_revision newer
+           WHERE newer.source_id = revision.source_id
+             AND newer.parse_status = 'parsed'
+             AND newer.revision_number > revision.revision_number
+         )
+       ORDER BY product_link.product_id, source_name`,
+    ),
+    pool.query<RowDataPacket[]>(
+      `SELECT package.product_id, version.id, version.version
+       FROM product_expression_rule_package package
+       JOIN rule_package_version version ON version.id = package.active_version_id
+       WHERE package.status = 'active' AND version.status = 'active'`
+    )
+  ]);
+  const products = productResult[0];
+  const materials = materialResult[0];
+  const rules = ruleResult[0];
+  return products.map((product) => {
+    const productId = String(product.id);
+    const name = String(product.display_name);
+    return {
+      productId,
+      name,
+      rulePackages: rules.filter((row) => String(row.product_id) === productId).map((row) => ({
+        id: String(row.id),
+        name: `${name} 服务表达规则`,
+        version: Number(row.version) || 1,
+        status: "active" as const
+      })),
+      knowledgeBases: materials.filter((row) => String(row.product_id) === productId).map((row) => ({
+        knowledgeBaseId: String(row.knowledge_base_id),
+        name: String(row.source_name),
+        sourceSnapshotId: String(row.source_revision_id),
+        sourceSnapshotHash: String(row.content_hash),
+        status: "ready" as const
+      }))
+    };
+  });
+}
+
 export async function getFreeProductionCatalog(): Promise<FreeProductionCatalog> {
-  return { products: catalogProducts(), expressionTypes: (await listFreeContentExpressionTypes()).filter((item) => item.status === "active" && item.activeVersion), channelReadiness: channelReadiness(), currentMonth: currentMonth() };
+  let products: FreeProductionCatalogProduct[];
+  try {
+    products = await formalCatalogProducts();
+  } catch {
+    products = legacyCatalogProducts();
+  }
+  return { products, expressionTypes: (await listFreeContentExpressionTypes()).filter((item) => item.status === "active" && item.activeVersion), channelReadiness: channelReadiness(), currentMonth: currentMonth() };
 }
 export function getPublishingChannelReadiness() { return channelReadiness(); }
 
@@ -148,8 +246,57 @@ function selectionFor(input: { sourceMode: FreeContentExpressionTypeVersion["sou
   return { product, rulePackage, issues };
 }
 
-function knowledgeFor(knowledgeSnapshotIds: string[], product?: FreeProductionCatalogProduct) {
+async function knowledgeFor(knowledgeSnapshotIds: string[], product?: FreeProductionCatalogProduct) {
   if (!product) return [];
+  try {
+    const pool = getV5GovernancePool();
+    const placeholders = knowledgeSnapshotIds.map(() => "?").join(",");
+    if (placeholders) {
+      const [rows] = await pool.query<RowDataPacket[]>(
+        `SELECT revision.id AS source_revision_id, revision.content_hash, content.normalized_text,
+                COALESCE(source.title, source.file_name, source.canonical_url, knowledge_base.name) AS source_name,
+                knowledge_base.id AS knowledge_base_id
+         FROM source_revision revision
+         JOIN source_asset source ON source.id = revision.source_id
+         JOIN source_revision_content content ON content.source_revision_id = revision.id
+         JOIN knowledge_base_source_asset source_link ON source_link.source_id = source.id
+         JOIN knowledge_base ON knowledge_base.id = source_link.knowledge_base_id
+         JOIN knowledge_base_product_link product_link ON product_link.knowledge_base_id = knowledge_base.id
+         WHERE product_link.product_id = ? AND product_link.status = 'active'
+           AND source.safety_status = 'passed'
+           AND revision.id IN (${placeholders})`,
+        [product.productId, ...knowledgeSnapshotIds]
+      );
+      if (rows.length) {
+        const revisionIds = rows.map((row) => String(row.source_revision_id));
+        const [claimRows] = await pool.query<RowDataPacket[]>(
+          `SELECT source_revision_id, normalized_claim, original_quote, limitations
+           FROM product_claim
+           WHERE product_id = ? AND source_revision_id IN (${revisionIds.map(() => "?").join(",")})
+             AND review_status IN ('supported', 'conditional')
+           ORDER BY created_at`,
+          [product.productId, ...revisionIds]
+        );
+        return rows.map((row) => {
+          const revisionId = String(row.source_revision_id);
+          const claims = claimRows.filter((claim) => String(claim.source_revision_id) === revisionId);
+          const normalizedText = String(row.normalized_text || "").trim();
+          const evidence = claims.length
+            ? claims.map((claim) => ({ summary: String(claim.normalized_claim), evidenceExcerpt: String(claim.original_quote || claim.normalized_claim), limitation: String(claim.limitations || "") }))
+            : (normalizedText.match(/[\s\S]{1,600}/g) || []).slice(0, 12).map((excerpt) => ({ summary: excerpt, evidenceExcerpt: excerpt }));
+          return {
+            knowledgeBaseId: String(row.knowledge_base_id),
+            name: String(row.source_name),
+            sourceSnapshotId: revisionId,
+            sourceSnapshotHash: String(row.content_hash),
+            evidence
+          };
+        });
+      }
+    }
+  } catch {
+    // Keep the file-backed V5 foundation available for offline development and historical tasks.
+  }
   const foundation = readV5FoundationState();
   return product.knowledgeBases.filter((item) => knowledgeSnapshotIds.includes(item.sourceSnapshotId)).map((item) => ({
     knowledgeBaseId: item.knowledgeBaseId,
@@ -175,7 +322,7 @@ function meetingTextExcerpts(value: string) {
   return paragraphs.flatMap((paragraph) => paragraph.match(/[\s\S]{1,600}/g) || []).slice(0, 24);
 }
 
-export function buildFreeProductionSourceExcerpts(input: { knowledge: ReturnType<typeof knowledgeFor>; factItems: FreeProductionFactInput[]; meetingText: string }) {
+export function buildFreeProductionSourceExcerpts(input: { knowledge: Awaited<ReturnType<typeof knowledgeFor>>; factItems: FreeProductionFactInput[]; meetingText: string }) {
   const knowledgeSources: FreeProductionSourceExcerpt[] = input.knowledge.flatMap((item) => (item.evidence as Array<{ evidenceExcerpt?: string; summary?: string }>).flatMap((evidence, index) => {
     const excerpt = String(evidence.evidenceExcerpt || evidence.summary || "").trim();
     return excerpt ? [{ id: `source-${randomUUID()}`, sourceType: "knowledge" as const, excerpt, sourceSnapshotId: item.sourceSnapshotId, sourceSnapshotHash: item.sourceSnapshotHash }] : [];
@@ -206,6 +353,9 @@ function parseProviderJson(content: string) {
 
 function generationPrompt(input: { batch: FreeProductionBatch; expression: FreeContentExpressionTypeVersion; knowledge: Array<Record<string, unknown>>; brandBaseline: Record<string, unknown>; affectedSectionKeys?: string[]; currentArtifact?: ContentDraftArtifact }) {
   const schema = { titleCandidates: ["标题1", "标题2", "标题3"], summary: "80字以内摘要", sections: input.expression.structureModules.map((sectionKey) => ({ sectionKey, heading: "中文章节标题", markdown: "该章节正文" })) };
+  const humanWritingProfile = isWechatContentChannel(input.batch.channelConfig.channel)
+    ? { version: HUMAN_WRITING_WECHAT_PROFILE_VERSION, directives: HUMAN_WRITING_WECHAT_DIRECTIVES }
+    : undefined;
   return {
     systemPrompt: "你是 JOTO 企业公众号内容生产助手。只能使用提供的知识、补充事实和规则，不得猜测客户名称、数据、上线状态、合作范围、能力边界、CTA 或合规结论。缺失事实直接省略，不写待补充标记。严格输出单个 JSON 对象，不输出 Markdown 代码围栏或解释。",
     userPrompt: JSON.stringify({
@@ -217,6 +367,7 @@ function generationPrompt(input: { batch: FreeProductionBatch; expression: FreeC
       expressionFocus: input.batch.expressionFocus,
       supplementalFacts: input.batch.inputSnapshots.at(-1)?.supplementalFacts || {},
       brandBaseline: input.brandBaseline,
+      humanWritingProfile,
       affectedSectionKeys: input.affectedSectionKeys,
       currentSections: input.currentArtifact?.sections,
       outputSchema: schema
@@ -261,7 +412,7 @@ async function runGeneration(batchId: string, options?: { affectedSectionKeys?: 
   const catalog = await getFreeProductionCatalog();
   const selection = selectionFor(batch, catalog);
   if (selection.issues.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_CONFIG_INVALID", "当前资料暂时不可生产。", "返回内容类型并重新选择资料。", selection.issues);
-  const knowledge = knowledgeFor(batch.knowledgeSnapshotIds, selection.product);
+  const knowledge = await knowledgeFor(batch.knowledgeSnapshotIds, selection.product);
   const taskExpression = { ...expression, productId: batch.productId, knowledgeSnapshotIds: batch.knowledgeSnapshotIds };
   const brandBaseline = await readFreeExpressionBrandBaseline();
   const previousPlan = batch.expressionPlans.find((item) => item.id === batch.currentExpressionPlanId);
@@ -313,12 +464,14 @@ async function runGeneration(batchId: string, options?: { affectedSectionKeys?: 
         const previewBodyHtml = renderJotoOfficialWechatBody({
           sections: generated.parsed.sections,
           visualSuggestions: plan.visualMaterialPlan,
-          includeVisualPlaceholders: true
+          includeVisualPlaceholders: true,
+          assetReferenceMode: "preview"
         });
         const publishHtml = renderJotoOfficialWechatBody({
           sections: generated.parsed.sections,
           visualSuggestions: plan.visualMaterialPlan,
-          includeVisualPlaceholders: false
+          includeVisualPlaceholders: false,
+          assetReferenceMode: "publish"
         });
         return {
           templateId: JOTO_OFFICIAL_WECHAT_TEMPLATE_ID,
@@ -395,7 +548,7 @@ export async function createFreeProductionFromExpression(input: CreateFreeProduc
   const knowledgeSnapshotIds = Array.from(new Set(input.knowledgeSnapshotIds || []));
   const selection = selectionFor({ sourceMode: expression.sourceMode, productId: String(input.productId || ""), knowledgeSnapshotIds }, catalog);
   if (selection.issues.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_CONFIG_INVALID", "当前资料暂时不可生产。", "重新选择产品和知识资料后再生成。", selection.issues);
-  const knowledge = knowledgeFor(knowledgeSnapshotIds, selection.product);
+  const knowledge = await knowledgeFor(knowledgeSnapshotIds, selection.product);
   const sourceExcerpts = buildFreeProductionSourceExcerpts({ knowledge, factItems, meetingText });
   if (!sourceExcerpts.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SOURCE_EMPTY", "所选资料中没有可追溯的原始片段。", "选择包含原文片段的知识资料，或补充事件事实后再生成。");
   const month = currentMonth(); const bounds = getCalendarMonthBounds(month); const monthlyPlan = await ensureMonthlyPlan(month, actorId);
@@ -472,6 +625,105 @@ export async function reviewFreeProductionSources(batchId: string, input: { expe
   }));
 }
 
+export async function bindFreeProductionVisualAsset(batchId: string, input: { expectedVersion: number; auditReason: string; artifactId: string; suggestionId: string; mediaAssetId?: string }, header: string | null) {
+  const actorId = actor();
+  const context = mutationContext(input, header);
+  const mediaAssetId = String(input.mediaAssetId || "").trim();
+  const mediaAsset = mediaAssetId ? (await readMediaLibraryState()).assets[mediaAssetId] : undefined;
+  return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input, mediaAssetId }, () => {
+    const batch = state.batches[batchId];
+    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
+    version(batch, input.expectedVersion);
+    if (["publishing", "published", "cancelled"].includes(batch.status)) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_VISUAL_LOCKED", "当前任务已进入发布或结束状态，不能修改配图。", "复制或重新生成正文后再调整配图。");
+    const artifact = batch.draftArtifacts.find((item) => item.id === input.artifactId);
+    if (!artifact || artifact.id !== batch.currentDraftArtifactId || !artifact.wechatPresentation) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_VISUAL_ARTIFACT_INVALID", "只能为当前公众号正文绑定配图。", "刷新后在最新正文中重新选择素材。");
+    const suggestion = artifact.visualSuggestions.find((item) => item.id === input.suggestionId);
+    if (!suggestion) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_VISUAL_SUGGESTION_NOT_FOUND", "配图建议不存在或已经失效。", "刷新正文后重新操作。");
+    if (mediaAssetId && (!mediaAsset || mediaAsset.status !== "active")) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_MEDIA_ASSET_NOT_FOUND", "所选素材不存在或已移出图库。", "刷新素材列表后重新选择。");
+    if (mediaAsset && mediaAsset.productId !== batch.productId) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_MEDIA_PRODUCT_MISMATCH", "所选素材不属于当前正文产品。", "选择同一产品下的素材。");
+
+    suggestion.boundAssetRef = mediaAsset ? `${WORKBENCH_MEDIA_REF_PREFIX}${mediaAsset.id}` : undefined;
+    artifact.wechatPresentation = renderFreeProductionWechatPresentation(artifact, artifact.wechatPresentation.templateId);
+    artifact.contentDigest = artifact.wechatPresentation.htmlHash;
+    artifact.version += 1;
+    batch.confirmedContentDigest = undefined;
+    batch.version += 1;
+    batch.updatedAt = new Date().toISOString();
+    const task = state.tasks[`free-task-${batch.id}`];
+    if (task) { task.contentDigest = artifact.contentDigest; task.updatedAt = batch.updatedAt; }
+    state.audits.push({ auditId: randomUUID(), action: mediaAsset ? "free_production_visual_asset_bound" : "free_production_visual_asset_unbound", objectId: batchId, actor: actorId, auditReason: context.auditReason, createdAt: batch.updatedAt, summary: { artifactId: artifact.id, suggestionId: suggestion.id, mediaAssetId: mediaAsset?.id, contentDigest: artifact.contentDigest } });
+    return batch;
+  }));
+}
+
+export async function selectFreeProductionWechatLayout(batchId: string, input: { expectedVersion: number; auditReason: string; artifactId: string; templateId: string }, header: string | null) {
+  const actorId = actor();
+  const context = mutationContext(input, header);
+  const templateId = input.templateId as WechatRenderableTemplateId;
+  if (templateId !== JOTO_OFFICIAL_WECHAT_TEMPLATE_ID && !getActiveWechatTemplate(templateId)) {
+    throw new FreeProductionServiceError(422, "FREE_PRODUCTION_WECHAT_LAYOUT_INVALID", "所选公众号排版风格不存在或未启用。", "刷新页面后重新选择排版风格。");
+  }
+  return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input }, () => {
+    const batch = state.batches[batchId];
+    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
+    version(batch, input.expectedVersion);
+    if (["publishing", "published", "cancelled"].includes(batch.status)) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_LAYOUT_LOCKED", "当前任务已进入发布或结束状态，不能更换排版。", "复制或重新生成正文后再选择排版风格。");
+    const artifact = batch.draftArtifacts.find((item) => item.id === input.artifactId);
+    if (!artifact || artifact.id !== batch.currentDraftArtifactId || !artifact.wechatPresentation) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_LAYOUT_ARTIFACT_INVALID", "只能调整当前公众号正文版本的排版。", "刷新后在最新正文中重新选择。");
+    artifact.wechatPresentation = renderFreeProductionWechatPresentation(artifact, templateId);
+    artifact.contentDigest = artifact.wechatPresentation.htmlHash;
+    artifact.version += 1;
+    batch.confirmedContentDigest = undefined;
+    batch.version += 1;
+    batch.updatedAt = new Date().toISOString();
+    const task = state.tasks[`free-task-${batch.id}`];
+    if (task) { task.contentDigest = artifact.contentDigest; task.updatedAt = batch.updatedAt; }
+    state.audits.push({ auditId: randomUUID(), action: "free_production_wechat_layout_selected", objectId: batchId, actor: actorId, auditReason: context.auditReason, createdAt: batch.updatedAt, summary: { artifactId: artifact.id, templateId, contentDigest: artifact.contentDigest } });
+    return batch;
+  }));
+}
+
+export async function editFreeProductionArticle(batchId: string, input: { expectedVersion: number; auditReason: string; artifactId: string; title: string; summary: string; articleBody: string }, header: string | null) {
+  const actorId = actor();
+  const context = mutationContext(input, header);
+  const title = String(input.title || "").trim();
+  const summary = String(input.summary || "").trim();
+  const editedBody = String(input.articleBody || "").replace(/\r\n?/g, "\n").trim().replace(/^#\s+[^\n]+\n+/, "");
+  const articleBody = `# ${title}\n\n${editedBody}`.trim();
+  if (!title || title.length > 120) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_TITLE_INVALID", "标题不能为空且不能超过 120 字。", "修改标题后重新保存。");
+  if (summary.length > 300) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SUMMARY_INVALID", "摘要不能超过 300 字。", "精简摘要后重新保存。");
+  if (!editedBody || articleBody.length > 100000) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_ARTICLE_BODY_INVALID", "正文不能为空且不能超过 10 万字。", "修改正文后重新保存。");
+  return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input, title, summary, articleBody }, () => {
+    const batch = state.batches[batchId];
+    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
+    version(batch, input.expectedVersion);
+    if (["publishing", "published", "cancelled"].includes(batch.status)) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_ARTICLE_LOCKED", "当前任务已进入发布或结束状态，不能编辑正文。", "复制或重新生成正文后再编辑。");
+    const artifact = batch.draftArtifacts.find((item) => item.id === input.artifactId);
+    if (!artifact || artifact.id !== batch.currentDraftArtifactId || !artifact.wechatPresentation) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_ARTICLE_ARTIFACT_INVALID", "只能编辑当前公众号正文版本。", "刷新后在最新正文中重新编辑。");
+    const previousSections = artifact.sections;
+    artifact.selectedTitle = title;
+    artifact.summary = summary;
+    artifact.articleBody = articleBody;
+    artifact.sections = markdownSections(title, articleBody).map((section, index) => ({
+      ...section,
+      sectionKey: previousSections[index]?.sectionKey || section.sectionKey,
+      citations: previousSections.find((item) => item.heading === section.heading)?.citations || previousSections[index]?.citations
+    }));
+    artifact.wechatPresentation = renderFreeProductionWechatPresentation(artifact, artifact.wechatPresentation.templateId);
+    artifact.contentDigest = artifact.wechatPresentation.htmlHash;
+    artifact.sourceReview = undefined;
+    artifact.version += 1;
+    batch.sourceReview = undefined;
+    batch.confirmedContentDigest = undefined;
+    batch.version += 1;
+    batch.updatedAt = new Date().toISOString();
+    const task = state.tasks[`free-task-${batch.id}`];
+    if (task) { task.title = title; task.contentDigest = artifact.contentDigest; task.updatedAt = batch.updatedAt; }
+    state.audits.push({ auditId: randomUUID(), action: "free_production_article_edited", objectId: batchId, actor: actorId, auditReason: context.auditReason, createdAt: batch.updatedAt, summary: { artifactId: artifact.id, templateId: artifact.wechatPresentation.templateId, contentDigest: artifact.contentDigest } });
+    return batch;
+  }));
+}
+
 interface FileSupplement { fileName: string; mimeType: string; dataBase64: string; }
 async function storeSupplementFile(value: FileSupplement, accepted: string[]) {
   if (!accepted.includes(value.mimeType)) throw new FreeProductionServiceError(422, "SUPPLEMENT_FILE_TYPE_INVALID", "文件类型不符合该缺失项要求。", "选择 JPG、PNG 或 WebP 图片后重试。");
@@ -537,11 +789,37 @@ export async function confirmAndPublishFreeProductionBatch(batchId: string, inpu
   if (requiredAssets.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_REQUIRED_ASSET_MISSING", "必需发布素材缺失。", "在当前页上传或选择公众号封面后重新检查。", requiredAssets);
   const readiness = channelReadiness().find((item) => item.channel === batch.channelConfig.channel);
   if (!readiness?.connected) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_CHANNEL_NOT_READY", "表达绑定的发布账号尚未连接。", "在当前页完成连接或选择其他表达。", [readiness?.blockingReason || "连接不可用"]);
+  if (batch.channelConfig.channel === "wechat_official_account") {
+    const [bindingRows] = await getV5GovernancePool().query<RowDataPacket[]>(
+      `SELECT account_label FROM product_publish_account_binding
+       WHERE product_id = ? AND platform = 'wechat' AND status = 'confirmed' LIMIT 1`,
+      [batch.productId]
+    );
+    const boundAccount = bindingRows[0]?.account_label ? String(bindingRows[0].account_label) : undefined;
+    const configuredAccount = getWorkspaceSetting().publishAccountByChannel?.wechat?.trim() || readiness.accounts[0]?.id.trim();
+    if (!boundAccount || !configuredAccount || boundAccount !== configuredAccount) {
+      throw new FreeProductionServiceError(
+        422,
+        "FREE_PRODUCTION_WECHAT_ACCOUNT_NOT_BOUND",
+        "当前产品尚未绑定正在使用的公众号发布账号。",
+        "在正文与排版页选择已连接的公众号并点击“绑定此账号”，再使用“去发布”。"
+      );
+    }
+  }
   const sanitized = assertPublishPayloadSanitized(artifact);
   if (!sanitized.passed || sanitized.markdown !== sanitizePublishMarkdown(artifact.articleBody)) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SANITIZATION_FAILED", "发布正文仍包含内部标记或预览批注。", "刷新正文并重新执行完整检查。", sanitized.blocked);
   const isWechat = batch.channelConfig.channel === "wechat_official_account";
   if (isWechat && !artifact.wechatPresentation) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_WECHAT_HTML_MISSING", "公众号正式排版尚未生成。", "重新生成正文后再确认自动发布。");
   if (isWechat && artifact.wechatPresentation) {
+    const mediaState = await readMediaLibraryState();
+    const unavailableMedia = artifact.visualSuggestions.flatMap((suggestion) => {
+      const ref = suggestion.boundAssetRef || "";
+      if (!ref.startsWith(WORKBENCH_MEDIA_REF_PREFIX)) return [];
+      const mediaAssetId = ref.slice(WORKBENCH_MEDIA_REF_PREFIX.length);
+      const mediaAsset = mediaState.assets[mediaAssetId];
+      return mediaAsset?.status === "active" && mediaAsset.productId === batch.productId ? [] : [`${suggestion.recommendation}：素材不存在、已移出图库或产品不一致`];
+    });
+    if (unavailableMedia.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_BOUND_MEDIA_UNAVAILABLE", "正文已绑定的素材当前不可用于发布。", "重新选择当前产品下的有效素材后再发布。", unavailableMedia);
     const htmlValidation = validateWechatHtml(artifact.wechatPresentation.publishHtml);
     const previewOnlyMarkers = ["data-preview-only", "配图建议", "visual-suggestion"].filter((marker) => artifact.wechatPresentation?.publishHtml.includes(marker));
     if (!artifact.wechatPresentation.validation.passed || !htmlValidation.passed || previewOnlyMarkers.length) {

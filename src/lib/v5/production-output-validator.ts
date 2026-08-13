@@ -6,6 +6,7 @@ import type {
   ProductionValidationIssue,
   ProductionValidationResult
 } from "./content-production-contracts";
+import { findHumanWritingWechatIssues, isWechatContentChannel } from "./human-writing-wechat";
 
 export interface ValidateProductionOutputInput {
   contract: ProductionContractSnapshot;
@@ -48,6 +49,18 @@ function countOccurrences(text: string, value: string) {
   return count;
 }
 
+function fixedExpressionZones(markdown: string) {
+  const firstHeading = markdown.indexOf("\n## ");
+  const lastHeading = markdown.lastIndexOf("\n## ");
+  const openingEnd = firstHeading >= 0 ? firstHeading : Math.floor(markdown.length * 0.25);
+  const endingStart = lastHeading > firstHeading ? lastHeading : Math.floor(markdown.length * 0.7);
+  return {
+    opening: markdown.slice(markdown.indexOf("\n") + 1, openingEnd),
+    body: markdown.slice(openingEnd, endingStart),
+    ending: markdown.slice(endingStart)
+  };
+}
+
 function hasArtifact(markdown: string, artifact: ProductionArtifact) {
   if (artifact === "table") return /^\s*\|.+\|\s*$/m.test(markdown) && /^\s*\|?\s*:?-{3,}/m.test(markdown);
   if (artifact === "list") return /^\s*(?:[-*+] |\d+\. )\S+/m.test(markdown);
@@ -83,11 +96,11 @@ function similarity(left: string, right: string) {
   return intersection / (leftSet.size + rightSet.size - intersection);
 }
 
-function duplicateParagraphs(markdown: string) {
+function duplicateParagraphs(markdown: string, ignoredExactTexts: string[] = []) {
   const paragraphs = markdown
     .split(/\n\s*\n/)
     .map((value) => value.replace(/\s+/g, " ").trim())
-    .filter((value) => value.length >= 40 && !value.startsWith("#") && !value.includes("http"));
+    .filter((value) => value.length >= 40 && !value.startsWith("#") && !value.includes("http") && !ignoredExactTexts.includes(value));
   const seen = new Set<string>();
   const duplicates = new Set<string>();
   for (const paragraph of paragraphs) {
@@ -169,6 +182,23 @@ export function validateProductionOutput(input: ValidateProductionOutputInput): 
     if (!labelCount || !urlCount) issues.push(issue("cta_missing", `缺少冻结 CTA：${cta.ctaVariantId}`, true, [cta.ctaVariantId]));
     if (labelCount > 1 || urlCount > 1) issues.push(issue("cta_modified", `CTA 必须逐字出现一次：${cta.ctaVariantId}`, true, [cta.ctaVariantId]));
   }
+
+  const zones = fixedExpressionZones(markdown);
+  for (const fixed of contract.fixedExpressions || []) {
+    const occurrenceCount = countOccurrences(markdown, fixed.text);
+    if (!occurrenceCount) {
+      issues.push(issue("fixed_expression_missing", "正文缺少冻结的固定文案。", true, [fixed.text]));
+      continue;
+    }
+    if (occurrenceCount !== fixed.positions.length) {
+      issues.push(issue("fixed_expression_count_invalid", `固定文案必须逐字出现 ${fixed.positions.length} 次。`, true, [fixed.text]));
+    }
+    for (const position of fixed.positions) {
+      if (!zones[position].includes(fixed.text)) {
+        issues.push(issue("fixed_expression_position_invalid", `固定文案未出现在指定位置：${position}。`, true, [fixed.text, position]));
+      }
+    }
+  }
   const ctaUrlOccurrences = selectedCtas.reduce((total, cta) => total + countOccurrences(markdown, cta.publicUrl), 0);
   if (ctaUrlOccurrences > policy.maxCtaCount) {
     issues.push(issue("cta_limit_exceeded", `CTA 数量超过渠道上限 ${policy.maxCtaCount}。`, true));
@@ -184,10 +214,14 @@ export function validateProductionOutput(input: ValidateProductionOutputInput): 
   const invalidUrls = extractUrls(markdown).filter((url) => !allowedUrls.has(url));
   if (invalidUrls.length) issues.push(issue("url_not_allowed", "正文包含未在生产合同中批准的 URL。", true, invalidUrls));
   if (containsSensitiveOutput(markdown)) issues.push(issue("sensitive_output", "正文疑似包含凭证、手机号、私有地址或其他敏感信息。", false));
-  const duplicates = duplicateParagraphs(markdown);
+  const duplicates = duplicateParagraphs(markdown, (contract.fixedExpressions || []).map((item) => item.text));
   if (duplicates.length) issues.push(issue("duplicate_paragraph", "正文包含大段完全重复内容。", true, duplicates.map((value) => value.slice(0, 80))));
   if (/(?:当然可以|下面是|以下是为你|作为(?:一个)?AI|希望这篇文章)/i.test(markdown)) {
     issues.push(issue("chat_residue", "正文包含模型解释或聊天式残留。", true));
+  }
+  if (isWechatContentChannel(contract.task.channel)) {
+    const styleIssues = findHumanWritingWechatIssues(markdown);
+    if (styleIssues.length) issues.push(issue("human_writing_style", "公众号正文未通过 human-writing 成稿检查。", true, styleIssues));
   }
 
   const comparable = normalizeComparable(markdown, contract);

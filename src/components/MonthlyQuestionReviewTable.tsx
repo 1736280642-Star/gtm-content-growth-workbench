@@ -3,7 +3,7 @@
 import { Button, Progress, Table, Tag } from "antd";
 import type { MonthlyQuestionReview } from "@/lib/v5/monthly-review-contracts";
 
-export function MonthlyQuestionReviewTable({ rows, onOpen }: { rows: MonthlyQuestionReview[]; onOpen: (row: MonthlyQuestionReview) => void }) {
+export function MonthlyQuestionReviewTable({ rows, onOpen }: { rows: MonthlyQuestionReview[]; onOpen?: (row: MonthlyQuestionReview) => void }) {
   return (
     <Table
       rowKey="id"
@@ -18,7 +18,7 @@ export function MonthlyQuestionReviewTable({ rows, onOpen }: { rows: MonthlyQues
         { title: "AI 表现", dataIndex: "captureSummary", width: 220 },
         { title: "建议", dataIndex: "recommendation", ellipsis: true },
         { title: "数据状态", dataIndex: "dataStatus", width: 110, render: (value) => <Tag color={value === "complete" ? "green" : value === "partial" ? "orange" : "default"}>{value}</Tag> },
-        { title: "操作", width: 90, fixed: "right", render: (_, row) => <Button type="link" size="small" onClick={() => onOpen(row)}>查看</Button> }
+        ...(onOpen ? [{ title: "操作", width: 90, fixed: "right" as const, render: (_: unknown, row: MonthlyQuestionReview) => <Button type="link" size="small" onClick={() => onOpen(row)}>查看</Button> }] : [])
       ]}
     />
   );

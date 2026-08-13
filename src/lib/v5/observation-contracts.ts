@@ -1,4 +1,4 @@
-export type AiFrontendPlatform = "chatgpt" | "yuanbao" | "doubao" | "kimi";
+export type AiFrontendPlatform = "doubao" | "deepseek" | "qwen" | "chatgpt";
 
 export type FrontendCaptureTaskStatus =
   | "draft"
@@ -70,6 +70,7 @@ export interface FrontendCaptureTask {
   version: number;
   questionKey: string;
   questionVersionId?: string;
+  sourcePublishedContentIds?: string[];
   questionText: string;
   temporaryQuestion: boolean;
   platform: AiFrontendPlatform;
@@ -282,7 +283,20 @@ export interface ObservationReferenceSnapshot {
   source: "formal_adapter" | "fixture" | "pending_config";
   questions: ObservationQuestionReference[];
   monthlyPlans: Array<{ monthlyPlanId: string; month: string; questionKeys: string[]; plannedContentCount: number }>;
-  publishedContent: Array<{ contentId: string; questionKey: string; title: string; channel: string; publishedAt: string; metricSummary?: string }>;
+  publishedContent: Array<{
+    contentId: string;
+    questionKey: string;
+    title: string;
+    channel: string;
+    publishedAt: string;
+    publicUrl?: string;
+    publishScheduleId?: string;
+    liveness24h?: "pending" | "passed" | "failed";
+    liveness72h?: "pending" | "passed" | "failed";
+    removedAt?: string;
+    hasMetricReturn?: boolean;
+    metricSummary?: string;
+  }>;
   message?: string;
 }
 
@@ -301,6 +315,7 @@ export interface FrontendCaptureWorkspace {
 export interface CreateCaptureTasksRequest extends V5MutationContext {
   questionVersionId?: string;
   temporaryQuestionText?: string;
+  sourcePublishedContentIds?: string[];
   platforms: AiFrontendPlatform[];
   condition: FrontendCaptureCondition;
   executionMode: "immediate_once";

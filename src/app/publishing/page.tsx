@@ -5,6 +5,7 @@ import { Alert, Button, Card, Col, Empty, Progress, Row, Select, Space, Spin, Ta
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import type { DirectPublishPlatformKey, PublishAttempt, PublishSchedule, PublishScheduleStatus } from "@/lib/types";
+import { classifyPublishResponsibility } from "@/lib/v5/responsibility";
 
 interface PublishJobView { schedule: PublishSchedule; attempts: PublishAttempt[]; title: string; productName: string }
 interface PublishCandidate { id: string; title: string; channel: string; version: number; updatedAt?: string; existingPlatforms: DirectPublishPlatformKey[] }
@@ -25,7 +26,14 @@ const statusLabel: Record<PublishScheduleStatus, string> = {
   platform_rejected: "平台拒绝", removed_after_publish: "发布后删除", risk_blocked: "风控阻断", verification_timeout: "核验超时",
   auth_expired: "登录失效", failed: "失败", manual_takeover_required: "需处理", pending_config: "待配置"
 };
-const dangerStatuses = new Set<PublishScheduleStatus>(["precheck_failed", "platform_rejected", "removed_after_publish", "risk_blocked", "verification_timeout", "auth_expired", "failed", "manual_takeover_required", "pending_config"]);
+// Phase 0: 细分状态 — 可自动恢复的状态不再计入"危险"
+// 系统可自动重试：precheck_failed、verification_timeout、pending_config
+const needsUserAction = (schedule: PublishSchedule) =>
+  classifyPublishResponsibility(schedule.status, schedule.retryCount).userActionRequired;
+const isSystemRecovering = (schedule: PublishSchedule) => {
+  const result = classifyPublishResponsibility(schedule.status, schedule.retryCount);
+  return result.responsibility === "system" && result.recoveryStatus === "retrying";
+};
 const reconcilable = new Set<PublishScheduleStatus>(["published_verified", "published_pending_url", "pending_verify", "public_observed", "stable_published", "manual_takeover_required", "risk_blocked", "auth_expired"]);
 
 async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -132,9 +140,10 @@ export default function PublishingPage() {
 
   const stats = useMemo(() => ({
     total: jobs.length,
-    running: jobs.filter((item) => !dangerStatuses.has(item.schedule.status) && item.schedule.status !== "stable_published").length,
+    running: jobs.filter((item) => !needsUserAction(item.schedule) && item.schedule.status !== "stable_published").length,
     stable: jobs.filter((item) => item.schedule.status === "stable_published" || Boolean(item.schedule.stablePublishedAt)).length,
-    risk: jobs.filter((item) => dangerStatuses.has(item.schedule.status)).length
+    risk: jobs.filter((item) => needsUserAction(item.schedule)).length,
+    recovering: jobs.filter((item) => isSystemRecovering(item.schedule)).length,
   }), [jobs]);
 
   const productGroups = useMemo(() => {
@@ -146,7 +155,7 @@ export default function PublishingPage() {
       groups.set(name, group);
     }
     return [...groups.values()].map((group) => {
-      const attention = group.jobs.filter((job) => dangerStatuses.has(job.schedule.status)).length;
+      const attention = group.jobs.filter((job) => needsUserAction(job.schedule)).length;
       const stable = group.jobs.filter((job) => job.schedule.status === "stable_published" || Boolean(job.schedule.stablePublishedAt)).length;
       const published = group.jobs.filter((job) => Boolean(job.schedule.publicUrl || job.schedule.firstPublicObservedAt || job.schedule.stablePublishedAt)).length;
       return { ...group, attention, stable, published, verifying: group.jobs.length - attention - stable };
@@ -157,8 +166,8 @@ export default function PublishingPage() {
     () => selectedProduct === "all" ? jobs : jobs.filter((job) => job.productName === selectedProduct),
     [jobs, selectedProduct]
   );
-  const attentionJobs = useMemo(() => scopedJobs.filter((job) => dangerStatuses.has(job.schedule.status)), [scopedJobs]);
-  const automatedJobs = useMemo(() => scopedJobs.filter((job) => !dangerStatuses.has(job.schedule.status)), [scopedJobs]);
+  const attentionJobs = useMemo(() => scopedJobs.filter((job) => needsUserAction(job.schedule)), [scopedJobs]);
+  const automatedJobs = useMemo(() => scopedJobs.filter((job) => !needsUserAction(job.schedule)), [scopedJobs]);
   const visibleAttentionJobs = showAllAttention ? attentionJobs : attentionJobs.slice(0, 5);
 
   function renderCompactJob(job: PublishJobView, needsAttention: boolean) {
@@ -233,6 +242,7 @@ export default function PublishingPage() {
             <span><b>{stats.total}</b>全部任务</span>
             <span><b>{stats.running}</b>自动运行</span>
             <span><b>{stats.stable}</b>稳定发布</span>
+            {stats.recovering > 0 ? <span className="is-recovering"><b>{stats.recovering}</b>自动恢复中</span> : null}
             <span className={stats.risk ? "is-attention" : ""}><b>{stats.risk}</b>需处理</span>
           </div>
           <div className="publish-product-filter">

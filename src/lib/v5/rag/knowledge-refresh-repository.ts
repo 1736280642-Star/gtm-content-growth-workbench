@@ -9,6 +9,7 @@ import {
   type V5GovernanceActor
 } from "../knowledge-governance-repository";
 import { AUTOMATIC_KNOWLEDGE_POLICY_VERSION } from "./automatic-knowledge-production";
+import { isTestGeoSource } from "../geo-source-quality";
 
 const AUTOMATIC_CONTENT_TYPES = [
   "explicit_product_intro",
@@ -69,7 +70,11 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
     const [rawClaimRows] = await connection.query<RowDataPacket[]>(
       `SELECT pc.id, pc.normalized_claim, pc.original_quote, pc.source_id, pc.source_revision_id, pc.review_status,
               pc.support_mode, pc.conditions, pc.limitations, pc.authority_level, pc.source_locator,
-              sr.content_hash, sr.source_updated_at, sa.batch_id, sa.primary_knowledge_base_id
+              sr.content_hash, sr.source_updated_at, sa.batch_id, sa.primary_knowledge_base_id,
+              sa.title AS source_title, sa.file_name AS source_file_name, sa.canonical_url AS source_canonical_url,
+              sa.document_type AS source_document_type, sa.authority_level AS source_authority_level,
+              sa.visibility AS source_visibility, sa.lifecycle_status AS source_lifecycle_status,
+              sa.status AS source_status, sa.safety_status AS source_safety_status
        FROM product_claim pc
        JOIN source_revision sr ON sr.id = pc.source_revision_id
        JOIN source_asset sa ON sa.id = pc.source_id
@@ -104,7 +109,39 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
         correlationId: String(row.id)
       });
     }
-    const claimRows = rawClaimRows.filter((row) => !hasUnqualifiedMetric(row));
+    const testSourceRows = rawClaimRows.filter((row) => isTestGeoSource({
+      sourceId: String(row.source_id),
+      sourceRevisionId: String(row.source_revision_id),
+      title: row.source_title ? String(row.source_title) : undefined,
+      fileName: row.source_file_name ? String(row.source_file_name) : undefined,
+      canonicalUrl: row.source_canonical_url ? String(row.source_canonical_url) : undefined,
+      documentType: String(row.source_document_type),
+      authorityLevel: String(row.source_authority_level),
+      visibility: String(row.source_visibility),
+      lifecycleStatus: String(row.source_lifecycle_status),
+      status: String(row.source_status),
+      safetyStatus: String(row.source_safety_status)
+    }));
+    for (const row of testSourceRows) {
+      await connection.query(
+        `UPDATE product_claim
+         SET review_status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), row_version = row_version + 1
+         WHERE id = ? AND review_status IN ('supported','conditional')`,
+        [actor.actorId, String(row.id)]
+      );
+      await writeV5GovernanceAudit(connection, {
+        ...actor,
+        eventType: "automatic_claim_rejected_test_source",
+        objectType: "product_claim",
+        objectId: String(row.id),
+        relatedSourceIds: [String(row.source_id)],
+        beforeSummary: { reviewStatus: String(row.review_status) },
+        afterSummary: { reviewStatus: "rejected", reasonCode: "test_source_not_allowed_in_production_snapshot" },
+        correlationId: String(row.id)
+      });
+    }
+    const testClaimIds = new Set(testSourceRows.map((row) => String(row.id)));
+    const claimRows = rawClaimRows.filter((row) => !hasUnqualifiedMetric(row) && !testClaimIds.has(String(row.id)));
     if (!claimRows.length) {
       throw new V5GovernanceRepositoryError("approved_claim_missing", "No current supported claims are available for automatic refresh.", 409);
     }

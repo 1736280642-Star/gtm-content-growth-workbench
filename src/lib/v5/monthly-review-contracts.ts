@@ -12,11 +12,18 @@ export interface MonthlyQuestionReview {
     title: string;
     channel: string;
     publishedAt: string;
+    publicUrl?: string;
+    publishScheduleId?: string;
+    liveness24h?: "pending" | "passed" | "failed";
+    liveness72h?: "pending" | "passed" | "failed";
+    removedAt?: string;
+    hasMetricReturn?: boolean;
     metricSummary?: string;
   }>;
   captureTaskIds: string[];
   captureSummary: string;
   confirmedGapCodes: string[];
+  recommendationEvidenceRefs: string[];
   recommendation: string;
   dataStatus: "complete" | "partial" | "pending_config";
 }
@@ -30,6 +37,7 @@ export interface NextMonthProposal {
   questionKey: string;
   recommendation: string;
   rationale: string;
+  evidenceRefs: string[];
   status: "proposal" | "submitted_to_monthly_plan" | "dismissed";
   monthlyTaskCreated: false;
   quotaChanged: false;
@@ -46,6 +54,10 @@ export interface MonthlyReview {
     plannedContent: number;
     publishedContent: number;
     effectiveMetricReturns: number;
+    survival24hPassed: number;
+    survival24hEligible: number;
+    survival72hPassed: number;
+    survival72hEligible: number;
     captureTasks: number;
     pendingGaps: number;
   };

@@ -4,6 +4,7 @@ import { DownOutlined, LinkOutlined, ReloadOutlined, SyncOutlined, UpOutlined } 
 import { Alert, Button, Card, Empty, Space, Spin, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DirectPublishPlatformKey, PublishAttempt, PublishSchedule, PublishScheduleStatus } from "@/lib/types";
+import { PublishLifecycleRail } from "@/components/PublishLifecycleRail";
 
 interface PublishJobView { schedule: PublishSchedule; attempts: PublishAttempt[]; title: string; productName: string }
 interface ReliabilityMetric {
@@ -119,7 +120,7 @@ export function PublishResultLedger({ matchedPublishRecordIds }: { matchedPublis
     const observed = observedStatus(schedule);
     const needsAttention = dangerStatuses.has(schedule.status);
     const expanded = expandedJobId === schedule.id;
-    const returnLabel = matched ? "指标已匹配" : schedule.publicUrl ? "待导入指标" : needsAttention ? "发布异常" : "等待公开 URL";
+    const returnLabel = matched ? "渠道指标已匹配" : schedule.publicUrl ? "待导入指标" : needsAttention ? "发布异常" : "等待公开 URL";
     const returnColor = matched ? "green" : needsAttention ? "red" : schedule.publicUrl ? "gold" : "default";
     const nextStep = matched
       ? "可进入月度复盘"
@@ -149,6 +150,7 @@ export function PublishResultLedger({ matchedPublishRecordIds }: { matchedPublis
           </Button>
         </div>
         {expanded ? <div className="publish-compact-detail">
+          <PublishLifecycleRail schedule={schedule} />
           <div className="publish-detail-facts publish-ledger-detail-facts">
             <span><b>公开地址</b>{schedule.publicUrl ? <a href={schedule.publicUrl} target="_blank" rel="noreferrer">打开文章 <LinkOutlined /></a> : "等待自动回填"}</span>
             <span><b>首次公开</b>{timeText(schedule.firstPublicObservedAt)}</span>

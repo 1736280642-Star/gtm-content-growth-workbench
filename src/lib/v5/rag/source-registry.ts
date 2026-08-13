@@ -27,6 +27,7 @@ export interface RagSourceClassification {
   forbiddenUsage: string[];
   governanceMode: "automatic_policy" | "manual_review";
   reason: string;
+  canonicalUrl?: string;
 }
 
 export interface RagSourceImportCandidate extends RagSourceClassification {
@@ -208,9 +209,24 @@ export const ragSourceRegistry: RagSourceRegistryEntry[] = [
         allowedEvidenceRoles: ["product_definition", "product_capability", "scenario", "pricing", "limitation", "official_citation"],
         forbiddenUsage: ["unqualified_price", "unqualified_performance", "customer_result"],
         governanceMode: "automatic_policy",
+        canonicalUrl: "https://joto.ai/solutions/workbuddy",
         reason: "2026-07-24 JOTO 官网 WorkBuddy 结构化快照；代码注册来源由系统策略自动治理。"
       });
-      return baseClassification({ disposition: "excluded_text", reason: "该注册项只接收 WorkBuddy 官网结构化快照，重复抓取与原始响应不重复索引。" });
+      if (file === "one more thing — workbuddy 桌面智能体配套材料.md") return baseClassification({
+        disposition: "production_candidate", namespace: "production_public", documentType: "supplementary_solution_document",
+        authorityLevel: "B1", lifecycleStatus: "unknown", visibility: "internal",
+        allowedEvidenceRoles: ["industry_background", "scenario", "solution_hypothesis", "historical_context"],
+        forbiddenUsage: ["current_product_capability", "pricing", "unqualified_performance", "customer_result", "official_citation"],
+        governanceMode: "automatic_policy",
+        reason: "WorkBuddy 配套方案仅补充行业背景、场景与待验证方案；未经官网复核的能力、数据和客户结果不得作为当前产品事实。"
+      });
+      if (/(?:^|\/)(?:workbuddy\/combined|workbuddy\/pages\/001-solutions-workbuddy|xcrawl-pages\/pages\/001-solutions-workbuddy)\.md$/.test(file)) return baseClassification({
+        disposition: "audit_only", documentType: "official_raw_validation_snapshot", authorityLevel: "A2",
+        lifecycleStatus: "current", visibility: "internal", allowedEvidenceRoles: ["source_validation"],
+        forbiddenUsage: ["production_retrieval"],
+        reason: "WorkBuddy 官网原始抓取用于校验结构化稿和定位逐字原文；因内容重复，不进入生产索引。"
+      });
+      return baseClassification({ disposition: "excluded_text", reason: "未纳入 WorkBuddy 事实链路的重复抓取、原始响应与辅助资产不进入正文索引。" });
     }
   },
   {
@@ -264,7 +280,13 @@ async function listFiles(rootPath: string): Promise<string[]> {
       else output.push(path.relative(rootPath, absolute));
     }
   }
-  await walk(rootPath);
+  try {
+    await walk(rootPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return [];
+    throw error;
+  }
   return output;
 }
 
@@ -308,7 +330,7 @@ export async function buildRagSourceImportPlan(options: { includeAuditAssets?: b
         relativePath: normalizeRelative(relativePath),
         absolutePath,
         title: isMarkdown ? titleFromMarkdown(content, relativePath) : path.basename(relativePath),
-        canonicalUrl: urlMap.get(normalizeRelative(relativePath)),
+        canonicalUrl: classification.canonicalUrl || urlMap.get(normalizeRelative(relativePath)),
         contentHash: createHash("sha256").update(isMarkdown ? content.replace(/\r\n/g, "\n") : `${fileStat.size}:${fileStat.mtimeMs}`).digest("hex"),
         contentLength: isMarkdown ? content.length : fileStat.size,
         sourceUpdatedAt: content.match(/^crawledAt:\s*["']?([^"'\r\n]+)["']?$/m)?.[1]?.trim() || fileStat.mtime.toISOString(),

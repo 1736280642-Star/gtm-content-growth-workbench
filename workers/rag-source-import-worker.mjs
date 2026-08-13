@@ -11,7 +11,7 @@ const [sourceRegistry, sourceImportService, sourceImportRepository, governanceRe
 const { buildRagSourceImportPlan, summarizeRagSourceImportPlan } = sourceRegistry;
 const { prepareRagSourceImport } = sourceImportService;
 const { writeRagSourceImport } = sourceImportRepository;
-const { hasV5GovernanceDatabaseConfig } = governanceRepository;
+const { getV5GovernancePool, hasV5GovernanceDatabaseConfig } = governanceRepository;
 
 const argv = process.argv.slice(2);
 const args = new Set(argv);
@@ -19,6 +19,7 @@ const write = args.has("--write");
 const includeAuditAssets = !args.has("--production-text-only");
 const productArgument = argv.find((argument) => argument.startsWith("--product="));
 const productId = productArgument?.slice("--product=".length).trim();
+let databaseWriteAttempted = false;
 
 try {
   if (productArgument && !productId) throw Object.assign(new Error("--product 缺少产品 ID。"), { code: "invalid_argument" });
@@ -28,14 +29,23 @@ try {
   }
   const discovered = await buildRagSourceImportPlan({ includeAuditAssets, productIds: productId ? [productId] : undefined });
   const plan = prepareRagSourceImport(discovered);
+  const registrySummary = summarizeRagSourceImportPlan(discovered);
   if (!write) {
     console.log(JSON.stringify({
       status: "dry_run",
       writeRequired: "重新运行并显式添加 --write",
       productScope: productId || "all_registered_products",
-      registrySummary: summarizeRagSourceImportPlan(discovered),
+      registrySummary,
       planHash: plan.planHash,
       importVersion: plan.importVersion,
+      summary: plan.summary
+    }));
+  } else if (!plan.candidates.length) {
+    console.log(JSON.stringify({
+      status: "idle",
+      reason: "no_registered_source_files",
+      productScope: productId || "all_registered_products",
+      registrySummary,
       summary: plan.summary
     }));
   } else {
@@ -51,6 +61,7 @@ try {
     if (missingActorConfig.length) {
       throw Object.assign(new Error("Source Import 缺少审计身份配置。"), { code: "pending_config", missingConfig: missingActorConfig });
     }
+    databaseWriteAttempted = true;
     const result = await writeRagSourceImport({
       plan,
       idempotencyKey: `rag-source-import:${plan.planHash}`,
@@ -73,4 +84,8 @@ try {
     details: pending ? (error?.missingConfig || []) : ["Source Import 执行失败，请查看受限服务端日志。"]
   }));
   process.exitCode = pending ? 2 : 1;
+} finally {
+  if (databaseWriteAttempted) {
+    await getV5GovernancePool().end();
+  }
 }

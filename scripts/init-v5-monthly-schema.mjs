@@ -34,6 +34,18 @@ function splitSqlStatements(sql) {
     .filter(Boolean);
 }
 
+async function executePortableStatement(connection, statement) {
+  const match = statement.match(/^ALTER\s+TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+([\s\S]+)$/i);
+  if (!match) return connection.query(statement);
+  const [, tableName, columnName, definition] = match;
+  const [rows] = await connection.query(
+    "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1",
+    [tableName, columnName]
+  );
+  if (rows.length) return;
+  return connection.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`);
+}
+
 async function loadMigrations() {
   const fileNames = (await readdir(migrationDirectory))
     .filter((name) => name.endsWith(".sql"))
@@ -142,7 +154,7 @@ async function main() {
         await connection.beginTransaction();
 
         for (const statement of migration.statements) {
-          await connection.query(statement);
+          await executePortableStatement(connection, statement);
         }
 
         await connection.query("INSERT INTO workbench_schema_migration (name, checksum) VALUES (?, ?)", [migration.name, migration.checksum]);

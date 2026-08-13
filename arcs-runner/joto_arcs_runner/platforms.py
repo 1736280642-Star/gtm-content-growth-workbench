@@ -537,6 +537,17 @@ def _public_url(value: str, pattern: str) -> str | None:
     return match.group(0) if match else None
 
 
+def _known_public_url_from_identity(platform: str, payload: dict[str, Any]) -> str | None:
+    config = _config(platform)
+    public_url = _public_url(str(payload.get("publicUrl") or ""), config["public_pattern"])
+    if public_url:
+        return public_url
+    article_id = str(payload.get("platformArticleId") or "").strip()
+    if platform == "zhihu" and article_id.isdigit():
+        return f"https://zhuanlan.zhihu.com/p/{article_id}"
+    return None
+
+
 def _verify_known_public_url(platform: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     config = _config(platform)
     public_url = _public_url(str(payload.get("publicUrl") or ""), config["public_pattern"])
@@ -965,6 +976,34 @@ class BrowserPublisher:
             api_result = _verify_juejin_draft_api(payload)
             if api_result:
                 return api_result
+        known_public_url = _known_public_url_from_identity(platform, payload)
+        if platform == "zhihu" and known_public_url:
+            try:
+                tab.get(known_public_url)
+                text = _body_text(tab)
+                url = _public_url(str(tab.url), config["public_pattern"])
+                missing_markers = ["页面不存在", "内容不存在", "文章不存在", "该内容已删除", "page not found"]
+                login_redirected = any(marker.lower() in str(tab.url).lower() for marker in config["login_markers"])
+                if (
+                    url
+                    and not login_redirected
+                    and not has_security_challenge(text)
+                    and not any(marker.lower() in text.lower() for marker in missing_markers)
+                ):
+                    article_id = _article_id(url, config["article_id_pattern"])
+                    return {
+                        "ok": True,
+                        "status": "published_verified",
+                        "publishStatus": "confirmed",
+                        "verifyStatus": "verified",
+                        "platformArticleId": article_id or payload.get("platformArticleId"),
+                        "publicUrl": url,
+                        "pendingCsvReturn": False,
+                        "nextAction": "已优先通过知乎文章 ID 或公开 URL 验证公开页面。",
+                        "diagnosticSummary": "known_article_identity_public_page",
+                    }
+            except Exception:
+                pass
         url = _public_url(str(tab.url), config["public_pattern"])
         article_id = _article_id(url or "", config["article_id_pattern"])
         if not url:

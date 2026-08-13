@@ -213,18 +213,39 @@ export interface GeoResearchReadinessCheck {
   missingConfig?: string[];
 }
 
+export type GeoSourceQualityIssueCode =
+  | "snapshot_source_mismatch"
+  | "snapshot_revision_mismatch"
+  | "test_source_detected"
+  | "public_citation_source_required"
+  | "official_product_source_required";
+
+export interface GeoSourceSnapshotQuality {
+  status: "ready" | "blocked";
+  linkedSourceCount: number;
+  linkedRevisionCount: number;
+  publicCitableSourceCount: number;
+  officialSourceCount: number;
+  testSourceCount: number;
+  issueCodes: GeoSourceQualityIssueCode[];
+  issues: string[];
+}
+
+export interface GeoResearchSourceSnapshot {
+  snapshotId: string;
+  snapshotHash: string;
+  sourceCount: number;
+  revisionCount: number;
+  approvedClaimCount: number;
+  createdAt: string;
+  quality: GeoSourceSnapshotQuality;
+}
+
 export interface GeoResearchReadiness {
   status: "ready" | "blocked" | "pending_config";
   canCreateRun: boolean;
   canExecuteLiveResearch: boolean;
-  latestSourceSnapshot?: {
-    snapshotId: string;
-    snapshotHash: string;
-    sourceCount: number;
-    revisionCount: number;
-    approvedClaimCount: number;
-    createdAt: string;
-  };
+  latestSourceSnapshot?: GeoResearchSourceSnapshot;
   checks: GeoResearchReadinessCheck[];
 }
 
@@ -277,5 +298,9 @@ export interface ProductGeoOverview {
   blueprintStatus?: GeoBlueprintStatus;
   hasSourceSnapshot: boolean;
   sourceCount: number;
-  nextAction: "create_project" | "add_sources" | "configure_provider" | "review_blueprint" | "open_run" | "start_research" | "monthly_strategy";
+  isPromoting?: boolean;
+  strategyPackId?: string;
+  latestStrategyPackId?: string;
+  strategyPackStatus?: string;
+  nextAction: "create_project" | "add_sources" | "configure_provider" | "review_strategy" | "open_run" | "start_research" | "monthly_strategy";
 }

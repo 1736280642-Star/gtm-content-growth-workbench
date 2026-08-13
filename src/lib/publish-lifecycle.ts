@@ -17,6 +17,10 @@ function getVerificationTimeoutMs(): number {
   return getPositiveNumberEnvironment("DIRECT_PUBLISH_VERIFICATION_TIMEOUT_HOURS", 168) * HOUR_MS;
 }
 
+function getMaxConsecutiveVerificationFailures(): number {
+  return Math.max(1, Math.floor(getPositiveNumberEnvironment("DIRECT_PUBLISH_MAX_VERIFICATION_FAILURES", 6)));
+}
+
 function getNextPublishVerificationAt(
   verifiedAt: string,
   firstPublicObservedAt?: string,
@@ -53,10 +57,9 @@ function getNextPublishVerificationAt(
       : undefined;
   const boundedInterval =
     observedAge >= 0
-      ? Math.max(
-          MINUTE_MS,
-          Math.min(interval, Math.max(0, (nextObservedMilestone ?? stableWindowMs) - observedAge))
-        )
+      ? nextObservedMilestone === undefined
+        ? interval
+        : Math.max(MINUTE_MS, Math.min(interval, Math.max(0, nextObservedMilestone - observedAge)))
       : interval;
   return new Date(verifiedTime + boundedInterval).toISOString();
 }
@@ -166,6 +169,9 @@ export function resolvePublishVerificationLifecycle(
   const verificationTimedOut =
     !wasPublic &&
     new Date(verifiedAt).getTime() - new Date(verificationStartedAt).getTime() >= getVerificationTimeoutMs();
+  const verificationFailureLimitReached =
+    !verificationTimedOut &&
+    consecutiveVerificationFailures >= getMaxConsecutiveVerificationFailures();
   const continuingStatus: PublishAttemptStatus =
     verifyResult.status === "published_pending_url"
       ? "published_pending_url"
@@ -180,17 +186,29 @@ export function resolvePublishVerificationLifecycle(
       : getNextPublishVerificationAt(verifiedAt, schedule.firstPublicObservedAt, verificationStartedAt);
 
   return {
-    status: verificationTimedOut ? "verification_timeout" : continuingStatus,
+    status: verificationTimedOut
+      ? "verification_timeout"
+      : verificationFailureLimitReached
+        ? "manual_takeover_required"
+        : continuingStatus,
     urlStatus: wasPublic ? schedule.urlStatus || "provisional" : "pending",
     firstPublicObservedAt: schedule.firstPublicObservedAt,
     lastVerifiedAt: verifiedAt,
-    nextVerificationAt: verificationTimedOut ? undefined : nextVerificationAt,
+    nextVerificationAt: verificationTimedOut || verificationFailureLimitReached ? undefined : nextVerificationAt,
     verificationStartedAt,
     stablePublishedAt: schedule.stablePublishedAt,
     removedAt: schedule.removedAt,
     verificationCount,
     consecutiveVerificationFailures,
-    failureCode: verificationTimedOut ? "verification_timeout" : verifyResult.failureCode,
-    failureReason: verificationTimedOut ? "平台在验证窗口内始终未形成可访问公开 URL。" : verifyResult.failureReason
+    failureCode: verificationTimedOut
+      ? "verification_timeout"
+      : verificationFailureLimitReached
+        ? "manual_takeover_required"
+        : verifyResult.failureCode,
+    failureReason: verificationTimedOut
+      ? "平台在验证窗口内始终未形成可访问公开 URL。"
+      : verificationFailureLimitReached
+        ? `连续 ${consecutiveVerificationFailures} 次自动核验失败，已停止自动核验并转人工确认。`
+        : verifyResult.failureReason
   };
 }

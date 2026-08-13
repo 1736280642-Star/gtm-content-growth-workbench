@@ -67,7 +67,7 @@ export function CaptureEnvironmentStatus({
         {value.adapters.map((adapter) => (
           <div className="capture-adapter-row" key={adapter.platform}>
             <div>
-              <strong>{adapter.platform === "chatgpt" ? "ChatGPT" : adapter.platform}</strong>
+              <strong>{{ doubao: "豆包", deepseek: "DeepSeek", qwen: "千问", chatgpt: "ChatGPT" }[adapter.platform] || adapter.platform}</strong>
               <span>{adapter.message}</span>
             </div>
             <Tag icon={adapter.status === "ready" ? <CheckCircleOutlined /> : <DisconnectOutlined />} color={statusColor(adapter.status)}>

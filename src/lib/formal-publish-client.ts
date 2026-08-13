@@ -204,7 +204,8 @@ export async function verifyFormalPublish(platform: DirectPublishPlatformKey, re
       platform: bridgePlatform(platform),
       idempotencyKey: result.idempotencyKey,
       platformArticleId: result.platformArticleId,
-      externalTaskId: result.externalTaskId
+      externalTaskId: result.externalTaskId,
+      publicUrl: result.publicUrl
     });
     const payload = (await response.json().catch(() => ({}))) as BridgePublishResponse;
     const status = normalizeStatus(payload.status, response.ok ? "pending_verify" : "failed");

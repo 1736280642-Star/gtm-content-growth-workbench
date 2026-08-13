@@ -9,6 +9,7 @@ import type {
 import { getGeoResearchProviderReadiness } from "./geo-research-provider";
 import {
   approveGeoBlueprintRecord,
+  cancelStaleGeoResearchRunRecord,
   confirmGeoResearchQuestionFindingsRecord,
   createGeoResearchProjectRecord,
   createGeoResearchRunRecord,
@@ -21,8 +22,9 @@ import {
 import { getActiveProduct } from "./product-registry-service";
 import type { ProductRegistryItem } from "./product-registry-contracts";
 import { ingestV5QuestionSignals } from "./question-service";
-import type { V5GovernanceActor } from "./knowledge-governance-repository";
+import { hashV5GovernancePayload, type V5GovernanceActor } from "./knowledge-governance-repository";
 import { V5GovernanceServiceError } from "./knowledge-governance-service";
+import { readProductKnowledgeProfile } from "./product-knowledge-profile";
 
 function assertText(value: string | undefined, field: string, maxLength = 255) {
   if (!value?.trim()) {
@@ -152,11 +154,13 @@ function suggestedArticleTypesForQuestion(question: string) {
 export async function getGeoResearchWorkspace(productId: string) {
   assertText(productId, "productId", 64);
   const product = await getActiveProduct(productId);
-  const [workspace, latestSourceSnapshot] = await Promise.all([
+  const [workspace, latestSourceSnapshot, productProfile] = await Promise.all([
     readGeoResearchWorkspace(productId),
-    readLatestGeoSourceSnapshot(productId)
+    readLatestGeoSourceSnapshot(productId),
+    readProductKnowledgeProfile(productId, product.displayName)
   ]);
   const provider = getGeoResearchProviderReadiness();
+  const sourceSnapshotReady = latestSourceSnapshot?.quality.status === "ready";
   const checks: GeoResearchReadiness["checks"] = [
     {
       key: "product_identity",
@@ -175,24 +179,24 @@ export async function getGeoResearchWorkspace(productId: string) {
     {
       key: "source_snapshot",
       label: "产品资料快照",
-      status: latestSourceSnapshot ? "ready" : "blocked",
-      detail: latestSourceSnapshot
-        ? `已冻结 ${latestSourceSnapshot.sourceCount} 个资料源、${latestSourceSnapshot.approvedClaimCount} 条已批准事实。`
+      status: sourceSnapshotReady ? "ready" : "blocked",
+      detail: sourceSnapshotReady && latestSourceSnapshot
+        ? `已冻结 ${latestSourceSnapshot.sourceCount} 个资料源、${latestSourceSnapshot.approvedClaimCount} 条已批准事实；其中 ${latestSourceSnapshot.quality.officialSourceCount} 个正式来源可公开追溯。`
+        : latestSourceSnapshot
+          ? `资料快照未达到正式调研标准：${latestSourceSnapshot.quality.issues.join("；")}`
         : "尚未形成可追溯的 SourceSnapshot，不能创建研究运行。",
-      actionLabel: latestSourceSnapshot ? undefined : "导入产品资料",
-      actionHref: latestSourceSnapshot
-        ? undefined
-        : `/products/${encodeURIComponent(productId)}?tab=materials`
+      actionLabel: sourceSnapshotReady ? undefined : "补充正式产品资料",
+      actionHref: sourceSnapshotReady ? undefined : `/products/${encodeURIComponent(productId)}?tab=materials`
     },
     {
       key: "live_search_provider",
       label: "联网研究 Provider",
       status: provider.status,
       detail: provider.status === "ready"
-        ? "OpenAI Responses API 与 web_search 已配置。"
-        : "任务链可以先建立，但执行到模型规划时会暂停等待配置。",
+        ? "智谱、豆包、千问事实搜索已配置；智谱负责统一语义综合。"
+        : "任务链可以先建立，但事实搜索会等待三家 Provider 配置完成。",
       actionLabel: provider.status === "ready" ? undefined : "查看待配置字段",
-      actionHref: provider.status === "ready" ? undefined : "/configuration",
+      actionHref: provider.status === "ready" ? undefined : "/settings?tab=models",
       missingConfig: provider.missingConfig
     }
   ];
@@ -204,7 +208,7 @@ export async function getGeoResearchWorkspace(productId: string) {
     latestSourceSnapshot,
     checks
   };
-  return { product, workspace, readiness };
+  return { product, productProfile, workspace, readiness };
 }
 
 export async function getGeoResearchRunDetails(input: { productId: string; runId: string }) {
@@ -466,14 +470,12 @@ export async function approveGeoBlueprint(input: {
   expectedVersion: number;
   idempotencyKey: string;
   actor: V5GovernanceActor;
-  approvalMode?: "human" | "system_policy";
 }) {
   assertText(input.productId, "productId", 64);
   assertText(input.blueprintVersionId, "blueprintVersionId", 64);
   assertText(input.idempotencyKey, "idempotencyKey", 128);
   assertActor(input.actor);
-  const isSystemPolicy = input.approvalMode === "system_policy" && ["system", "scheduler"].includes(input.actor.actorType);
-  if (input.actor.actorType !== "human" && !isSystemPolicy) {
+  if (input.actor.actorType !== "human") {
     throw new V5GovernanceServiceError(
       "human_approval_required",
       "GEO 蓝图必须由人工批准，Agent 不能代替批准。",
@@ -481,7 +483,7 @@ export async function approveGeoBlueprint(input: {
     );
   }
   const allowedRoles = new Set(["content_growth", "knowledge_manager", "workbench_operator", "developer_admin"]);
-  if (!isSystemPolicy && !allowedRoles.has(input.actor.actorRole)) {
+  if (!allowedRoles.has(input.actor.actorRole)) {
     throw new V5GovernanceServiceError(
       "forbidden",
       "当前角色无权批准 GEO 蓝图。",
@@ -498,44 +500,54 @@ export async function approveGeoBlueprint(input: {
   return { ...write, workspace };
 }
 
-export async function runAutomaticGeoResearchOrchestration(input: { actor: V5GovernanceActor }) {
+export async function runAutomaticGeoResearchOrchestration(input: { actor: V5GovernanceActor; productIds?: string[] }) {
   assertActor(input.actor);
   if (!["system", "scheduler"].includes(input.actor.actorType)) {
     throw new V5GovernanceServiceError("system_policy_actor_required", "自动 GEO 调研必须由系统策略执行器发起。", 403);
   }
   const { listProducts } = await import("./product-registry-service");
-  const products = await listProducts();
+  const productFilter = new Set((input.productIds || []).map((item) => item.trim()).filter(Boolean));
+  const products = (await listProducts()).filter((product) => !productFilter.size || productFilter.has(product.productId));
   const results: Array<{ productId: string; status: string; detail?: string }> = [];
   for (const product of products) {
     let state = await getGeoResearchWorkspace(product.productId);
     if (!state.workspace) {
-      await createGeoResearchProjectForProduct({
+      const projectRequest = {
         productId: product.productId,
         expressionFocus: `围绕 ${product.displayName} 的真实用户问题、适用场景、选型依据与可信产品事实建立 GEO 可见性。`,
         forbiddenFocus: ["不得编造产品能力、客户案例或未经资料支持的结论"],
         researchMarkets: ["CN"],
         languages: ["zh-CN"],
-        targetChannels: ["wechat", "official_website", "ai_frontend"],
-        idempotencyKey: `auto-geo-project:${product.productId}`,
+        targetChannels: ["wechat", "official_website", "ai_frontend"]
+      };
+      await createGeoResearchProjectForProduct({
+        ...projectRequest,
+        idempotencyKey: `auto-geo-project:${product.productId}:${hashV5GovernancePayload(projectRequest).slice(0, 16)}`,
         actor: input.actor
       });
       state = await getGeoResearchWorkspace(product.productId);
     }
     const blueprint = state.workspace?.currentBlueprint;
     if (blueprint?.status === "pending_review") {
-      await approveGeoBlueprint({
+      results.push({
         productId: product.productId,
-        blueprintVersionId: blueprint.blueprintVersionId,
-        expectedVersion: blueprint.rowVersion,
-        idempotencyKey: `auto-blueprint-policy:${blueprint.blueprintVersionId}:${blueprint.rowVersion}`,
-        actor: input.actor,
-        approvalMode: "system_policy"
+        status: "research_synthesis_ready",
+        detail: "GEO 调研综合稿已通过机器门禁，等待编译产品 GEO 策略包"
       });
-      results.push({ productId: product.productId, status: "blueprint_approved", detail: "联网证据完整，系统策略门禁已通过" });
       continue;
     }
     const openRun = state.workspace?.latestRun && !["completed", "failed", "cancelled"].includes(state.workspace.latestRun.status);
-    if (openRun) {
+    const latestSnapshotHash = state.readiness.latestSourceSnapshot?.snapshotHash;
+    if (openRun && latestSnapshotHash
+      && state.workspace!.latestRun!.inputSourceSnapshotHash !== latestSnapshotHash) {
+      await cancelStaleGeoResearchRunRecord({
+        runId: state.workspace!.latestRun!.runId,
+        productId: product.productId,
+        replacementSourceSnapshotHash: latestSnapshotHash,
+        actor: input.actor
+      });
+      state = await getGeoResearchWorkspace(product.productId);
+    } else if (openRun) {
       results.push({ productId: product.productId, status: "running" });
       continue;
     }
@@ -545,7 +557,18 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
     }
     const latestRun = state.workspace.latestRun;
     const recent = latestRun && Date.now() - Date.parse(latestRun.updatedAt) < 30 * 24 * 60 * 60 * 1000;
-    if (recent && blueprint?.status === "approved") {
+    const failedAgainstCurrentSnapshot = recent
+      && latestRun.status === "failed"
+      && latestRun.inputSourceSnapshotHash === state.readiness.latestSourceSnapshot?.snapshotHash;
+    if (failedAgainstCurrentSnapshot) {
+      results.push({
+        productId: product.productId,
+        status: "requires_attention",
+        detail: "当前资料快照上的 GEO 调研已失败；等待人工检查或授权任务重试，不自动创建重复 run"
+      });
+      continue;
+    }
+    if (recent && blueprint && ["pending_review", "approved"].includes(blueprint.status)) {
       results.push({ productId: product.productId, status: "monitoring", detail: "本轮调研在 30 天监控周期内" });
       continue;
     }

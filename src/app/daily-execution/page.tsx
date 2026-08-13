@@ -6,6 +6,7 @@ import { MarkdownArticle } from "@/components/MarkdownArticle";
 import { PageHeader } from "@/components/PageHeader";
 import { PublishStatusTag } from "@/components/PublishStatusTag";
 import type { BatchQueueItem, DailyExecutionItem, ProductionMatrixTask, PublishStatus } from "@/lib/v5/monthly-workspace-contracts";
+import { classifyPublishResponsibility } from "@/lib/v5/responsibility";
 import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
 import styles from "./daily-execution.module.css";
 
@@ -71,13 +72,16 @@ function toPublishStatus(item: BatchQueueItem): PublishStatus {
   return "waiting";
 }
 
+// Phase 0: 修正责任映射 — system_recovering 不再映射为"失败"
+// system_recovering → 系统自动处理中（等待），不告警用户
+// awaiting_material → 等待外部结果（等待），不告警用户
 function toProductionPublishStatus(item: ProductionMatrixTask): PublishStatus {
   if (item.status === "published") return "published";
   if (item.failureReason) return "failed";
   if (item.status === "scheduled") return "scheduled";
   if (item.status === "generating") return "publishing";
-  if (item.status === "system_recovering") return "failed";
-  if (item.status === "awaiting_material") return "manual_takeover";
+  if (item.status === "system_recovering") return "waiting";
+  if (item.status === "awaiting_material") return "waiting";
   return "waiting";
 }
 
@@ -88,6 +92,13 @@ function sortByExecutionTime(left: DailyExecutionItem, right: DailyExecutionItem
 function shortTitle(title: string) {
   return title.length > 42 ? `${title.slice(0, 42)}...` : title;
 }
+
+const directPlatformByChannel: Record<string, "wechat" | "csdn" | "juejin" | "zhihu" | undefined> = {
+  wechat: "wechat",
+  csdn: "csdn",
+  juejin: "juejin",
+  zhihu_toutiao_general: "zhihu"
+};
 
 export default function DailyExecutionPage() {
   const [messageApi, messageContext] = message.useMessage();
@@ -133,7 +144,12 @@ export default function DailyExecutionPage() {
       .filter((item): item is DailyExecutionItem => item !== null);
   }, [dates, workspace?.batchQueueItems, workspace?.productionTasks, workspace?.rulePackages]);
   const dateItems = dailyExecutionItems.filter((item) => item.dateKey === dateKey);
-  const attentionItems = dateItems.filter((item) => item.status === "failed" || item.status === "manual_takeover").sort(sortByExecutionTime);
+  const attentionItems = dateItems.filter((item) =>
+    classifyPublishResponsibility(
+      item.status === "manual_takeover" ? "manual_takeover_required" : item.status,
+      item.status === "failed" ? 3 : 0
+    ).userActionRequired
+  ).sort(sortByExecutionTime);
   const autoItems = dateItems.filter((item) => item.status === "scheduled" || item.status === "waiting" || item.status === "publishing").sort(sortByExecutionTime);
   const publishedItems = dateItems.filter((item) => item.status === "published").sort(sortByExecutionTime);
   const activeDate = dates[dateKey];
@@ -204,6 +220,32 @@ export default function DailyExecutionPage() {
     }
   }
 
+  async function dispatchApprovedPublishJob(item: BatchQueueItem) {
+    const platform = directPlatformByChannel[item.channel];
+    if (!item.draftId || !platform) {
+      messageApi.error("缺少正式正文版本或渠道适配，不能进入自动发布队列。");
+      return;
+    }
+    try {
+      const response = await fetch(`/api/v5/content-tasks/${encodeURIComponent(item.matrixItemId)}/publish-job`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          draftId: item.draftId,
+          platform,
+          scheduledAt: item.scheduleDate && item.scheduleTime ? `${item.scheduleDate}T${item.scheduleTime}:00+08:00` : undefined,
+          dispatch: true
+        })
+      });
+      const body = await response.json() as { ok?: boolean; message?: string };
+      if (!response.ok || !body.ok) throw new Error(body.message || "发布任务创建失败。");
+      messageApi.success("已进入幂等发布队列，系统将继续验证并回填公开 URL。");
+      await refresh(workspace?.month);
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "发布任务创建失败。");
+    }
+  }
+
   return (
     <>
       {messageContext}
@@ -267,6 +309,7 @@ export default function DailyExecutionPage() {
                     </div>
                     <Space wrap>
                       <Button size="small" onClick={() => void openPreview(record.id)}>看正文</Button>
+                      {item?.draftId ? <Button size="small" onClick={() => void dispatchApprovedPublishJob(item)}>重新进入自动发布</Button> : null}
                       {item ? <Button size="small" type="primary" onClick={() => {
                         setSelectedPublishItem(item);
                         setPublishStatus("published");

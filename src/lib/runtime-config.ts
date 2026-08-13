@@ -186,6 +186,13 @@ export function getRuntimeConfigStatus() {
       optionalEnv: ["DOUBAO_BASE_URL"]
     }),
     createCapability({
+      key: "zhipu",
+      label: "智谱 / GLM",
+      purpose: "GEO 语义编排与内容生成",
+      requiredEnv: ["GEO_RESEARCH_ZHIPU_API_KEY", "GEO_RESEARCH_ZHIPU_MODEL"],
+      optionalEnv: ["GEO_RESEARCH_ZHIPU_BASE_URL"]
+    }),
+    createCapability({
       key: "qwen_embedding",
       label: "Qwen Embedding",
       purpose: "知识库真实向量写入",

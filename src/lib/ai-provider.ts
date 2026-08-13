@@ -1,6 +1,6 @@
 import { getRuntimeConfigStatus } from "./runtime-config";
 
-export type AiProviderKey = "qwen" | "deepseek" | "doubao";
+export type AiProviderKey = "qwen" | "deepseek" | "doubao" | "zhipu";
 
 export interface AiProviderRequest {
   provider: AiProviderKey;
@@ -38,6 +38,12 @@ const providerEnvMap: Record<AiProviderKey, { baseUrl: string; apiKey: string; m
     apiKey: "DOUBAO_API_KEY",
     model: "DOUBAO_MODEL",
     defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3"
+  },
+  zhipu: {
+    baseUrl: "GEO_RESEARCH_ZHIPU_BASE_URL",
+    apiKey: "GEO_RESEARCH_ZHIPU_API_KEY",
+    model: "GEO_RESEARCH_ZHIPU_MODEL",
+    defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4"
   }
 };
 

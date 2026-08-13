@@ -26,7 +26,8 @@ if (!hasV5GovernanceDatabaseConfig()) {
           actorRole: "knowledge_production_worker",
           actorType: "system",
           auditReason: "System automatically claimed a ready_for_generation task"
-        }
+        },
+        productionMode: "batch"
       });
       results.push({ taskId: task.taskId, status: "completed", draftVersionId: result.draftVersion.draftVersionId });
     } catch (error) {

@@ -233,6 +233,7 @@ export interface BatchQueueItem {
   primaryDistilledTerm: string;
   priority: "P0" | "P1" | "P2";
   contentType: string;
+  productId: string;
   product: string;
   rulePackageVersion: string;
   channel: string;

@@ -7,6 +7,8 @@ import type { CapturedAnswer, FrontendCaptureArtifact, ObservationGap, Observati
 import { CitationEvidenceDrawer } from "./CitationEvidenceDrawer";
 import { ObservationGapReviewDrawer } from "./ObservationGapReviewDrawer";
 
+const platformLabels = { doubao: "豆包", deepseek: "DeepSeek", qwen: "千问", chatgpt: "ChatGPT" } as const;
+
 export function CapturedAnswerWorkspace({ answers, artifacts, gaps, reviews, selectedAnswerId, onSelectAnswer, onAnalyzeGaps, onReviewGaps }: {
   answers: CapturedAnswer[];
   artifacts: FrontendCaptureArtifact[];
@@ -67,11 +69,11 @@ export function CapturedAnswerWorkspace({ answers, artifacts, gaps, reviews, sel
         <Input prefix={<SearchOutlined />} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索问题" allowClear />
         <List dataSource={filtered} renderItem={(answer) => {
           const gapCount = gaps.filter((item) => item.answerId === answer.id).length;
-          return <button className={`captured-answer-list-item ${selected?.id === answer.id ? "is-active" : ""}`} onClick={() => onSelectAnswer(answer.id)}><strong>{answer.questionText}</strong><span>ChatGPT · {answer.targetEntityMentioned ? "已提及目标实体" : "未提及目标实体"}</span><span>引用 {answer.citations.length} · {gapCount ? "已有缺口分析" : "待分析"}</span></button>;
+          return <button className={`captured-answer-list-item ${selected?.id === answer.id ? "is-active" : ""}`} onClick={() => onSelectAnswer(answer.id)}><strong>{answer.questionText}</strong><span>{platformLabels[answer.platform] || answer.platform} · {answer.targetEntityMentioned ? "已提及目标实体" : "未提及目标实体"}</span><span>引用 {answer.citations.length} · {gapCount ? "已有缺口分析" : "待分析"}</span></button>;
         }} />
       </aside>
       <section className="captured-answer-detail">
-        {selected ? <><div className="captured-answer-heading"><div><h2>{selected.questionText}</h2><Space wrap><Tag color="blue">ChatGPT</Tag><Tag color="green" icon={<FileProtectOutlined />}>原始包已校验</Tag><span>{new Date(selected.createdAt).toLocaleString("zh-CN", { hour12: false })}</span></Space></div><Button type="primary" loading={busy} onClick={async () => { setBusy(true); try { if (!answerGaps.length) await onAnalyzeGaps(selected); setReviewOpen(true); } finally { setBusy(false); } }}>开始人工复核</Button></div><Tabs items={items} /></> : null}
+        {selected ? <><div className="captured-answer-heading"><div><h2>{selected.questionText}</h2><Space wrap><Tag color="blue">{platformLabels[selected.platform] || selected.platform}</Tag><Tag color="green" icon={<FileProtectOutlined />}>原始包已校验</Tag><span>{new Date(selected.createdAt).toLocaleString("zh-CN", { hour12: false })}</span></Space></div><Button type="primary" loading={busy} onClick={async () => { setBusy(true); try { if (!answerGaps.length) await onAnalyzeGaps(selected); setReviewOpen(true); } finally { setBusy(false); } }}>开始人工复核</Button></div><Tabs items={items} /></> : null}
       </section>
       <CitationEvidenceDrawer citation={citation} open={Boolean(citation)} onClose={() => setCitationId(undefined)} />
       <ObservationGapReviewDrawer answer={selected} gaps={answerGaps} open={reviewOpen} submitting={busy} onClose={() => setReviewOpen(false)} onConfirm={async (gapIds, destinations, note) => { if (!selected) return; setBusy(true); try { await onReviewGaps(selected, gapIds, destinations, note); setReviewOpen(false); } finally { setBusy(false); } }} />

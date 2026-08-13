@@ -1,7 +1,7 @@
 "use client";
 
-import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Space, Tabs, message } from "antd";
+import { ArrowLeftOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Alert, Button, Space, message } from "antd";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -46,12 +46,9 @@ export default function FreeProductionTasksPage() {
   return (
     <>
       {contextHolder}
-      <PageHeader title="公众号生产任务与发布" subtitle="查看公众号单篇正文的生成与发布状态；失败恢复不会改动已经成功的结果。" actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Link href="/free-production"><Button type="primary" icon={<PlusOutlined />}>选择表达</Button></Link></Space>} />
+      <PageHeader title="微信公众号内容生产 · 任务与发布" subtitle="查看公众号单篇正文的生成与发布状态；失败恢复不会改动已经成功的结果。" actions={<Space wrap><Link href="/free-production"><Button icon={<ArrowLeftOutlined />}>返回内容生产</Button></Link><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Link href="/free-production"><Button type="primary" icon={<PlusOutlined />}>选择文章类型</Button></Link></Space>} />
       {failedCount ? <Alert className="free-task-alert" showIcon type="warning" message={`${failedCount} 个批次需要处理`} description="打开批次查看失败原因和下一步，重试只作用于失败任务。" /> : null}
-      <Tabs className="free-production-tabs" activeKey="tasks" items={[
-        { key: "expressions", label: <Link href="/free-production">表达预设</Link>, children: null },
-        { key: "tasks", label: <Link href="/free-production/tasks">任务与发布</Link>, children: <FreeProductionTaskTable data={batches} loading={loading} onPreview={(batch) => router.push(`/free-production?batch=${encodeURIComponent(batch.id)}`)} onRetry={(batch) => void retry(batch)} /> }
-      ]} />
+      <FreeProductionTaskTable data={batches} loading={loading} onPreview={(batch) => router.push(`/free-production?batch=${encodeURIComponent(batch.id)}`)} onRetry={(batch) => void retry(batch)} />
     </>
   );
 }

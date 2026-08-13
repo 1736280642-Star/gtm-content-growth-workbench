@@ -7,6 +7,8 @@ type BackfillStatus = "published" | "failed" | "manual_takeover";
 
 function toBackfillStatus(schedule: PublishSchedule): BackfillStatus | undefined {
   if (["public_observed", "stable_published", "published_verified"].includes(schedule.status) && schedule.publicUrl) return "published";
+  // A later removal is a liveness failure, not proof that formal publication never happened.
+  if (schedule.status === "removed_after_publish" && schedule.publicUrl && schedule.firstPublicObservedAt) return "published";
   if (["platform_rejected", "removed_after_publish", "verification_timeout", "failed"].includes(schedule.status)) return "failed";
   if (["risk_blocked", "auth_expired", "manual_takeover_required", "pending_config"].includes(schedule.status)) return "manual_takeover";
   return undefined;
@@ -55,7 +57,15 @@ export async function backfillPublishJob(schedule: PublishSchedule) {
       status,
       publicUrl: schedule.publicUrl,
       externalContentId: schedule.platformArticleId || schedule.externalTaskId,
-      failureReason: schedule.failureReason
+      failureReason: schedule.failureReason,
+      publishScheduleId: schedule.id,
+      publishedAt: schedule.publishedAt,
+      urlStatus: schedule.urlStatus,
+      firstPublicObservedAt: schedule.firstPublicObservedAt,
+      lastVerifiedAt: schedule.lastVerifiedAt,
+      stablePublishedAt: schedule.stablePublishedAt,
+      removedAt: schedule.removedAt,
+      verificationCount: schedule.verificationCount
     });
   } catch (error) {
     return { synced: false, reason: error instanceof Error ? error.message : "publish_backfill_failed" };

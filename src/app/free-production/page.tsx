@@ -1,7 +1,7 @@
 "use client";
 
-import { PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
-import { Alert, Button, Space, Spin, Tabs, message } from "antd";
+import { PictureOutlined, PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
+import { Alert, Button, Space, Spin, message } from "antd";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CreateExpressionDrawer } from "@/components/free-production/CreateExpressionDrawer";
@@ -11,6 +11,7 @@ import { ProductionInputPanel } from "@/components/free-production/ProductionInp
 import type { SupplementValue } from "@/components/free-production/InlineSupplementField";
 import { PageHeader } from "@/components/PageHeader";
 import type { CreateFreeExpressionInput, CreateFreeProductionInput, FreeContentExpressionTypeSummary, FreeProductionBatch, FreeProductionCatalog } from "@/lib/v5/free-production-contracts";
+import type { WechatRenderableTemplateId } from "@/lib/v5/wechat-presentation-contracts";
 
 function key(prefix: string) { return `${prefix}-${crypto.randomUUID()}`; }
 async function request<T>(path: string, options?: RequestInit) {
@@ -29,7 +30,7 @@ export default function FreeProductionPage() {
   const [selectedType, setSelectedType] = useState<FreeContentExpressionTypeSummary>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [savingExpression, setSavingExpression] = useState(false);
-  const [working, setWorking] = useState<"supplements" | "publish" | "retry">();
+  const [working, setWorking] = useState<"supplements" | "visual" | "layout" | "content" | "publish" | "retry">();
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -93,6 +94,37 @@ export default function FreeProductionPage() {
     finally { setWorking(undefined); }
   }
 
+  async function bindVisual(artifactId: string, suggestionId: string, mediaAssetId?: string) {
+    if (!batch) return;
+    setWorking("visual");
+    try {
+      const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/visual-assets`, { method: "PATCH", headers: { "content-type": "application/json", "x-idempotency-key": key("bind-visual") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: mediaAssetId ? "从产品素材图库选择正文配图并更新公众号排版" : "移除正文配图并恢复配图建议", artifactId, suggestionId, mediaAssetId }) });
+      setBatch(data);
+    } finally { setWorking(undefined); }
+  }
+
+  async function changeLayout(artifactId: string, templateId: WechatRenderableTemplateId) {
+    if (!batch) return;
+    setWorking("layout");
+    try {
+      const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/layout`, { method: "PATCH", headers: { "content-type": "application/json", "x-idempotency-key": key("layout") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "在正文与排版页切换公众号排版风格", artifactId, templateId }) });
+      setBatch(data);
+      messageApi.success("排版风格已更新，正式发布 HTML 已同步重建。");
+    } catch (error) { messageApi.error(error instanceof Error ? error.message : "排版风格更新失败。"); }
+    finally { setWorking(undefined); }
+  }
+
+  async function editContent(artifactId: string, input: { title: string; summary: string; articleBody: string }) {
+    if (!batch) return;
+    setWorking("content");
+    try {
+      const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/content`, { method: "PATCH", headers: { "content-type": "application/json", "x-idempotency-key": key("content") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "在正文与排版页人工编辑公众号文字", artifactId, ...input }) });
+      setBatch(data);
+      messageApi.success("正文已保存，排版预览和正式发布 HTML 已同步更新。");
+    } catch (error) { messageApi.error(error instanceof Error ? error.message : "正文保存失败。"); throw error; }
+    finally { setWorking(undefined); }
+  }
+
   async function retry() {
     if (!batch) return;
     const previousBatch = batch;
@@ -106,8 +138,8 @@ export default function FreeProductionPage() {
   return (
     <>
       {contextHolder}
-      <PageHeader title="公众号生产中心" subtitle="保留 V5 单篇生产完整链路：选择表达、补齐资料、生成复检，再确认进入公众号发布队列。" actions={!batch ? <Space><Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>新建类型</Button><Link href="/free-production/tasks"><Button icon={<UnorderedListOutlined />}>任务与发布</Button></Link></Space> : undefined} />
-      {!batch ? <Tabs className="free-production-tabs" activeKey="types" items={[{ key: "types", label: "内容类型", children: loading && !catalog ? <div className="v5-loading-row"><Spin /><span>正在读取内容类型</span></div> : catalog ? selectedType ? <ProductionInputPanel profile={selectedType} catalog={catalog} loading={usingId === selectedType.activeVersion?.freeContentExpressionTypeVersionId} onBack={() => setSelectedType(undefined)} onGenerate={(values) => void generateFromExpression(selectedType, values)} /> : <><div className="expression-list-intro"><div><span className="v5-kicker">新建正文</span><h2>选择内容类型</h2></div><p>不同类型会打开对应的资料入口。</p></div><ExpressionPresetList expressions={catalog.expressionTypes} onUse={setSelectedType} /></> : <Alert showIcon type="error" message="内容类型读取失败" /> }, { key: "tasks", label: <Link href="/free-production/tasks">任务与发布</Link>, children: null }]} /> : <GenerationResultWorkspace batch={batch} working={working} onBack={() => { setBatch(undefined); setSelectedType(undefined); window.history.replaceState(null, "", "/free-production"); }} onRetry={() => void retry()} onSupplements={(values) => void supplements(values)} onPublish={() => void publish()} />}
+      <PageHeader title="微信公众号内容生产" subtitle="独立完成单篇公众号内容：选择文章类型、补齐资料、生成与复检，确认后进入公众号发布队列。" actions={!batch ? <Space wrap><Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>新建类型</Button><Link href="/free-production/assets"><Button icon={<PictureOutlined />}>素材图库</Button></Link><Link href="/free-production/tasks"><Button icon={<UnorderedListOutlined />}>任务与发布</Button></Link></Space> : undefined} />
+      {!batch ? loading && !catalog ? <div className="v5-loading-row"><Spin /><span>正在读取内容类型</span></div> : catalog ? selectedType ? <ProductionInputPanel profile={selectedType} catalog={catalog} loading={usingId === selectedType.activeVersion?.freeContentExpressionTypeVersionId} onBack={() => setSelectedType(undefined)} onGenerate={(values) => void generateFromExpression(selectedType, values)} /> : <><div className="expression-list-intro"><div><span className="v5-kicker">新建正文</span><h2>选择内容类型</h2></div><p>不同类型会打开对应的资料入口。</p></div><ExpressionPresetList expressions={catalog.expressionTypes} onUse={setSelectedType} /></> : <Alert showIcon type="error" message="内容类型读取失败" /> : <GenerationResultWorkspace batch={batch} working={working} onBack={() => { setBatch(undefined); setSelectedType(undefined); window.history.replaceState(null, "", "/free-production"); }} onRetry={() => void retry()} onSupplements={(values) => void supplements(values)} onChangeLayout={changeLayout} onEditContent={editContent} onBindVisual={bindVisual} onPublish={() => void publish()} />}
       {catalog ? <CreateExpressionDrawer open={drawerOpen} catalog={catalog} saving={savingExpression} onClose={() => setDrawerOpen(false)} onSubmit={(input) => void createExpression(input)} /> : null}
     </>
   );

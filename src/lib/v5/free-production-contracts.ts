@@ -1,3 +1,5 @@
+import type { WechatRenderableTemplateId } from "./wechat-presentation-contracts";
+
 export const FREE_PRODUCTION_CHANNELS = ["official_website", "zhihu", "wechat_official_account"] as const;
 export type FreeProductionChannel = (typeof FREE_PRODUCTION_CHANNELS)[number];
 
@@ -255,7 +257,7 @@ export interface ContentDraftArtifact {
   sourceExcerpts: FreeProductionSourceExcerpt[];
   sourceReview?: { artifactId: string; reviewedBy: string; reviewedAt: string };
   wechatPresentation?: {
-    templateId: "joto-official-v1";
+    templateId: WechatRenderableTemplateId;
     previewHtml: string;
     publishHtml: string;
     htmlHash: string;

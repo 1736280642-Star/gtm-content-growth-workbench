@@ -14,6 +14,7 @@ import type {
   GeoResearchWorkspace
 } from "./geo-research-contracts";
 import type { GeoResearchProviderResult } from "./geo-research-provider";
+import { evaluateGeoSourceSnapshotQuality, type GeoSnapshotSourceMetadata } from "./geo-source-quality";
 import {
   getV5GovernancePool,
   hashV5GovernancePayload,
@@ -50,6 +51,29 @@ function iso(value: unknown) {
 
 function optionalIso(value: unknown) {
   return value ? iso(value) : undefined;
+}
+
+const GEO_SOURCE_QUALITY_QUERY = `SELECT ssi.source_id, ssi.source_revision_id,
+          sa.title, sa.canonical_url, sa.file_name, sa.document_type, sa.authority_level,
+          sa.visibility, sa.lifecycle_status, sa.status, sa.safety_status
+   FROM source_snapshot_item ssi
+   LEFT JOIN source_asset sa ON sa.id = ssi.source_id
+   WHERE ssi.source_snapshot_id = ?`;
+
+function mapSnapshotSourceMetadata(rows: RowDataPacket[]): GeoSnapshotSourceMetadata[] {
+  return rows.map((row) => ({
+    sourceId: String(row.source_id),
+    sourceRevisionId: String(row.source_revision_id),
+    title: row.title ? String(row.title) : undefined,
+    canonicalUrl: row.canonical_url ? String(row.canonical_url) : undefined,
+    fileName: row.file_name ? String(row.file_name) : undefined,
+    documentType: row.document_type ? String(row.document_type) : "",
+    authorityLevel: row.authority_level ? String(row.authority_level) : "",
+    visibility: row.visibility ? String(row.visibility) : "",
+    lifecycleStatus: row.lifecycle_status ? String(row.lifecycle_status) : "",
+    status: row.status ? String(row.status) : "",
+    safetyStatus: row.safety_status ? String(row.safety_status) : ""
+  }));
 }
 
 function mapProject(row: RowDataPacket): GeoResearchProject {
@@ -440,13 +464,21 @@ export async function readLatestGeoSourceSnapshot(productId: string) {
   );
   const row = rows[0];
   if (!row) return undefined;
+  const sourceIds = parseV5Json<unknown[]>(row.source_ids, []);
+  const sourceRevisionIds = parseV5Json<unknown[]>(row.source_revision_ids, []);
+  const [sourceRows] = await getV5GovernancePool().query<RowDataPacket[]>(GEO_SOURCE_QUALITY_QUERY, [String(row.id)]);
   return {
     snapshotId: String(row.id),
     snapshotHash: String(row.snapshot_hash),
-    sourceCount: parseV5Json<unknown[]>(row.source_ids, []).length,
-    revisionCount: parseV5Json<unknown[]>(row.source_revision_ids, []).length,
+    sourceCount: sourceIds.length,
+    revisionCount: sourceRevisionIds.length,
     approvedClaimCount: parseV5Json<unknown[]>(row.approved_claim_ids, []).length,
-    createdAt: iso(row.created_at)
+    createdAt: iso(row.created_at),
+    quality: evaluateGeoSourceSnapshotQuality({
+      declaredSourceCount: sourceIds.length,
+      declaredRevisionCount: sourceRevisionIds.length,
+      sources: mapSnapshotSourceMetadata(sourceRows)
+    })
   };
 }
 
@@ -590,7 +622,7 @@ export async function createGeoResearchRunRecord(input: {
     }
 
     const [snapshotRows] = await connection.query<RowDataPacket[]>(
-      `SELECT id, snapshot_hash FROM source_snapshot
+      `SELECT id, snapshot_hash, source_ids, source_revision_ids FROM source_snapshot
        WHERE product_id = ? ORDER BY created_at DESC LIMIT 1`,
       [input.productId]
     );
@@ -601,6 +633,20 @@ export async function createGeoResearchRunRecord(input: {
         "尚未形成可追溯的产品资料快照，不能启动联网调研。",
         409,
         "先上传产品资料或绑定知识库，完成资料导入与快照生成。"
+      );
+    }
+    const [sourceRows] = await connection.query<RowDataPacket[]>(GEO_SOURCE_QUALITY_QUERY, [String(snapshot.id)]);
+    const sourceQuality = evaluateGeoSourceSnapshotQuality({
+      declaredSourceCount: parseV5Json<unknown[]>(snapshot.source_ids, []).length,
+      declaredRevisionCount: parseV5Json<unknown[]>(snapshot.source_revision_ids, []).length,
+      sources: mapSnapshotSourceMetadata(sourceRows)
+    });
+    if (sourceQuality.status === "blocked") {
+      throw new V5GovernanceRepositoryError(
+        "research_source_quality_blocked",
+        `当前产品资料快照未通过正式来源检查：${sourceQuality.issues.join("；")}`,
+        409,
+        "移除测试/占位资料，并补充具有公开原始网址的 A1/A2 正式产品来源后重新生成快照。"
       );
     }
 
@@ -919,11 +965,19 @@ export async function persistGeoResearchProviderResult(input: {
           source.title || null,
           source.publisher || null,
           source.query || null,
-          null,
+          source.snapshotHash || null,
           stringifyV5Json({
             responseId: input.result.responseId,
             taskId: input.taskId,
-            taskType
+            taskType,
+            providerKeys: source.providerKeys || [],
+            sourceType: source.sourceType,
+            authority: source.authority,
+            publishedAt: source.publishedAt,
+            retrievedAt: source.retrievedAt,
+            excerpt: source.excerpt,
+            providerRunIds: source.providerRunIds || [],
+            rawResponseRefs: source.rawResponseRefs || []
           }),
           artifactId
         ]
@@ -959,7 +1013,7 @@ export async function persistGeoResearchProviderResult(input: {
       await connection.query(
         `INSERT INTO geo_research_finding
           (id, run_id, finding_type, title, summary, evidence_ids, confidence, review_status, analyzer_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'candidate', 'geo-research-provider-v1')`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'candidate', 'geo-multi-search-zhipu-synthesis-v2')`,
         [
           `geo-finding-${randomUUID()}`,
           runId,
@@ -1034,10 +1088,13 @@ export async function persistGeoResearchProviderResult(input: {
         "monthlyStrategyInput",
         "retestBaseline"
       ];
-      if (requiredBlueprintFields.some((field) => Object.keys(asObject(structured[field])).length === 0)) {
+      const missingBlueprintFields = requiredBlueprintFields.filter(
+        (field) => Object.keys(asObject(structured[field])).length === 0
+      );
+      if (missingBlueprintFields.length > 0) {
         throw new V5GovernanceRepositoryError(
           "blueprint_contract_invalid",
-          "GEO 蓝图缺少必需结构，不能进入人工评审。",
+          `GEO 蓝图缺少必需结构：${missingBlueprintFields.join(", ")}，不能进入人工评审。`,
           502
         );
       }
@@ -1346,6 +1403,144 @@ export async function failGeoResearchTaskRecord(input: {
       correlationId: String(row.run_id)
     });
     return { exhausted };
+  });
+}
+
+export async function retryFailedGeoResearchTaskRecord(input: {
+  runId: string;
+  productId: string;
+  taskType: GeoResearchTaskType;
+  additionalAttempts?: number;
+  actor: V5GovernanceActor;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT t.*, r.status AS run_status, r.project_id, r.input_source_snapshot_hash,
+              (SELECT snapshot_hash FROM source_snapshot WHERE product_id = r.product_id ORDER BY created_at DESC LIMIT 1) AS latest_snapshot_hash
+       FROM geo_research_task t
+       JOIN geo_research_run r ON r.id = t.run_id
+       WHERE t.run_id = ? AND r.product_id = ? AND t.task_type = ?
+       LIMIT 1 FOR UPDATE`,
+      [input.runId, input.productId, input.taskType]
+    );
+    const row = rows[0];
+    if (!row) throw new V5GovernanceRepositoryError("research_task_not_found", "GEO 调研失败任务不存在。", 404);
+    if (String(row.status) !== "failed" || String(row.run_status) !== "failed") {
+      throw new V5GovernanceRepositoryError("research_task_not_retryable", "只有已失败 run 中的失败任务可以人工授权重试。", 409);
+    }
+    if (String(row.input_source_snapshot_hash) !== String(row.latest_snapshot_hash || "")) {
+      throw new V5GovernanceRepositoryError("research_source_snapshot_stale", "失败 run 绑定的资料快照已过期，请创建新 run。", 409);
+    }
+    const additionalAttempts = Math.max(1, Math.min(3, Math.floor(input.additionalAttempts || 1)));
+    await connection.query(
+      `UPDATE geo_research_task
+       SET status = 'queued', max_attempts = max_attempts + ?, failure_code = NULL, failure_message = NULL,
+           lease_owner = NULL, lease_expires_at = NULL, available_at = NOW()
+       WHERE id = ?`,
+      [additionalAttempts, String(row.id)]
+    );
+    await connection.query(
+      `UPDATE geo_research_run
+       SET status = 'running', failure_code = NULL, failure_message = NULL, completed_at = NULL, row_version = row_version + 1
+       WHERE id = ?`,
+      [input.runId]
+    );
+    await connection.query(
+      `UPDATE geo_research_project SET status = 'researching', row_version = row_version + 1 WHERE id = ?`,
+      [String(row.project_id)]
+    );
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "geo_research_task_retry_authorized",
+      objectType: "geo_research_task",
+      objectId: String(row.id),
+      beforeSummary: {
+        runStatus: String(row.run_status),
+        taskStatus: String(row.status),
+        attempt: Number(row.attempt),
+        maxAttempts: Number(row.max_attempts),
+        failureCode: row.failure_code ? String(row.failure_code) : undefined
+      },
+      afterSummary: {
+        runStatus: "running",
+        taskStatus: "queued",
+        maxAttempts: Number(row.max_attempts) + additionalAttempts,
+        sourceSnapshotHash: String(row.input_source_snapshot_hash)
+      },
+      correlationId: input.runId
+    });
+    return {
+      runId: input.runId,
+      taskId: String(row.id),
+      taskType: input.taskType,
+      attempt: Number(row.attempt),
+      maxAttempts: Number(row.max_attempts) + additionalAttempts
+    };
+  });
+}
+
+export async function cancelStaleGeoResearchRunRecord(input: {
+  runId: string;
+  productId: string;
+  replacementSourceSnapshotHash: string;
+  actor: V5GovernanceActor;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, project_id, status, input_source_snapshot_hash, row_version
+       FROM geo_research_run
+       WHERE id = ? AND product_id = ?
+       LIMIT 1 FOR UPDATE`,
+      [input.runId, input.productId]
+    );
+    const row = rows[0];
+    if (!row) throw new V5GovernanceRepositoryError("research_run_not_found", "GEO 调研运行不存在。", 404);
+    const status = String(row.status);
+    if (["completed", "failed", "cancelled"].includes(status)) {
+      return { runId: input.runId, cancelled: false, status, replayed: true };
+    }
+    if (String(row.input_source_snapshot_hash) === input.replacementSourceSnapshotHash) {
+      throw new V5GovernanceRepositoryError(
+        "research_run_not_stale",
+        "当前 GEO 调研仍绑定最新资料快照，不能作为过期运行取消。",
+        409
+      );
+    }
+    await connection.query(
+      `UPDATE geo_research_task
+       SET status = 'cancelled', lease_owner = NULL, lease_expires_at = NULL,
+           failure_code = 'source_snapshot_superseded',
+           failure_message = '产品资料快照已更新，任务由新运行替代。'
+       WHERE run_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')`,
+      [input.runId]
+    );
+    await connection.query(
+      `UPDATE geo_research_run
+       SET status = 'cancelled', completed_at = NOW(),
+           failure_code = 'source_snapshot_superseded',
+           failure_message = '产品资料快照已更新，运行由新快照上的调研替代。',
+           row_version = row_version + 1
+       WHERE id = ?`,
+      [input.runId]
+    );
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "geo_research_run_superseded_by_source_snapshot",
+      objectType: "geo_research_run",
+      objectId: input.runId,
+      beforeSummary: {
+        status,
+        sourceSnapshotHash: String(row.input_source_snapshot_hash),
+        rowVersion: Number(row.row_version)
+      },
+      afterSummary: {
+        status: "cancelled",
+        replacementSourceSnapshotHash: input.replacementSourceSnapshotHash,
+        rowVersion: Number(row.row_version) + 1
+      },
+      correlationId: input.productId
+    });
+    return { runId: input.runId, cancelled: true, status: "cancelled", replayed: false };
   });
 }
 

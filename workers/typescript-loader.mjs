@@ -5,6 +5,11 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export async function resolve(specifier, context, nextResolve) {
+  // Next exposes this subpath for bundlers, while Node's strict ESM resolver in
+  // standalone workers needs the concrete file extension.
+  if (specifier === "next/server") {
+    return nextResolve("next/server.js", context);
+  }
   if (specifier.startsWith("@/")) {
     const base = path.resolve(root, "src", specifier.slice(2));
     for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {

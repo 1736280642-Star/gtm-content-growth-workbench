@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { V5AuthorityLevel, V5SourceLocator } from "../knowledge-governance-contracts";
 
-export const AUTOMATIC_KNOWLEDGE_POLICY_VERSION = "automatic-knowledge-policy@2";
-export const AUTOMATIC_CLAIM_EXTRACTOR_VERSION = "automatic-markdown-claim-extractor@1";
+export const AUTOMATIC_KNOWLEDGE_POLICY_VERSION = "automatic-knowledge-policy@4";
+export const AUTOMATIC_CLAIM_EXTRACTOR_VERSION = "automatic-markdown-claim-extractor@3";
 
 export interface AutomaticKnowledgeDocument {
   sourceId: string;
@@ -27,7 +27,7 @@ export interface AutomaticSourceRevision {
   supersedesRevisionId?: string;
 }
 
-export type AutomaticClaimStatus = "supported" | "conditional" | "superseded" | "disputed";
+export type AutomaticClaimStatus = "supported" | "conditional" | "superseded" | "disputed" | "rejected";
 
 export interface AutomaticKnowledgeClaim {
   claimId: string;
@@ -165,6 +165,53 @@ function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function claimDisplayText(value: string) {
+  return value
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[`*_>#]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function claimNoiseReasons(unit: MarkdownUnit, document: AutomaticKnowledgeDocument) {
+  const text = unit.text.trim();
+  const display = claimDisplayText(text);
+  const links = [...text.matchAll(/\[[^\]]*\]\(https?:\/\/[^)]+\)/gi)];
+  const outsideLinks = text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[[^\]]+\]\([^)]*\)/g, "")
+    .replace(/[`*_>#|]/g, "")
+    .trim();
+  const hasChinesePredicate = /(支持|提供|用于|能够|可以|采用|包含|覆盖|允许|需要|限制|适用|实现|帮助|接入|管理|生成|保持|具备|完成|建立|沉淀|规划|配置|执行|交付|优化|保障|连接|部署|运行|使用|服务)/.test(display);
+  const hasEnglishPredicate = /\b(?:is|are|was|were|has|have|had|support(?:s|ed|ing)?|provid(?:e|es|ed|ing)|allow(?:s|ed|ing)?|enable(?:s|d|ing)?|help(?:s|ed|ing)?|use(?:s|d|ing)?|need(?:s|ed|ing)?|include(?:s|d|ing)?|offer(?:s|ed|ing)?|design(?:s|ed|ing)?|build(?:s|ing)?|built|serve(?:s|d|ing)?|require(?:s|d|ing)?|work(?:s|ed|ing)?|upload(?:s|ed|ing)?|download(?:s|ed|ing)?|share(?:s|d|ing)?|ask(?:s|ed|ing)?|search(?:es|ed|ing)?|generate(?:s|d|ing)?|analy[sz](?:e|es|ed|ing)|transcrib(?:e|es|ed|ing)|identif(?:y|ies|ied|ying)|structure(?:s|d|ing)?|start(?:s|ed|ing)?|come|coming)\b/i.test(display);
+  const hasPredicate = hasChinesePredicate || hasEnglishPredicate;
+  const collapsedBoundaryCount = (display.match(/[a-z][A-Z]/g) || []).length;
+  const labelScanText = display.replace(/([a-z])([A-Z])/g, "$1 $2");
+  const labelMatches = labelScanText.match(/\b(?:product(?:\s+teams?)?|teams?|leadership|project\s+management|sales|marketing|operations|security|pricing|features?|solutions?|customers?|resources?|partners?|library|company|about|contact)\b/gi) || [];
+  const normalizedDisplay = normalizeText(display);
+  const normalizedProduct = normalizeText(document.productName);
+  const reasons: string[] = [];
+
+  if (/!\[[^\]]*\]\([^)]*\)/.test(text)) reasons.push("media_only");
+  if (links.length > 1) reasons.push("navigation_link_cluster");
+  if (links.length && outsideLinks.length < 8) reasons.push("link_only");
+  if (links.length && /^(预约|查看|进入|联系|了解|访问|返回|首页|Home|Contact\s+us)/i.test(display)) reasons.push("call_to_action");
+  if (/^\*\*[^*]{1,40}\*\*$/.test(text)) reasons.push("section_label");
+  if (/^\d{1,2}\s*[·.．-]\s*[A-Z][A-Z\s&×-]*$/i.test(display)) reasons.push("section_ordinal");
+  if (/^[A-Z0-9][A-Z0-9\s&×·._/-]{3,}$/.test(display) && /[A-Z]/.test(display)) reasons.push("uppercase_label");
+  if (/^(为什么|如何|什么是|哪些|是否|谁适合|怎么)/.test(display)) reasons.push("question_heading");
+  if ((display.match(/\s[·×|]\s/g) || []).length >= 2 && !hasPredicate) reasons.push("label_sequence");
+  if (normalizedDisplay && (normalizedDisplay === normalizedProduct || normalizedDisplay === "workbuddy" || normalizedDisplay === "joto")) reasons.push("entity_label_only");
+  if ((display.match(/\b(?:Name|Company|Email|Phone(?:\s+or\s+WeChat)?)\b/gi) || []).length >= 2) reasons.push("form_fields");
+  if ((display.match(/Home|Products|Solutions|Customers|Insights|Partner|Library/gi) || []).length >= 3) reasons.push("navigation_terms");
+  if (!hasPredicate && collapsedBoundaryCount > 0 && labelMatches.length >= 2) reasons.push("collapsed_label_sequence");
+  if (!hasPredicate && labelMatches.length >= 3 && !/[。！？.!?]/.test(display)) reasons.push("label_taxonomy_sequence");
+  if (/用得起来.*管得住.*看得见/.test(display)) reasons.push("marketing_slogan_chain");
+  if (display.length < 12 && !hasPredicate && !/[。！？.!?]/.test(display)) reasons.push("short_label");
+  return unique(reasons).map((reason) => `automatic_noise_filter:${reason}`);
+}
+
 function markdownUnits(markdown: string): MarkdownUnit[] {
   const normalized = markdown.replace(/\r\n/g, "\n");
   const lines = normalized.split("\n");
@@ -253,7 +300,8 @@ export function extractAutomaticClaims(document: AutomaticKnowledgeDocument, rev
   const units = markdownUnits(document.markdown);
   return units.map((unit): AutomaticKnowledgeClaim => {
     const subjectKey = inferSubject(unit.text, unit.subjectHint);
-    const limitations = claimConditions(unit, units);
+    const noiseReasons = claimNoiseReasons(unit, document);
+    const limitations = noiseReasons.length ? noiseReasons : claimConditions(unit, units);
     return {
       claimId: stableId("claim", `${revision.sourceRevisionId}:${unit.characterRange.join(":")}:${unit.text}`),
       productId: document.productId,
@@ -272,7 +320,7 @@ export function extractAutomaticClaims(document: AutomaticKnowledgeDocument, rev
       sourceUpdatedAt: document.sourceUpdatedAt,
       conditions: [],
       limitations,
-      status: limitations.length ? "conditional" : "supported"
+      status: noiseReasons.length ? "rejected" : limitations.length ? "conditional" : "supported"
     };
   });
 }

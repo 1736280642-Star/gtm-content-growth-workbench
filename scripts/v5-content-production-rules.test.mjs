@@ -159,6 +159,16 @@ function createCompileInput(overrides = {}) {
       prohibitedTerms: ["百分百安全"],
       humanizerDirectives: ["删除聊天式结尾"]
     },
+    governance: {
+      productId: "product-a",
+      productStrategyPackId: "strategy-a-v1",
+      productStrategyVersion: 1,
+      productStrategyHash: "strategy-hash-a-v1",
+      articleTypeVersionId: "problem-solution-v1",
+      articleTypeDefinitionHash: "article-type-hash-v1",
+      promptCompilerVersion: "production-contract-compiler.v2",
+      productionMode: "single"
+    },
     promotionProfiles: [createProfile()],
     minTraceableFactCount: 2,
     requireHumanBoundary: true,
@@ -450,4 +460,36 @@ test("Provider 技术失败最多重试三次", async () => {
   assert.equal(unavailable.status, "system_recovering");
   assert.equal(failedAttempts, 3);
   assert.equal(unavailable.technicalRetryCount, 3);
+});
+
+test("公众号生产合同注入 human-writing 规则并确定性拦截翻案腔", () => {
+  const contract = createContract();
+  assert.equal(contract.promptDirectives.some((item) => item.includes("human-writing.wechat.v1.1.0")), true);
+  const output = createGoodOutput(contract);
+  output.markdown = output.markdown.replace("评估时应先确认", "先说结论：评估时应先确认");
+  const result = validateProductionOutput({ contract, output });
+  assert.equal(result.issues.some((item) => item.code === "human_writing_style"), true);
+});
+
+test("fixed expression is required verbatim in every selected position", () => {
+  const fixedText = "JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。";
+  const contract = createContract({
+    fixedExpressions: [{ text: fixedText, positions: ["opening", "body", "ending"], channel: "wechat" }]
+  });
+  const good = createGoodOutput(contract);
+  const withFixedExpression = {
+    ...good,
+    markdown: good.markdown
+      .replace("\n\n## ", `\n\n${fixedText}\n\n## `)
+      .replace("\n\n- ", `\n\n${fixedText}\n\n- `)
+      .replace("\n\n[", `\n\n${fixedText}\n\n[`)
+  };
+  const valid = validateProductionOutput({ contract, output: withFixedExpression });
+  assert.equal(valid.issues.some((item) => item.code.startsWith("fixed_expression_")), false);
+
+  const invalid = validateProductionOutput({
+    contract,
+    output: { ...withFixedExpression, markdown: withFixedExpression.markdown.replaceAll(fixedText, "JOTO支持相关服务。") }
+  });
+  assert.ok(invalid.issues.some((item) => item.code === "fixed_expression_missing"));
 });

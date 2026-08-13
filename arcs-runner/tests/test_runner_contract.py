@@ -423,6 +423,31 @@ class RunnerContractTest(unittest.TestCase):
         self.assertEqual(result["failureCode"], "removed_after_publish")
         self.assertEqual(result["publicUrl"], "https://juejin.cn/post/7668120258260074548")
 
+    def test_zhihu_article_id_is_verified_before_title_fallback(self):
+        class Body:
+            text = "Known Zhihu article content"
+
+        class Tab:
+            url = ""
+
+            def get(self, url):
+                self.url = url
+
+            def ele(self, selector, timeout=1):
+                if selector == "tag:body":
+                    return Body()
+                raise AssertionError("title fallback must not run when the article ID resolves")
+
+        result = BrowserPublisher()._verify_tab(
+            "zhihu",
+            Tab(),
+            {"platformArticleId": "987654321", "title": "Title fallback should not be used"},
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["platformArticleId"], "987654321")
+        self.assertEqual(result["publicUrl"], "https://zhuanlan.zhihu.com/p/987654321")
+        self.assertEqual(result["diagnosticSummary"], "known_article_identity_public_page")
+
     def test_editor_url_must_open_the_same_approved_draft(self):
         value = payload()
         self.assertEqual(_editor_url("csdn", value, PLATFORM_CONFIG["csdn"]), value["editorUrl"])

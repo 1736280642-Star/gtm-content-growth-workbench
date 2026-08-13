@@ -20,6 +20,7 @@ const statusLabels: Record<FrontendCaptureTaskStatus, string> = {
   capture_failed: "捕获失败",
   cancelled: "已取消"
 };
+const platformLabels = { doubao: "豆包", deepseek: "DeepSeek", qwen: "千问", chatgpt: "ChatGPT" } as const;
 
 function statusColor(status: FrontendCaptureTaskStatus) {
   if (status === "completed") return "green";
@@ -82,7 +83,7 @@ export function FrontendCaptureTaskTable({
         columns={[
           { title: "任务时间", dataIndex: "createdAt", width: 170, render: (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false }) },
           { title: "问题", dataIndex: "questionText", ellipsis: true, render: (value: string, task) => <div className="capture-question-cell"><strong>{value}</strong>{task.temporaryQuestion ? <Tag>临时问题</Tag> : null}</div> },
-          { title: "平台", dataIndex: "platform", width: 110, render: () => "ChatGPT" },
+          { title: "平台", dataIndex: "platform", width: 110, render: (value: keyof typeof platformLabels) => platformLabels[value] || value },
           { title: "状态", dataIndex: "status", width: 120, render: (value: FrontendCaptureTaskStatus) => <Tag color={statusColor(value)}>{statusLabels[value]}</Tag> },
           {
             title: "结果",

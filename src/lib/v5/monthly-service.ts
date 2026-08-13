@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { RowDataPacket } from "mysql2/promise";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { channelLabels, productLabels } from "@/lib/labels";
@@ -32,7 +33,7 @@ import {
   listArticleTypeProfiles
 } from "./article-type-service";
 import { readV5FoundationSnapshot } from "./foundation-repository";
-import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
+import { getV5GovernancePool, parseV5Json, V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 import { readV5MonthlyState, updateV5MonthlyState } from "./monthly-repository";
 import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
 import { persistFormalApprovedStrategy, persistFormalMonthlyPlan, removeFormalProductionTasks, saveFormalPublishResult, scheduleFormalProductionTask } from "./monthly-execution-repository";
@@ -438,6 +439,109 @@ function assertIdempotencyKey(value: string | null) {
   return key;
 }
 
+async function loadProductStrategyMonthlyReferences(
+  month: string,
+  quotaRules: ContentQuotaRule[],
+  articleTypeVersionIds: string[],
+  matchRunIds: string[]
+) {
+  const strategyMatchRunIds = matchRunIds.filter((id) => id.startsWith("product-strategy:"));
+  const strategyPackIds = strategyMatchRunIds.map((id) => id.slice("product-strategy:".length)).filter(Boolean);
+  if (!strategyPackIds.length || !articleTypeVersionIds.length) {
+    return { articleTypeVersions: [] as ArticleTypeProfileVersion[], matchRuns: [] as Array<readonly [string, QuestionTypeMatchRun]> };
+  }
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT atv.*, sp.status AS strategy_status, sp.strategy_approved_by, sp.strategy_approved_at
+     FROM product_strategy_article_type_versions atv
+     JOIN product_strategy_packs sp ON sp.id = atv.strategy_pack_id
+     WHERE atv.strategy_pack_id IN (?) AND atv.article_type_version_id IN (?)
+       AND atv.status IN ('active', 'frozen') AND sp.status = 'production_ready'`,
+    [strategyPackIds, articleTypeVersionIds]
+  );
+  const rowByVersionId = new Map(rows.map((row) => [String(row.article_type_version_id), row]));
+  const now = new Date().toISOString();
+  const articleTypeVersions = rows.map<ArticleTypeProfileVersion>((row) => {
+    const definition = parseV5Json<Record<string, unknown>>(row.definition_json, {});
+    const modules = Array.isArray(definition.structureModules) ? definition.structureModules : [];
+    const moduleNames = modules.flatMap((module) => {
+      if (typeof module === "string") return [module];
+      if (!module || typeof module !== "object") return [];
+      const record = module as Record<string, unknown>;
+      return [String(record.label || record.key || record.purpose || "").trim()].filter(Boolean);
+    });
+    const range = definition.lengthRange && typeof definition.lengthRange === "object"
+      ? definition.lengthRange as Record<string, unknown>
+      : {};
+    const snapshot = typeof row.definition_json === "string" ? row.definition_json : JSON.stringify(definition);
+    return {
+      profileVersionId: String(row.article_type_version_id),
+      profileId: String(row.article_type_id || `product-strategy-type-${row.portfolio_item_id}`),
+      version: 1,
+      name: String(row.name),
+      semanticDescription: String(definition.definition || ""),
+      suitableQuestionDescription: Array.isArray(definition.suitableFor) ? definition.suitableFor.join("；") : "",
+      unsuitableQuestionDescription: Array.isArray(definition.notSuitableFor) ? definition.notSuitableFor.join("；") : "",
+      targetAudience: Array.isArray(definition.targetAudience) ? definition.targetAudience.map(String) : [],
+      contentGoal: String(definition.contentGoal || ""),
+      structureModules: moduleNames,
+      requiredSections: moduleNames,
+      cta: "",
+      lengthRange: {
+        min: Number(range.min || 800),
+        max: Number(range.max || 3000),
+        unit: "字" as ArticleTypeProfileVersion["lengthRange"]["unit"]
+      },
+      styleTraits: Array.isArray(definition.styleTraits) ? definition.styleTraits.map(String) : [],
+      caseUsage: "",
+      evidencePreferences: Array.isArray(definition.evidencePreferences) ? definition.evidencePreferences.map(String) : [],
+      channelHints: [],
+      exampleQuestions: [],
+      promptConstraintSnapshot: snapshot,
+      promptConstraintSnapshotHash: String(row.definition_hash),
+      fieldSources: {},
+      status: "active",
+      createdBy: String(row.strategy_approved_by || "product-strategy-reviewer"),
+      createdAt: row.strategy_approved_at ? new Date(row.strategy_approved_at).toISOString() : now
+    };
+  });
+  const matchRuns = strategyMatchRunIds.flatMap((matchRunId) => {
+    const packId = matchRunId.slice("product-strategy:".length);
+    const rules = quotaRules.filter((rule) => rule.typeMatchRunId === matchRunId && rowByVersionId.get(rule.articleTypeProfileVersionId)?.strategy_pack_id === packId);
+    if (!rules.length) return [];
+    const suggestions = rules.map((rule, index) => ({
+      suggestionId: `${matchRunId}:${index + 1}`,
+      questionVersionId: rule.questionVersionId,
+      question: rule.question,
+      articleTypeProfileVersionId: rule.articleTypeProfileVersionId,
+      articleTypeName: rule.articleTypeNameSnapshot,
+      fitLevel: "high" as const,
+      semanticScore: 1,
+      reason: rule.matchReasonSnapshot,
+      matchedFacets: ["approved_product_strategy"],
+      missingInformation: [],
+      conflictProfileVersionIds: [],
+      selectionStatus: "accepted" as const,
+      selectionSource: "user_selected" as const
+    }));
+    return [[matchRunId, {
+      matchRunId,
+      month,
+      revision: 1,
+      status: "confirmed" as const,
+      questionVersionIds: suggestions.map((item) => item.questionVersionId),
+      provider: "product_geo_strategy",
+      promptVersion: "product-geo-strategy.v2",
+      suggestions,
+      confirmedAt: now,
+      confirmedBy: "product-strategy-reviewer",
+      createdAt: now,
+      createdBy: "product-strategy-reviewer",
+      auditReason: "复用用户已确认的产品 GEO 策略文章类型组合"
+    }] as const];
+  });
+  return { articleTypeVersions, matchRuns };
+}
+
 export async function saveV5MonthlyPlan(
   month: string,
   request: SaveMonthlyPlanRequest,
@@ -471,10 +575,13 @@ export async function saveV5MonthlyPlan(
   );
   const referencedArticleTypeIds = Array.from(new Set((request.config.quotaRules || []).map((rule) => rule.articleTypeProfileVersionId).filter(Boolean)));
   const referencedMatchRunIds = Array.from(new Set((request.config.quotaRules || []).map((rule) => rule.typeMatchRunId).filter(Boolean)));
-  const [articleTypeVersions, matchRunEntries] = await Promise.all([
+  const [baseArticleTypeVersions, baseMatchRunEntries, productStrategyReferences] = await Promise.all([
     getArticleTypeVersionsByIds(referencedArticleTypeIds),
-    Promise.all(referencedMatchRunIds.map(async (id) => [id, await getQuestionTypeMatchRun(id)] as const))
+    Promise.all(referencedMatchRunIds.filter((id) => !id.startsWith("product-strategy:")).map(async (id) => [id, await getQuestionTypeMatchRun(id)] as const)),
+    loadProductStrategyMonthlyReferences(month, request.config.quotaRules || [], referencedArticleTypeIds, referencedMatchRunIds)
   ]);
+  const articleTypeVersions = [...baseArticleTypeVersions, ...productStrategyReferences.articleTypeVersions];
+  const matchRunEntries = [...baseMatchRunEntries, ...productStrategyReferences.matchRuns];
   const config = validateMonthlyPlan(
     request.config,
     month,

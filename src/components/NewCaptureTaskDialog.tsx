@@ -80,7 +80,7 @@ export function NewCaptureTaskDialog({
         layout="vertical"
         initialValues={{
           source,
-          platforms: ["chatgpt"],
+          platforms: ["doubao", "deepseek", "qwen", "chatgpt"],
           locale: "zh-CN",
           region: "上海",
           modelLabel: "平台默认"
@@ -114,10 +114,10 @@ export function NewCaptureTaskDialog({
         <Form.Item label="AI 平台" name="platforms" rules={[{ required: true, message: "请选择平台" }]}>
           <Checkbox.Group>
             <Space wrap>
+              <Checkbox value="doubao">豆包</Checkbox>
+              <Checkbox value="deepseek">DeepSeek</Checkbox>
               <Checkbox value="chatgpt">ChatGPT</Checkbox>
-              <Checkbox value="yuanbao" disabled>元宝 <Tag>尚未支持</Tag></Checkbox>
-              <Checkbox value="doubao" disabled>豆包 <Tag>尚未支持</Tag></Checkbox>
-              <Checkbox value="kimi" disabled>Kimi <Tag>尚未支持</Tag></Checkbox>
+              <Checkbox value="qwen">千问</Checkbox>
             </Space>
           </Checkbox.Group>
         </Form.Item>

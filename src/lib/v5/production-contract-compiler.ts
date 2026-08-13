@@ -10,9 +10,11 @@ import {
   type ProductionArtifact,
   type ProductionContractSnapshot,
   type PromotionProfileVersion,
+  type RequiredFixedExpression,
   uniqueSorted
 } from "./content-production-contracts";
 import { resolvePromotionPlan } from "./promotion-resolver";
+import { humanWritingWechatPromptDirectives } from "./human-writing-wechat";
 
 export interface CompileProductionContractInput {
   task: ContentTaskSnapshot;
@@ -21,9 +23,11 @@ export interface CompileProductionContractInput {
   contentTypeRule: ContentTypeRuleSnapshot;
   channelRule: ChannelRuleSnapshot;
   expressionRule: ExpressionRuleSnapshot;
+  governance: ProductionContractSnapshot["governance"];
   promotionProfiles: PromotionProfileVersion[];
   minTraceableFactCount?: number;
   requireHumanBoundary?: boolean;
+  fixedExpressions?: RequiredFixedExpression[];
   compiledAt?: string;
 }
 
@@ -119,6 +123,8 @@ export function compileProductionContract(input: CompileProductionContractInput)
     ...input.contentTypeRule.promptDirectives,
     ...input.channelRule.promptDirectives,
     ...input.expressionRule.humanizerDirectives,
+    ...(input.expressionRule.calibrationDirectives || []),
+    ...humanWritingWechatPromptDirectives(input.task.channel),
     "只使用冻结 EvidencePack 中的事实，不补充常识、猜测或外部资料。",
     "在内部完成起草、自检和改写，只输出最终结构化结果。",
     ...(input.evidencePack.decision === "generatable_with_downgrade"
@@ -126,7 +132,8 @@ export function compileProductionContract(input: CompileProductionContractInput)
       : [])
   ]);
   const withoutHash = {
-    contractVersion: "content-production.v1" as const,
+    contractVersion: "content-production.v2" as const,
+    governance: input.governance,
     task: input.task,
     evidencePack: input.evidencePack,
     productRule: input.productRule,
@@ -134,6 +141,7 @@ export function compileProductionContract(input: CompileProductionContractInput)
     channelRule: input.channelRule,
     expressionRule: input.expressionRule,
     ctaPlan,
+    fixedExpressions: input.fixedExpressions || [],
     validatorPolicy: {
       minTraceableFactCount: input.minTraceableFactCount ?? 8,
       requireHumanBoundary: input.requireHumanBoundary ?? true,

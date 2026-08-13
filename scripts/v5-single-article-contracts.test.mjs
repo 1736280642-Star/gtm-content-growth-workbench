@@ -47,18 +47,20 @@ test("formal generation explicitly extracts rules and enforces eight traceable f
   assert.match(generation, /uniqueFacts\.size < 8/);
   assert.match(generation, /traceMatchesEvidence/);
   assert.match(generation, /sourceRevisionId === item\.sourceRevisionId/);
-  assert.match(generation, /trace\.originalQuote === item\.originalQuote/);
+  assert.doesNotMatch(generation, /trace\.originalQuote === item\.originalQuote/);
+  assert.doesNotMatch(generation, /markdown\.includes\(item\.originalQuote\)/);
   assert.match(generation, /sentenceMatchesEvidence/);
   assert.match(generation, /removeUnsupportedFormalPassages/);
   assert.match(files["src/lib/v5/single-article-production-repository.ts"], /copy_allowed, test_only/);
 });
 
-test("formal generation has a hard-rule-validated evidence-only fallback", () => {
+test("formal generation uses the frozen production contract and permits only one content repair", () => {
   const service = files["src/lib/v5/formal-generation-service.ts"];
-  assert.match(service, /buildDeterministicEvidenceFallback/);
-  assert.match(service, /selected\.length < 8/);
-  assert.match(service, /providerModel: `\$\{lastModel \|\| provider\}-evidence-fallback`/);
-  assert.match(service, /fallbackValidation\.passed/);
+  assert.match(service, /JSON\.stringify\(input\.contract\)/);
+  assert.match(service, /repairRound <= 1/);
+  assert.match(service, /repairRound < 1/);
+  assert.doesNotMatch(service, /providerModel: `\$\{lastModel \|\| provider\}-evidence-fallback`/);
+  assert.match(files["src/lib/v5/single-article-production-service.ts"], /persistProductionContractSnapshot/);
   assert.match(files["workers/content-production-worker.mjs"], /formal-generation@2/);
 });
 

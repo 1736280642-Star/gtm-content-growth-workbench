@@ -150,7 +150,7 @@ export async function loadMonthlyWorkspaceGovernance(
               productId,
               sourceSnapshotHash: context.sourceSnapshotHash || "",
               status:
-                knowledgeBase.status === "enabled"
+                knowledgeBase.status === "enabled" || knowledgeBase.status === "ready"
                   ? "ready" as const
                   : "pending_config" as const,
               source: "v5_formal" as const
