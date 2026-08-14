@@ -3,6 +3,7 @@ import { observationError, observationOk, readObservationPayload } from "@/lib/v
 import { assertObservationMutationContext, getCaptureEnvironmentStatus, ObservationServiceError } from "@/lib/v5/observation-service";
 import { createManualFormalCaptureTasks, listFormalCaptureObservations } from "@/lib/v5/capture-repository";
 import { readObservationReferenceSnapshot } from "@/lib/v5/observation-reference-adapter";
+import { listApprovedGeoMonitoringQuestions } from "@/lib/v5/question-service";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,10 @@ export async function POST(request: Request) {
     const reference = await readObservationReferenceSnapshot();
     const question = reference.questions.find((item) => item.questionVersionId === payload.questionVersionId);
     if (!question) throw new ObservationServiceError(404, "CAPTURE_QUESTION_NOT_FOUND", "未找到正式问题版本。");
+    const approvedQuestion = listApprovedGeoMonitoringQuestions().find((item) => item.currentVersionId === payload.questionVersionId);
+    if (!approvedQuestion) {
+      throw new ObservationServiceError(422, "GEO_MONITORING_APPROVAL_REQUIRED", "该问题尚未在 GEO 调研结果中人工确认，不能创建监控任务。");
+    }
     const created = await createManualFormalCaptureTasks({
       questionVersionId: question.questionVersionId, question: question.text, platforms: payload.platforms,
       captureCondition: payload.condition, idempotencyKey: payload.idempotencyKey

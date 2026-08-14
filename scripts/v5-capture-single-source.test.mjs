@@ -15,6 +15,7 @@ test("formal capture uses MySQL as the single task and evidence source", async (
   assert.match(migration, /capture_gap_reviews/);
   assert.match(repository, /listFormalCaptureObservations/);
   assert.match(taskRoute, /listFormalCaptureObservations/);
+  assert.match(taskRoute, /GEO_MONITORING_APPROVAL_REQUIRED/);
   assert.match(review, /reference\.source === "formal_adapter"/);
   assert.match(review, /listFormalCaptureObservations/);
 });

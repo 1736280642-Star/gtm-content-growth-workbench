@@ -9,40 +9,11 @@ import type {
   V5MonthlyPlanRecord
 } from "./monthly-workspace-contracts";
 import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
-import { createHash } from "node:crypto";
 import type { RowDataPacket } from "mysql2/promise";
 import { getV5GovernancePool, hasV5GovernanceDatabaseConfig, parseV5Json } from "./knowledge-governance-repository";
 import { readFormalProductionQueue } from "./single-article-production-repository";
-import type { ProductGeoStrategyContentPlanV2 } from "./product-strategy-pack-contracts";
 import { listProductRegistryRecords } from "./product-registry-repository";
 import { attributeProductionTaskProducts } from "./product-attribution";
-
-async function readProductStrategyTargetQuestions() {
-  if (!hasV5GovernanceDatabaseConfig()) return [];
-  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
-    `SELECT p.id AS product_id, sp.id AS strategy_pack_id, sp.status, sp.content_plan_json
-     FROM product_entity p
-     JOIN product_strategy_packs sp ON sp.id = (
-       SELECT sp2.id
-       FROM product_strategy_packs sp2
-       WHERE sp2.product_id = p.id
-       ORDER BY sp2.strategy_version DESC, sp2.created_at DESC
-       LIMIT 1
-     )
-     WHERE p.status = 'active' AND sp.status IN ('pending_strategy_review', 'strategy_approved', 'pending_sample_review', 'production_ready')`
-  );
-  return rows.flatMap((row) => {
-    const plan = parseV5Json<ProductGeoStrategyContentPlanV2 | null>(row.content_plan_json, null);
-    if (!plan) return [];
-    return plan.geoOpportunities.flatMap((opportunity) => opportunity.representativeQuestions.map((question) => ({
-      questionVersionId: `strategy-question-${createHash("sha256").update(`${row.strategy_pack_id}:${opportunity.opportunityId}:${question}`).digest("hex").slice(0, 42)}`,
-      question,
-      productId: String(row.product_id),
-      status: String(row.status) === "production_ready" ? "monthly_ready" as const : "frozen" as const,
-      source: "v5_formal" as const
-    })));
-  });
-}
 
 function compactProductionTask(task: ProductionMatrixTask): ProductionMatrixTask {
   const compactDraft = (draft: ProductionMatrixTask["currentDraft"]) => draft ? {
@@ -185,10 +156,9 @@ export function mergeMonthlyProductionTasks(
 
 export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Promise<MonthlyWorkspaceReadModel> {
   const base = await getMonthlyWorkspaceBase(requestedMonth);
-  const [governance, productionQueue, productStrategyQuestions, products] = await Promise.all([
+  const [governance, productionQueue, products] = await Promise.all([
     loadMonthlyWorkspaceGovernance(base.month, base.rulePackages, base.plan?.id),
     loadFormalQueue(base.month),
-    readProductStrategyTargetQuestions(),
     hasV5GovernanceDatabaseConfig() ? listProductRegistryRecords() : Promise.resolve([])
   ]);
   const formalPlanRecord = governance.monthlyPlan ? toWorkspacePlanRecord(governance.monthlyPlan, governance.rulePackages) : null;
@@ -219,7 +189,7 @@ export async function getMonthlyWorkspaceReadModel(requestedMonth?: string): Pro
 
   return {
     ...base,
-    targetQuestions: Array.from(new Map([...base.targetQuestions, ...productStrategyQuestions].map((item) => [item.questionVersionId, item])).values()),
+    targetQuestions: base.targetQuestions,
     batchQueueItems: productionQueue.items,
     productionTasks,
     plan,

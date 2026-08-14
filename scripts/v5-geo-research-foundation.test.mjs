@@ -88,6 +88,9 @@ test("verified GEO questions enter monitoring only after the single human confir
   const questionContracts = await read("src/lib/v5/question-contracts.ts");
   const route = await read("src/app/api/v5/products/[productId]/research-runs/[runId]/question-catalog/route.ts");
   const runPage = await read("src/app/products/[productId]/research/[runId]/page.tsx");
+  const strategyPanel = await read("src/components/ProductGeoStrategyPanel.tsx");
+  const monthlyReadModel = await read("src/lib/v5/monthly-workspace-read-model.ts");
+  const monthlyService = await read("src/lib/v5/monthly-service.ts");
   assert.match(contracts, /GeoResearchQuestionCatalog/);
   assert.match(service, /buildGeoResearchQuestionCatalog/);
   assert.match(service, /human_approval_required/);
@@ -100,6 +103,12 @@ test("verified GEO questions enter monitoring only after the single human confir
   assert.match(questionContracts, /"geo_research"/);
   assert.match(route, /importGeoResearchQuestionCatalog/);
   assert.match(runPage, /确认并纳入 GEO 监控/);
+  assert.match(runPage, /questionCatalog\.confirmable/);
+  assert.match(runPage, /旧问题目录已隐藏/);
+  assert.match(service, /research_run_stale/);
+  assert.doesNotMatch(strategyPanel, /优先 GEO 问题/);
+  assert.doesNotMatch(monthlyReadModel, /strategy-question-/);
+  assert.doesNotMatch(monthlyService, /const adapted = source/);
 });
 
 test("research synthesis cannot approve business strategy and hands off to the human strategy gate", async () => {

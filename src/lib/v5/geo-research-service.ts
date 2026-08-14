@@ -70,11 +70,12 @@ function normalizedQuestion(value: string) {
 }
 
 export function buildGeoResearchQuestionCatalog(input: {
-  product: Pick<ProductRegistryItem, "productId" | "displayName">;
+  product: Pick<ProductRegistryItem, "productId" | "displayName" | "confirmedAt">;
   run: GeoResearchRun;
   tasks: GeoResearchTask[];
   evidence: GeoResearchEvidence[];
   findings: GeoResearchFinding[];
+  latestSourceSnapshotHash?: string;
 }): GeoResearchQuestionCatalog {
   const discoveryTask = input.tasks.find((task) => task.taskType === "live_question_discovery");
   const rawQuestions = Array.isArray(discoveryTask?.outputSummary.questions)
@@ -119,6 +120,16 @@ export function buildGeoResearchQuestionCatalog(input: {
     .sort((left, right) => right.priority - left.priority || left.question.localeCompare(right.question, "zh-CN"));
   const importedCount = items.filter((item) => item.reviewStatus === "confirmed").length;
   const liveSearchVerified = discoveryTask?.outputSummary.liveSearchVerified === true;
+  const staleReasons = [
+    !input.latestSourceSnapshotHash
+      ? "当前产品还没有可用的最新资料快照"
+      : input.run.inputSourceSnapshotHash !== input.latestSourceSnapshotHash
+        ? "本次运行使用的资料快照已不是最新版本"
+        : undefined,
+    input.product.confirmedAt && Date.parse(input.product.confirmedAt) > Date.parse(input.run.createdAt)
+      ? "产品实体关系在本次运行后重新确认过"
+      : undefined
+  ].filter((item): item is string => Boolean(item));
   const moduleCounts = new Map<string, number>();
   for (const item of items) moduleCounts.set(item.module, (moduleCounts.get(item.module) || 0) + 1);
   const status = importedCount === items.length && items.length > 0
@@ -135,6 +146,8 @@ export function buildGeoResearchQuestionCatalog(input: {
     productName: input.product.displayName,
     status,
     liveSearchVerified,
+    confirmable: liveSearchVerified && staleReasons.length === 0,
+    staleReasons,
     totalCount: items.length,
     verifiedCount: items.filter((item) => item.sources.length > 0).length,
     importedCount,
@@ -215,7 +228,10 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
   assertText(input.productId, "productId", 64);
   assertText(input.runId, "runId", 64);
   const product = await getActiveProduct(input.productId);
-  const runWorkspace = await readGeoResearchRunWorkspace(input);
+  const [runWorkspace, latestSourceSnapshot] = await Promise.all([
+    readGeoResearchRunWorkspace(input),
+    readLatestGeoSourceSnapshot(input.productId)
+  ]);
   if (!runWorkspace) {
     throw new V5GovernanceServiceError("research_run_not_found", "GEO 调研运行不存在。", 404);
   }
@@ -223,7 +239,11 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
     product,
     runWorkspace: {
       ...runWorkspace,
-      questionCatalog: buildGeoResearchQuestionCatalog({ product, ...runWorkspace })
+      questionCatalog: buildGeoResearchQuestionCatalog({
+        product,
+        ...runWorkspace,
+        latestSourceSnapshotHash: latestSourceSnapshot?.snapshotHash
+      })
     }
   };
 }
@@ -251,15 +271,30 @@ export async function importGeoResearchQuestionCatalog(input: {
     throw new V5GovernanceServiceError("invalid_contract", "expectedQuestionPoolVersion 必须是非负整数。", 400);
   }
   const product = await getActiveProduct(input.productId);
-  const runWorkspace = await readGeoResearchRunWorkspace({ productId: input.productId, runId: input.runId });
+  const [runWorkspace, latestSourceSnapshot] = await Promise.all([
+    readGeoResearchRunWorkspace({ productId: input.productId, runId: input.runId }),
+    readLatestGeoSourceSnapshot(input.productId)
+  ]);
   if (!runWorkspace) throw new V5GovernanceServiceError("research_run_not_found", "GEO 调研运行不存在。", 404);
-  const catalog = buildGeoResearchQuestionCatalog({ product, ...runWorkspace });
+  const catalog = buildGeoResearchQuestionCatalog({
+    product,
+    ...runWorkspace,
+    latestSourceSnapshotHash: latestSourceSnapshot?.snapshotHash
+  });
   if (!catalog.liveSearchVerified) {
     throw new V5GovernanceServiceError(
       "live_search_gate_failed",
       "本次问题目录没有通过联网搜索门禁，禁止写入正式问题池。",
       409,
       "等待联网问题发现任务完成，并确认每条问题都有公开来源。"
+    );
+  }
+  if (catalog.staleReasons.length) {
+    throw new V5GovernanceServiceError(
+      "research_run_stale",
+      `本次 GEO 调研结果已过期：${catalog.staleReasons.join("；")}。`,
+      409,
+      "返回 GEO 调研页，基于最新产品资料重新运行后再确认问题。"
     );
   }
   const selectedIds = new Set(input.findingIds);

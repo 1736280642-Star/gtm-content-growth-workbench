@@ -108,8 +108,10 @@ export default function GeoResearchRunPage() {
   );
   const questionCatalog = workspace?.questionCatalog;
   const selectableQuestionIds = useMemo(
-    () => questionCatalog?.items.filter((item) => item.sources.length > 0 && item.reviewStatus === "candidate").map((item) => item.findingId) || [],
-    [questionCatalog?.items]
+    () => questionCatalog?.confirmable
+      ? questionCatalog.items.filter((item) => item.sources.length > 0 && item.reviewStatus === "candidate").map((item) => item.findingId)
+      : [],
+    [questionCatalog]
   );
 
   async function importQuestionCatalog() {
@@ -181,20 +183,22 @@ export default function GeoResearchRunPage() {
               items={[
                 {
                   key: "question-catalog",
-                  label: `用户问题目录 ${questionCatalog?.totalCount || 0}`,
+                  label: `GEO 问题目录 ${questionCatalog?.confirmable ? questionCatalog.totalCount : 0}`,
                   children: questionCatalog ? (
                     <Space direction="vertical" size={12} style={{ width: "100%" }}>
                       <Alert
                         showIcon
-                        type={questionCatalog.liveSearchVerified ? "info" : "warning"}
-                        message={questionCatalog.liveSearchVerified ? "目录问题均来自本次联网研究" : "目录仍在采集，暂不能写入问题池"}
-                        description="公开网页只证明用户确实在问，不证明产品答案成立；人工确认后即进入正式 GEO 问题监控，并成为 MonthlyPlan 可选目标问题。"
+                        type={questionCatalog.confirmable ? "info" : "warning"}
+                        message={questionCatalog.confirmable ? "这里是唯一的 GEO 问题确认入口" : "本次调研结果已不能确认"}
+                        description={questionCatalog.confirmable
+                          ? "目录与策略中的优先问题使用同一批联网调研结果。你只需在这里确认一次；确认后问题自动进入 GEO 监控，并成为 MonthlyPlan 可选目标问题。"
+                          : `${questionCatalog.staleReasons.join("；") || "目录仍在采集"}。请返回 GEO 调研页，基于最新资料重新运行。`}
                       />
                       <Space wrap>
                         <Button
                           icon={<InboxOutlined />}
                           type="primary"
-                          disabled={!selectedQuestionIds.length || !questionCatalog.liveSearchVerified}
+                          disabled={!selectedQuestionIds.length || !questionCatalog.confirmable}
                           loading={importingQuestions}
                           onClick={() => void importQuestionCatalog()}
                         >确认并纳入 GEO 监控</Button>
@@ -202,21 +206,23 @@ export default function GeoResearchRunPage() {
                           disabled={!selectableQuestionIds.length}
                           onClick={() => setSelectedQuestionIds(selectableQuestionIds)}
                         >选择全部未收录问题</Button>
-                        <Typography.Text type="secondary">
-                          已验证 {questionCatalog.verifiedCount} · 已收录 {questionCatalog.importedCount} · {questionCatalog.modules.map((item) => `${item.module} ${item.count}`).join(" / ")}
-                        </Typography.Text>
+                        {questionCatalog.confirmable ? (
+                          <Typography.Text type="secondary">
+                            已验证 {questionCatalog.verifiedCount} · 已收录 {questionCatalog.importedCount} · {questionCatalog.modules.map((item) => `${item.module} ${item.count}`).join(" / ")}
+                          </Typography.Text>
+                        ) : null}
                       </Space>
                       <Table<GeoResearchQuestionCatalogItem>
                         rowKey="findingId"
                         size="small"
                         pagination={{ pageSize: 20 }}
-                        dataSource={questionCatalog.items}
+                        dataSource={questionCatalog.confirmable ? questionCatalog.items : []}
                         rowSelection={{
                           selectedRowKeys: selectedQuestionIds,
                           onChange: setSelectedQuestionIds,
-                          getCheckboxProps: (record) => ({ disabled: record.sources.length === 0 || record.reviewStatus !== "candidate" })
+                          getCheckboxProps: (record) => ({ disabled: !questionCatalog.confirmable || record.sources.length === 0 || record.reviewStatus !== "candidate" })
                         }}
-                        locale={{ emptyText: "联网问题发现任务尚未形成可核验目录" }}
+                        locale={{ emptyText: questionCatalog.staleReasons.length ? "旧问题目录已隐藏，请基于最新资料重新运行 GEO 调研" : "联网问题发现任务尚未形成可核验目录" }}
                         columns={[
                           { title: "模块", dataIndex: "module", width: 170, render: (value: string) => <Tag>{value}</Tag> },
                           { title: "真实用户问题", dataIndex: "question", render: (value: string, record) => <div className="v5-table-stack"><strong>{value}</strong><span>{record.audience || "通用用户"} · {record.intent}</span></div> },

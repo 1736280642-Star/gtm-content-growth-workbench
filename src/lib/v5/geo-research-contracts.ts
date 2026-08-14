@@ -187,6 +187,8 @@ export interface GeoResearchQuestionCatalog {
   productName: string;
   status: "collecting" | "ready_for_review" | "partially_imported" | "imported";
   liveSearchVerified: boolean;
+  confirmable: boolean;
+  staleReasons: string[];
   totalCount: number;
   verifiedCount: number;
   importedCount: number;

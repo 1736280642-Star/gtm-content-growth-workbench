@@ -164,9 +164,8 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
   const foundation = readV5FoundationSnapshot();
   const monthlyLocks = foundation.monthlyQuestionLocks.filter((lock) => lock.month === month);
 
-  // A monthly lock is a historical snapshot, not the only source of eligible
-  // questions. Without this fallback, newly confirmed ADP questions remained
-  // invisible in the real strategy UI until someone edited repository data.
+  // A monthly lock is a historical snapshot. New selectable questions must
+  // come from the human-confirmed GEO monitoring pool below.
   const versionsById = new Map(foundation.questionVersions.map((version) => [version.questionVersionId, version]));
   const toOption = (questionId: string, questionVersionId: string, status: TargetQuestionOption["status"]): TargetQuestionOption | undefined => {
     const version = versionsById.get(questionVersionId);
@@ -198,15 +197,6 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
     const option = toOption(question.questionId, question.currentVersionId, "monthly_ready");
     return option ? [option] : [];
   });
-  const adapted = source === "v4_runtime" ? state.distilledTerms
-    .filter((term) => term.status === "active" && term.validationStatus !== "disabled" && term.sourceQuestion?.trim())
-    .map((term) => ({
-      questionVersionId: term.id,
-      question: term.sourceQuestion!.trim(),
-      productId: term.product,
-      status: "monthly_ready" as const,
-      source: "v4_adapter" as const
-    })) : [];
   const frozenSnapshots = snapshots
     .filter((rule) => rule.questionVersionId.trim() && rule.question.trim())
     .map((rule) => ({
@@ -215,7 +205,7 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
       status: "frozen" as const,
       source: "v5_formal" as const
     }));
-  return Array.from(new Map([...frozenSnapshots, ...adapted, ...currentFormal, ...locked].map((item) => [item.questionVersionId, item])).values());
+  return Array.from(new Map([...frozenSnapshots, ...currentFormal, ...locked].map((item) => [item.questionVersionId, item])).values());
 }
 
 function buildKnowledgeBases(state: WorkbenchState, source: V5ReferenceSource): KnowledgeBaseOption[] {

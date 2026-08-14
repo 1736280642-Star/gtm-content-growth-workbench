@@ -447,6 +447,11 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
     knowledgeProfile: context.productKnowledgeProfile
   });
   assertGeoProductIdentityReady(productIdentity);
+  const researchBoundary = {
+    ...context.project,
+    authoritativeEntityRelationship: productIdentity.entityRelationship || "未提供",
+    entityInterpretationRule: "目标产品只使用 productIdentity 中的 canonicalName、displayName 和 aliases。品牌方、所有者、实施方或服务商是关系角色，不得与产品名拼接成新的产品实体。"
+  };
   const requiresLiveSearch = LIVE_SEARCH_TASKS.has(context.taskType);
   const searchController = new AbortController();
   const searchTimeout = setTimeout(() => searchController.abort(), 180_000);
@@ -566,14 +571,14 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
         messages: [
           {
             role: "system",
-            content: "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity is authoritative and comes from user-provided materials. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Name similarity alone never proves identity or competition. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules."
+            content: "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity is authoritative and comes from user-provided materials. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Name similarity alone never proves identity or competition. A brand owner, implementation partner, reseller or service provider is a relationship role and must never be merged with the target name into a new composite product entity unless that exact composite appears in productIdentity.aliases. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules."
           },
           {
             role: "user",
             content: JSON.stringify({
               instruction: taskInstruction(context.taskType),
               productIdentity,
-              researchBoundary: context.project,
+              researchBoundary,
               sourceSnapshotHash: context.sourceSnapshotHash,
               previousOutputs: context.previousOutputs,
               existingArticleTypes,

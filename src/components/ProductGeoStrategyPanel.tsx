@@ -183,7 +183,6 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
   const current = data?.currentStrategyPack || undefined;
   const plan = latest && isV2ContentPlan(latest.contentPlan) ? latest.contentPlan : undefined;
   const currentIsDifferent = Boolean(current && latest && current.id !== latest.id);
-  const opportunityItems = useMemo(() => plan?.geoOpportunities || [], [plan]);
   const articleTypeItems = useMemo(() => plan?.articleTypePortfolio || [], [plan]);
   const availableChannels = useMemo(() => [...new Set((plan?.channelPriorities || []).map((item) => item.channel))], [plan]);
   const readyArticleTypeCount = useMemo(
@@ -230,7 +229,7 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                 showIcon
                 type="warning"
                 message="请确认策略方向，再生成示例正文"
-                description="确认范围包括产品定位、优先问题、文章类型和表达边界。联网搜索过程与内部综合稿已收进依据区。"
+                description="确认范围包括产品定位、文章类型和表达边界。GEO 问题只在调研运行结果中确认，联网搜索过程与内部综合稿已收进依据区。"
               />
             ) : latest.status === "strategy_approved" ? (
               <Alert showIcon type="success" message="产品策略已经确认" description="下一阶段会用同一正式生产链生成一篇示例正文，样稿通过前不会进入自动批量发布。" />
@@ -307,21 +306,13 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                   </Space>
                 </Card>
 
-                <Card size="small" title={`优先 GEO 问题（${opportunityItems.length}）`}>
-                  {opportunityItems.length ? (
-                    <List
-                      dataSource={opportunityItems}
-                      renderItem={(item) => (
-                        <List.Item>
-                          <List.Item.Meta
-                            title={<Space wrap><Typography.Text strong>{item.title}</Typography.Text>{item.priority ? <Tag>{item.priority}</Tag> : null}{item.evidenceReadiness ? <Tag>{item.evidenceReadiness}</Tag> : null}</Space>}
-                            description={[item.intent, item.productFit, ...item.representativeQuestions].filter(Boolean).join(" · ") || "详细依据见高级信息"}
-                          />
-                        </List.Item>
-                      )}
-                    />
-                  ) : <Alert showIcon type="info" message="调研综合稿尚未输出结构化问题簇" description="原始问题策略已保留在高级信息中；Phase 2B 会补齐统一问题与证据结构。" />}
-                </Card>
+                <Alert
+                  showIcon
+                  type="info"
+                  message="GEO 问题只在调研结果中确认一次"
+                  description="策略页不再展示或要求判断另一套“优先问题”。调研结果中确认的问题会自动成为 GEO 监控问题和 MonthlyPlan 可选目标问题；本页只确认内容策略与文章类型。"
+                  action={<Button href={`/products/${encodeURIComponent(productId)}?tab=geo&geoView=research`}>查看 GEO 调研</Button>}
+                />
 
                 <Card size="small" title={`建议文章类型（${articleTypeItems.length}）`}>
                   {articleTypeItems.length ? (
