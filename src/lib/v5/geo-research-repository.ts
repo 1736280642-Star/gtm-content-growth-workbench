@@ -521,7 +521,7 @@ export async function readGeoResearchRunWorkspace(input: {
 export async function readGeoResearchTaskExecutionContext(taskId: string) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT t.*, r.product_id, r.project_id, r.input_source_snapshot_hash,
-            p.canonical_name, p.display_name, p.brand_name, p.official_entity, p.official_url,
+            p.canonical_name, p.display_name, p.brand_name, p.official_entity, p.official_url, p.entity_relationship,
             p.product_category, p.aliases,
             rp.expression_focus, rp.forbidden_focus, rp.research_markets, rp.languages, rp.target_channels
      FROM geo_research_task t
@@ -538,6 +538,11 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
      WHERE run_id = ? AND status = 'completed' ORDER BY created_at, id`,
     [String(row.run_id)]
   );
+  const { readProductKnowledgeProfile } = await import("./product-knowledge-profile");
+  const productKnowledgeProfile = await readProductKnowledgeProfile(
+    String(row.product_id),
+    String(row.display_name || row.canonical_name)
+  );
   return {
     task: mapTask(row),
     product: {
@@ -548,8 +553,10 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
       officialEntity: row.official_entity ? String(row.official_entity) : undefined,
       officialUrl: row.official_url ? String(row.official_url) : undefined,
       productCategory: row.product_category ? String(row.product_category) : undefined,
+      entityRelationship: row.entity_relationship ? String(row.entity_relationship) : undefined,
       aliases: parseV5Json<string[]>(row.aliases, [])
     },
+    productKnowledgeProfile,
     project: {
       expressionFocus: String(row.expression_focus),
       forbiddenFocus: parseV5Json<string[]>(row.forbidden_focus, []),
@@ -977,7 +984,10 @@ export async function persistGeoResearchProviderResult(input: {
             retrievedAt: source.retrievedAt,
             excerpt: source.excerpt,
             providerRunIds: source.providerRunIds || [],
-            rawResponseRefs: source.rawResponseRefs || []
+            rawResponseRefs: source.rawResponseRefs || [],
+            entityResolutionContractVersion: "geo-entity-resolution.v1",
+            entityClassification: source.entityClassification,
+            matchedIdentityAnchors: source.matchedIdentityAnchors || []
           }),
           artifactId
         ]

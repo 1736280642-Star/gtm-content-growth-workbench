@@ -589,7 +589,7 @@ addContentCheck("phase2b Zhipu-only semantic synthesis", "src/lib/v5/geo-researc
   "buildSupplementaryQueries"
 ]);
 addContentCheck("phase2b governed search query plan", "src/lib/v5/geo-search-contracts.ts", [
-  "geo-search-query-plan.v1",
+  "geo-search-query-plan.v2",
   "expectedEvidenceRole",
   "freshnessRequirement",
   "stopCondition",

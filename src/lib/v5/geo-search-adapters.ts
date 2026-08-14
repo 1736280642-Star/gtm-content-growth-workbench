@@ -348,8 +348,7 @@ export async function runMultiProviderWebSearch(input: {
         model: config.model || "unknown",
         endpoint: result.endpoint,
         round: query.round,
-        parameters: result.parameters,
-        rawResponse: result.payload
+        parameters: result.parameters
       });
     } catch (error) {
       const pending = error instanceof V5GovernanceRepositoryError && error.code === "pending_config";
@@ -381,7 +380,7 @@ export async function runMultiProviderWebSearch(input: {
     merged.length < requiredIndependentSources ? `独立原始来源少于 ${requiredIndependentSources} 个` : undefined
   ].filter((item): item is string => Boolean(item));
   return {
-    contractVersion: "geo-multi-search-evidence.v1",
+    contractVersion: "geo-multi-search-evidence.v2",
     queries: input.queries,
     providerRuns: providerRuns.sort((left, right) => left.provider.localeCompare(right.provider) || left.queryId.localeCompare(right.queryId)),
     candidates: merged,
@@ -415,7 +414,7 @@ export function combineMultiSearchEvidencePacks(packs: MultiSearchEvidencePack[]
     candidates.length < requiredIndependentSources ? `独立原始来源少于 ${requiredIndependentSources} 个` : undefined
   ].filter((item): item is string => Boolean(item));
   return {
-    contractVersion: "geo-multi-search-evidence.v1",
+    contractVersion: "geo-multi-search-evidence.v2",
     queries: packs.flatMap((pack) => pack.queries),
     providerRuns: providerRuns.sort((left, right) => left.provider.localeCompare(right.provider) || left.queryId.localeCompare(right.queryId)),
     candidates,

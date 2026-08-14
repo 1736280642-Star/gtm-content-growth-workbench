@@ -8,15 +8,18 @@ export interface GeoSearchQuery {
   freshnessRequirement: "day" | "week" | "month" | "year" | "no_limit";
   stopCondition: string;
   round: number;
+  identityAnchors: string[];
+  candidateAcceptanceRule: string;
+  candidateRejectionRule: string;
 }
 
 export interface GeoSearchQueryPlan {
-  contractVersion: "geo-search-query-plan.v1";
+  contractVersion: "geo-search-query-plan.v2";
   productId: string;
   researchTask: string;
   queries: GeoSearchQuery[];
   maximumSupplementaryRounds: 2;
-  plannedBy: "zhipu" | "deterministic_fallback";
+  plannedBy: "identity_compiler";
   compiledAt: string;
 }
 
@@ -35,8 +38,16 @@ export interface GeoSearchProviderRun {
   parameters: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: Record<string, unknown>;
 }
+
+export type GeoSearchEntityClassification =
+  | "target_match"
+  | "verified_competitor"
+  | "category_related"
+  | "user_demand"
+  | "homonym"
+  | "unrelated"
+  | "insufficient_evidence";
 
 export interface GeoSearchEvidenceCandidate {
   candidateId: string;
@@ -56,10 +67,12 @@ export interface GeoSearchEvidenceCandidate {
   queries: string[];
   providerRunIds: string[];
   rawResponseRefs: string[];
+  entityClassification?: Exclude<GeoSearchEntityClassification, "homonym" | "unrelated" | "insufficient_evidence">;
+  matchedIdentityAnchors?: string[];
 }
 
 export interface MultiSearchEvidencePack {
-  contractVersion: "geo-multi-search-evidence.v1";
+  contractVersion: "geo-multi-search-evidence.v2";
   queries: GeoSearchQuery[];
   providerRuns: GeoSearchProviderRun[];
   candidates: GeoSearchEvidenceCandidate[];

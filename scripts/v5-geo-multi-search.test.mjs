@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { combineMultiSearchEvidencePacks, runMultiProviderWebSearch } from "../src/lib/v5/geo-search-adapters.ts";
-import { parseStructuredOutput } from "../src/lib/v5/geo-research-provider.ts";
+import { enforceTaskEntityRules, parseStructuredOutput } from "../src/lib/v5/geo-research-provider.ts";
 import { pruneGeoResearchCitations } from "../src/lib/v5/geo-evidence-verifier.ts";
 import { verifyGeoResearchEvidence } from "../src/lib/v5/geo-evidence-verifier.ts";
+import {
+  applyGeoEntityResolution,
+  compileIdentityAnchoredQueries
+} from "../src/lib/v5/geo-product-identity.ts";
 
 const envNames = [
   "GEO_RESEARCH_ZHIPU_API_KEY",
@@ -153,6 +157,134 @@ test("three providers fan out, canonical URLs deduplicate, and the evidence gate
   assert.ok(pack.candidates[0].contentHash);
   assert.equal(pack.gate.decision, "passed");
   assert.equal(pack.gate.successfulProviders.length, 3);
+  assert.equal(pack.providerRuns.some((run) => Object.hasOwn(run, "rawResponse")), false);
+});
+
+test("identity compiler forbids name-only GEO queries", () => {
+  const identity = {
+    productId: "noteflow",
+    canonicalName: "Noteflow",
+    displayName: "JOTO Noteflow",
+    aliases: ["Noteflow", "JOTO Noteflow"],
+    brandName: "JOTO",
+    officialEntity: "JOTO",
+    officialUrl: "https://noteflow.joto.ai",
+    officialDomain: "noteflow.joto.ai",
+    productCategory: "企业 AI 知识管理",
+    positioning: ["JOTO Noteflow 是面向企业团队的 AI 知识管理产品"],
+    audiences: ["面向需要管理企业资料的知识工作者"],
+    capabilities: ["支持文档解析、知识检索和引用溯源"],
+    scenarios: ["用于企业资料查询和文档问答"],
+    boundaries: [],
+    profileSource: "parsed",
+    profileFactCount: 4
+  };
+  const queries = compileIdentityAnchoredQueries({
+    taskType: "live_competitor_discovery",
+    identity,
+    maxQueries: 3
+  });
+  assert.equal(queries.length, 3);
+  assert.equal(queries.every((item) => item.identityAnchors.length >= 2), true);
+  assert.equal(queries.some((item) => /^Noteflow\s+(?:竞品|功能特点|用户评价)/i.test(item.query)), false);
+});
+
+test("same-name entities are discarded before evidence persistence even if classified as competitors", () => {
+  const identity = {
+    productId: "noteflow",
+    canonicalName: "Noteflow",
+    displayName: "JOTO Noteflow",
+    aliases: ["Noteflow", "JOTO Noteflow"],
+    brandName: "JOTO",
+    officialEntity: "JOTO",
+    officialUrl: "https://noteflow.joto.ai",
+    officialDomain: "noteflow.joto.ai",
+    productCategory: "企业 AI 知识管理",
+    positioning: ["JOTO Noteflow 是面向企业团队的 AI 知识管理产品"],
+    audiences: ["企业知识工作者"],
+    capabilities: ["文档解析、知识检索和引用溯源"],
+    scenarios: ["企业资料查询和文档问答"],
+    boundaries: [],
+    profileSource: "parsed",
+    profileFactCount: 4
+  };
+  const candidate = {
+    candidateId: "mergeek-noteflow",
+    canonicalUrl: "https://www.mergeek.com/latest/orvEDA4bQPkmzp0y",
+    title: "NoteFlow - 情绪感知生产力应用",
+    publisher: "Mergeek",
+    excerpt: "集成音乐播放器、任务管理、专注模式和 PDF 查看。",
+    retrievedAt: new Date(0).toISOString(),
+    retrievalStatus: "retrieved",
+    sourceType: "unknown",
+    authority: "low",
+    providerKeys: ["zhipu", "qwen"],
+    queryIds: ["query-1"],
+    queries: ["JOTO Noteflow 企业 AI 知识管理 竞品"],
+    providerRunIds: ["run-zhipu", "run-qwen"],
+    rawResponseRefs: ["run-zhipu", "run-qwen"]
+  };
+  const pack = {
+    contractVersion: "geo-multi-search-evidence.v2",
+    queries: query,
+    providerRuns: [
+      { runId: "run-zhipu", provider: "zhipu", queryId: "query-1", query: query[0].query, status: "success", startedAt: "", completedAt: "", sourceCount: 1, model: "test", endpoint: "", round: 0, parameters: {} },
+      { runId: "run-qwen", provider: "qwen", queryId: "query-1", query: query[0].query, status: "success", startedAt: "", completedAt: "", sourceCount: 1, model: "test", endpoint: "", round: 0, parameters: {} }
+    ],
+    candidates: [candidate],
+    gate: { decision: "passed", successfulProviders: ["zhipu", "qwen"], configuredProviders: ["zhipu", "qwen"], independentSourceCount: 1, requiredSuccessfulProviders: 2, requiredIndependentSources: 2, gaps: [] },
+    compiledAt: new Date(0).toISOString(),
+    supplementaryRounds: 0
+  };
+  const filtered = applyGeoEntityResolution({
+    taskType: "live_competitor_discovery",
+    identity,
+    pack,
+    resolutions: [{
+      candidateId: candidate.candidateId,
+      classification: "verified_competitor",
+      matchedIdentityAnchors: ["product_category", "capability"],
+      contradictingIdentityAnchors: ["brand", "use_case"],
+      competitorRelationshipSupported: true,
+      overlapDimensions: ["productivity"],
+      confidence: 0.9
+    }]
+  });
+  assert.equal(filtered.candidates.length, 0);
+  assert.equal(filtered.providerRuns.every((run) => run.sourceCount === 0), true);
+  assert.equal(filtered.gate.decision, "blocked");
+});
+
+test("competitor and AI mention metrics fail closed without verified entity relationships", () => {
+  const identity = {
+    productId: "noteflow", canonicalName: "Noteflow", displayName: "JOTO Noteflow",
+    aliases: ["Noteflow"], brandName: "JOTO", officialEntity: "JOTO",
+    officialDomain: "noteflow.joto.ai", productCategory: "企业 AI 知识管理",
+    positioning: [], audiences: [], capabilities: ["文档检索"], scenarios: ["企业知识问答"],
+    boundaries: [], profileSource: "parsed", profileFactCount: 2
+  };
+  const competitors = enforceTaskEntityRules("live_competitor_discovery", {
+    competitors: [
+      { name: "同名 NoteFlow", entityClassification: "homonym", overlapDimensions: ["名称"], relationshipEvidence: "同名", sourceUrls: ["https://example.com/homonym"] },
+      { name: "真实竞品", entityClassification: "verified_competitor", overlapDimensions: ["企业文档问答"], relationshipEvidence: "服务相同购买决策", sourceUrls: ["https://example.com/verified"] }
+    ]
+  }, identity);
+  assert.deepEqual(competitors.competitors.map((item) => item.name), ["真实竞品"]);
+
+  const baseline = enforceTaskEntityRules("frontend_baseline", {
+    tests: [
+      { question: "同名提及", mentionEntityClassification: "target_match", matchedIdentityAnchors: ["name"], targetMentioned: true, competitorsMentioned: [] },
+      { question: "实体提及", mentionEntityClassification: "target_match", matchedIdentityAnchors: ["brand", "capability"], targetMentioned: false, competitorsMentioned: [
+        { name: "同名产品", entityClassification: "homonym", overlapDimensions: ["名称"] },
+        { name: "真实竞品", entityClassification: "verified_competitor", overlapDimensions: ["企业文档问答"] }
+      ] }
+    ],
+    aggregate: { targetMentionRate: 1, competitors: ["同名产品"] }
+  }, identity);
+  assert.equal(baseline.tests[0].targetMentioned, false);
+  assert.equal(baseline.tests[1].targetMentioned, true);
+  assert.equal(baseline.aggregate.targetMentionRate, 0.5);
+  assert.deepEqual(baseline.aggregate.competitors, ["真实竞品"]);
 });
 
 test("one failed provider degrades safely when two providers and two sources remain", { concurrency: false }, async () => {
@@ -215,7 +347,7 @@ test("a single configured provider cannot pass the factual evidence gate", { con
 
 test("semantic conclusions pass only when citations belong to this run and conflicts stay visible", { concurrency: false }, () => {
   const pack = {
-    contractVersion: "geo-multi-search-evidence.v1",
+    contractVersion: "geo-multi-search-evidence.v2",
     queries: query,
     providerRuns: [],
     candidates: [
