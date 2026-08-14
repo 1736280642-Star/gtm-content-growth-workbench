@@ -1,14 +1,13 @@
 "use client";
 
-import { EditOutlined, FireOutlined, RollbackOutlined, SwapOutlined } from "@ant-design/icons";
-import { Alert, Button, Input, Modal, Select, Space, Typography } from "antd";
+import { EditOutlined } from "@ant-design/icons";
+import { Button, Input, Modal, Select, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
 import type { ContentDraftArtifact } from "@/lib/v5/free-production-contracts";
 import { WECHAT_LAYOUT_TEMPLATES } from "@/lib/v5/wechat-layout-selector";
 import type { WechatRenderableTemplateId } from "@/lib/v5/wechat-presentation-contracts";
 import { VisualSuggestionPlaceholder } from "./VisualSuggestionPlaceholder";
 import { VisualAssetBindingPanel } from "./VisualAssetBindingPanel";
-import { HotspotIntegrationSummary } from "./HotspotIntegrationSummary";
 
 const layoutOptions = [
   { label: "品牌排版", options: [{ value: "joto-official-v1", label: "JOTO 官方排版" }] },
@@ -22,7 +21,7 @@ function bodyWithoutTitle(artifact: ContentDraftArtifact) {
   return artifact.articleBody.replace(/\r\n?/g, "\n").trim().replace(/^#\s+[^\n]+\n+/, "");
 }
 
-export function WechatArticlePreview({ artifact, productId, changingLayout, savingContent, integratingHotspot, restoringVersion, hotspotLocked, hotspotError, onChangeLayout, onEditContent, onBindVisual, onIntegrateHotspot, onRestorePreviousVersion }: { artifact: ContentDraftArtifact; productId: string; changingLayout?: boolean; savingContent?: boolean; integratingHotspot?: boolean; restoringVersion?: boolean; hotspotLocked?: boolean; hotspotError?: string; onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void>; onIntegrateHotspot: () => Promise<void>; onRestorePreviousVersion: () => Promise<void> }) {
+export function WechatArticlePreview({ artifact, productId, changingLayout, savingContent, onChangeLayout, onEditContent, onBindVisual }: { artifact: ContentDraftArtifact; productId: string; changingLayout?: boolean; savingContent?: boolean; onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(artifact.selectedTitle);
   const [summary, setSummary] = useState(artifact.summary);
@@ -59,26 +58,9 @@ export function WechatArticlePreview({ artifact, productId, changingLayout, savi
           <Space size={8} wrap>
             <strong>{layoutNames.get(templateId) || templateId}</strong>
             <span>预览与写入公众号草稿箱使用同一排版。</span>
-            <Button
-              size="small"
-              type={artifact.hotspotIntegration ? "default" : "primary"}
-              icon={artifact.hotspotIntegration ? <SwapOutlined /> : <FireOutlined />}
-              loading={integratingHotspot}
-              disabled={hotspotLocked || restoringVersion}
-              onClick={() => void onIntegrateHotspot()}
-            >
-              {artifact.hotspotIntegration ? "更换热点" : "加入热点"}
-            </Button>
-            {artifact.previousArtifactId ? (
-              <Button size="small" icon={<RollbackOutlined />} loading={restoringVersion} disabled={hotspotLocked || integratingHotspot} onClick={() => void onRestorePreviousVersion()}>
-                返回上一版本
-              </Button>
-            ) : null}
             <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>
           </Space>
         </div>
-        {hotspotError ? <Alert showIcon type="error" message="热点未能融入正文" description={hotspotError} /> : null}
-        {artifact.hotspotIntegration ? <HotspotIntegrationSummary plan={artifact.hotspotIntegration} /> : null}
         <VisualAssetBindingPanel suggestions={artifact.visualSuggestions} productId={productId} onBind={onBindVisual} />
         <iframe
           className="wechat-official-preview-frame"

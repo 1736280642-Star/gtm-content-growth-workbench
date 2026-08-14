@@ -1,0 +1,39 @@
+.panel {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #dfe8e3;
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.heading h2 {
+  margin: 4px 0 0;
+  color: #172033;
+  font-size: 18px;
+}
+
+.actions :global(.ant-btn) {
+  min-width: 0;
+}
+
+.empty {
+  margin: 0;
+  padding: 12px;
+  color: #607069;
+  background: #f7faf8;
+  border-left: 3px solid #8bb7a8;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+@media (max-width: 420px) {
+  .actions {
+    display: grid;
+  }
+}
