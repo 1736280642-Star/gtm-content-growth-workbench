@@ -188,7 +188,7 @@ export default function GeoResearchRunPage() {
                         showIcon
                         type={questionCatalog.liveSearchVerified ? "info" : "warning"}
                         message={questionCatalog.liveSearchVerified ? "目录问题均来自本次联网研究" : "目录仍在采集，暂不能写入问题池"}
-                        description="公开网页只证明用户确实在问，不证明产品答案成立；收录后默认进入观察状态，待产品知识证据补齐后才能用于月度计划。"
+                        description="公开网页只证明用户确实在问，不证明产品答案成立；人工确认后即进入正式 GEO 问题监控，并成为 MonthlyPlan 可选目标问题。"
                       />
                       <Space wrap>
                         <Button
@@ -197,7 +197,7 @@ export default function GeoResearchRunPage() {
                           disabled={!selectedQuestionIds.length || !questionCatalog.liveSearchVerified}
                           loading={importingQuestions}
                           onClick={() => void importQuestionCatalog()}
-                        >确认并收录问题池</Button>
+                        >确认并纳入 GEO 监控</Button>
                         <Button
                           disabled={!selectableQuestionIds.length}
                           onClick={() => setSelectedQuestionIds(selectableQuestionIds)}

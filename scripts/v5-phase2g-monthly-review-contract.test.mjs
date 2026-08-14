@@ -16,6 +16,9 @@ test("formal MonthlyReview reads only published results and freezes proposal evi
   assert.match(service, /publish_liveness_72h:/);
   assert.match(service, /FORMAL_LIVENESS_EVIDENCE_PENDING/);
   assert.match(service, /hasMetricReturn === true/);
+  assert.match(service, /listApprovedGeoMonitoringQuestions/);
+  assert.match(service, /lastRetestedAt/);
+  assert.match(service, /geoMonitoringApproved/);
 });
 
 test("formal publish observation distinguishes pending, survived and removed-before-threshold", () => {
@@ -50,4 +53,6 @@ test("the consolidated GEO monitor exposes 24h/72h and next-month evidence witho
   assert.match(monitor, /MonthlyReview 下月调整依据/);
   assert.match(monitor, /重大策略变化仍需人工确认/);
   assert.match(monitor, /selectedPublishedContent\.publicUrl/);
+  assert.match(monitor, /最近复测时间/);
+  assert.match(monitor, /item\.geoMonitoringApproved/);
 });

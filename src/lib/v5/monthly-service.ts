@@ -194,7 +194,7 @@ function buildTargetQuestions(state: WorkbenchState, source: V5ReferenceSource, 
       return option;
     });
   const currentFormal = foundation.questions.flatMap((question) => {
-    if (!question.currentVersionId || !["available", "observing"].includes(question.status)) return [];
+    if (!question.currentVersionId || question.geoMonitoringApproval?.status !== "approved" || !["available", "observing"].includes(question.status)) return [];
     const option = toOption(question.questionId, question.currentVersionId, "monthly_ready");
     return option ? [option] : [];
   });

@@ -235,15 +235,13 @@ export async function importGeoResearchQuestionCatalog(input: {
   expectedQuestionPoolVersion: number;
   idempotencyKey: string;
   actor: V5GovernanceActor;
-  approvalMode?: "human" | "system_policy";
 }) {
   assertText(input.productId, "productId", 64);
   assertText(input.runId, "runId", 64);
   assertText(input.idempotencyKey, "idempotencyKey", 128);
   assertActor(input.actor);
   assertStringList(input.findingIds, "findingIds", 100);
-  const isSystemPolicy = input.approvalMode === "system_policy" && ["system", "scheduler"].includes(input.actor.actorType);
-  if (input.actor.actorType !== "human" && !isSystemPolicy) {
+  if (input.actor.actorType !== "human") {
     throw new V5GovernanceServiceError("human_approval_required", "真实用户问题目录必须经人工确认后才能进入问题池。", 403);
   }
   if (!input.findingIds.length) {
@@ -297,7 +295,13 @@ export async function importGeoResearchQuestionCatalog(input: {
       suggestedArticleTypes: item.suggestedArticleTypes.length ? item.suggestedArticleTypes : suggestedArticleTypesForQuestion(item.question),
       keywords: item.keywords,
       knowledgeReadiness: {},
-      evidenceGap: true
+      evidenceGap: true,
+      geoMonitoringApproval: {
+        source: "geo_research_human" as const,
+        approvedBy: input.actor.actorId,
+        researchRunId: input.runId,
+        findingId: item.findingId
+      }
     }))
   });
   const confirmation = await confirmGeoResearchQuestionFindingsRecord({
@@ -315,43 +319,6 @@ export async function importGeoResearchQuestionCatalog(input: {
     questionPoolStateVersion: result.data.stateVersion,
     replayed: result.status === "replayed" && confirmation.replayed
   };
-}
-
-export async function importVerifiedGeoResearchQuestionsByPolicy(input: {
-  productId: string;
-  runId: string;
-  expectedQuestionPoolVersion: number;
-  idempotencyKey: string;
-  actor: V5GovernanceActor;
-}) {
-  assertActor(input.actor);
-  if (!["system", "scheduler"].includes(input.actor.actorType)) {
-    throw new V5GovernanceServiceError("system_policy_actor_required", "自动收录问题必须由系统策略执行器发起。", 403);
-  }
-  const product = await getActiveProduct(input.productId);
-  const runWorkspace = await readGeoResearchRunWorkspace({ productId: input.productId, runId: input.runId });
-  if (!runWorkspace) throw new V5GovernanceServiceError("research_run_not_found", "GEO 调研运行不存在。", 404);
-  const catalog = buildGeoResearchQuestionCatalog({ product, ...runWorkspace });
-  const findingIds = catalog.items
-    .filter((item) => item.reviewStatus !== "rejected" && item.confidence >= 0.7 && item.sources.length > 0)
-    .sort((left, right) => right.priority - left.priority || right.confidence - left.confidence)
-    .slice(0, 50)
-    .map((item) => item.findingId);
-  if (!catalog.liveSearchVerified || findingIds.length === 0) {
-    return {
-      catalogId: catalog.catalogId,
-      importedCount: 0,
-      questionIds: [] as string[],
-      questionPoolStateVersion: input.expectedQuestionPoolVersion,
-      replayed: false,
-      status: "waiting_for_verified_questions" as const
-    };
-  }
-  return importGeoResearchQuestionCatalog({
-    ...input,
-    findingIds,
-    approvalMode: "system_policy"
-  });
 }
 
 export async function createGeoResearchProjectForProduct(input: {

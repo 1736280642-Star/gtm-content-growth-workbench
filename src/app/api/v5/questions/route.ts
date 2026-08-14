@@ -1,21 +1,8 @@
-import { readString } from "@/lib/api-utils";
-import { readV5GovernancePayload, readV5WriteEnvelope } from "@/lib/v5/knowledge-governance-api";
 import { v5FoundationErrorResponse } from "@/lib/v5/foundation-service";
-import { ingestV5QuestionSignals, listV5Questions } from "@/lib/v5/question-service";
-import type { V5QuestionConflictType, V5QuestionKnowledgeReadiness, V5QuestionSignalInput } from "@/lib/v5/question-contracts";
+import { listV5Questions } from "@/lib/v5/question-service";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-
-function readKnowledgeReadiness(value: unknown): Partial<V5QuestionKnowledgeReadiness> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record = value as Record<string, unknown>;
-  return {
-    subjectKnowledgeBaseId: readString(record.subjectKnowledgeBaseId),
-    productExpressionRulePackageId: readString(record.productExpressionRulePackageId),
-    factSourceMappingId: readString(record.factSourceMappingId)
-  };
-}
 
 export function GET() {
   try {
@@ -25,29 +12,9 @@ export function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const payload = await readV5GovernancePayload(request);
-    const signal: V5QuestionSignalInput = {
-      text: readString(payload.text) || "",
-      source: "manual",
-      sourceId: readString(payload.sourceId) || `manual-${Date.now()}`,
-      sourceConfidence: typeof payload.sourceConfidence === "number"
-        ? payload.sourceConfidence
-        : typeof payload.confidence === "number" ? payload.confidence : 1,
-      product: readString(payload.product),
-      entities: Array.isArray(payload.entities) ? payload.entities.filter((item): item is string => typeof item === "string") : [],
-      relationship: readString(payload.relationship),
-      audience: readString(payload.audience),
-      suggestedArticleTypes: Array.isArray(payload.suggestedArticleTypes) ? payload.suggestedArticleTypes.filter((item): item is string => typeof item === "string") : [],
-      keywords: Array.isArray(payload.keywords) ? payload.keywords.filter((item): item is string => typeof item === "string") : [],
-      knowledgeReadiness: readKnowledgeReadiness(payload.knowledgeReadiness),
-      conflicts: Array.isArray(payload.conflicts) ? payload.conflicts.filter((item): item is V5QuestionConflictType => typeof item === "string") : [],
-      conflictingQuestionIds: Array.isArray(payload.conflictingQuestionIds) ? payload.conflictingQuestionIds.filter((item): item is string => typeof item === "string") : [],
-      evidenceGap: payload.evidenceGap === true
-    };
-    return NextResponse.json(ingestV5QuestionSignals({ ...readV5WriteEnvelope(payload), signals: [signal] }));
-  } catch (error) {
-    return v5FoundationErrorResponse(error);
-  }
+export async function POST() {
+  return NextResponse.json({
+    ok: false,
+    error: { code: "MANUAL_QUESTION_ENTRY_RETIRED", message: "人工补充问题入口已停用，请在 GEO 调研结果中一次确认并纳入监控。" }
+  }, { status: 410 });
 }

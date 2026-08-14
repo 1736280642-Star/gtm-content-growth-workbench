@@ -109,11 +109,9 @@ if (!missingMysql.length) {
   }
 }
 
-const locks = Array.isArray(foundation.monthlyQuestionLocks)
-  ? foundation.monthlyQuestionLocks.filter((item) => item.month === month)
-  : [];
 const versionsById = new Map((foundation.questionVersions || []).map((item) => [item.questionVersionId, item]));
-const lockedQuestions = locks.map((lock) => versionsById.get(lock.questionVersionId)).filter(Boolean);
+const confirmedQuestions = (foundation.questions || []).filter((item) => item.geoMonitoringApproval?.status === "approved");
+const lockedQuestions = confirmedQuestions.map((item) => versionsById.get(item.currentVersionId)).filter(Boolean);
 const questionProducts = Array.from(new Set(lockedQuestions.map((item) => item.product).filter(Boolean)));
 const missingQuestionProductCount = lockedQuestions.filter((item) => !item.product).length;
 
@@ -154,7 +152,7 @@ const sourceFiles = await Promise.all([
 const [monthlyServiceSource, executionRepositorySource, observationAdapterSource] = sourceFiles;
 
 const stages = [
-  stage("questions", "目标问题", locks.length ? "ready" : "blocked", `${locks.length} 个当月锁定问题`, locks.length ? undefined : "在 /questions-keywords 选择当月目标问题。"),
+  stage("questions", "目标问题", confirmedQuestions.length ? "ready" : "blocked", `${confirmedQuestions.length} 个 GEO 调研人工确认问题`, confirmedQuestions.length ? undefined : "在产品 GEO 调研结果中确认需要监控的问题。"),
   stage(
     "product_binding",
     "问题 -> 正式产品",
@@ -199,7 +197,7 @@ const summary = {
     disconnected: stages.filter((item) => item.status === "disconnected").length
   },
   data: {
-    lockedQuestions: locks.length,
+    lockedQuestions: confirmedQuestions.length,
     questionProducts,
     unmatchedQuestionProducts,
     missingQuestionProductCount,

@@ -60,7 +60,7 @@ const targets = [
   { name: "products_page", path: "/products", expect: "产品知识库与自动化状态" },
   { name: "knowledge_compat_page", path: "/knowledge", expectRedirect: "/products" },
   { name: "knowledge_detail_page", path: "/knowledge/kb-adp-service", expect: "JOTO 腾讯云 ADP 服务能力" },
-  { name: "questions_keywords_page", path: "/questions-keywords", expect: "问题与关键词池" },
+  { name: "questions_keywords_page", path: "/questions-keywords", expect: "GEO 问题监控" },
   { name: "distilled_terms_compat_page", path: "/distilled-terms", expectRedirect: "/questions-keywords" },
   { name: "configuration_page", path: "/configuration", expect: "配置管理" },
   { name: "real_integration_compat_page", path: "/real-integration", expectRedirect: "/configuration?tab=connections" },

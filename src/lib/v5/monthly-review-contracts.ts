@@ -5,6 +5,7 @@ export interface MonthlyQuestionReview {
   month: string;
   questionKey: string;
   questionText: string;
+  geoMonitoringApproved: boolean;
   monthlyPlanIds: string[];
   plannedContentCount: number;
   publishedContent: Array<{
@@ -22,6 +23,7 @@ export interface MonthlyQuestionReview {
   }>;
   captureTaskIds: string[];
   captureSummary: string;
+  lastRetestedAt?: string;
   confirmedGapCodes: string[];
   recommendationEvidenceRefs: string[];
   recommendation: string;

@@ -262,6 +262,9 @@ function buildConflictAssessment(
   signal: V5QuestionSignalInput,
   matched?: { question: V5QuestionSet; version: V5QuestionVersion }
 ): V5QuestionConflictAssessment {
+  if (signal.geoMonitoringApproval?.source === "geo_research_human") {
+    return { hasConflict: false, categories: [], conflictingQuestionIds: [] };
+  }
   const categories = new Set((signal.conflicts || []).flatMap((item) => normalizeConflictCategory(item) || []));
   const conflictingQuestionIds = new Set((signal.conflictingQuestionIds || []).filter((id) => state.questions.some((item) => item.questionId === id)));
   if (matched) {
@@ -374,6 +377,17 @@ function ingestOne(state: V5FoundationState, signal: V5QuestionSignalInput, now:
   }
 
   const question = state.questions.find((item) => item.questionId === questionId)!;
+  if (signal.geoMonitoringApproval) {
+    const previous = question.geoMonitoringApproval;
+    question.geoMonitoringApproval = {
+      status: "approved",
+      source: "geo_research_human",
+      approvedAt: previous?.approvedAt || now,
+      approvedBy: previous?.approvedBy || signal.geoMonitoringApproval.approvedBy,
+      researchRunIds: Array.from(new Set([...(previous?.researchRunIds || []), signal.geoMonitoringApproval.researchRunId])),
+      findingIds: Array.from(new Set([...(previous?.findingIds || []), signal.geoMonitoringApproval.findingId]))
+    };
+  }
   const keywordIds = deriveKeywords(signal).map((text) => upsertKeyword(state, {
     text,
     questionId,
@@ -401,6 +415,12 @@ export function listV5Questions() {
       stateVersion: state.version
     }
   };
+}
+
+export function listApprovedGeoMonitoringQuestions() {
+  return buildQuestionViews(readV5FoundationSnapshot()).filter(
+    (question) => question.geoMonitoringApproval?.status === "approved" && question.status !== "archived"
+  );
 }
 
 export function getV5Question(questionId: string) {

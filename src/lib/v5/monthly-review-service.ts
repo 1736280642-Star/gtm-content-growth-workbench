@@ -4,6 +4,7 @@ import { appendObservationAudit, hashObservationPayload, readV5ObservationState,
 import { readObservationReferenceSnapshot } from "./observation-reference-adapter";
 import { assertMonth, assertObservationMutationContext, ObservationServiceError } from "./observation-service";
 import { listFormalCaptureObservations } from "./capture-repository";
+import { listApprovedGeoMonitoringQuestions } from "./question-service";
 
 function getNextMonth(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
@@ -14,14 +15,19 @@ function getNextMonth(month: string) {
 export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
   assertMonth(month);
   const [state, reference] = await Promise.all([readV5ObservationState(), readObservationReferenceSnapshot()]);
-  const formalCapture = reference.source === "formal_adapter" ? await listFormalCaptureObservations({ month }) : [];
+  const approvedQuestions = listApprovedGeoMonitoringQuestions();
+  const formalCapture = reference.source === "formal_adapter" ? await listFormalCaptureObservations() : [];
+  const normalizeFormalTask = (item: (typeof formalCapture)[number]) => ({
+    ...item.task,
+    questionKey: item.task.questionVersionId
+      ? reference.questions.find((question) => question.questionVersionId === item.task.questionVersionId)?.questionKey || item.task.questionKey
+      : item.task.questionKey
+  });
+  const allTasks = reference.source === "formal_adapter"
+    ? formalCapture.map(normalizeFormalTask)
+    : Object.values(state.tasks);
   const tasks = reference.source === "formal_adapter"
-    ? formalCapture.map((item) => ({
-        ...item.task,
-        questionKey: item.task.questionVersionId
-          ? reference.questions.find((question) => question.questionVersionId === item.task.questionVersionId)?.questionKey || item.task.questionKey
-          : item.task.questionKey
-      }))
+    ? formalCapture.filter((item) => item.task.createdAt.startsWith(month)).map(normalizeFormalTask)
     : Object.values(state.tasks).filter((task) => task.createdAt.startsWith(month));
   const answers = reference.source === "formal_adapter"
     ? Object.fromEntries(formalCapture.flatMap((item) => item.answer ? [[item.answer.id, item.answer] as const] : []))
@@ -32,13 +38,16 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
   const published = reference.publishedContent.filter((item) => item.publishedAt.startsWith(month));
   const plans = reference.monthlyPlans.filter((item) => item.month === month);
   const questionKeys = new Set([
+    ...approvedQuestions.map((item) => item.questionId),
     ...plans.flatMap((item) => item.questionKeys),
     ...published.map((item) => item.questionKey),
     ...tasks.map((item) => item.questionKey)
   ]);
   const questions: MonthlyQuestionReview[] = Array.from(questionKeys).map((questionKey) => {
+    const approvedQuestion = approvedQuestions.find((item) => item.questionId === questionKey);
     const referenceQuestion = reference.questions.find((item) => item.questionKey === questionKey);
     const questionTasks = tasks.filter((task) => task.questionKey === questionKey);
+    const allQuestionTasks = allTasks.filter((task) => task.questionKey === questionKey);
     const questionPublished = published.filter((item) => item.questionKey === questionKey);
     const monthlyPlans = plans.filter((item) => item.questionKeys.includes(questionKey));
     const confirmedGapCodes = Array.from(
@@ -54,6 +63,11 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
     );
     const completedTasks = questionTasks.filter((task) => task.status === "completed");
     const entityMentionCount = completedTasks.filter((task) => task.answerId && answers[task.answerId]?.targetEntityMentioned).length;
+    const lastRetestedAt = allQuestionTasks
+      .flatMap((task) => task.answerId && (reference.source === "formal_adapter"
+        ? formalCapture.find((item) => item.task.id === task.id)?.answer?.createdAt
+        : state.answers[task.answerId]?.createdAt) || [])
+      .sort((left, right) => right.localeCompare(left))[0];
     const publishLivenessFailed = questionPublished.some((item) => item.liveness24h === "failed" || item.liveness72h === "failed");
     const livenessObservationComplete = questionPublished.length > 0
       && questionPublished.every((item) => item.liveness72h && item.liveness72h !== "pending");
@@ -68,7 +82,8 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
       id: `monthly-question-review-${month}-${hashObservationPayload(questionKey).slice(0, 10)}`,
       month,
       questionKey,
-      questionText: referenceQuestion?.text || questionTasks[0]?.questionText || questionKey,
+      questionText: approvedQuestion?.currentVersion.text || referenceQuestion?.text || questionTasks[0]?.questionText || questionKey,
+      geoMonitoringApproved: Boolean(approvedQuestion),
       monthlyPlanIds: monthlyPlans.map((item) => item.monthlyPlanId),
       plannedContentCount: monthlyPlans.reduce((sum, item) => sum + item.plannedContentCount, 0),
       publishedContent: questionPublished.map(({ contentId, title, channel, publishedAt, publicUrl, publishScheduleId, liveness24h, liveness72h, removedAt, hasMetricReturn, metricSummary }) => ({
@@ -88,6 +103,7 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
       captureSummary: completedTasks.length
         ? `${completedTasks.length} 次有效采集，${entityMentionCount} 次出现目标实体。`
         : "本月尚无完成的 AI 前台测试。",
+      lastRetestedAt,
       confirmedGapCodes,
       recommendationEvidenceRefs: [
         ...questionPublished.map((item) => `published_content:${item.contentId}`),

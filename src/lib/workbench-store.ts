@@ -761,7 +761,7 @@ function buildContentTaskTitleSourceAttributions(
   if (task.primaryDistilledTerm) {
     attributions.push({
       key: "distilled_terms",
-      label: "问题与关键词池",
+      label: "GEO 问题监控",
       role: "supporting",
       summary: `围绕主蒸馏词「${task.primaryDistilledTerm}」生成标题和来源问题。`
     });

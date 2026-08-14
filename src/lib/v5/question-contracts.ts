@@ -61,6 +61,14 @@ export interface V5QuestionSet {
   evidenceGap: boolean;
   knowledgeReadiness: V5QuestionKnowledgeReadiness;
   conflictAssessment: V5QuestionConflictAssessment;
+  geoMonitoringApproval?: {
+    status: "approved";
+    source: "geo_research_human";
+    approvedAt: string;
+    approvedBy: string;
+    researchRunIds: string[];
+    findingIds: string[];
+  };
   rowVersion: number;
   createdAt: string;
   updatedAt: string;
@@ -121,6 +129,12 @@ export interface V5QuestionSignalInput {
   conflicts?: V5QuestionConflictType[];
   conflictingQuestionIds?: string[];
   evidenceGap?: boolean;
+  geoMonitoringApproval?: {
+    source: "geo_research_human";
+    approvedBy: string;
+    researchRunId: string;
+    findingId: string;
+  };
 }
 
 export interface V5MonthlyQuestionLock {

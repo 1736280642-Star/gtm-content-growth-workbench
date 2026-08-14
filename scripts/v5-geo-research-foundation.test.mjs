@@ -47,7 +47,7 @@ test("research run cannot start without a governed source snapshot", async () =>
   }
 });
 
-test("live research requires multi-provider evidence, deterministic citation verification, and raw artifacts", async () => {
+test("live research requires product identity resolution, multi-provider evidence, and filtered artifacts", async () => {
   const provider = await read("src/lib/v5/geo-research-provider.ts");
   const adapters = await read("src/lib/v5/geo-search-adapters.ts");
   const verifier = await read("src/lib/v5/geo-evidence-verifier.ts");
@@ -61,6 +61,11 @@ test("live research requires multi-provider evidence, deterministic citation ver
   assert.match(provider, /runMultiProviderWebSearch/);
   assert.match(provider, /multi_search_evidence_gate_failed/);
   assert.match(provider, /verifyGeoResearchEvidence/);
+  assert.match(provider, /buildGeoProductIdentityCard/);
+  assert.match(provider, /applyGeoEntityResolution/);
+  assert.match(provider, /productIdentity/);
+  assert.match(repository, /readProductKnowledgeProfile/);
+  assert.doesNotMatch(adapters, /rawResponse:\s*result\.payload/);
   assert.match(provider, /response_format:\s*\{\s*type:\s*"json_object"\s*\}/);
   assert.match(provider, /searchController/);
   assert.match(provider, /synthesisController/);
@@ -76,7 +81,7 @@ test("live research requires multi-provider evidence, deterministic citation ver
   assert.match(repository, /question_opportunity" && evidenceIds\.length === 0/);
 });
 
-test("verified GEO questions can enter the pool by system policy while retaining manual correction", async () => {
+test("verified GEO questions enter monitoring only after the single human confirmation", async () => {
   const contracts = await read("src/lib/v5/geo-research-contracts.ts");
   const service = await read("src/lib/v5/geo-research-service.ts");
   const repository = await read("src/lib/v5/geo-research-repository.ts");
@@ -86,14 +91,15 @@ test("verified GEO questions can enter the pool by system policy while retaining
   assert.match(contracts, /GeoResearchQuestionCatalog/);
   assert.match(service, /buildGeoResearchQuestionCatalog/);
   assert.match(service, /human_approval_required/);
-  assert.match(service, /importVerifiedGeoResearchQuestionsByPolicy/);
-  assert.match(service, /confidence >= 0\.7/);
+  assert.doesNotMatch(service, /importVerifiedGeoResearchQuestionsByPolicy/);
+  assert.doesNotMatch(service, /approvalMode: "system_policy"/);
   assert.match(service, /evidenceGap: true/);
+  assert.match(service, /geoMonitoringApproval/);
   assert.match(service, /ingestV5QuestionSignals/);
   assert.match(repository, /geo_question_catalog_imported_to_question_pool/);
   assert.match(questionContracts, /"geo_research"/);
   assert.match(route, /importGeoResearchQuestionCatalog/);
-  assert.match(runPage, /确认并收录问题池/);
+  assert.match(runPage, /确认并纳入 GEO 监控/);
 });
 
 test("research synthesis cannot approve business strategy and hands off to the human strategy gate", async () => {

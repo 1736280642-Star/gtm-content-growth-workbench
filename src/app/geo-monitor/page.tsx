@@ -45,6 +45,7 @@ function GeoMonitorWorkspace() {
   useEffect(() => { void refreshResults(); }, [refreshResults]);
 
   const tasks = useMemo(() => workspace?.productionTasks || [], [workspace?.productionTasks]);
+  const monitoredQuestions = useMemo(() => review?.questions.filter((item) => item.geoMonitoringApproved) || [], [review?.questions]);
   const published = tasks.filter((item) => item.status === "published");
   const scheduled = tasks.filter((item) => Boolean(item.scheduledAt) && item.status !== "published");
   const selectedPublishedContent = selectedTask
@@ -105,9 +106,11 @@ function GeoMonitorWorkspace() {
     </Space> : null}
 
     {tab === "ai" ? <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}><Card><Statistic title="自动复测任务" value={review?.metrics.captureTasks || 0} /></Card><Card><Statistic title="待确认缺口" value={review?.metrics.pendingGaps || 0} /></Card></div>
-      <Card title="AI 可见性与引用证据"><Table rowKey="id" dataSource={review?.questions || []} pagination={false} locale={{ emptyText: <Empty description="系统会在发布后自动创建复测；当前暂无可关联结果" /> }} columns={[
-        { title: "问题", dataIndex: "questionText" }, { title: "AI 回答与引用", dataIndex: "captureSummary" }, { title: "已发布内容", render: (_, row) => row.publishedContent.length }, { title: "数据状态", dataIndex: "dataStatus", render: (value) => <Tag>{value}</Tag> }
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}><Card><Statistic title="自动复测任务" value={monitoredQuestions.reduce((sum, item) => sum + item.captureTaskIds.length, 0)} /></Card><Card><Statistic title="待确认缺口" value={review?.metrics.pendingGaps || 0} /></Card></div>
+      <Card title="AI 可见性与引用证据"><Table rowKey="id" dataSource={monitoredQuestions} pagination={false} locale={{ emptyText: <Empty description="请先在 GEO 调研结果中人工确认问题；内容发布后系统会自动复测" /> }} columns={[
+        { title: "问题", dataIndex: "questionText" },
+        { title: "最近复测时间", dataIndex: "lastRetestedAt", render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未复测" },
+        { title: "AI 回答与引用", dataIndex: "captureSummary" }, { title: "已发布内容", render: (_, row) => row.publishedContent.length }, { title: "数据状态", dataIndex: "dataStatus", render: (value) => <Tag>{value}</Tag> }
       ]} /></Card>
     </Space> : null}
 
