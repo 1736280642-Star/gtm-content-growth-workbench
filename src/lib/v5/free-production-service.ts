@@ -29,6 +29,7 @@ import type {
 } from "./free-production-contracts";
 import { freeProductionChannelLabels } from "./free-production-contracts";
 import { buildWechatLayout, contentDigest, createInitialRisks, getCalendarMonthBounds, mergeRegeneratedSections, sanitizePublishMarkdown, summarizeRisks } from "./free-production-compiler";
+import { compactFreeProductionSourceExcerpts, normalizeFreeProductionCitations, supportedClaimsFromSections } from "./free-production-evidence";
 import { compileExpressionPlan } from "./free-production-expression-plan";
 import { assertPublishPayloadSanitized, validateFreeProductionOutput } from "./free-production-output-validator";
 import { getActiveFreeContentExpressionTypeVersion, listFreeContentExpressionTypes, markFreeExpressionUsed } from "./free-content-expression-type-service";
@@ -332,10 +333,10 @@ function meetingTextExcerpts(value: string) {
   return paragraphs.flatMap((paragraph) => paragraph.match(/[\s\S]{1,600}/g) || []).slice(0, 24);
 }
 
-export function buildFreeProductionSourceExcerpts(input: { knowledge: Awaited<ReturnType<typeof knowledgeFor>>; factItems: FreeProductionFactInput[]; meetingText: string }) {
+export function buildFreeProductionSourceExcerpts(input: { knowledge: Awaited<ReturnType<typeof knowledgeFor>>; factItems: FreeProductionFactInput[]; meetingText: string; retrievalQuery?: string }) {
   const knowledgeSources: FreeProductionSourceExcerpt[] = input.knowledge.flatMap((item) => (item.evidence as Array<{ evidenceExcerpt?: string; summary?: string }>).flatMap((evidence, index) => {
     const excerpt = String(evidence.evidenceExcerpt || evidence.summary || "").trim();
-    return excerpt ? [{ id: `source-${randomUUID()}`, sourceType: "knowledge" as const, excerpt, sourceSnapshotId: item.sourceSnapshotId, sourceSnapshotHash: item.sourceSnapshotHash }] : [];
+    return excerpt ? [{ id: `source-${randomUUID()}`, sourceType: "knowledge" as const, excerpt, sourceSnapshotId: item.sourceSnapshotId, sourceSnapshotHash: item.sourceSnapshotHash, sourceName: item.name }] : [];
   }));
   const factSources: FreeProductionSourceExcerpt[] = input.factItems.map((item) => ({
     id: `source-${randomUUID()}`,
@@ -343,7 +344,7 @@ export function buildFreeProductionSourceExcerpts(input: { knowledge: Awaited<Re
     excerpt: [`时间：${item.time}`, `地点：${item.location}`, `人物：${item.people}`, `事件：${item.event}`].join("\n")
   }));
   const meetingSources: FreeProductionSourceExcerpt[] = meetingTextExcerpts(input.meetingText).map((excerpt) => ({ id: `source-${randomUUID()}`, sourceType: "meeting_text", excerpt }));
-  return [...knowledgeSources, ...factSources, ...meetingSources];
+  return compactFreeProductionSourceExcerpts([...knowledgeSources, ...factSources, ...meetingSources], input.retrievalQuery);
 }
 
 function parseProviderJson(content: string) {
@@ -356,24 +357,31 @@ function parseProviderJson(content: string) {
   const sections = Array.isArray(value.sections) ? value.sections.flatMap((item): DraftSection[] => {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
-    return typeof record.sectionKey === "string" && typeof record.heading === "string" && typeof record.markdown === "string" ? [{ sectionKey: record.sectionKey.trim(), heading: record.heading.trim(), markdown: record.markdown.trim() }] : [];
+    const citations = Array.isArray(record.citations) ? record.citations.flatMap((citation) => {
+      if (!citation || typeof citation !== "object") return [];
+      const citationRecord = citation as Record<string, unknown>;
+      const claimText = typeof citationRecord.claimText === "string" ? citationRecord.claimText.trim() : "";
+      const sourceIds = Array.isArray(citationRecord.sourceIds) ? citationRecord.sourceIds.filter((sourceId): sourceId is string => typeof sourceId === "string").map((sourceId) => sourceId.trim()).filter(Boolean) : [];
+      return claimText && sourceIds.length ? [{ claimText, sourceIds }] : [];
+    }) : [];
+    return typeof record.sectionKey === "string" && typeof record.heading === "string" && typeof record.markdown === "string" ? [{ sectionKey: record.sectionKey.trim(), heading: record.heading.trim(), markdown: record.markdown.trim(), citations }] : [];
   }) : [];
   return { titleCandidates, summary, sections };
 }
 
 function generationPrompt(input: { batch: FreeProductionBatch; expression: FreeContentExpressionTypeVersion; knowledge: Array<Record<string, unknown>>; brandBaseline: Record<string, unknown>; affectedSectionKeys?: string[]; currentArtifact?: ContentDraftArtifact }) {
-  const schema = { titleCandidates: ["标题1", "标题2", "标题3"], summary: "80字以内摘要", sections: input.expression.structureModules.map((sectionKey) => ({ sectionKey, heading: "中文章节标题", markdown: "该章节正文" })) };
+  const schema = { titleCandidates: ["标题1", "标题2", "标题3"], summary: "80字以内摘要", sections: input.expression.structureModules.map((sectionKey) => ({ sectionKey, heading: "中文章节标题", markdown: "该章节正文", citations: [{ claimText: "正文中由来源支持的具体主张", sourceIds: ["source-id"] }] })) };
   const humanWritingProfile = isWechatContentChannel(input.batch.channelConfig.channel)
     ? { version: HUMAN_WRITING_WECHAT_PROFILE_VERSION, directives: HUMAN_WRITING_WECHAT_DIRECTIVES }
     : undefined;
   return {
-    systemPrompt: "你是 JOTO 企业公众号内容生产助手。只能使用提供的知识、补充事实和规则，不得猜测客户名称、数据、上线状态、合作范围、能力边界、CTA 或合规结论。缺失事实直接省略，不写待补充标记。严格输出单个 JSON 对象，不输出 Markdown 代码围栏或解释。",
+    systemPrompt: "你是 JOTO 企业公众号内容生产助手。只能使用提供的知识、补充事实和规则，不得猜测客户名称、数据、上线状态、合作范围、能力边界、CTA 或合规结论。缺失事实直接省略，不写待补充标记。每个章节都必须为实际采用的事实主张填写 citations，只能引用 sourceExcerpts 中真实存在的 id；不要引用没有写进正文的候选资料，也不要编造 sourceId。严格输出单个 JSON 对象，不输出 Markdown 代码围栏或解释。",
     userPrompt: JSON.stringify({
       task: input.affectedSectionKeys?.length ? "只重写 affectedSectionKeys 对应章节；其余章节原样返回，最终仍输出完整 sections。" : "生成一篇单篇渠道正文。",
       subjectName: input.batch.productName || "JOTO",
       expression: { presetKey: input.expression.presetKey, contentGoal: input.expression.contentGoal, audience: input.expression.defaultAudience, audienceLens: input.expression.audienceLensPolicy, titleStrategy: input.expression.defaultTitleStrategyKey, structureModules: input.expression.structureModules, length: input.expression.recommendedLength, expressionConfig: input.expression.expressionConfig, promotionConfig: input.expression.promotionConfig, requirements: input.expression.additionalWritingRequirements },
-      knowledge: input.knowledge,
-      sourceExcerpts: input.batch.sourceExcerpts.map(({ sourceType, excerpt }) => ({ sourceType, excerpt })),
+      knowledgeMetadata: input.knowledge.map((item) => ({ name: item.name, sourceSnapshotId: item.sourceSnapshotId })),
+      sourceExcerpts: input.batch.sourceExcerpts.map(({ id, sourceType, excerpt, sourceName }) => ({ id, sourceType, excerpt, sourceName })),
       expressionFocus: input.batch.expressionFocus,
       supplementalFacts: input.batch.inputSnapshots.at(-1)?.supplementalFacts || {},
       brandBaseline: input.brandBaseline,
@@ -394,6 +402,7 @@ async function generateArtifact(input: { batch: FreeProductionBatch; expression:
   if (!response.ok || !response.content) return { ok: false as const, code: response.status === "pending_config" ? "provider_config_missing" : "generation_failed", message: response.status === "pending_config" ? "正式正文模型尚未配置。" : response.errorMessage || "正文模型调用失败。", nextAction: response.status === "pending_config" ? "在配置管理中补齐正式正文 Provider 后重试。" : "检查模型服务后安全重试。" };
   let parsed: ReturnType<typeof parseProviderJson>;
   try { parsed = parseProviderJson(response.content); } catch (error) { parsed = { titleCandidates: [], summary: "", sections: [] }; }
+  parsed.sections = normalizeFreeProductionCitations(parsed.sections, input.batch.sourceExcerpts);
   if (input.affectedSectionKeys?.length && input.currentArtifact) {
     parsed.sections = mergeRegeneratedSections(input.currentArtifact.sections, parsed.sections, input.affectedSectionKeys);
     parsed.titleCandidates = parsed.titleCandidates.length === 3 ? parsed.titleCandidates : input.currentArtifact.titleCandidates;
@@ -406,6 +415,7 @@ async function generateArtifact(input: { batch: FreeProductionBatch; expression:
     repairCount = 1;
     if (response.ok && response.content) {
       try { parsed = parseProviderJson(response.content); } catch { /* Preserve the last parse for actionable failure reporting. */ }
+      parsed.sections = normalizeFreeProductionCitations(parsed.sections, input.batch.sourceExcerpts);
       validation = validateFreeProductionOutput({ expression: input.expression, productName: input.batch.productName || "JOTO", ...parsed });
     }
   }
@@ -622,7 +632,7 @@ async function runGeneration(batchId: string, options?: { affectedSectionKeys?: 
       visualSuggestions: plan.visualMaterialPlan,
       wechatPresentation,
       sourceExcerpts: target.sourceExcerpts,
-      factCheck: { supportedClaims: target.sourceExcerpts.map((item) => item.excerpt), needsConfirmation: target.risks.filter((risk) => risk.status === "needs_approval").map((risk) => risk.title), rejectedClaims: generated.validation.blockingIssues },
+      factCheck: { supportedClaims: supportedClaimsFromSections(generated.parsed.sections, target.sourceExcerpts), needsConfirmation: target.risks.filter((risk) => risk.status === "needs_approval").map((risk) => risk.title), rejectedClaims: generated.validation.blockingIssues },
       editorCheck: { deterministicResults: generated.validation.repairableIssues, advisoryResults: generated.validation.advisoryIssues },
       riskAndGapSnapshot: target.risks,
       contentDigest: wechatPresentation?.htmlHash || contentDigest(generated.body),
@@ -662,7 +672,7 @@ export async function createFreeProductionFromExpression(input: CreateFreeProduc
   const selection = selectionFor({ sourceMode: expression.sourceMode, productId: String(input.productId || ""), knowledgeSnapshotIds }, catalog);
   if (selection.issues.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_CONFIG_INVALID", "当前资料暂时不可生产。", "重新选择产品和知识资料后再生成。", selection.issues);
   const knowledge = await knowledgeFor(knowledgeSnapshotIds, selection.product);
-  const sourceExcerpts = buildFreeProductionSourceExcerpts({ knowledge, factItems, meetingText });
+  const sourceExcerpts = buildFreeProductionSourceExcerpts({ knowledge, factItems, meetingText, retrievalQuery: `${expressionFocus} ${selection.product?.name || ""}` });
   if (!sourceExcerpts.length) throw new FreeProductionServiceError(422, "FREE_PRODUCTION_SOURCE_EMPTY", "所选资料中没有可追溯的原始片段。", "选择包含原文片段的知识资料，或补充事件事实后再生成。");
   const month = currentMonth(); const bounds = getCalendarMonthBounds(month); const monthlyPlan = await ensureMonthlyPlan(month, actorId);
   const creation = await updateFreeProductionState((state) => {
@@ -773,6 +783,11 @@ export async function integrateFreeProductionHotspot(
     if (!current || current.id !== target.currentDraftArtifactId) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_HOTSPOT_VERSION_CHANGED", "正文已被其他操作更新。", "刷新页面后重新融入热点。");
     const now = new Date().toISOString();
     const title = generated.output.titleCandidates[0];
+    const nextSections = normalizeFreeProductionCitations(generated.sections.map((section) => {
+      if (!generated.output.affectedSectionKeys.includes(section.sectionKey)) return section;
+      const previousCitations = current.sections.find((item) => item.sectionKey === section.sectionKey)?.citations || [];
+      return { ...section, citations: [...previousCitations, { claimText: `热点背景：${generated.hotspot.title}`, sourceIds: [trendSource.id] }] };
+    }), sourceExcerpts);
     const artifactPartial = {
       id: `free-artifact-${randomUUID()}`,
       previousArtifactId: current.id,
@@ -781,16 +796,14 @@ export async function integrateFreeProductionHotspot(
       titleCandidates: generated.output.titleCandidates,
       selectedTitle: title,
       summary: generated.output.summary,
-      sections: generated.sections.map((section) => generated.output.affectedSectionKeys.includes(section.sectionKey)
-        ? { ...section, citations: [{ claimText: `热点背景：${generated.hotspot.title}`, sourceIds: [trendSource.id] }] }
-        : section),
-      articleBody: articleBody(title, generated.sections),
-      channelLayoutTree: buildWechatLayout({ selectedTitle: title, summary: generated.output.summary, sections: generated.sections }),
+      sections: nextSections,
+      articleBody: articleBody(title, nextSections),
+      channelLayoutTree: buildWechatLayout({ selectedTitle: title, summary: generated.output.summary, sections: nextSections }),
       visualSuggestions: current.visualSuggestions,
       sourceExcerpts,
       hotspotIntegration: plan,
       factCheck: {
-        supportedClaims: sourceExcerpts.map((item) => item.excerpt),
+        supportedClaims: supportedClaimsFromSections(nextSections, sourceExcerpts),
         needsConfirmation: plan.riskNotes,
         rejectedClaims: []
       },

@@ -20,6 +20,7 @@ export function validateFreeProductionOutput(input: { expression: FreeContentExp
   const keys = input.sections.map((section) => section.sectionKey);
   if (JSON.stringify(keys) !== JSON.stringify(input.expression.structureModules)) repairableIssues.push("必选结构模块缺失或顺序不正确。");
   if (input.sections.some((section) => !section.heading.trim() || !section.markdown.trim())) repairableIssues.push("章节标题或正文为空。");
+  if (input.sections.some((section) => !section.citations?.length || section.citations.some((citation) => !citation.claimText.trim() || !citation.sourceIds.length))) repairableIssues.push("每个章节都必须建立正文主张与真实来源 ID 的引用映射。");
   const article = input.sections.map((section) => `${section.heading}\n${section.markdown}`).join("\n\n");
   const forbidden = forbiddenClaims.filter((claim) => article.includes(claim) || input.titleCandidates.some((title) => title.includes(claim)));
   if (forbidden.length) blockingIssues.push(`命中无证据高风险结论：${forbidden.join("、")}`);
