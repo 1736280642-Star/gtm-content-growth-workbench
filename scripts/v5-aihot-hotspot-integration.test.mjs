@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { parseAihotV1Items } from "../src/lib/v5/aihot-trend-service.ts";
-import { buildHotspotIntegrationPrompt, parseHotspotModelOutput, validateHotspotModelOutput } from "../src/lib/v5/hotspot-integration.ts";
+import { buildHotspotIntegrationPrompt, buildHotspotRepairPrompt, collectHotspotRegressionIssues, parseHotspotModelOutput, validateHotspotModelOutput } from "../src/lib/v5/hotspot-integration.ts";
 
 const expression = {
   freeContentExpressionTypeVersionId: "type-v1",
@@ -116,6 +116,40 @@ test("model output must select a real candidate and declare valid affected secti
   assert.equal(output.hotspotId, candidate.id);
 });
 
+test("hotspot repair receives the failed draft, exact issues and locked hotspot", () => {
+  const previousOutput = parseHotspotModelOutput(JSON.stringify({
+    decision: "integrate",
+    hotspotId: candidate.id,
+    relevanceScore: 86,
+    selectionReason: "直接相关",
+    writingAngle: "回到工作流",
+    affectedSectionKeys: ["opening"],
+    riskNotes: [],
+    titleCandidates: ["标题一", "标题二", "标题三"],
+    summary: "这是一个超过规则后需要被精准修订的摘要。",
+    sections: [{ sectionKey: "opening", heading: "开头", markdown: "正文" }]
+  }));
+  const repair = JSON.parse(buildHotspotRepairPrompt({
+    originalUserPrompt: buildHotspotIntegrationPrompt({ expression, artifact, productName: "JOTO", productKnowledge: [], brandBaseline: {}, candidates: [candidate], excludedHotspotIds: [] }).userPrompt,
+    previousOutput,
+    issues: ["摘要必须为 1 到 80 个字符。"],
+    lockedHotspotId: candidate.id
+  }));
+  assert.equal(repair.lockedHotspotId, candidate.id);
+  assert.equal(repair.previousOutput.hotspotId, candidate.id);
+  assert.deepEqual(repair.issuesToFix, ["摘要必须为 1 到 80 个字符。"]);
+});
+
+test("hotspot validation only blocks newly introduced issues", () => {
+  assert.deepEqual(collectHotspotRegressionIssues({
+    contractIssues: [],
+    baselineBlockingIssues: [],
+    baselineRepairableIssues: ["正文使用了提示性冒号。"],
+    nextBlockingIssues: [],
+    nextRepairableIssues: ["正文使用了提示性冒号。", "摘要必须为 1 到 80 个字符。"]
+  }), ["摘要必须为 1 到 80 个字符。"]);
+});
+
 test("3027 preview exposes integrate, replace and previous-version actions", async () => {
   const [preview, page, hotspotRoute, restoreRoute] = await Promise.all([
     readFile(new URL("../src/components/free-production/WechatArticlePreview.tsx", import.meta.url), "utf8"),
@@ -126,6 +160,7 @@ test("3027 preview exposes integrate, replace and previous-version actions", asy
   assert.match(preview, /加入热点/);
   assert.match(preview, /更换热点/);
   assert.match(preview, /返回上一版本/);
+  assert.match(preview, /热点未能融入正文/);
   assert.match(page, /restore-version/);
   assert.match(hotspotRoute, /integrateFreeProductionHotspot/);
   assert.match(restoreRoute, /restorePreviousFreeProductionVersion/);

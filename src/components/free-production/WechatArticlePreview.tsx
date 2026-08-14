@@ -1,7 +1,7 @@
 "use client";
 
 import { EditOutlined, FireOutlined, RollbackOutlined, SwapOutlined } from "@ant-design/icons";
-import { Button, Input, Modal, Select, Space, Typography } from "antd";
+import { Alert, Button, Input, Modal, Select, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
 import type { ContentDraftArtifact } from "@/lib/v5/free-production-contracts";
 import { WECHAT_LAYOUT_TEMPLATES } from "@/lib/v5/wechat-layout-selector";
@@ -22,7 +22,7 @@ function bodyWithoutTitle(artifact: ContentDraftArtifact) {
   return artifact.articleBody.replace(/\r\n?/g, "\n").trim().replace(/^#\s+[^\n]+\n+/, "");
 }
 
-export function WechatArticlePreview({ artifact, productId, changingLayout, savingContent, integratingHotspot, restoringVersion, hotspotLocked, onChangeLayout, onEditContent, onBindVisual, onIntegrateHotspot, onRestorePreviousVersion }: { artifact: ContentDraftArtifact; productId: string; changingLayout?: boolean; savingContent?: boolean; integratingHotspot?: boolean; restoringVersion?: boolean; hotspotLocked?: boolean; onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void>; onIntegrateHotspot: () => Promise<void>; onRestorePreviousVersion: () => Promise<void> }) {
+export function WechatArticlePreview({ artifact, productId, changingLayout, savingContent, integratingHotspot, restoringVersion, hotspotLocked, hotspotError, onChangeLayout, onEditContent, onBindVisual, onIntegrateHotspot, onRestorePreviousVersion }: { artifact: ContentDraftArtifact; productId: string; changingLayout?: boolean; savingContent?: boolean; integratingHotspot?: boolean; restoringVersion?: boolean; hotspotLocked?: boolean; hotspotError?: string; onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void>; onIntegrateHotspot: () => Promise<void>; onRestorePreviousVersion: () => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(artifact.selectedTitle);
   const [summary, setSummary] = useState(artifact.summary);
@@ -77,6 +77,7 @@ export function WechatArticlePreview({ artifact, productId, changingLayout, savi
             <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>
           </Space>
         </div>
+        {hotspotError ? <Alert showIcon type="error" message="热点未能融入正文" description={hotspotError} /> : null}
         {artifact.hotspotIntegration ? <HotspotIntegrationSummary plan={artifact.hotspotIntegration} /> : null}
         <VisualAssetBindingPanel suggestions={artifact.visualSuggestions} productId={productId} onBind={onBindVisual} />
         <iframe

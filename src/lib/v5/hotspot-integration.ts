@@ -74,6 +74,22 @@ export function validateHotspotModelOutput(input: {
   return issues;
 }
 
+export function collectHotspotRegressionIssues(input: {
+  contractIssues: string[];
+  baselineBlockingIssues: string[];
+  baselineRepairableIssues: string[];
+  nextBlockingIssues: string[];
+  nextRepairableIssues: string[];
+}) {
+  const baselineBlocking = new Set(input.baselineBlockingIssues);
+  const baselineRepairable = new Set(input.baselineRepairableIssues);
+  return [
+    ...input.contractIssues,
+    ...input.nextBlockingIssues.filter((issue) => !baselineBlocking.has(issue)),
+    ...input.nextRepairableIssues.filter((issue) => !baselineRepairable.has(issue))
+  ];
+}
+
 export function buildHotspotIntegrationPrompt(input: {
   expression: FreeContentExpressionTypeVersion;
   artifact: ContentDraftArtifact;
@@ -121,6 +137,21 @@ export function buildHotspotIntegrationPrompt(input: {
       }
     })
   };
+}
+
+export function buildHotspotRepairPrompt(input: {
+  originalUserPrompt: string;
+  previousOutput: HotspotModelOutput;
+  issues: string[];
+  lockedHotspotId?: string;
+}) {
+  return JSON.stringify({
+    originalRequest: JSON.parse(input.originalUserPrompt) as unknown,
+    repairTask: "修订 previousOutput，使其通过全部确定性检查；不要重新选题，不要扩大改写章节，仍只输出单一完整 JSON 对象。",
+    lockedHotspotId: input.lockedHotspotId,
+    issuesToFix: input.issues,
+    previousOutput: input.previousOutput
+  });
 }
 
 export function createHotspotIntegrationPlan(input: {

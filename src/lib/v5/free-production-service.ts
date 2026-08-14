@@ -51,6 +51,8 @@ import { HUMAN_WRITING_WECHAT_DIRECTIVES, HUMAN_WRITING_WECHAT_PROFILE_VERSION, 
 import { getLatestAihotTrends, type AihotTrendItem } from "./aihot-trend-service";
 import {
   buildHotspotIntegrationPrompt,
+  buildHotspotRepairPrompt,
+  collectHotspotRegressionIssues,
   createHotspotIntegrationPlan,
   parseHotspotModelOutput,
   validateHotspotModelOutput,
@@ -464,6 +466,13 @@ async function generateHotspotIntegration(input: {
     throw new FreeProductionServiceError(422, "FREE_PRODUCTION_NO_SUITABLE_HOTSPOT", "最近没有与当前正文自然相关的热点。", "正文未发生变化；稍后有新热点时再试。", [output.selectionReason || "模型判断当前候选均不适合融入"]);
   }
   let contractIssues = validateHotspotModelOutput({ output, expression: input.expression, candidates: input.candidates });
+  const baselineValidation = validateFreeProductionOutput({
+    expression: input.expression,
+    productName: input.batch.productName || "JOTO",
+    titleCandidates: input.artifact.titleCandidates,
+    summary: input.artifact.summary,
+    sections: input.artifact.sections
+  });
   let mergedSections = mergeRegeneratedSections(input.artifact.sections, output.sections, output.affectedSectionKeys);
   let validation = validateFreeProductionOutput({
     expression: input.expression,
@@ -472,25 +481,35 @@ async function generateHotspotIntegration(input: {
     summary: output.summary,
     sections: mergedSections
   });
-  if (!contractIssues.length && validation.repairableIssues.length && !validation.blockingIssues.length) {
+  const regressionIssues = () => collectHotspotRegressionIssues({
+    contractIssues,
+    baselineBlockingIssues: baselineValidation.blockingIssues,
+    baselineRepairableIssues: baselineValidation.repairableIssues,
+    nextBlockingIssues: validation.blockingIssues,
+    nextRepairableIssues: validation.repairableIssues
+  });
+  const lockedHotspotId = output.hotspotId && input.candidates.some((item) => item.id === output.hotspotId) ? output.hotspotId : undefined;
+  let issues = regressionIssues();
+  if (issues.length) {
     response = await callAiProvider({
       provider,
       systemPrompt: prompt.systemPrompt,
-      userPrompt: `${prompt.userPrompt}\n\n上次热点融入结果未通过确定性检查：${validation.repairableIssues.join("；")}。保持同一热点与写作角度，只修复这些问题并重新输出完整 JSON。`,
+      userPrompt: buildHotspotRepairPrompt({ originalUserPrompt: prompt.userPrompt, previousOutput: output, issues, lockedHotspotId }),
       temperature: 0.1
     });
     if (response.ok && response.content) {
       try {
         output = parseHotspotModelOutput(response.content);
         contractIssues = validateHotspotModelOutput({ output, expression: input.expression, candidates: input.candidates });
+        if (lockedHotspotId && output.hotspotId !== lockedHotspotId) contractIssues.push("自动修订不得更换已经选定的热点。");
         mergedSections = mergeRegeneratedSections(input.artifact.sections, output.sections, output.affectedSectionKeys);
         validation = validateFreeProductionOutput({ expression: input.expression, productName: input.batch.productName || "JOTO", titleCandidates: output.titleCandidates, summary: output.summary, sections: mergedSections });
       } catch {
         // Preserve the first result so the caller receives deterministic validation details.
       }
     }
+    issues = regressionIssues();
   }
-  const issues = [...contractIssues, ...validation.blockingIssues, ...validation.repairableIssues];
   if (issues.length) {
     throw new FreeProductionServiceError(422, "FREE_PRODUCTION_HOTSPOT_VALIDATION_FAILED", "热点融入结果未通过正文检查。", "当前正文未变化，请更换热点或稍后重试。", issues);
   }
