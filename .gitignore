@@ -19,6 +19,7 @@ data/workbench-*-state.json
 data/workbench-state.before-*.json
 data/v5-free-production.json
 data/v5-free-content-expression-types.json
+data/v5-aihot-trend-cache.json
 data/free-production-assets/
 data/v5-media-library.json
 data/v5-media-library-assets/

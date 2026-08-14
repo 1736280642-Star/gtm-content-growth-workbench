@@ -30,7 +30,7 @@ export default function FreeProductionPage() {
   const [selectedType, setSelectedType] = useState<FreeContentExpressionTypeSummary>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [savingExpression, setSavingExpression] = useState(false);
-  const [working, setWorking] = useState<"supplements" | "visual" | "layout" | "content" | "publish" | "retry">();
+  const [working, setWorking] = useState<"supplements" | "visual" | "layout" | "content" | "hotspot" | "restore" | "publish" | "retry">();
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -125,6 +125,47 @@ export default function FreeProductionPage() {
     finally { setWorking(undefined); }
   }
 
+  async function integrateHotspot(artifactId: string, mode: "integrate" | "replace") {
+    if (!batch) return;
+    setWorking("hotspot");
+    try {
+      const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/hotspot`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-idempotency-key": key("hotspot") },
+        body: JSON.stringify({
+          expectedVersion: batch.version,
+          auditReason: mode === "replace" ? "由模型更换公众号正文热点与写作方向" : "由模型选择最新热点并融入公众号正文",
+          artifactId,
+          mode
+        })
+      });
+      setBatch(data);
+      messageApi.success(mode === "replace" ? "已更换热点和写作方向，上一版本仍可恢复。" : "热点已融入正文，原版本已保留。");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "热点融入失败，当前正文未变化。");
+    } finally {
+      setWorking(undefined);
+    }
+  }
+
+  async function restorePreviousVersion(artifactId: string) {
+    if (!batch) return;
+    setWorking("restore");
+    try {
+      const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/restore-version`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-idempotency-key": key("restore-version") },
+        body: JSON.stringify({ expectedVersion: batch.version, auditReason: "恢复公众号正文的上一版本", artifactId })
+      });
+      setBatch(data);
+      messageApi.success("已恢复上一版本，后续热点尝试仍保留在版本记录中。");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "上一版本恢复失败。");
+    } finally {
+      setWorking(undefined);
+    }
+  }
+
   async function retry() {
     if (!batch) return;
     const previousBatch = batch;
@@ -139,7 +180,7 @@ export default function FreeProductionPage() {
     <>
       {contextHolder}
       <PageHeader title="微信公众号内容生产" subtitle="独立完成单篇公众号内容：选择文章类型、补齐资料、生成与复检，确认后进入公众号发布队列。" actions={!batch ? <Space wrap><Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>新建类型</Button><Link href="/free-production/assets"><Button icon={<PictureOutlined />}>素材图库</Button></Link><Link href="/free-production/tasks"><Button icon={<UnorderedListOutlined />}>任务与发布</Button></Link></Space> : undefined} />
-      {!batch ? loading && !catalog ? <div className="v5-loading-row"><Spin /><span>正在读取内容类型</span></div> : catalog ? selectedType ? <ProductionInputPanel profile={selectedType} catalog={catalog} loading={usingId === selectedType.activeVersion?.freeContentExpressionTypeVersionId} onBack={() => setSelectedType(undefined)} onGenerate={(values) => void generateFromExpression(selectedType, values)} /> : <><div className="expression-list-intro"><div><span className="v5-kicker">新建正文</span><h2>选择内容类型</h2></div><p>不同类型会打开对应的资料入口。</p></div><ExpressionPresetList expressions={catalog.expressionTypes} onUse={setSelectedType} /></> : <Alert showIcon type="error" message="内容类型读取失败" /> : <GenerationResultWorkspace batch={batch} working={working} onBack={() => { setBatch(undefined); setSelectedType(undefined); window.history.replaceState(null, "", "/free-production"); }} onRetry={() => void retry()} onSupplements={(values) => void supplements(values)} onChangeLayout={changeLayout} onEditContent={editContent} onBindVisual={bindVisual} onPublish={() => void publish()} />}
+      {!batch ? loading && !catalog ? <div className="v5-loading-row"><Spin /><span>正在读取内容类型</span></div> : catalog ? selectedType ? <ProductionInputPanel profile={selectedType} catalog={catalog} loading={usingId === selectedType.activeVersion?.freeContentExpressionTypeVersionId} onBack={() => setSelectedType(undefined)} onGenerate={(values) => void generateFromExpression(selectedType, values)} /> : <><div className="expression-list-intro"><div><span className="v5-kicker">新建正文</span><h2>选择内容类型</h2></div><p>不同类型会打开对应的资料入口。</p></div><ExpressionPresetList expressions={catalog.expressionTypes} onUse={setSelectedType} /></> : <Alert showIcon type="error" message="内容类型读取失败" /> : <GenerationResultWorkspace batch={batch} working={working} onBack={() => { setBatch(undefined); setSelectedType(undefined); window.history.replaceState(null, "", "/free-production"); }} onRetry={() => void retry()} onSupplements={(values) => void supplements(values)} onChangeLayout={changeLayout} onEditContent={editContent} onBindVisual={bindVisual} onIntegrateHotspot={integrateHotspot} onRestorePreviousVersion={restorePreviousVersion} onPublish={() => void publish()} />}
       {catalog ? <CreateExpressionDrawer open={drawerOpen} catalog={catalog} saving={savingExpression} onClose={() => setDrawerOpen(false)} onSubmit={(input) => void createExpression(input)} /> : null}
     </>
   );
