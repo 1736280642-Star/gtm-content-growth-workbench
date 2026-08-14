@@ -14,6 +14,7 @@ process.env.V5_MONTHLY_STATE_PATH = path.join(scratch, "monthly.json");
 
 const contracts = await import("../src/lib/v5/free-production-contracts.ts");
 const compiler = await import("../src/lib/v5/free-production-compiler.ts");
+const evidence = await import("../src/lib/v5/free-production-evidence.ts");
 const expressionPlan = await import("../src/lib/v5/free-production-expression-plan.ts");
 const validator = await import("../src/lib/v5/free-production-output-validator.ts");
 const expressionRepository = await import("../src/lib/v5/free-content-expression-type-repository.ts");
@@ -100,7 +101,11 @@ test("free production UI uses typed inputs and a compact source snapshot rail", 
   assert.doesNotMatch(inputSource, /上线状态|launchStatus/);
   assert.match(sourcePanelSource, /source\.excerpt/);
   assert.match(sourcePanelSource, /sourceMeta\[source\.sourceType\]/);
+  assert.match(sourcePanelSource, /正文已引用/);
+  assert.match(sourcePanelSource, /未采用候选资料/);
+  assert.match(sourcePanelSource, /coverageComplete/);
   assert.match(resultSource, /CitationSourcePanel/);
+  assert.match(resultSource, /sections=\{artifact\.sections\}/);
   assert.doesNotMatch(resultSource, /ContentQualitySummary/);
   assert.match(presetListSource, /查看设置/);
   assert.match(settingsDrawerSource, /用途/);
@@ -141,6 +146,31 @@ test("replaying a production request returns the existing batch without generati
   assert.equal(replay.status, "published");
   const state = await productionRepository.readFreeProductionState();
   assert.equal(Object.keys(state.batches).length, 1);
+});
+
+test("generation evidence is cleaned, deduplicated, bounded, and traceable by source id", () => {
+  const compacted = evidence.compactFreeProductionSourceExcerpts([
+    { id: "logo", sourceType: "knowledge", excerpt: "![](https://joto.ai/a.png)A![](https://joto.ai/b.png)B" },
+    { id: "contact", sourceType: "knowledge", excerpt: "[Contact us](https://joto.ai/#poc)" },
+    { id: "workflow", sourceType: "knowledge", excerpt: "把岗位任务、权限和验收标准组织成可持续交付的企业 AI 工作流。" },
+    { id: "workflow-copy", sourceType: "knowledge", excerpt: "把岗位任务、权限和验收标准组织成可持续交付的企业 AI 工作流。" },
+    { id: "governance", sourceType: "knowledge", excerpt: "提供组织、项目、模型、用量、安全与企业 AI 资产管理能力。" },
+    { id: "unrelated", sourceType: "knowledge", excerpt: "这一段介绍完全无关的展会安排与现场交通信息，内容完整但不支持当前文章判断。" }
+  ], "组织工作流与业务结果", { knowledgeLimit: 2 });
+  assert.deepEqual(compacted.map((item) => item.id), ["workflow", "governance"]);
+
+  const sources = [
+    { id: "source-a", sourceType: "knowledge", excerpt: "企业工作流证据" },
+    { id: "source-b", sourceType: "trend_signal", excerpt: "热点证据" }
+  ];
+  const sections = evidence.normalizeFreeProductionCitations([
+    { sectionKey: "scene", heading: "现场", markdown: "正文", citations: [{ claimText: "AI 进入工作流", sourceIds: ["source-a", "missing"] }] },
+    { sectionKey: "judgment", heading: "判断", markdown: "正文", citations: [{ claimText: "", sourceIds: ["source-b"] }] }
+  ], sources);
+  assert.deepEqual(sections[0].citations, [{ claimText: "AI 进入工作流", sourceIds: ["source-a"] }]);
+  assert.equal(sections[1].citations, undefined);
+  assert.deepEqual([...evidence.citedFreeProductionSourceIds(sections, sources)], ["source-a"]);
+  assert.deepEqual(evidence.supportedClaimsFromSections(sections, sources), ["AI 进入工作流"]);
 });
 
 test("expression plan preserves the preset structure and exposes only missing business facts", async () => {
