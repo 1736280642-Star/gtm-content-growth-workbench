@@ -179,10 +179,14 @@ export interface CreateFreeProductionInput {
 
 export interface FreeProductionSourceExcerpt {
   id: string;
-  sourceType: "knowledge" | "human_fact" | "meeting_text";
+  sourceType: "knowledge" | "human_fact" | "meeting_text" | "trend_signal";
   excerpt: string;
   sourceSnapshotId?: string;
   sourceSnapshotHash?: string;
+  sourceName?: string;
+  originalUrl?: string;
+  aihotUrl?: string;
+  publishedAt?: string;
 }
 
 export type FreeContentExpressionTypeDraftInput = Omit<
@@ -243,8 +247,29 @@ export interface DraftSection {
   citations?: Array<{ claimText: string; sourceIds: string[] }>;
 }
 
+export interface HotspotIntegrationPlan {
+  provider: "aihot";
+  hotspotId: string;
+  title: string;
+  summary?: string;
+  category: "ai-models" | "ai-products" | "industry" | "paper" | "tip" | null;
+  sourceName: string;
+  originalUrl: string;
+  aihotUrl: string;
+  publishedAt?: string;
+  relevanceScore: number;
+  selectionReason: string;
+  writingAngle: string;
+  affectedSectionKeys: string[];
+  riskNotes: string[];
+  hotspotDataUpdatedAt: string;
+  hotspotDataFreshness: "live" | "cached";
+  integratedAt: string;
+}
+
 export interface ContentDraftArtifact {
   id: string;
+  previousArtifactId?: string;
   expressionPlanId: string;
   generationInputSnapshotId: string;
   titleCandidates: string[];
@@ -255,6 +280,7 @@ export interface ContentDraftArtifact {
   channelLayoutTree: ContentLayoutNode[];
   visualSuggestions: VisualMaterialSuggestion[];
   sourceExcerpts: FreeProductionSourceExcerpt[];
+  hotspotIntegration?: HotspotIntegrationPlan;
   sourceReview?: { artifactId: string; reviewedBy: string; reviewedAt: string };
   wechatPresentation?: {
     templateId: WechatRenderableTemplateId;

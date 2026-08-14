@@ -48,6 +48,14 @@ import { getActiveWechatTemplate } from "./wechat-layout-selector";
 import { renderWechatHtml } from "./wechat-layout-renderer";
 import { validateWechatHtml } from "./wechat-layout-validator";
 import { HUMAN_WRITING_WECHAT_DIRECTIVES, HUMAN_WRITING_WECHAT_PROFILE_VERSION, isWechatContentChannel } from "./human-writing-wechat";
+import { getLatestAihotTrends, type AihotTrendItem } from "./aihot-trend-service";
+import {
+  buildHotspotIntegrationPrompt,
+  createHotspotIntegrationPlan,
+  parseHotspotModelOutput,
+  validateHotspotModelOutput,
+  type HotspotModelOutput
+} from "./hotspot-integration";
 
 export const MAXIMUM_FREE_PRODUCTION_REPAIR_COUNT = 1;
 
@@ -404,6 +412,92 @@ async function generateArtifact(input: { batch: FreeProductionBatch; expression:
   return { ok: true as const, parsed, selectedTitle, body, validation, repairCount };
 }
 
+function hotspotSourceExcerpt(hotspot: AihotTrendItem): FreeProductionSourceExcerpt {
+  return {
+    id: `source-${randomUUID()}`,
+    sourceType: "trend_signal",
+    excerpt: [hotspot.title, hotspot.summary, hotspot.selectionReason].filter(Boolean).join("\n"),
+    sourceSnapshotId: hotspot.id,
+    sourceSnapshotHash: hash(hotspot),
+    sourceName: hotspot.sourceName,
+    originalUrl: hotspot.originalUrl,
+    aihotUrl: hotspot.aihotUrl,
+    publishedAt: hotspot.publishedAt
+  };
+}
+
+async function generateHotspotIntegration(input: {
+  batch: FreeProductionBatch;
+  artifact: ContentDraftArtifact;
+  expression: FreeContentExpressionTypeVersion;
+  knowledge: Array<Record<string, unknown>>;
+  brandBaseline: Record<string, unknown>;
+  candidates: AihotTrendItem[];
+  excludedHotspotIds: string[];
+}) {
+  const prompt = buildHotspotIntegrationPrompt({
+    expression: input.expression,
+    artifact: input.artifact,
+    productName: input.batch.productName || "JOTO",
+    productKnowledge: input.knowledge,
+    brandBaseline: input.brandBaseline,
+    candidates: input.candidates,
+    excludedHotspotIds: input.excludedHotspotIds
+  });
+  const provider = contentGenerationProvider();
+  let response = await callAiProvider({ provider, ...prompt, temperature: 0.2 });
+  if (!response.ok || !response.content) {
+    throw new FreeProductionServiceError(
+      response.status === "pending_config" ? 422 : 503,
+      response.status === "pending_config" ? "FREE_PRODUCTION_HOTSPOT_PROVIDER_MISSING" : "FREE_PRODUCTION_HOTSPOT_GENERATION_FAILED",
+      response.status === "pending_config" ? "热点融入模型尚未配置。" : response.errorMessage || "热点融入模型调用失败。",
+      response.status === "pending_config" ? "补齐正式正文 Provider 后重试。" : "保留当前正文，稍后重新点击融入热点。"
+    );
+  }
+  let output: HotspotModelOutput;
+  try {
+    output = parseHotspotModelOutput(response.content);
+  } catch (error) {
+    throw new FreeProductionServiceError(502, "FREE_PRODUCTION_HOTSPOT_OUTPUT_INVALID", "模型没有返回可用的热点融入计划。", "当前正文未变化，请重新点击融入热点。", [error instanceof Error ? error.message : "invalid_model_output"]);
+  }
+  if (output.decision === "skip") {
+    throw new FreeProductionServiceError(422, "FREE_PRODUCTION_NO_SUITABLE_HOTSPOT", "最近没有与当前正文自然相关的热点。", "正文未发生变化；稍后有新热点时再试。", [output.selectionReason || "模型判断当前候选均不适合融入"]);
+  }
+  let contractIssues = validateHotspotModelOutput({ output, expression: input.expression, candidates: input.candidates });
+  let mergedSections = mergeRegeneratedSections(input.artifact.sections, output.sections, output.affectedSectionKeys);
+  let validation = validateFreeProductionOutput({
+    expression: input.expression,
+    productName: input.batch.productName || "JOTO",
+    titleCandidates: output.titleCandidates,
+    summary: output.summary,
+    sections: mergedSections
+  });
+  if (!contractIssues.length && validation.repairableIssues.length && !validation.blockingIssues.length) {
+    response = await callAiProvider({
+      provider,
+      systemPrompt: prompt.systemPrompt,
+      userPrompt: `${prompt.userPrompt}\n\n上次热点融入结果未通过确定性检查：${validation.repairableIssues.join("；")}。保持同一热点与写作角度，只修复这些问题并重新输出完整 JSON。`,
+      temperature: 0.1
+    });
+    if (response.ok && response.content) {
+      try {
+        output = parseHotspotModelOutput(response.content);
+        contractIssues = validateHotspotModelOutput({ output, expression: input.expression, candidates: input.candidates });
+        mergedSections = mergeRegeneratedSections(input.artifact.sections, output.sections, output.affectedSectionKeys);
+        validation = validateFreeProductionOutput({ expression: input.expression, productName: input.batch.productName || "JOTO", titleCandidates: output.titleCandidates, summary: output.summary, sections: mergedSections });
+      } catch {
+        // Preserve the first result so the caller receives deterministic validation details.
+      }
+    }
+  }
+  const issues = [...contractIssues, ...validation.blockingIssues, ...validation.repairableIssues];
+  if (issues.length) {
+    throw new FreeProductionServiceError(422, "FREE_PRODUCTION_HOTSPOT_VALIDATION_FAILED", "热点融入结果未通过正文检查。", "当前正文未变化，请更换热点或稍后重试。", issues);
+  }
+  const hotspot = input.candidates.find((item) => item.id === output.hotspotId)!;
+  return { output, hotspot, sections: mergedSections, validation };
+}
+
 async function runGeneration(batchId: string, options?: { affectedSectionKeys?: string[]; auditReason?: string; actorId?: string }) {
   const state = await readFreeProductionState();
   const batch = state.batches[batchId];
@@ -604,6 +698,147 @@ export async function createFreeProductionFromExpression(input: CreateFreeProduc
 export async function listFreeProductionBatches() { const state = await readFreeProductionState(); return Object.values(state.batches).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
 export async function getFreeProductionBatch(batchId: string) { const state = await readFreeProductionState(); const batch = state.batches[batchId]; if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。"); return batch; }
 function version(batch: FreeProductionBatch, expected: number) { if (batch.version !== expected) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_VERSION_CONFLICT", "配置已被其他操作更新。", "刷新页面读取最新版本后重试。"); }
+
+export async function integrateFreeProductionHotspot(
+  batchId: string,
+  input: { expectedVersion: number; auditReason: string; artifactId: string; mode: "integrate" | "replace" },
+  header: string | null
+) {
+  const actorId = actor();
+  const context = mutationContext(input, header);
+  const requestPayload = { batchId, ...input };
+  const replay = replayBatch(await readFreeProductionState(), context.key, requestPayload);
+  if (replay) return replay;
+  const batch = await getFreeProductionBatch(batchId);
+  version(batch, input.expectedVersion);
+  if (batch.channelConfig.channel !== "wechat_official_account") {
+    throw new FreeProductionServiceError(422, "FREE_PRODUCTION_HOTSPOT_CHANNEL_UNSUPPORTED", "热点融入当前只用于微信公众号正文。", "返回公众号内容生产后重试。");
+  }
+  if (["publishing", "published", "cancelled"].includes(batch.status)) {
+    throw new FreeProductionServiceError(409, "FREE_PRODUCTION_HOTSPOT_LOCKED", "当前正文已进入发布或结束状态，不能融入热点。", "复制为新正文后再操作。");
+  }
+  const artifact = batch.draftArtifacts.find((item) => item.id === input.artifactId);
+  if (!artifact || artifact.id !== batch.currentDraftArtifactId) {
+    throw new FreeProductionServiceError(422, "FREE_PRODUCTION_HOTSPOT_ARTIFACT_INVALID", "只能为当前正文版本融入热点。", "刷新页面后重试。");
+  }
+  const expression = await getActiveFreeContentExpressionTypeVersion(batch.freeContentExpressionTypeVersionId);
+  const catalog = await getFreeProductionCatalog();
+  const product = catalog.products.find((item) => item.productId === batch.productId);
+  const [knowledge, brandBaseline, trends] = await Promise.all([
+    knowledgeFor(batch.knowledgeSnapshotIds, product),
+    readFreeExpressionBrandBaseline(),
+    getLatestAihotTrends().catch((error) => {
+      throw new FreeProductionServiceError(503, "FREE_PRODUCTION_AIHOT_UNAVAILABLE", "最新热点暂时无法读取。", "当前正文未变化，请稍后重新点击融入热点。", [error instanceof Error ? error.message : "aihot_unavailable"]);
+    })
+  ]);
+  const attemptedHotspotIds = Array.from(new Set(batch.draftArtifacts.flatMap((item) => item.hotspotIntegration?.hotspotId ? [item.hotspotIntegration.hotspotId] : [])));
+  const excludedHotspotIds = input.mode === "replace" ? attemptedHotspotIds : [];
+  const candidates = trends.items.filter((item) => !excludedHotspotIds.includes(item.id)).slice(0, 30);
+  if (!candidates.length) {
+    throw new FreeProductionServiceError(422, "FREE_PRODUCTION_HOTSPOT_CANDIDATES_EXHAUSTED", "当前可用热点都已经尝试过。", "保留当前正文，等待热点库更新后再更换。", attemptedHotspotIds);
+  }
+  const generated = await generateHotspotIntegration({ batch, artifact, expression, knowledge, brandBaseline, candidates, excludedHotspotIds });
+  const trendSource = hotspotSourceExcerpt(generated.hotspot);
+  const sourceExcerpts = [...artifact.sourceExcerpts.filter((item) => item.sourceType !== "trend_signal"), trendSource];
+  const plan = createHotspotIntegrationPlan({
+    output: generated.output,
+    hotspot: generated.hotspot,
+    hotspotDataUpdatedAt: trends.updatedAt,
+    hotspotDataFreshness: trends.freshness
+  });
+  return updateFreeProductionState((state) => idempotent(state, context.key, requestPayload, () => {
+    const target = state.batches[batchId];
+    if (!target) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
+    version(target, input.expectedVersion);
+    const current = target.draftArtifacts.find((item) => item.id === input.artifactId);
+    if (!current || current.id !== target.currentDraftArtifactId) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_HOTSPOT_VERSION_CHANGED", "正文已被其他操作更新。", "刷新页面后重新融入热点。");
+    const now = new Date().toISOString();
+    const title = generated.output.titleCandidates[0];
+    const artifactPartial = {
+      id: `free-artifact-${randomUUID()}`,
+      previousArtifactId: current.id,
+      expressionPlanId: current.expressionPlanId,
+      generationInputSnapshotId: current.generationInputSnapshotId,
+      titleCandidates: generated.output.titleCandidates,
+      selectedTitle: title,
+      summary: generated.output.summary,
+      sections: generated.sections.map((section) => generated.output.affectedSectionKeys.includes(section.sectionKey)
+        ? { ...section, citations: [{ claimText: `热点背景：${generated.hotspot.title}`, sourceIds: [trendSource.id] }] }
+        : section),
+      articleBody: articleBody(title, generated.sections),
+      channelLayoutTree: buildWechatLayout({ selectedTitle: title, summary: generated.output.summary, sections: generated.sections }),
+      visualSuggestions: current.visualSuggestions,
+      sourceExcerpts,
+      hotspotIntegration: plan,
+      factCheck: {
+        supportedClaims: sourceExcerpts.map((item) => item.excerpt),
+        needsConfirmation: plan.riskNotes,
+        rejectedClaims: []
+      },
+      editorCheck: { deterministicResults: [], advisoryResults: generated.validation.advisoryIssues },
+      riskAndGapSnapshot: target.risks,
+      contentDigest: "",
+      createdAt: now,
+      version: current.version + 1
+    };
+    const nextArtifact: ContentDraftArtifact = {
+      ...artifactPartial,
+      wechatPresentation: renderFreeProductionWechatPresentation(artifactPartial, current.wechatPresentation?.templateId || JOTO_OFFICIAL_WECHAT_TEMPLATE_ID)
+    };
+    nextArtifact.contentDigest = nextArtifact.wechatPresentation?.htmlHash || contentDigest(nextArtifact.articleBody);
+    target.draftArtifacts.push(nextArtifact);
+    target.currentDraftArtifactId = nextArtifact.id;
+    target.sourceExcerpts = sourceExcerpts;
+    target.sourceReview = undefined;
+    target.confirmedContentDigest = undefined;
+    target.status = target.risks.some((risk) => ["needs_input", "needs_approval"].includes(risk.status)) ? "needs_input" : target.risks.some((risk) => risk.status === "blocked") ? "blocked" : "ready_for_confirmation";
+    target.version += 1;
+    target.updatedAt = now;
+    const task = state.tasks[`free-task-${target.id}`];
+    if (task) { task.title = nextArtifact.selectedTitle; task.contentDigest = nextArtifact.contentDigest; task.status = target.status; task.updatedAt = now; }
+    state.audits.push({
+      auditId: randomUUID(),
+      action: input.mode === "replace" ? "free_production_hotspot_replaced" : "free_production_hotspot_integrated",
+      objectId: batchId,
+      actor: actorId,
+      auditReason: context.auditReason,
+      createdAt: now,
+      summary: { artifactId: nextArtifact.id, previousArtifactId: current.id, hotspotId: plan.hotspotId, relevanceScore: plan.relevanceScore, affectedSectionKeys: plan.affectedSectionKeys }
+    });
+    return target;
+  }));
+}
+
+export async function restorePreviousFreeProductionVersion(
+  batchId: string,
+  input: { expectedVersion: number; auditReason: string; artifactId: string },
+  header: string | null
+) {
+  const actorId = actor();
+  const context = mutationContext(input, header);
+  return updateFreeProductionState((state) => idempotent(state, context.key, { batchId, ...input }, () => {
+    const batch = state.batches[batchId];
+    if (!batch) throw new FreeProductionServiceError(404, "FREE_PRODUCTION_BATCH_NOT_FOUND", "公众号生产任务不存在。", "返回任务列表并刷新。");
+    version(batch, input.expectedVersion);
+    if (["publishing", "published", "cancelled"].includes(batch.status)) throw new FreeProductionServiceError(409, "FREE_PRODUCTION_VERSION_RESTORE_LOCKED", "当前正文已进入发布或结束状态，不能恢复版本。", "复制为新正文后再操作。");
+    const current = batch.draftArtifacts.find((item) => item.id === input.artifactId);
+    const previous = current?.previousArtifactId ? batch.draftArtifacts.find((item) => item.id === current.previousArtifactId) : undefined;
+    if (!current || current.id !== batch.currentDraftArtifactId || !previous) {
+      throw new FreeProductionServiceError(422, "FREE_PRODUCTION_PREVIOUS_VERSION_MISSING", "当前正文没有可恢复的上一版本。", "刷新页面后继续编辑当前正文。");
+    }
+    const now = new Date().toISOString();
+    batch.currentDraftArtifactId = previous.id;
+    batch.sourceExcerpts = previous.sourceExcerpts;
+    batch.sourceReview = previous.sourceReview;
+    batch.confirmedContentDigest = undefined;
+    batch.version += 1;
+    batch.updatedAt = now;
+    const task = state.tasks[`free-task-${batch.id}`];
+    if (task) { task.title = previous.selectedTitle; task.contentDigest = previous.contentDigest; task.updatedAt = now; }
+    state.audits.push({ auditId: randomUUID(), action: "free_production_previous_version_restored", objectId: batchId, actor: actorId, auditReason: context.auditReason, createdAt: now, summary: { fromArtifactId: current.id, restoredArtifactId: previous.id } });
+    return batch;
+  }));
+}
 
 export async function reviewFreeProductionSources(batchId: string, input: { expectedVersion: number; auditReason: string; artifactId: string }, header: string | null) {
   const actorId = actor();
