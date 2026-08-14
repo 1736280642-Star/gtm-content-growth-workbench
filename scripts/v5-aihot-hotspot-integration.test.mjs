@@ -150,17 +150,21 @@ test("hotspot validation only blocks newly introduced issues", () => {
   }), ["摘要必须为 1 到 80 个字符。"]);
 });
 
-test("3027 preview exposes integrate, replace and previous-version actions", async () => {
-  const [preview, page, hotspotRoute, restoreRoute] = await Promise.all([
+test("3027 evidence rail exposes hotspot actions without occupying the article preview", async () => {
+  const [preview, sidebar, citations, page, hotspotRoute, restoreRoute] = await Promise.all([
     readFile(new URL("../src/components/free-production/WechatArticlePreview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/HotspotSidebarPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/CitationSourcePanel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/free-production/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/api/v5/free-production/batches/[id]/hotspot/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/app/api/v5/free-production/batches/[id]/restore-version/route.ts", import.meta.url), "utf8")
   ]);
-  assert.match(preview, /加入热点/);
-  assert.match(preview, /更换热点/);
-  assert.match(preview, /返回上一版本/);
-  assert.match(preview, /热点未能融入正文/);
+  assert.doesNotMatch(preview, /加入热点|更换热点|返回上一版本|热点未能融入正文/);
+  assert.match(sidebar, /加入热点/);
+  assert.match(sidebar, /更换热点/);
+  assert.match(sidebar, /返回上一版本/);
+  assert.match(sidebar, /热点未能融入正文/);
+  assert.match(citations, /hotspotPanel/);
   assert.match(page, /restore-version/);
   assert.match(hotspotRoute, /integrateFreeProductionHotspot/);
   assert.match(restoreRoute, /restorePreviousFreeProductionVersion/);

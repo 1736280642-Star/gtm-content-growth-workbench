@@ -5851,7 +5851,7 @@ body .ant-typography code { border-radius: 4px; background: #efefed; color: #4f4
   max-height: calc(100vh - 36px);
   gap: 14px;
   padding: 18px;
-  overflow: hidden;
+  overflow-y: auto;
   background: #fff;
   border: 1px solid #dfe4e7;
   border-top: 3px solid #176b55;
@@ -5866,8 +5866,7 @@ body .ant-typography code { border-radius: 4px; background: #efefed; color: #4f4
 .citation-source-list {
   display: grid;
   gap: 10px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  min-height: 0;
 }
 
 .citation-source-list section {

@@ -1,17 +1,17 @@
 .summary {
-  margin: 0 18px 16px;
-  padding: 16px 18px;
+  margin: 0;
+  padding: 12px;
   border: 1px solid #cce9d9;
   border-left: 4px solid #07c160;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #f3fbf7 0%, #ffffff 72%);
+  border-radius: 6px;
+  background: #f7faf8;
 }
 
 .heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
 }
 
 .heading > div {
@@ -21,7 +21,7 @@
 
 .heading strong {
   color: #153a2b;
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -34,25 +34,27 @@
 
 .summary dl {
   display: grid;
-  gap: 8px;
-  margin: 14px 0;
+  gap: 10px;
+  margin: 12px 0;
 }
 
 .summary dl > div {
   display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 2px;
 }
 
 .summary dt {
   color: #6b7b73;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .summary dd {
   margin: 0;
   color: #243c32;
   line-height: 1.65;
+  font-size: 12px;
 }
 
 .meta {
@@ -62,6 +64,7 @@
   gap: 12px;
   padding-top: 10px;
   border-top: 1px solid #e0eee6;
+  font-size: 12px;
 }
 
 .meta > span {
@@ -77,13 +80,10 @@
   margin: 10px 0 0;
   color: #8a5a11;
   font-size: 13px;
+  line-height: 1.6;
 }
 
 @media (max-width: 720px) {
-  .summary {
-    margin-inline: 10px;
-  }
-
   .heading,
   .meta {
     align-items: stretch;

@@ -8,6 +8,7 @@ import type { WechatRenderableTemplateId } from "@/lib/v5/wechat-presentation-co
 import type { SupplementValue } from "./InlineSupplementField";
 import { ConfirmAutoPublishButton } from "./ConfirmAutoPublishButton";
 import { CitationSourcePanel } from "./CitationSourcePanel";
+import { HotspotSidebarPanel } from "./HotspotSidebarPanel";
 import { RiskAndGapPanel } from "./RiskAndGapPanel";
 import { WechatArticlePreview } from "./WechatArticlePreview";
 import { WechatPublishAccountBar } from "./WechatPublishAccountBar";
@@ -28,8 +29,8 @@ export function GenerationResultWorkspace({ batch, working, hotspotError, onBack
         <>
           {batch.channelConfig.channel === "wechat_official_account" ? <WechatPublishAccountBar batch={batch} publishing={working === "publish"} onPublish={onPublish} /> : null}
           <div className="generation-result-columns">
-            <WechatArticlePreview artifact={artifact} productId={batch.productId} hotspotError={hotspotError} changingLayout={working === "layout"} savingContent={working === "content"} integratingHotspot={working === "hotspot"} restoringVersion={working === "restore"} hotspotLocked={["publishing", "published", "cancelled"].includes(batch.status)} onChangeLayout={(templateId) => onChangeLayout(artifact.id, templateId)} onEditContent={(input) => onEditContent(artifact.id, input)} onBindVisual={(suggestionId, mediaAssetId) => onBindVisual(artifact.id, suggestionId, mediaAssetId)} onIntegrateHotspot={() => onIntegrateHotspot(artifact.id, artifact.hotspotIntegration ? "replace" : "integrate")} onRestorePreviousVersion={() => onRestorePreviousVersion(artifact.id)} />
-            {step === "sources" ? <CitationSourcePanel sources={artifact.sourceExcerpts} onContinue={() => setStep("publish")} /> : <aside className="publication-prep-panel"><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setStep("sources")}>返回引用来源</Button><RiskAndGapPanel risks={batch.risks} saving={working === "supplements"} onSubmit={onSupplements} />{batch.channelConfig.channel !== "wechat_official_account" ? <ConfirmAutoPublishButton batch={batch} loading={working === "publish"} onConfirm={onPublish} /> : null}</aside>}
+            <WechatArticlePreview artifact={artifact} productId={batch.productId} changingLayout={working === "layout"} savingContent={working === "content"} onChangeLayout={(templateId) => onChangeLayout(artifact.id, templateId)} onEditContent={(input) => onEditContent(artifact.id, input)} onBindVisual={(suggestionId, mediaAssetId) => onBindVisual(artifact.id, suggestionId, mediaAssetId)} />
+            {step === "sources" ? <CitationSourcePanel sources={artifact.sourceExcerpts} hotspotPanel={<HotspotSidebarPanel plan={artifact.hotspotIntegration} hasPreviousVersion={Boolean(artifact.previousArtifactId)} integrating={working === "hotspot"} restoring={working === "restore"} locked={["publishing", "published", "cancelled"].includes(batch.status)} error={hotspotError} onIntegrate={() => onIntegrateHotspot(artifact.id, artifact.hotspotIntegration ? "replace" : "integrate")} onRestore={() => onRestorePreviousVersion(artifact.id)} />} onContinue={() => setStep("publish")} /> : <aside className="publication-prep-panel"><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setStep("sources")}>返回引用来源</Button><RiskAndGapPanel risks={batch.risks} saving={working === "supplements"} onSubmit={onSupplements} />{batch.channelConfig.channel !== "wechat_official_account" ? <ConfirmAutoPublishButton batch={batch} loading={working === "publish"} onConfirm={onPublish} /> : null}</aside>}
           </div>
         </>
       ) : batch.status !== "generation_failed" ? <Empty description="正文产物尚未生成" /> : null}
