@@ -5221,9 +5221,14 @@ body .ant-typography code { border-radius: 4px; background: #efefed; color: #4f4
 
 .generation-result-columns {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 2.2fr) minmax(360px, 1fr);
   align-items: start;
-  gap: 24px;
+  gap: 12px;
+}
+
+.generation-result-columns > .wechat-article-preview,
+.generation-result-columns > .wechat-official-preview {
+  margin-right: 0;
 }
 
 .wechat-article-preview {
@@ -6418,6 +6423,7 @@ body .ant-typography code { border-radius: 4px; background: #efefed; color: #4f4
 @media (max-width: 1080px) {
   .generation-result-columns {
     grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
+    gap: 12px;
   }
 
   .wechat-article-preview > header,
@@ -6440,6 +6446,11 @@ body .ant-typography code { border-radius: 4px; background: #efefed; color: #4f4
 
   .generation-result-columns {
     grid-template-columns: 1fr;
+  }
+
+  .generation-result-columns > .wechat-article-preview,
+  .generation-result-columns > .wechat-official-preview {
+    margin-right: auto;
   }
 
   .risk-gap-panel {
