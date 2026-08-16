@@ -6,11 +6,40 @@
 
 ## 首次启动
 
-1. 安装 Docker Desktop，Windows 建议为 Docker 分配至少 6 GB 内存；macOS/Linux 建议 6–8 GB。OpenSearch 默认使用 1 GB JVM heap。
-2. 复制 `.env.example` 为 `.env`，替换两个 MySQL 占位密码。运行 `full` 时还必须配置 `DASHSCOPE_API_KEY`。
-3. 启动：
+Windows 本机推荐使用生产初始化脚本。它将内部基础设施复杂度封装在工作台内：
+
+- 检查 Node.js、Docker、主机内存和剩余磁盘；
+- 首次启动时从 `.env.example` 创建 `.env`；
+- 使用系统加密随机数生成器创建 MySQL 用户密码和 root 密码，全程不回显；
+- 已存在 MySQL Volume 但凭证文件丢失时拒绝自动换密，防止现有数据失联；
+- 启动 `full` Profile 并等待 MySQL、OpenSearch、真实 Embedding 和全部 Worker 通过深度健康检查；
+- 保留 `.env`、`.env.local` 在 Git 忽略范围内，不提交任何真实凭证。
+
+资源基线为至少 8 GB 内存和 20 GB 可用磁盘，推荐 12 GB 内存和 50 GB 可用磁盘。OpenSearch 默认使用 1 GB JVM heap。资料规模扩大后主要增长的是磁盘、索引和备份体积，不应让正文常驻 Web 进程内存。
 
 ```powershell
+# 只检查，不改配置、不启动
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-full-production.ps1 -CheckOnly
+
+# 首次完整初始化；只要求安全输入 DASHSCOPE_API_KEY
+.\setup-full-production.cmd
+```
+
+不可自动推断的 Provider 密钥会写入本机 `.env.local`，不会打印。MySQL 主机、端口、数据库、用户和随机密码由脚本及 Compose 管理，不再要求用户逐项填写。
+
+自动化环境如果暂时只准备基础设施，可显式运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-full-production.ps1 -AllowPendingProvider -NoOpen
+```
+
+此时 MySQL 和 OpenSearch 可以运行，但系统保持 `pending_config`，不得视为完整生产就绪。补齐 Provider 后重新运行初始化脚本，必须通过 `/api/health?deep=true`。
+
+如需手动启动，仍可执行：
+
+```powershell
+Copy-Item .env.example .env
+# 手动替换两个数据库占位密码，并在 .env.local 配置 DASHSCOPE_API_KEY
 docker compose --profile full up -d --build
 docker compose --profile full ps
 ```
@@ -22,6 +51,28 @@ docker compose --profile core up -d --build
 ```
 
 Web 默认访问 `http://127.0.0.1:3027`。综合状态位于 `/api/health` 和 `/operations`；`/api/health?deep=true` 会产生一次真实 Embedding 请求，只用于验收，不用于高频容器健康检查。
+
+## 数据与容量策略
+
+完整生产模式把资料分成三层，避免“资料越多，所有内容都常驻内存”的误解和实现：
+
+| 层级 | 内容 | 生产行为 |
+|---|---|---|
+| 热数据 | 当前产品事实、有效限制、近期批准资料 | 保持在 active Snapshot，可进入 EvidencePack |
+| 温数据 | 历史文章、订阅资料、研究背景 | 保留原文，按产品、权威和生命周期过滤后检索 |
+| 冷数据 | 过期修订、重复文件、审计原件 | 保留追溯，不进入 active 索引，需要时重新治理 |
+
+原始文件以内容 Hash 去重；SourceRevision 保留历史；只有 approved Manifest 能进入生产索引。旧版本退出 active alias 后仍可审计和回滚。容量治理应优先归档旧索引和重复原件，不直接删除仍被 EvidencePack 引用的修订。
+
+复杂 PDF、扫描件、PPT 或表格解析能力通过解析适配层扩展。即使未来增加 RAGFlow 等解析服务，其输出仍要回到当前 SourceRevision、Claim、Manifest 和 EvidencePack 链路，不得成为第二套知识真源。
+
+容量报告是只读操作，不加载或打印数据库与 Provider 凭证：
+
+```powershell
+node scripts/knowledge-capacity-report.mjs
+```
+
+报告覆盖 MySQL、OpenSearch、`/app/data`、`/app/artifacts` 和 `v5-rag-*` 索引。默认总占用达到 20 GB 时给出归档提醒；可以通过进程级 `WORKBENCH_CAPACITY_WARNING_BYTES` 调整提醒阈值，但清理和删除必须由人工确认后单独执行。
 
 ## 服务职责
 
