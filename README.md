@@ -219,18 +219,40 @@ Next.js Web/API
 
 环境要求：Docker Desktop，以及可用于本地填写的 Provider、数据库和渠道配置。
 
+首次使用完整知识生产链路时，运行一键生产初始化。脚本会检查 Docker、内存和磁盘，自动创建被 Git 忽略的 `.env`，生成并隐藏本机 MySQL 凭证，构建 `full` Profile，并以真实 Embedding 请求验证 MySQL、OpenSearch 和全部 Worker。用户不需要填写 `MYSQL_HOST`、端口、库名或密码，只需要在隐藏输入框中提供无法由系统推断的 `DASHSCOPE_API_KEY`：
+
 ```powershell
-Copy-Item .env.example .env
-docker compose --profile full up -d --build
-docker compose --profile full ps
+.\setup-full-production.cmd
 ```
+
+只做环境检查、不创建配置或启动服务：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-full-production.ps1 -CheckOnly
+```
+
+初始化成功后，日常启动继续使用：
+
+```powershell
+npm.cmd run docker:3027
+```
+
+仅准备 MySQL、OpenSearch 和容器、暂不配置模型时，可以显式增加 `-AllowPendingProvider`。该状态不会被报告为完整生产就绪，也不能生成正式 EvidencePack 或正文。
 
 访问：<http://127.0.0.1:3027>
 
-健康检查：
+完整生产健康检查：
 
 ```text
-GET http://127.0.0.1:3027/api/health?scope=web
+GET http://127.0.0.1:3027/api/health?deep=true
+```
+
+只有 `profile=full`，且 MySQL、OpenSearch、Embedding、Workers 全部为 `ready`，才算完整生产模式验收通过。`scope=web` 只用于容器存活探针，不能证明知识生产链路可用。
+
+查看 MySQL、OpenSearch、资料目录、产物目录和每个 RAG 索引的实际占用：
+
+```powershell
+node scripts/knowledge-capacity-report.mjs
 ```
 
 Compose Profile：
