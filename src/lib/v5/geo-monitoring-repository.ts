@@ -4,6 +4,7 @@ import type { CreateGeoMonitoringQuestionRequest, GeoMonitoringQuestion, GeoMoni
 import { createCaptureTask } from "./capture-repository";
 import { getV5GovernancePool, hashV5GovernancePayload, parseV5Json, stringifyV5Json, V5GovernanceRepositoryError, withV5GovernanceTransaction, writeV5GovernanceAudit } from "./knowledge-governance-repository";
 import { listApprovedGeoMonitoringQuestions } from "./question-service";
+import type { ProductWebsiteCoverageProfile } from "./website-coverage-contracts";
 
 const SUPPORTED_PLATFORMS = new Set(["doubao", "deepseek", "qwen", "chatgpt"]);
 const iso = (value: unknown) => value ? new Date(String(value)).toISOString() : "";
@@ -12,6 +13,32 @@ const normalizeDomain = (value: string) => { try { return new URL(value.includes
 const domainMatches = (candidate: string, owned: string[]) => owned.some((domain) => candidate === domain || candidate.endsWith(`.${domain}`));
 const normalizeUrl = (value: string) => { try { const url = new URL(value); url.hash = ""; url.search = ""; return url.toString().replace(/\/$/, "").toLowerCase(); } catch { return ""; } };
 const categoryEnumerationPattern = /服务商.*(?:有哪些|哪家|推荐|名单|选择|选型)|(?:有哪些|哪家|推荐|名单).*服务商|实施伙伴.*(?:有哪些|哪家|推荐|选择)/;
+
+function targetSolutionTopic(questionText: string) {
+  if (categoryEnumerationPattern.test(questionText)) return "provider_selection";
+  if (/实施|部署|接入|集成|交付|验收|培训/.test(questionText)) return "implementation_delivery";
+  return "core_service";
+}
+
+/**
+ * Resolve the page(s) whose citation rate is being measured. Explicit URLs
+ * win; otherwise use the audited topic page selected from the coverage profile
+ * and finally the product's official URL. Do not treat every official page as
+ * a solution page, or a generic footer/legal citation would inflate the metric.
+ */
+export function deriveTargetSolutionUrls(input: {
+  questionText: string;
+  explicitUrls?: string[];
+  officialUrl?: string;
+  websiteCoverageProfile?: Pick<ProductWebsiteCoverageProfile, "topicCoverage">;
+}) {
+  const normalize = (values: string[]) => [...new Set(values.map(normalizeUrl).filter(Boolean))];
+  const explicit = normalize(input.explicitUrls || []);
+  if (explicit.length) return explicit;
+  const topic = input.websiteCoverageProfile?.topicCoverage.find((item) => item.topic === targetSolutionTopic(input.questionText));
+  const covered = normalize(topic?.pageUrls || []);
+  return covered.length ? covered : normalize(input.officialUrl ? [input.officialUrl] : []);
+}
 
 function serviceProviderFromRelationship(value?: string) {
   if (!value) return undefined;
@@ -100,8 +127,9 @@ export async function createGeoMonitoringQuestion(input: CreateGeoMonitoringQues
     || (categoryEnumerationPattern.test(questionText) ? serviceProviderFromRelationship(relationship) : undefined)
     || String(productRows[0].display_name || "").trim();
   const ownedDomains = [...new Set([...(input.ownedDomains || []), String(productRows[0].official_url || "")].map(normalizeDomain).filter(Boolean))];
-  const [sourceRows] = await getV5GovernancePool().query<RowDataPacket[]>("SELECT canonical_url FROM product_website_source_status WHERE product_id = ? AND ownership_status = 'official'", [productId]);
-  const targetSolutionUrls = [...new Set([...(input.targetSolutionUrls || []), ...sourceRows.map((row) => String(row.canonical_url))].map(normalizeUrl).filter(Boolean))];
+  const [profileRows] = await getV5GovernancePool().query<RowDataPacket[]>("SELECT profile_json FROM product_website_coverage_profile WHERE product_id = ? LIMIT 1", [productId]);
+  const websiteCoverageProfile = parseV5Json<Pick<ProductWebsiteCoverageProfile, "topicCoverage"> | undefined>(profileRows[0]?.profile_json, undefined);
+  const targetSolutionUrls = deriveTargetSolutionUrls({ questionText, explicitUrls: input.targetSolutionUrls, officialUrl: String(productRows[0].official_url || ""), websiteCoverageProfile });
   const samplesPerMonth = Math.max(1, Math.min(20, Number(input.samplesPerMonth || 3)));
   const requestHash = hashV5GovernancePayload({ productId, questionText, targetEntityName, relationship, questionVersionId: input.questionVersionId, selectionSource: input.selectionSource, strategyPackId: input.strategyPackId, platforms, locale: input.locale || "zh-CN", region: input.region, ownedDomains, targetSolutionUrls, samplesPerMonth });
   const saved = await withV5GovernanceTransaction(async (connection) => {

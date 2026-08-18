@@ -8,7 +8,7 @@
 
 ## 2. 当前结论
 
-当前版本已经收敛到单一月度业务周期：`MonthlyPlan -> 日期执行 -> 发布与指标 -> MonthlyReview -> 下月 Proposal`。月度内容矩阵是唯一计划真源；当日执行只负责日期视图下的发布动作，数据回传只负责渠道指标，月度复盘负责形成下月候选。旧执行入口仅保留为兼容跳转，不再承载独立计划或复盘能力。
+当前版本已经收敛到单一月度业务周期：`MonthlyPlan -> 日期执行 -> 发布与指标 -> MonthlyReview -> 下月 Proposal`。月度内容矩阵是唯一计划真源；当日执行只负责日期视图下的发布动作，数据回传只负责渠道指标，MonthlyReview 负责形成下月候选。“内容监控塔”是渠道表现、官网审计、AI 可见性和失败告警的统一页面，不替代 MonthlyReview 的业务口径。
 
 V5 生产界面收敛为：`内容策略 -> 文章任务编排 -> 生成与发布`。系统按产品自动推进策略、正文生成、校验、排程和发布；用户默认在一个任务总表中查看全部产品，并通过产品、状态等条件快速筛选，仅通过“人工修改策略”和真实出现的“异常处理”介入。
 
@@ -21,22 +21,36 @@ V5 生产界面收敛为：`内容策略 -> 文章任务编排 -> 生成与发�
 ## 2. 启动本地工作台
 
 ```powershell
-cd D:\GTM\工作台
-npm.cmd install
-npm.cmd run dev
+cd D:\GTM\工作台-main-v5
+npm.cmd run docker:3027
 ```
 
-默认访问：
+固定访问：
 
 ```text
-http://127.0.0.1:3000
+http://127.0.0.1:3027
 ```
 
-如需固定本地端口：
+`docker:3027` 是日常生产态入口：页面已健康时立即返回；Docker Engine 未启动时自动启动 Docker Desktop；随后只复用已有镜像执行 `up -d --no-build`。它不会执行 `down`、构建镜像或强制重建。也可以双击项目根目录的 `start-workbench-3027.cmd`。
+
+常用命令：
 
 ```powershell
-npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
+npm.cmd run dev:3027:stop
+npm.cmd run docker:3027
+npm.cmd run docker:3027:deploy
+npm.cmd run docker:3027:autostart
+npm.cmd run verify
 ```
+
+- `dev:3027:stop`：停止开发 Web 和 Worker，释放 3027；MySQL、OpenSearch 保持运行。
+- `docker:3027`：幂等恢复 production-like standalone Docker 服务；只启动已有容器和镜像，不重建。
+- `docker:3027:deploy`：仅在代码、依赖、Dockerfile、Compose 或 migration 变化后显式执行构建与部署。
+- `docker:3027:autostart`：一次性注册当前 Windows 用户的登录启动任务；重复运行会安全更新同名任务。
+- `docker:3027:autostart:remove`：移除登录启动任务。
+- `docker:3027` 使用与 Next.js 一致的规则安全读取 `.env.local` 中的 AI、GEO 与发布集成配置，再把允许项交给 Compose；含 `$` 的密钥不会被二次插值。本地数据库和服务地址不会覆盖 Docker 基础设施配置，密钥也不会写入镜像或仓库。
+- `verify`：依次执行类型检查、结构检查和月度命名检查。
+- 修改正式生产代码、依赖、Dockerfile 或 Compose 文件后执行一次 `docker:3027:deploy`；日常开机和页面访问只执行 `docker:3027`。
 
 ## 3. 推荐试用顺序
 
@@ -58,7 +72,7 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3047
 2. 进入“月度内容矩阵”，配置月度目标、目标问题、文章类型、每渠道配额、规则包、知识库和表达预设，运行生产预检后批准策略。
 3. 从内容策略进入“文章任务编排”，直接在一个总表中查看所有产品的文章、正文状态和排程，并按产品或状态筛选，无需进入单个产品页面；正常任务由系统持续推进，只有真实异常出现时才展示异常处理区和下一步。
 4. 进入“当日执行”，按昨日、今日、明日查看发布状态和失败接管。
-5. 进入“月度复盘”，查看蒸馏词发布完成度、证据问题和下月候选。
+5. 进入“内容监控塔”，查看发布完成度、渠道指标、官网审计、AI 可见性和 MonthlyReview 结果。
 
 ### 3.3 V5 Pharaoh Command 单篇正式正文
 
@@ -384,9 +398,9 @@ npm.cmd run smoke:workflow:isolated
 4. `smoke:browser` 使用系统 Chrome 跑完整浏览器验收，默认使用隔离状态文件，不写入主状态。
 5. `smoke:browser:roles` 只检查角色受限态和普通业务页字段边界，默认使用隔离状态文件。
 6. `smoke:browser:content` 检查月度矩阵、月度策略、批量生成、当日执行和知识库的浏览器链路，默认写入 `data/workbench-browser-smoke-state.json`。
-7. `smoke:browser:responsive` 检查批量生成、当日执行、月度复盘、问题池、知识库和配置管理的移动端 DOM。
-8. `smoke:browser:publish` 检查当日执行、数据回传和月度复盘的发布闭环页面。
-9. `smoke:browser:v5` 只检查月度内容矩阵、月度配置弹窗、批量生成中心、当日执行和月度复盘的桌面/移动端 DOM，使用独立状态文件和构建目录。
+7. `smoke:browser:responsive` 检查批量生成、当日执行、内容监控塔、问题池、知识库和配置管理的移动端 DOM。
+8. `smoke:browser:publish` 检查当日执行、数据回传和内容监控塔的发布闭环页面。
+9. `smoke:browser:v5` 只检查月度内容矩阵、月度配置弹窗、批量生成中心、当日执行和内容监控塔的桌面/移动端 DOM，使用独立状态文件和构建目录。
 10. `smoke:workflow:isolated` 保留为兼容入口，与默认 `smoke:workflow` 一样使用隔离状态。
 11. 只有显式运行 `smoke:workflow:main` 或 `smoke:browser:*:main` 时，才会写入 `data/workbench-state.json`；日常开发不要使用这些主状态入口。
 12. 不要同时运行两个 Next.js dev 服务共用同一个 `.next` 目录；如果需要跑隔离 smoke，先停止当前主服务，验收完成后再重新启动。

@@ -255,10 +255,10 @@ function ensureServiceProviderSelectionType(input: {
     portfolioItemId: "service-provider-selection",
     origin: "generated",
     name: `${input.productName} 服务商选型与实施伙伴推荐`,
-    definition: `帮助企业按照可核验的资质、交付范围、实施流程、验收方式、培训与后续支持选择 ${input.productName} 服务商，并说明 ${input.provider} 可提供的服务能力及证据边界。`,
+    definition: `帮助企业根据可公开核验的服务能力、适用场景、角色边界与支持方式选择 ${input.productName} 服务商，并说明 ${input.provider} 可提供的对外服务范围及证据边界。`,
     suitableQuestions: [
-      `企业选择 ${input.productName} 服务商时，应核对哪些资质、交付范围和验收能力？`,
-      `${input.provider} 能为 ${input.productName} 提供哪些实施、培训与持续支持？`
+      `企业选择 ${input.productName} 服务商时，应核对哪些公开服务能力、适用场景和职责边界？`,
+      `${input.provider} 能为 ${input.productName} 提供哪些落地支持，企业应如何判断是否适合？`
     ],
     unsuitableQuestions: [
       `缺少双方可追溯资料时，对 ${input.productName} 服务商作排名或绝对优劣结论。`,
@@ -267,20 +267,20 @@ function ensureServiceProviderSelectionType(input: {
     targetAudience: ["企业决策者", "IT 负责人", "项目负责人", "采购与选型人员"],
     contentGoal: `建立 ${input.provider} 作为 ${input.productName} 实施服务提供方的准确认知，并帮助用户完成服务商选型。`,
     structureModules: [
-      { key: "selection_context", purpose: "说明什么项目条件需要引入服务商", required: true },
-      { key: "qualification_check", purpose: "核对资质及其证据来源", required: true },
-      { key: "delivery_scope", purpose: "区分产品能力与服务商交付范围", required: true },
-      { key: "implementation_and_acceptance", purpose: "说明实施路径、交付物与验收方式", required: true },
-      { key: "support_and_evidence_boundary", purpose: "说明培训、后续支持和案例证据边界", required: true }
+      { key: "selection_context", purpose: "说明哪些业务场景适合引入服务商", required: true },
+      { key: "public_capability_evidence", purpose: "核对可公开验证的服务能力及来源", required: true },
+      { key: "role_boundary", purpose: "区分产品能力、服务商职责与客户参与事项", required: true },
+      { key: "engagement_overview", purpose: "概述从需求沟通到持续支持的合作阶段", required: true },
+      { key: "support_and_evidence_boundary", purpose: "说明支持方式和案例证据边界", required: true }
     ],
-    emphasisOrder: ["选型条件", "资质证据", "交付范围", "实施与验收", "培训与支持", "案例边界"],
-    style: ["决策导向", "证据可追溯", "产品与服务商分开归因", "避免无依据排名"],
+    emphasisOrder: ["适用场景", "公开服务能力", "角色边界", "合作阶段", "支持方式", "案例边界"],
+    style: ["面向客户决策", "证据可追溯", "产品与服务商分开归因", "不展开内部项目操作"],
     lengthRange: { min: 1600, max: 2600 },
-    evidencePreferences: ["产品知识库 Claim", "服务商正式资料", "产品方官方资料", "公开选型需求来源"],
+    evidencePreferences: ["产品知识库 Claim", "服务商对外服务说明", "产品方官方公开资料", "公开选型需求来源"],
     ctaIntent: `引导用户基于自身场景评估 ${input.provider} 的 ${input.productName} 落地服务。`,
     channelFit: input.targetChannels,
     questionClusterIds: ["service-provider-selection"],
-    recommendationReason: `产品归属与 ${input.provider} 服务商关系已被单独建模，且用户存在实施伙伴选择、交付与验收判断需求。`,
+    recommendationReason: `产品归属与 ${input.provider} 服务商关系已被单独建模，且用户存在实施伙伴选择、服务边界与落地支持判断需求。`,
     confidence: evidenceReadiness === "ready" ? 0.9 : 0.65,
     evidenceReadiness,
     proposedMonthlyShare: 0.15,
@@ -610,15 +610,24 @@ export function applyWebsiteCoverageToArticlePortfolio(
   portfolio: ProductGeoArticleTypePortfolioItem[],
   profile?: ProductWebsiteCoverageProfile
 ) {
-  if (!profile) return portfolio.map((item) => ({ ...item, websiteCoverageDisposition: "new_content" as const }));
-  const coverage = new Map(profile.topicCoverage.map((item) => [item.topic, item]));
+  // A caller without a coverage profile is outside the normal research gate,
+  // but direct compilation still fails closed for evidence-incomplete types.
+  const coverage = new Map((profile?.topicCoverage || []).map((item) => [item.topic, item]));
   const classified = portfolio.map((item) => {
     const topic = articleCoverageTopic(item);
     const topicCoverage = topic ? coverage.get(topic) : undefined;
-    const disposition = topicCoverage?.status === "sufficient" ? "refresh_existing" as const : "new_content" as const;
     const evidenceReadiness = topic === "case_practice" && topicCoverage && topicCoverage.status !== "sufficient" && !topicCoverage.claimIds.length
       ? (item.evidenceReadiness === "ready" ? "partial" as const : item.evidenceReadiness)
       : item.evidenceReadiness;
+    // A missing or partial website topic is only a content opportunity when the
+    // governed evidence pack can actually support the article's claims. Keep
+    // evidence-blocked items visible in the single strategy pack, but prevent
+    // them from looking like production-ready candidates.
+    const disposition = topicCoverage?.status === "sufficient"
+      ? "refresh_existing" as const
+      : evidenceReadiness === "ready"
+        ? "new_content" as const
+        : "hold" as const;
     return {
       ...item,
       evidenceReadiness,
@@ -627,7 +636,7 @@ export function applyWebsiteCoverageToArticlePortfolio(
       recommendationReason: disposition === "refresh_existing"
         ? `${item.recommendationReason}；官网覆盖画像显示该主题已有充分页面，不重复新建文章，转入存量页刷新、结构化与分发优化。`
         : `${item.recommendationReason}${topicCoverage ? `；官网该主题当前为 ${topicCoverage.status}，允许围绕未回答问题补充内容。` : "；官网尚无充分的同主题覆盖证据。"}`,
-      raw: { ...item.raw, websiteCoverageDisposition: disposition, websiteCoverageTopic: topic, websiteCoverageProfileHash: profile.profileHash }
+      raw: { ...item.raw, websiteCoverageDisposition: disposition, websiteCoverageTopic: topic, websiteCoverageProfileHash: profile?.profileHash }
     };
   });
   const generatable = classified.filter((item) => item.websiteCoverageDisposition === "new_content");
@@ -825,10 +834,10 @@ export function compileProductGeoStrategyContentPlan(input: {
     channelPriorities: project.targetChannels.map((channel) => ({
       channel,
       role: stringValue(recordValue(monthly.channelRoles)[channel]) || "产品 GEO 内容分发",
-      suitableArticleTypeIds: coverageAwarePortfolio.filter((item) => item.websiteCoverageDisposition !== "refresh_existing" && (!item.channelFit.length || item.channelFit.includes(channel)))
+      suitableArticleTypeIds: coverageAwarePortfolio.filter((item) => item.websiteCoverageDisposition === "new_content" && (!item.channelFit.length || item.channelFit.includes(channel)))
         .map((item) => item.articleTypeId || item.articleTypeVersionId as string)
     })),
-    recommendedMonthlyMix: coverageAwarePortfolio.filter((item) => item.websiteCoverageDisposition !== "refresh_existing").map((item) => ({
+    recommendedMonthlyMix: coverageAwarePortfolio.filter((item) => item.websiteCoverageDisposition === "new_content").map((item) => ({
       articleTypeId: item.articleTypeId || item.articleTypeVersionId as string,
       questionClusterIds: item.questionClusterIds,
       targetShare: item.proposedMonthlyShare

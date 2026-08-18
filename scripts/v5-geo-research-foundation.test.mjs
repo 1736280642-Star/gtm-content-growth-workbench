@@ -144,6 +144,18 @@ test("question keyword extraction and article templates are product agnostic", a
   const templates = await read("data/v5-article-type-templates.json");
   assert.doesNotMatch(questionService, /WorkBuddy|腾讯云\\s\*ADP|ADP\\s\*实施/);
   assert.doesNotMatch(templates, /联系 JOTO/);
+  const implementationGuide = JSON.parse(templates).find((item) => item.templateId === "implementation-guide");
+  assert.match(implementationGuide.contentGoal, /客户决策/);
+  assert.doesNotMatch(JSON.stringify(implementationGuide), /实施文档|配置说明|验收清单/);
+});
+
+test("GEO strategy evidence policy keeps internal project artifacts out of promotional content", async () => {
+  const provider = await read("src/lib/v5/geo-research-provider.ts");
+  const panel = await read("src/components/ProductGeoStrategyPanel.tsx");
+  assert.match(provider, /Missing internal delivery artifacts alone must never make a promotional article type partial or blocked/);
+  assert.match(provider, /public-facing promotional content/);
+  assert.match(panel, /内部部署参数、配置操作文档、项目交付与验收清单不是推广内容的默认前置资料/);
+  assert.doesNotMatch(panel, /suggestions:\s*\["正式部署前提与环境要求"/);
 });
 
 test("the UI exposes product onboarding and research execution routes", async () => {

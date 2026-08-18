@@ -157,6 +157,90 @@ body {
   background: var(--bg);
 }
 
+/* Default hosted mode uses a focused delivery shell instead of the operations sidebar. */
+.hosted-shell {
+  min-height: 100vh;
+  color: #18201d;
+  background: #f5f7f4;
+}
+
+.hosted-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: min(1220px, calc(100% - 48px));
+  min-height: 72px;
+  margin: 0 auto;
+}
+
+.hosted-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #18201d;
+  text-decoration: none;
+}
+
+.hosted-brand:hover { color: #18201d; }
+
+.hosted-brand-mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 7px;
+  color: #f5f7f4;
+  background: #18201d;
+  font: 700 17px/1 Georgia, serif;
+}
+
+.hosted-brand strong,
+.hosted-brand small { display: block; }
+.hosted-brand strong { font-size: 13px; letter-spacing: .08em; }
+.hosted-brand small { margin-top: 2px; color: #63716b; font-size: 11px; }
+
+.hosted-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hosted-nav a {
+  padding: 8px 11px;
+  border-radius: 6px;
+  color: #63716b;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.hosted-nav a:hover,
+.hosted-nav a.is-active { color: #18201d; background: #eaf0ec; }
+.hosted-nav .hosted-console-link { margin-left: 12px; color: #176b52; font-weight: 650; }
+.hosted-nav .hosted-console-link:hover { color: #176b52; background: #e1eee8; }
+
+.hosted-main { width: min(1220px, calc(100% - 48px)); margin: 0 auto; }
+.hosted-footer { display: flex; justify-content: space-between; gap: 20px; width: min(1220px, calc(100% - 48px)); margin: 54px auto 0; padding: 20px 0 28px; border-top: 1px solid #dce4df; color: #84908a; font-size: 11px; }
+.hosted-footer span:first-child { color: #52615a; font-weight: 700; letter-spacing: .08em; }
+body .hosted-shell .ant-btn { border-radius: 7px; font-weight: 650; }
+body .hosted-shell .ant-btn-primary { border-color: #176b52; background: #176b52; color: #fff; }
+body .hosted-shell .ant-btn-primary:not(:disabled):hover { border-color: #0f5942; background: #0f5942; }
+body .hosted-shell .ant-btn-link,
+body .hosted-shell .ant-btn-text { color: #2967a3; }
+body .hosted-shell .ant-btn-text:hover { color: #176b52; background: #eef5f1; }
+body .hosted-shell .ant-input { border-color: #dce4df !important; border-radius: 7px !important; }
+body .hosted-shell .ant-input:hover { border-color: #9cb9aa !important; }
+
+@media (max-width: 760px) {
+  .hosted-topbar,
+  .hosted-main,
+  .hosted-footer { width: min(100% - 32px, 560px); }
+  .hosted-topbar { min-height: 64px; }
+  .hosted-nav a:not(.hosted-console-link) { display: none; }
+  .hosted-nav .hosted-console-link { margin-left: 0; padding-right: 0; }
+  .hosted-footer { align-items: flex-start; flex-direction: column; gap: 6px; margin-top: 34px; }
+}
+
 .ant-table-wrapper {
   width: 100%;
 }

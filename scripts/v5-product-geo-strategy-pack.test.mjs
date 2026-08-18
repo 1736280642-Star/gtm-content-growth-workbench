@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const contracts = await import("../src/lib/v5/product-strategy-pack-contracts.ts");
+const promotionEvidence = await import("../src/lib/v5/promotion-evidence-policy.ts");
 
 function sampleProject() {
   return {
@@ -138,7 +139,8 @@ test("a governed JOTO service-provider relationship always yields a provider-sel
   assert.ok(articleType);
   assert.equal(articleType.evidenceReadiness, "ready");
   assert.match(articleType.name, /WorkBuddy 服务商选型与实施伙伴推荐/);
-  assert.match(articleType.definition, /资质.*交付范围.*验收/);
+  assert.match(articleType.definition, /公开核验.*服务能力.*适用场景.*角色边界/);
+  assert.doesNotMatch(articleType.definition, /交付范围.*验收/);
   assert.match(articleType.unsuitableQuestions.join(" "), /客户 Logo.*已验证成功案例/);
   assert.doesNotThrow(() => contracts.assertProductGeoStrategyContentPlanV2(plan));
 });
@@ -205,6 +207,48 @@ test("a semantic provider guide is normalized into the governed provider-selecti
   assert.equal(providerTypes[0].name, "腾讯云 ADP 服务商选型与实施伙伴推荐");
   assert.equal(providerTypes[0].evidenceReadiness, "ready");
   assert.match(providerTypes[0].contentGoal, /JOTO.*实施服务提供方/);
+  assert.match(JSON.stringify(providerTypes[0]), /对外服务范围|角色边界|合作阶段/);
+  assert.doesNotMatch(JSON.stringify(providerTypes[0]), /配置操作文档|交付范围与验收|验收清单/);
+});
+
+test("promotion evidence suggestions exclude internal delivery artifacts", () => {
+  const shared = {
+    definition: "面向客户解释产品与服务。",
+    suitableQuestions: [],
+    evidencePreferences: ["正式部署前提与环境要求", "系统集成及配置操作文档", "交付范围与验收清单"]
+  };
+  const items = [
+    { ...shared, name: "行业场景解决方案", contentGoal: "把业务问题映射为可执行方案" },
+    { ...shared, name: "服务商实施指南", contentGoal: "清晰说明服务范围和实施能力" },
+    { ...shared, name: "实施指南", contentGoal: "帮助客户理解采用路径与实施边界" }
+  ];
+
+  for (const item of items) {
+    const suggestions = promotionEvidence.promotionEvidenceSuggestions(item);
+    assert.ok(suggestions.length >= 2);
+    assert.doesNotMatch(suggestions.join("；"), /部署前提|环境要求|配置操作|交付范围|验收清单/);
+  }
+  assert.match(promotionEvidence.promotionEvidenceSuggestions(items[0]).join("；"), /业务问题|产品能力/);
+  assert.match(promotionEvidence.promotionEvidenceSuggestions(items[1]).join("；"), /对外公布的服务范围|职责边界/);
+  assert.match(promotionEvidence.promotionEvidenceSuggestions(items[2]).join("；"), /公开的产品能力|实施阶段/);
+});
+
+test("website topics without governed evidence stay on hold and never enter the monthly mix", () => {
+  const profile = {
+    id: "coverage-hold", productId: "product-1", profileVersion: 1, knowledgeReadiness: "partial", publicGeoReadiness: "ready",
+    officialSources: [], criticalFindingCodes: [], evidenceGaps: [], profileHash: "coverage-hold-hash", generatedAt: "2026-08-17T00:00:00.000Z",
+    topicCoverage: [{ topic: "case_practice", label: "案例或实践证据", status: "missing", pageUrls: [], sourceIds: [], claimIds: [], evidenceRequired: true, reason: "缺少 Claim" }]
+  };
+  const item = {
+    portfolioItemId: "case", origin: "generated", articleTypeId: "case-type", articleTypeVersionId: "case-version",
+    name: "客户案例与项目实践", definition: "基于客户案例说明结果", suitableQuestions: [], unsuitableQuestions: [], targetAudience: ["企业用户"],
+    contentGoal: "说明实践结果", structureModules: [{ key: "answer", purpose: "回答问题", required: true }], emphasisOrder: ["answer"], style: ["客观"],
+    lengthRange: { min: 1200, max: 1800 }, evidencePreferences: ["真实案例 Claim"], ctaIntent: "了解详情", channelFit: ["official_website"],
+    questionClusterIds: ["case"], recommendationReason: "案例问题", confidence: 0.8, evidenceReadiness: "ready", proposedMonthlyShare: 1, definitionHash: "case-hash", raw: {}
+  };
+  const normalized = contracts.applyWebsiteCoverageToArticlePortfolio([item], profile);
+  assert.equal(normalized[0].websiteCoverageDisposition, "hold");
+  assert.deepEqual(contracts.deriveProductStrategyMonthlyTypeQuotas({ articleTypePortfolio: normalized }, 3), []);
 });
 
 test("strategy compilation removes weak competitor guesses and turns unsupported claims into blocked evidence work", () => {

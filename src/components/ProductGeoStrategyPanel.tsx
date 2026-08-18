@@ -6,13 +6,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { callJsonApi } from "@/lib/client-api";
 import type {
   FixedExpressionPosition,
-  ProductGeoArticleTypePortfolioItem,
   ProductGeoStrategyContentPlanV2,
   ProductGeoStrategyDecision,
   ProductGeoStrategyPackRecord,
   ProductStrategyArticleTypeVersionRecord
 } from "@/lib/v5/product-strategy-pack-contracts";
 import { GeoStructuredData } from "@/components/geo/GeoStructuredData";
+import { promotionEvidenceFallback, promotionEvidenceSuggestions } from "@/lib/v5/promotion-evidence-policy";
 
 interface ProductGeoStrategyResponse {
   ok: true;
@@ -63,7 +63,7 @@ const articleTypeOriginLabels = {
 
 const evidenceReadinessLabels = {
   ready: { text: "证据就绪", color: "green" },
-  partial: { text: "资料待补", color: "gold" },
+  partial: { text: "推广依据待补", color: "gold" },
   blocked: { text: "禁止生产", color: "red" }
 } as const;
 
@@ -78,46 +78,6 @@ const channelLabels: Record<string, string> = {
 function evidenceReadinessTag(readiness: keyof typeof evidenceReadinessLabels) {
   const item = evidenceReadinessLabels[readiness];
   return <Tag color={item.color}>{item.text}</Tag>;
-}
-
-const materialSuggestionRules: Array<{ pattern: RegExp; suggestions: string[] }> = [
-  {
-    pattern: /架构|技术对比|竞品|竞争|选型|差异/,
-    suggestions: ["双方同版本的官方产品与架构资料", "可复核的功能对比矩阵及测试口径", "资料版本日期与适用范围"]
-  },
-  {
-    pattern: /实施|部署|集成|配置|交付|验收/,
-    suggestions: ["正式部署前提与环境要求", "系统集成及配置操作文档", "交付范围与验收清单"]
-  },
-  {
-    pattern: /安全|合规|隐私|数据保护|权限|认证/,
-    suggestions: ["安全白皮书或数据处理流程", "权限、存储与访问控制说明", "有效的合规认证或审计证明"]
-  },
-  {
-    pattern: /案例|实践|价值|效果|效率|指标/,
-    suggestions: ["获授权的客户案例与参与角色证明", "实施过程、适用条件及限制", "可追溯的前后对比指标与统计口径"]
-  },
-  {
-    pattern: /服务商|伙伴|资质|培训|支持/,
-    suggestions: ["服务商资质与厂商关系证明", "实施、培训、支持和验收范围", "可核验的交付案例与服务承诺"]
-  },
-  {
-    pattern: /价格|定价|费用|成本/,
-    suggestions: ["当前有效的官方定价与套餐说明", "计费边界、附加费用及生效日期"]
-  }
-];
-
-function materialSuggestions(item: ProductGeoArticleTypePortfolioItem, limit = 5) {
-  const semanticText = [
-    item.name,
-    item.definition,
-    item.contentGoal,
-    ...item.suitableQuestions,
-    ...item.evidencePreferences
-  ].join(" ");
-  const inferred = materialSuggestionRules.flatMap((rule) => rule.pattern.test(semanticText) ? rule.suggestions : []);
-  const preferred = item.evidencePreferences.map((preference) => `可公开引用的${preference}`);
-  return [...new Set([...inferred, ...preferred])].slice(0, limit);
 }
 
 export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
@@ -362,8 +322,8 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                     <Alert
                       showIcon
                       type={readyArticleTypeCount > 0 ? "warning" : "error"}
-                      message={`${readyArticleTypeCount} 种证据就绪，${partialArticleTypeCount} 种需要补充资料`}
-                      description="资料待补的类型可以保留在策略中，但不会进入正式批量生产；系统只会用证据就绪的类型生成任务。"
+                      message={`${readyArticleTypeCount} 种证据就绪，${partialArticleTypeCount} 种需要补充公开依据`}
+                      description="只有缺少支撑推广文章核心观点的公开证据时才会拦截生产。内部部署参数、配置操作文档、项目交付与验收清单不是推广内容的默认前置资料。"
                       style={{ marginBottom: 12 }}
                     />
                   ) : null}
@@ -414,7 +374,7 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                                 <Typography.Text type="secondary">内容目标：{item.contentGoal || item.definition}</Typography.Text>
                                 {item.evidenceReadiness !== "ready" ? (
                                   <Typography.Text type={item.evidenceReadiness === "blocked" ? "danger" : "warning"}>
-                                    建议补充资料：{materialSuggestions(item, 3).join("；") || "可公开引用的正式产品事实、来源与适用范围"}。
+                                    可补充的公开内容依据：{promotionEvidenceSuggestions(item, 3).join("；") || promotionEvidenceFallback}。
                                   </Typography.Text>
                                 ) : null}
                               </Space>
@@ -445,8 +405,8 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                         <Alert
                           showIcon
                           type={detailItem.evidenceReadiness === "blocked" ? "error" : "warning"}
-                          message={detailItem.evidenceReadiness === "blocked" ? "当前资料不足，禁止生产" : "补齐资料后才能进入批量生产"}
-                          description={`建议补充：${materialSuggestions(detailItem).join("；") || "可公开引用的正式产品事实、来源与适用范围"}。`}
+                          message={detailItem.evidenceReadiness === "blocked" ? "当前公开证据不足，禁止生产" : "补齐必要的公开依据后才能进入批量生产"}
+                          description={`只补充支撑文章核心观点的对外内容依据：${promotionEvidenceSuggestions(detailItem).join("；") || promotionEvidenceFallback}。内部项目实施资料不作为默认要求。`}
                         />
                       ) : null}
                       <Descriptions bordered size="small" column={1}>

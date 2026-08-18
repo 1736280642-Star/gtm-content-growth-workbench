@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assertSafePublicUrl, auditSiteHtml, runSiteAudit } from "../src/lib/v5/site-audit-runner.ts";
-import { computeGeoQuestionMetric, getGeoMonitoringSampleSchedule } from "../src/lib/v5/geo-monitoring-repository.ts";
+import { computeGeoQuestionMetric, deriveTargetSolutionUrls, getGeoMonitoringSampleSchedule } from "../src/lib/v5/geo-monitoring-repository.ts";
 import { parseMonitoringQuestions } from "../src/lib/geo-monitoring-input.ts";
 import { toMysqlDateTime } from "../src/lib/v5/site-audit-repository.ts";
 
@@ -159,4 +159,19 @@ test("question metrics omit owned citation rates when no owned domain is configu
   assert.equal(metric.ownedCitationConfidence95, null);
   assert.equal(metric.citationShareOfVoice, null);
   assert.equal(metric.platformBreakdown[0].ownedCitationRate, null);
+});
+
+test("target solution citation defaults to the audited topic page instead of every official URL", () => {
+  const urls = deriveTargetSolutionUrls({
+    questionText: "ADP 服务商有哪些？",
+    officialUrl: "https://example.com/",
+    websiteCoverageProfile: {
+      topicCoverage: [
+        { topic: "provider_selection", label: "服务商选择依据", status: "sufficient", pageUrls: ["https://example.com/solutions/adp"], sourceIds: [], claimIds: [], evidenceRequired: true, reason: "covered" },
+        { topic: "faq", label: "FAQ", status: "sufficient", pageUrls: ["https://example.com/faq"], sourceIds: [], claimIds: [], evidenceRequired: false, reason: "covered" }
+      ]
+    }
+  });
+  assert.deepEqual(urls, ["https://example.com/solutions/adp"]);
+  assert.deepEqual(deriveTargetSolutionUrls({ questionText: "ADP 服务商有哪些？", explicitUrls: ["https://example.com/custom"], officialUrl: "https://example.com/" }), ["https://example.com/custom"]);
 });

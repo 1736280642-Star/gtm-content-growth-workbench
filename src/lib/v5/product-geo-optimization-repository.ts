@@ -67,6 +67,15 @@ function isCategoryEnumerationQuestion(value: string) {
   return /服务商.*(?:有哪些|哪家|推荐|名单|选择|选型)|(?:有哪些|哪家|推荐|名单).*服务商|实施伙伴.*(?:有哪些|哪家|推荐|选择)/.test(value);
 }
 
+function targetSolutionUrlsForQuestion(profile: Awaited<ReturnType<typeof readProductWebsiteCoverageProfile>>, question: string) {
+  const topic = isCategoryEnumerationQuestion(question)
+    ? "provider_selection"
+    : /实施|部署|接入|集成|交付|验收|培训/.test(question)
+      ? "implementation_delivery"
+      : "core_service";
+  return new Set((profile?.topicCoverage.find((item) => item.topic === topic)?.pageUrls || []).map(normalizeUrl).filter(Boolean));
+}
+
 function evaluateRelationship(answerText: string, targetEntity: string | undefined, relationship: string) {
   if (!targetEntity || !relationship || !answerText.toLocaleLowerCase().includes(targetEntity.toLocaleLowerCase())) return undefined;
   const serviceRolePresent = /服务商|实施伙伴|合作伙伴|实施|交付|培训|技术支持|持续运营/.test(answerText);
@@ -134,23 +143,25 @@ async function deriveBatchSnapshot(rows: RowDataPacket[]): Promise<ProductGeoOpt
   const livenessSettled = publishedRows.length > 0 && stablePublishedContentCount === publishedRows.length;
   const batchClosed = allMatrixItemsSettled && livenessSettled && allTasksSettled;
   const officialDomains = [...new Set((websiteProfile?.officialSources || []).map((item) => normalizeDomain(item.canonicalUrl)).filter(Boolean))];
-  const targetSolutionUrls = new Set((websiteProfile?.officialSources || []).map((item) => normalizeUrl(item.canonicalUrl)).filter(Boolean));
   const parsedAnswers = completed.map((row) => {
     const payload = parseV5Json<Record<string, unknown>>(row.payload, {});
     const answerText = String(payload.answerText || "");
+    const question = String(row.question || "");
     const targetEntity = row.target_entity_name ? String(row.target_entity_name) : targetProvider;
     const mentioned = payload.targetEntityMentioned === true || Boolean(targetEntity && answerText.toLocaleLowerCase().includes(targetEntity.toLocaleLowerCase()));
     const citations = Array.isArray(payload.citations) ? payload.citations.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [];
     const ownedCited = citations.some((item) => officialDomains.includes(normalizeDomain(String(item.url || ""))));
+    const targetSolutionUrls = targetSolutionUrlsForQuestion(websiteProfile, question);
     const targetSolutionCited = citations.some((item) => targetSolutionUrls.has(normalizeUrl(String(item.url || ""))));
-    return { row, answerText, mentioned, ownedCited, targetSolutionCited, relationshipAccurate: evaluateRelationship(answerText, targetEntity, relationship) };
+    return { row, answerText, mentioned, ownedCited, targetSolutionCited, targetSolutionConfigured: targetSolutionUrls.size > 0, relationshipAccurate: evaluateRelationship(answerText, targetEntity, relationship) };
   });
   const categoryAnswers = parsedAnswers.filter((item) => isCategoryEnumerationQuestion(String(item.row.question || "")));
   const relationshipAnswers = parsedAnswers.filter((item) => item.relationshipAccurate !== undefined);
+  const targetSolutionAnswers = parsedAnswers.filter((item) => item.targetSolutionConfigured);
   const rate = (count: number, total: number) => total ? count / total : null;
-  const targetMentionRate = rate(categoryAnswers.filter((item) => item.mentioned).length, categoryAnswers.length || parsedAnswers.length);
+  const targetMentionRate = rate(categoryAnswers.filter((item) => item.mentioned).length, categoryAnswers.length);
   const ownedCitationRate = rate(parsedAnswers.filter((item) => item.ownedCited).length, parsedAnswers.length);
-  const targetSolutionCitationRate = rate(parsedAnswers.filter((item) => item.targetSolutionCited).length, parsedAnswers.length);
+  const targetSolutionCitationRate = rate(targetSolutionAnswers.filter((item) => item.targetSolutionCited).length, targetSolutionAnswers.length);
   const relationshipAccuracyRate = rate(relationshipAnswers.filter((item) => item.relationshipAccurate).length, relationshipAnswers.length);
   const evidenceRefs = [
     ...publishedRows.map((row) => `published_content:${String(row.matrix_item_id)}`),
@@ -201,7 +212,7 @@ async function deriveBatchSnapshot(rows: RowDataPacket[]): Promise<ProductGeoOpt
       gaps.push(gap({ code: "citation_gap", rootCause: "distribution_weak", recommendedAction: "refresh_existing_content", reason: "AI 已有有效回答，但官网引用率低于 50%。", evidenceRefs }));
       actions.push(action({ action: "refresh_existing_content", priority: "P1", title: "提升目标解决方案页的引用信号", rationale: "强化页面主题句、证据链接、结构化信息、站内链接与外部分发，不重复新建同主题页面。", target: "official_website", candidateDestination: "none", evidenceRefs }));
     }
-    if (targetSolutionCitationRate !== null && targetSolutionCitationRate < 0.5 && targetSolutionUrls.size > 0) {
+    if (targetSolutionCitationRate !== null && targetSolutionCitationRate < 0.5) {
       actions.push(action({ action: "refresh_existing_content", priority: "P1", title: "把引用落到目标产品服务页", rationale: "AI 即使引用自有域名，也未稳定引用对应产品解决方案页；优化 canonical、页面实体关系和锚文本指向。", target: "official_website", candidateDestination: "none", evidenceRefs }));
     }
     if (!actions.length) {

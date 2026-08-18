@@ -9,7 +9,7 @@
       "questionVersionId": "question-version-workbuddy-scenes-v1",
       "questionText": "WorkBuddy 适合哪些企业知识管理场景？",
       "temporaryQuestion": false,
-      "platform": "chatgpt",
+      "platform": "qwen",
       "condition": {
         "locale": "zh-CN",
         "region": "上海",
@@ -82,7 +82,7 @@
           "questionVersionId": "question-version-workbuddy-scenes-v1",
           "questionText": "WorkBuddy 适合哪些企业知识管理场景？",
           "temporaryQuestion": false,
-          "platform": "chatgpt",
+          "platform": "qwen",
           "condition": {
             "locale": "zh-CN",
             "region": "上海",
