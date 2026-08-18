@@ -11,13 +11,6 @@
 
 > 当前版本定位：V5 内部试运行版（2026-08-18）。Phase 0、Phase 1 已完成基础验收；Phase 2A–2G 的领域契约、Graph Shadow、准入门禁和发布生命周期代码已进入集成测试。托管模式前端原型已落地，支持产品选择、渠道选择、表达方式选择和结果邮件预览。当前真实产品试点处于 **Phase 2D：WorkBuddy 单篇样文生成与人工内容质量验收**，尚未进入无人值守批量发布验收。
 
-![Uploading 屏幕截图_18-8-2026_164256_127.0.0.1.jpeg…]()
-![Uploading 屏幕截图_18-8-2026_164630_127.0.0.1.jpeg…]()
-![Uploading 屏幕截图_18-8-2026_164431_127.0.0.1.jpeg…]()
-<img width="1950" height="1195" alt="屏幕截图_18-8-2026_164346_127 0 0 1" src="https://github.com/user-attachments/assets/908c4d19-9128-40c9-abce-7ca95eb1bf04" />
-<img width="1950" height="2113" alt="屏幕截图_18-8-2026_164319_127 0 0 1" src="https://github.com/user-attachments/assets/1a61daa8-0427-478d-9535-393995aa383c" />
-
-
 ## 能力边界
 
 ### 当前能够完成
