@@ -13,15 +13,11 @@ const [
     readGeoResearchTaskExecutionContext
   },
   { runGeoResearchProvider },
-  { getV5GovernancePool },
-  { importVerifiedGeoResearchQuestionsByPolicy },
-  { listV5Questions }
+  { getV5GovernancePool }
 ] = await Promise.all([
   import("../src/lib/v5/geo-research-repository.ts"),
   import("../src/lib/v5/geo-research-provider.ts"),
-  import("../src/lib/v5/knowledge-governance-repository.ts"),
-  import("../src/lib/v5/geo-research-service.ts"),
-  import("../src/lib/v5/question-service.ts")
+  import("../src/lib/v5/knowledge-governance-repository.ts")
 ]);
 
 const workerId = `geo-research-worker-${process.pid}-${randomUUID()}`;
@@ -66,8 +62,10 @@ try {
     const result = await runGeoResearchProvider({
       taskType: leasedTask.taskType,
       product: context.product,
+      productKnowledgeProfile: context.productKnowledgeProfile,
       project: context.project,
       sourceSnapshotHash: context.sourceSnapshotHash,
+      probeSetSnapshot: context.probeSetSnapshot,
       previousOutputs: context.previousOutputs
     });
     const persisted = await persistGeoResearchProviderResult({
@@ -76,15 +74,6 @@ try {
       result,
       actor
     });
-    const questionImport = leasedTask.taskType === "live_question_discovery"
-      ? await importVerifiedGeoResearchQuestionsByPolicy({
-          productId: context.product.productId,
-          runId: persisted.runId,
-          expectedQuestionPoolVersion: listV5Questions().data.stateVersion,
-          idempotencyKey: `auto-question-import:${persisted.runId}`,
-          actor
-        })
-      : undefined;
     console.log(JSON.stringify({
       status: "completed",
       workerId,
@@ -93,8 +82,7 @@ try {
       sourceCount: result.sources.length,
       liveSearchVerified: result.liveSearchVerified,
       artifactId: persisted.artifactId,
-      blueprintVersionId: persisted.blueprintVersionId,
-      questionImport
+      blueprintVersionId: persisted.blueprintVersionId
     }));
   }
 } catch (error) {

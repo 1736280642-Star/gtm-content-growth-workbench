@@ -45,14 +45,15 @@ test("publish lifecycle backfill preserves formal publication after later remova
   assert.match(migration, /idx_content_publish_result_liveness/);
 });
 
-test("the consolidated GEO monitor exposes 24h/72h and next-month evidence without restoring duplicate navigation", async () => {
-  const monitor = await readFile("src/app/geo-monitor/page.tsx", "utf8");
-  assert.match(monitor, /review: "content"/);
-  assert.match(monitor, /24h 存活/);
-  assert.match(monitor, /72h 存活/);
-  assert.match(monitor, /MonthlyReview 下月调整依据/);
-  assert.match(monitor, /重大策略变化仍需人工确认/);
-  assert.match(monitor, /selectedPublishedContent\.publicUrl/);
-  assert.match(monitor, /最近复测时间/);
-  assert.match(monitor, /item\.geoMonitoringApproved/);
+test("the content monitor exposes monthly evidence without surfacing liveness as a KPI", async () => {
+  const [monitor, visibility] = await Promise.all([
+    readFile("src/app/geo-monitor/page.tsx", "utf8"),
+    readFile("src/components/ContentMonitorAiVisibility.tsx", "utf8")
+  ]);
+  assert.match(monitor, /review: "ai"/);
+  assert.doesNotMatch(monitor, /24h 存活|72h 存活/);
+  assert.match(visibility, /产品下批优化方案/);
+  assert.match(visibility, /不自动改 MonthlyPlan 配额/);
+  assert.match(visibility, /只表达相关性/);
+  assert.match(visibility, /item\.geoMonitoringApproved/);
 });

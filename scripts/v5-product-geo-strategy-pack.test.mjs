@@ -26,6 +26,12 @@ function sampleBlueprint() {
     blueprintVersionId: "blueprint-1",
     projectId: "geo-project-1",
     runId: "run-1",
+    governanceBinding: {
+      sourceSnapshotId: "source-snapshot-1",
+      rulePackageVersionId: "rule-version-1",
+      indexSnapshotId: "index-snapshot-1",
+      researchRunId: "run-1"
+    },
     versionNumber: 2,
     status: "pending_review",
     questionStrategy: {
@@ -112,6 +118,93 @@ test("maps the live blueprint field names without losing opportunities, evidence
   assert.deepEqual(plan.evidencePolicy.requiredRoles, ["product_fact", "public_source"]);
   assert.deepEqual(plan.expressionDirection.emphasisOrder, ["回答真实选型问题", "解释实施边界"]);
   assert.deepEqual(plan.expressionDirection.tone, ["客观", "具体", "证据优先"]);
+});
+
+test("a governed JOTO service-provider relationship always yields a provider-selection opportunity and article type", () => {
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint: sampleBlueprint(),
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu",
+    productName: "WorkBuddy",
+    entityRelationship: "WorkBuddy 是腾讯旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。",
+    productKnowledgeProfile: sampleKnowledgeProfile()
+  });
+  const opportunity = plan.geoOpportunities.find((item) => item.intent === "service_provider_selection");
+  const articleType = plan.articleTypePortfolio.find((item) => item.portfolioItemId === "service-provider-selection");
+  assert.ok(opportunity);
+  assert.equal(opportunity.evidenceReadiness, "ready");
+  assert.match(opportunity.title, /WorkBuddy 服务商选型/);
+  assert.ok(articleType);
+  assert.equal(articleType.evidenceReadiness, "ready");
+  assert.match(articleType.name, /WorkBuddy 服务商选型与实施伙伴推荐/);
+  assert.match(articleType.definition, /资质.*交付范围.*验收/);
+  assert.match(articleType.unsuitableQuestions.join(" "), /客户 Logo.*已验证成功案例/);
+  assert.doesNotThrow(() => contracts.assertProductGeoStrategyContentPlanV2(plan));
+});
+
+test("existing website coverage does not remove the governed provider-selection article type", () => {
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint: sampleBlueprint(),
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu",
+    productName: "腾讯云 ADP",
+    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
+    productKnowledgeProfile: sampleKnowledgeProfile(),
+    websiteCoverageProfile: {
+      id: "coverage-1",
+      productId: "product-1",
+      profileVersion: 1,
+      knowledgeReadiness: "ready",
+      publicGeoReadiness: "ready",
+      officialSources: [],
+      topicCoverage: [{
+        topic: "provider_selection",
+        label: "服务商选型",
+        status: "sufficient",
+        pageUrls: ["https://example.com/provider"],
+        sourceIds: ["source-1"],
+        claimIds: ["claim-1"],
+        evidenceRequired: false,
+        reason: "已有官网页面"
+      }],
+      criticalFindingCodes: [],
+      evidenceGaps: [],
+      profileHash: "coverage-hash-1",
+      generatedAt: "2026-08-17T00:00:00.000Z"
+    }
+  });
+  const articleType = plan.articleTypePortfolio.find((item) => item.portfolioItemId === "service-provider-selection");
+  assert.ok(articleType);
+  assert.equal(articleType.evidenceReadiness, "ready");
+  assert.equal(articleType.websiteCoverageDisposition, "refresh_existing");
+});
+
+test("a semantic provider guide is normalized into the governed provider-selection type", () => {
+  const blueprint = sampleBlueprint();
+  blueprint.contentTypeStrategy.articleTypes[0] = {
+    ...blueprint.contentTypeStrategy.articleTypes[0],
+    id: "provider-guide",
+    origin: "generated",
+    name: "服务商实施指南",
+    definition: "说明企业如何完成服务商选型和项目实施。",
+    evidenceReadiness: "partial"
+  };
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint,
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu",
+    productName: "腾讯云 ADP",
+    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
+    productKnowledgeProfile: sampleKnowledgeProfile()
+  });
+  const providerTypes = plan.articleTypePortfolio.filter((item) => item.portfolioItemId === "service-provider-selection");
+  assert.equal(providerTypes.length, 1);
+  assert.equal(providerTypes[0].name, "腾讯云 ADP 服务商选型与实施伙伴推荐");
+  assert.equal(providerTypes[0].evidenceReadiness, "ready");
+  assert.match(providerTypes[0].contentGoal, /JOTO.*实施服务提供方/);
 });
 
 test("strategy compilation removes weak competitor guesses and turns unsupported claims into blocked evidence work", () => {

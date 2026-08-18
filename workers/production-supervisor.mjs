@@ -34,7 +34,10 @@ const definitions = {
     args: ["workers/schedule-pipeline.mjs", "--repeat", "--interval-seconds", String(integer("PIPELINE_WORKER_INTERVAL_SECONDS", 3600, 300, 86_400)), "--max-runs", "1000"],
     intervalMs: 5_000,
     longRunning: true
-  }],
+  },
+    oneShot("site-audit", "workers/site-audit-worker.mjs", "SITE_AUDIT_WORKER_INTERVAL_SECONDS", 30),
+    oneShot("geo-monitoring-scheduler", "workers/geo-monitoring-scheduler.mjs", "GEO_MONITORING_SCHEDULER_INTERVAL_SECONDS", 3600)
+  ],
   "publish-worker": [{ name: "direct-publish", args: ["workers/direct-publish-worker.mjs", "--interval-seconds", String(integer("PUBLISH_WORKER_INTERVAL_SECONDS", 30, 10, 3600))], intervalMs: 5_000, longRunning: true }]
 };
 if (!role || !definitions[role]) {

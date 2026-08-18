@@ -14,14 +14,15 @@ const nextConfig = {
       { source: "/monthly-matrix/batch-generation", destination: "/monthly-plan?step=generation", permanent: false },
       { source: "/monthly-matrix/schedule", destination: "/monthly-plan?step=execution&view=schedule", permanent: false },
       { source: "/daily-execution", destination: "/monthly-plan?step=execution&view=today", permanent: false },
-      { source: "/publishing", destination: "/geo-monitor?tab=publishing", permanent: false },
-      { source: "/publish", destination: "/geo-monitor?tab=ledger", permanent: false },
-      { source: "/blog-monitor", destination: "/geo-monitor?tab=site", permanent: false },
-      { source: "/monthly-review", destination: "/geo-monitor?tab=review", permanent: false },
-      { source: "/ai-front-test", destination: "/geo-monitor?tab=ai", permanent: false },
+      { source: "/geo-monitor", destination: "/content-monitor", permanent: false },
+      { source: "/publishing", destination: "/content-monitor?tab=content", permanent: false },
+      { source: "/publish", destination: "/content-monitor?tab=content", permanent: false },
+      { source: "/blog-monitor", destination: "/content-monitor?tab=website", permanent: false },
+      { source: "/monthly-review", destination: "/content-monitor?tab=ai", permanent: false },
+      { source: "/ai-front-test", destination: "/content-monitor?tab=ai", permanent: false },
       { source: "/configuration", destination: "/settings?tab=models", permanent: false },
       { source: "/operations", destination: "/settings?tab=logs&system=1", permanent: false },
-      { source: "/blog-candidates", destination: "/geo-monitor?tab=site", permanent: false }
+      { source: "/blog-candidates", destination: "/content-monitor?tab=website", permanent: false }
     ];
   },
   async headers() {

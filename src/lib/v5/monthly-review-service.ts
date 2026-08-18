@@ -5,6 +5,9 @@ import { readObservationReferenceSnapshot } from "./observation-reference-adapte
 import { assertMonth, assertObservationMutationContext, ObservationServiceError } from "./observation-service";
 import { listFormalCaptureObservations } from "./capture-repository";
 import { listApprovedGeoMonitoringQuestions } from "./question-service";
+import { readGeoMonitoringWorkspace } from "./geo-monitoring-service";
+import { getSiteAuditWorkspace } from "./site-audit-service";
+import { getProductGeoOptimizationWorkspace } from "./product-geo-optimization-service";
 
 function getNextMonth(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
@@ -14,7 +17,9 @@ function getNextMonth(month: string) {
 
 export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
   assertMonth(month);
-  const [state, reference] = await Promise.all([readV5ObservationState(), readObservationReferenceSnapshot()]);
+  const [state, reference, monitoring, siteAudit, optimizationWorkspace] = await Promise.all([
+    readV5ObservationState(), readObservationReferenceSnapshot(), readGeoMonitoringWorkspace(month), getSiteAuditWorkspace(), getProductGeoOptimizationWorkspace()
+  ]);
   const approvedQuestions = listApprovedGeoMonitoringQuestions();
   const formalCapture = reference.source === "formal_adapter" ? await listFormalCaptureObservations() : [];
   const normalizeFormalTask = (item: (typeof formalCapture)[number]) => ({
@@ -46,6 +51,9 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
   const questions: MonthlyQuestionReview[] = Array.from(questionKeys).map((questionKey) => {
     const approvedQuestion = approvedQuestions.find((item) => item.questionId === questionKey);
     const referenceQuestion = reference.questions.find((item) => item.questionKey === questionKey);
+    const monitoringQuestion = monitoring.questions.find((item) => item.questionVersionId === referenceQuestion?.questionVersionId)
+      || monitoring.questions.find((item) => item.questionText === (approvedQuestion?.currentVersion.text || referenceQuestion?.text));
+    const geoMetric = monitoringQuestion ? monitoring.metrics.find((item) => item.monitoringQuestionId === monitoringQuestion.id) : undefined;
     const questionTasks = tasks.filter((task) => task.questionKey === questionKey);
     const allQuestionTasks = allTasks.filter((task) => task.questionKey === questionKey);
     const questionPublished = published.filter((item) => item.questionKey === questionKey);
@@ -71,8 +79,20 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
     const publishLivenessFailed = questionPublished.some((item) => item.liveness24h === "failed" || item.liveness72h === "failed");
     const livenessObservationComplete = questionPublished.length > 0
       && questionPublished.every((item) => item.liveness72h && item.liveness72h !== "pending");
+    const relatedSiteRun = monitoringQuestion
+      ? siteAudit.runs.find((item) => item.status === "completed" && item.productId === monitoringQuestion.productId)
+      : undefined;
+    const relatedSiteFindings = relatedSiteRun
+      ? siteAudit.findings.filter((item) => item.runId === relatedSiteRun.id)
+      : [];
+    const siteHasBlockingFindings = relatedSiteFindings.some((item) => item.status !== "resolved" && item.status !== "ignored" && ["critical", "high"].includes(item.severity));
+    const crossLineObservation = geoMetric && geoMetric.sampleStatus !== "insufficient" && siteHasBlockingFindings
+      ? "同一产品的官网存在高优先级准备度问题，同时该问题已有方向性 AI 监控样本；可以建立修复—复测实验，但当前证据只支持相关性假设。"
+      : geoMetric?.sampleStatus === "insufficient" ? "AI 前台样本不足，暂不将官网审计变化与提及或引用结果关联。" : undefined;
     const recommendation = publishLivenessFailed
       ? "先处理发布存活异常并核验平台回执，不自动增加下月发布配额。"
+      : crossLineObservation && siteHasBlockingFindings
+      ? "形成官网修复—问题复测关联型 Proposal，由下月 MonthlyPlan 人工审批并保留修复前基线。"
       : confirmedGapCodes.includes("evidence_gap")
       ? "先补公开证据，再由下月 MonthlyPlan 判断是否安排内容。"
       : confirmedGapCodes.some((code) => code === "entity_gap" || code === "citation_gap" || code === "answer_coverage_gap")
@@ -103,6 +123,8 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
       captureSummary: completedTasks.length
         ? `${completedTasks.length} 次有效采集，${entityMentionCount} 次出现目标实体。`
         : "本月尚无完成的 AI 前台测试。",
+      geoMetric,
+      crossLineObservation,
       lastRetestedAt,
       confirmedGapCodes,
       recommendationEvidenceRefs: [
@@ -113,6 +135,14 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
         ...completedTasks.flatMap((item) => (item.sourcePublishedContentIds || [])
           .filter((contentId) => questionPublished.some((publishedItem) => publishedItem.contentId === contentId))
           .map((contentId) => `geo_retest_link:${item.id}:${contentId}`)),
+        ...(monitoringQuestion ? [`geo_monitoring_question:${monitoringQuestion.id}`] : []),
+        ...(geoMetric && geoMetric.sampleStatus !== "insufficient"
+          ? [`geo_metric:${month}:${geoMetric.monitoringQuestionId}:${geoMetric.successfulRuns}`]
+          : []),
+        ...(relatedSiteRun ? [`geo_site_audit_run:${relatedSiteRun.id}`] : []),
+        ...relatedSiteFindings
+          .filter((item) => item.status !== "resolved" && item.status !== "ignored" && ["critical", "high"].includes(item.severity))
+          .map((item) => `geo_site_audit_finding:${item.id}`),
         ...confirmedGapCodes.map((code) => `confirmed_gap:${code}`)
       ],
       recommendation,
@@ -139,9 +169,21 @@ export async function getMonthlyReview(month: string): Promise<MonthlyReview> {
       survival72hPassed: published.filter((item) => item.liveness72h === "passed").length,
       survival72hEligible: published.filter((item) => item.liveness72h !== "pending").length,
       captureTasks: tasks.length,
-      pendingGaps: Object.values(gaps).filter((item) => item.status === "candidate" && answers[item.answerId]?.createdAt.startsWith(month)).length
+      pendingGaps: Object.values(gaps).filter((item) => item.status === "candidate" && answers[item.answerId]?.createdAt.startsWith(month)).length,
+      activeMonitoringQuestions: monitoring.questions.filter((item) => item.status === "active").length
+    },
+    siteMonitoring: {
+      source: siteAudit.source,
+      latestRunId: siteAudit.runs.find((item) => item.status === "completed")?.id,
+      coreReadinessScore: siteAudit.score,
+      openFindingCount: siteAudit.findings.filter((item) => !["resolved", "ignored"].includes(item.status)).length,
+      criticalFindingCount: siteAudit.findings.filter((item) => item.status !== "resolved" && item.status !== "ignored" && item.severity === "critical").length,
+      newFindingCount: siteAudit.diffs[0]?.newFindingIds.length || 0,
+      resolvedFindingCount: siteAudit.diffs[0]?.resolvedFindingIds.length || 0,
+      note: "官网准备度与问题级 AI 表现平行汇总；二者同时变化只形成实验假设，不自动认定因果。"
     },
     questions,
+    productOptimizations: optimizationWorkspace.products.filter((item) => item.month === month),
     proposals,
     message: reference.message
   };
@@ -153,14 +195,20 @@ export async function createNextMonthProposal(month: string, input: CreateNextMo
   assertObservationMutationContext(input);
   const review = await getMonthlyReview(month);
   const question = review.questions.find((item) => item.id === input.questionReviewId);
-  if (question && !question.publishedContent.length) {
+  if (!question) throw new ObservationServiceError(404, "MONTHLY_QUESTION_REVIEW_NOT_FOUND", "未找到对应的问题级月度复盘。");
+  const hasCrossLineEvidence = Boolean(
+    question.crossLineObservation
+    && question.geoMetric
+    && question.geoMetric.sampleStatus !== "insufficient"
+    && question.recommendationEvidenceRefs.some((item) => item.startsWith("geo_site_audit_finding:"))
+  );
+  if (!question.publishedContent.length && !hasCrossLineEvidence) {
     throw new ObservationServiceError(
       409,
       "FORMAL_PUBLISHED_EVIDENCE_REQUIRED",
-      "该问题本月没有正式发布内容，不能据此生成下月调整 Proposal。"
+      "该问题本月既没有正式发布内容，也没有达到方向性样本门槛的同产品官网修复证据，不能生成下月调整 Proposal。"
     );
   }
-  if (!question) throw new ObservationServiceError(404, "MONTHLY_QUESTION_REVIEW_NOT_FOUND", "未找到对应的问题级月度复盘。");
   if (review.source === "formal_adapter" && question.publishedContent.some((item) => item.liveness72h === "pending" || !item.liveness72h)) {
     throw new ObservationServiceError(
       409,

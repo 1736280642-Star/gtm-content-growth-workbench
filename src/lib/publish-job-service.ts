@@ -23,8 +23,8 @@ export interface PublishJobView {
 }
 
 function inferProductName(title: string, fallback?: string) {
-  if (/腾讯云\s*ADP|Tencent\s+Cloud\s+ADP/i.test(title)) return "Tencent Cloud ADP x JOTO";
-  if (/WorkBuddy/i.test(title)) return "WorkBuddy x JOTO";
+  if (/腾讯云\s*ADP|Tencent\s+Cloud\s+ADP/i.test(title)) return "腾讯云 ADP";
+  if (/WorkBuddy/i.test(title)) return "WorkBuddy";
   if (/NoteFlow/i.test(title)) return "Noteflow";
   if (/Pharaoh\s+Command/i.test(title)) return "Pharaoh Command";
   if (/唯客|Weike|Guardrail|AI\s*护栏/i.test(title) || fallback === productLabels.weike_guardrails) return "Weike AI Guardrail";

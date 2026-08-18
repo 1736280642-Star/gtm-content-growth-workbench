@@ -7,6 +7,8 @@ export interface AiProviderRequest {
   systemPrompt: string;
   userPrompt: string;
   temperature?: number;
+  timeoutMs?: number;
+  maxTokens?: number;
 }
 
 export interface AiProviderResult {
@@ -18,6 +20,15 @@ export interface AiProviderResult {
   raw?: unknown;
   missingConfig?: string[];
   errorMessage?: string;
+  metrics: {
+    durationMs: number;
+    httpStatus?: number;
+    requestId?: string;
+    finishReason?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
 }
 
 const providerEnvMap: Record<AiProviderKey, { baseUrl: string; apiKey: string; model: string; defaultBaseUrl: string }> = {
@@ -71,6 +82,7 @@ function formatAiProviderError(error: unknown, timeoutMs: number) {
 }
 
 export async function callAiProvider(request: AiProviderRequest): Promise<AiProviderResult> {
+  const startedAt = Date.now();
   const env = providerEnvMap[request.provider];
   const missingConfig = getMissingConfig(request.provider);
 
@@ -79,15 +91,19 @@ export async function callAiProvider(request: AiProviderRequest): Promise<AiProv
       ok: false,
       status: "pending_config",
       provider: request.provider,
-      missingConfig
+      missingConfig,
+      metrics: { durationMs: Date.now() - startedAt }
     };
   }
 
   const apiKey = process.env[env.apiKey];
   const model = process.env[env.model];
   const baseUrl = (process.env[env.baseUrl] || env.defaultBaseUrl).replace(/\/$/, "");
+  const timeoutMs = Number.isFinite(request.timeoutMs)
+    ? Math.max(1_000, Math.min(Number(request.timeoutMs), 300_000))
+    : defaultProviderTimeoutMs;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), defaultProviderTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -103,11 +119,23 @@ export async function callAiProvider(request: AiProviderRequest): Promise<AiProv
           { role: "system", content: request.systemPrompt },
           { role: "user", content: request.userPrompt }
         ],
-        temperature: request.temperature ?? 0.4
+        temperature: request.temperature ?? 0.4,
+        ...(Number.isFinite(request.maxTokens) ? { max_tokens: Math.max(1, Math.floor(Number(request.maxTokens))) } : {})
       })
     });
 
     const raw = await response.json();
+    const finishReason = typeof raw?.choices?.[0]?.finish_reason === "string" ? raw.choices[0].finish_reason : undefined;
+    const usage = raw?.usage && typeof raw.usage === "object" ? raw.usage : {};
+    const metrics = {
+      durationMs: Date.now() - startedAt,
+      httpStatus: response.status,
+      requestId: response.headers.get("x-request-id") || response.headers.get("request-id") || undefined,
+      finishReason,
+      inputTokens: Number.isFinite(Number(usage.prompt_tokens)) ? Number(usage.prompt_tokens) : undefined,
+      outputTokens: Number.isFinite(Number(usage.completion_tokens)) ? Number(usage.completion_tokens) : undefined,
+      totalTokens: Number.isFinite(Number(usage.total_tokens)) ? Number(usage.total_tokens) : undefined
+    };
 
     if (!response.ok) {
       return {
@@ -116,19 +144,33 @@ export async function callAiProvider(request: AiProviderRequest): Promise<AiProv
         provider: request.provider,
         model,
         raw,
-        errorMessage: raw?.error?.message || `AI provider request failed: ${response.status}`
+        errorMessage: raw?.error?.message || `AI provider request failed: ${response.status}`,
+        metrics
       };
     }
 
     const content = raw?.choices?.[0]?.message?.content;
+
+    if (typeof content !== "string" || !content.trim()) {
+      return {
+        ok: false,
+        status: "failed",
+        provider: request.provider,
+        model,
+        raw,
+        errorMessage: `模型返回空正文，finish_reason=${finishReason || "unknown"}。`,
+        metrics
+      };
+    }
 
     return {
       ok: true,
       status: "success",
       provider: request.provider,
       model,
-      content: typeof content === "string" ? content : "",
-      raw
+      content,
+      raw,
+      metrics
     };
   } catch (error) {
     return {
@@ -136,7 +178,8 @@ export async function callAiProvider(request: AiProviderRequest): Promise<AiProv
       status: "failed",
       provider: request.provider,
       model,
-      errorMessage: formatAiProviderError(error, defaultProviderTimeoutMs)
+      errorMessage: formatAiProviderError(error, timeoutMs),
+      metrics: { durationMs: Date.now() - startedAt }
     };
   } finally {
     clearTimeout(timeout);

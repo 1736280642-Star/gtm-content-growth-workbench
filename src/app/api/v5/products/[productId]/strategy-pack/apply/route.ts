@@ -5,8 +5,7 @@ import { readTrustedServerActor } from "@/lib/v5/knowledge-governance-api";
 import { decideProductGeoStrategyPack } from "@/lib/v5/product-strategy-pack-service";
 import type { ProductGeoStrategyDecision } from "@/lib/v5/product-strategy-pack-contracts";
 import { getSingleArticleActor } from "@/lib/v5/single-article-api";
-import { generateProductSampleArticle } from "@/lib/v5/product-sample-article-service";
-import { SingleArticleProductionError } from "@/lib/v5/single-article-production-service";
+import { enqueueProductSampleArticles } from "@/lib/v5/product-sample-article-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -77,45 +76,45 @@ export async function POST(
       fixedExpression: decision === "approve" && fixedExpression?.text ? fixedExpression : undefined,
       actor
     });
-    let sample: Record<string, unknown> | undefined;
+    let samples: Array<Record<string, unknown>> | undefined;
     if (decision === "approve") {
       try {
-        const generated = await generateProductSampleArticle({
+        const queued = await enqueueProductSampleArticles({
           productId: product.productId,
           strategyPackId: result.strategyPackId,
-          idempotencyKey: `product-sample:${result.strategyPackId}:v1`,
+          idempotencyKey: `product-samples:${result.strategyPackId}:v2`,
           actor: getSingleArticleActor()
         });
-        sample = {
-          status: "generated",
-          taskId: generated.taskId,
-          draftVersionId: generated.result.draftVersion.draftVersionId,
-          title: generated.result.draftVersion.title
-        };
+        samples = queued.map((item) => ({
+          status: item.operation.status,
+          taskId: item.taskId,
+          operationId: item.operation.operationId,
+          progressStage: item.operation.progressStage,
+          title: item.title,
+          articleTypeVersionId: item.articleTypeVersionId,
+          articleTypeName: item.articleTypeName
+        }));
       } catch (sampleError) {
-        sample = {
+        samples = [{
           status: "failed",
-          error: sampleError instanceof SingleArticleProductionError ? {
-            code: sampleError.code,
-            message: sampleError.message,
-            nextAction: sampleError.nextAction,
-            details: sampleError.details
-          } : {
-            code: "product_sample_generation_failed",
-            message: sampleError instanceof Error ? sampleError.message : "策略已确认，但示例正文生成失败。",
-            nextAction: "检查样稿生产前置条件后，在策略页重试生成。"
+          error: {
+            code: "product_sample_queue_failed",
+            message: sampleError instanceof Error ? sampleError.message : "策略已确认，但样文任务创建失败。",
+            nextAction: "检查样文生产前置条件后，在样文验收页重新提交任务。"
           }
-        };
+        }];
       }
     }
     const graphShadow = await reconcileGraphShadow(product.productId);
     return NextResponse.json({
       ok: true,
       ...result,
-      sample,
+      samples,
       graphShadow,
       message: decision === "approve"
-        ? sample?.status === "generated" ? "产品 GEO 策略已确认，示例正文已生成" : "产品 GEO 策略已确认，示例正文等待恢复"
+        ? samples?.some((item) => item.status === "queued" || item.status === "running")
+          ? `产品 GEO 策略已确认，${samples.length} 篇代表样文已提交`
+          : "产品 GEO 策略已确认，样文任务等待恢复"
         : "产品 GEO 策略已拒绝"
     });
   } catch (error) {

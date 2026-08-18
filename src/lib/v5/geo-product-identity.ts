@@ -18,6 +18,12 @@ export interface GeoProductIdentityCard {
   officialDomain?: string;
   productCategory?: string;
   entityRelationship?: string;
+  serviceProvider?: {
+    name: string;
+    relationship: string;
+    deliveryCapabilities: string[];
+    evidenceBoundaries: string[];
+  };
   positioning: string[];
   audiences: string[];
   capabilities: string[];
@@ -50,6 +56,27 @@ function officialDomain(value?: string) {
   }
 }
 
+function serviceProviderName(value?: string) {
+  if (!value) return undefined;
+  for (const segment of value.split(/[；。]/).map((item) => item.trim()).filter(Boolean)) {
+    if (!/(?:服务商|合作伙伴|提供|支持|负责|实施|交付)/.test(segment)) continue;
+    const match = segment.match(/^([A-Za-z][A-Za-z0-9._-]{1,30})\s*(?:是|作为|可|为|向|提供|支持|负责)/);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
+}
+
+function serviceProviderFacts(profile: ProductKnowledgeProfile, provider: string) {
+  const deliveryPattern = /实施|交付|验收|培训|系统接入|场景评估|任务共创|质量评测|持续运营|后续支持|项目范围/i;
+  const facts = compact([
+    ...profile.capabilities.map((item) => item.text),
+    ...profile.scenarios.map((item) => item.text)
+  ]).filter((item) => item.includes(provider) || deliveryPattern.test(item));
+  const boundaries = compact(profile.boundaries.map((item) => item.text))
+    .filter((item) => item.includes(provider) || /客户|案例|合同|承诺|官方|战略合作伙伴|不得|不能/.test(item));
+  return { facts: facts.slice(0, 8), boundaries: boundaries.slice(0, 6) };
+}
+
 export function buildGeoProductIdentityCard(input: {
   product: {
     productId: string;
@@ -64,6 +91,10 @@ export function buildGeoProductIdentityCard(input: {
   };
   knowledgeProfile: ProductKnowledgeProfile;
 }): GeoProductIdentityCard {
+  const providerName = serviceProviderName(input.product.entityRelationship);
+  const providerFacts = providerName
+    ? serviceProviderFacts(input.knowledgeProfile, providerName)
+    : undefined;
   return {
     ...input.product,
     aliases: compact([input.product.canonicalName, input.product.displayName, ...input.product.aliases]),
@@ -73,6 +104,12 @@ export function buildGeoProductIdentityCard(input: {
     capabilities: input.knowledgeProfile.capabilities.map((item) => item.text),
     scenarios: input.knowledgeProfile.scenarios.map((item) => item.text),
     boundaries: input.knowledgeProfile.boundaries.map((item) => item.text),
+    serviceProvider: providerName ? {
+      name: providerName,
+      relationship: input.product.entityRelationship || "",
+      deliveryCapabilities: providerFacts?.facts || [],
+      evidenceBoundaries: providerFacts?.boundaries || []
+    } : undefined,
     profileSource: input.knowledgeProfile.source,
     profileFactCount: input.knowledgeProfile.factCount
   };
@@ -111,6 +148,7 @@ export function identityQueryAnchors(card: GeoProductIdentityCard) {
     card.brandName,
     card.officialEntity,
     card.officialDomain,
+    card.serviceProvider?.name,
     card.productCategory,
     queryPart(card.positioning[0]),
     queryPart(card.capabilities[0]),
@@ -142,33 +180,50 @@ export function compileIdentityAnchoredQueries(input: {
     || queryPart(input.identity.positioning[0])
     || category;
   const round = input.round || 0;
+  const provider = input.identity.serviceProvider?.name;
+  const relationship = queryPart(input.identity.serviceProvider?.relationship, 24);
   const suffix = round === 1 ? "官方 文档 条件 限制" : round === 2 ? "用户 争议 反例 评价" : "";
-  const querySets = input.taskType === "live_question_discovery"
+  type QuerySpec = [string, string[], string];
+  const providerSelectionQuery: QuerySpec | undefined = provider
     ? [
-        [`"${product}" "${owner}" ${category} 用户问题 社区 评价`, [product, owner, category]],
-        [`${category} ${capability} 选型 部署 集成 安全 常见问题`, [category, capability, owner]],
-        [`"${product}" ${capability} 使用 故障 实施 支持`, [product, capability, category]]
+        `"${product}" "${provider}" 实施服务商 选型 推荐 资质 交付 验收 案例`,
+        compact([product, provider, owner, relationship]),
+        "service_provider_selection"
+      ]
+    : undefined;
+  const querySets: QuerySpec[] = input.taskType === "live_question_discovery"
+    ? [
+        ...(providerSelectionQuery ? [providerSelectionQuery] : []),
+        [`"${product}" "${owner}" ${category} 用户问题 社区 评价`, [product, owner, category], "user_demand"],
+        [`${category} ${capability} 选型 部署 集成 安全 常见问题`, [category, capability, owner], "user_demand"],
+        [`"${product}" ${capability} 使用 故障 实施 支持`, [product, capability, category], "user_demand"]
       ]
     : input.taskType === "live_competitor_discovery"
       ? [
-          [`"${product}" "${owner}" ${category} 竞品 对比 替代方案`, [product, owner, category]],
-          [`${category} ${capability} 产品推荐 品牌比较`, [category, capability, owner]],
-          [`"${product}" ${capability} 市场评价 内容渠道`, [product, capability, category]]
+          ...(provider ? [[
+            `"${product}" "${provider}" 实施伙伴 服务商推荐 选型比较`,
+            compact([product, provider, owner]),
+            "service_provider_landscape"
+          ] as QuerySpec] : []),
+          [`"${product}" "${owner}" ${category} 竞品 对比 替代方案`, [product, owner, category], "competitive_relationship"],
+          [`${category} ${capability} 产品推荐 品牌比较`, [category, capability, owner], "competitive_relationship"],
+          [`"${product}" ${capability} 市场评价 内容渠道`, [product, capability, category], "competitive_relationship"]
         ]
       : [
-          [`"${product}" "${owner}" ${category} 用户评价 常见问题`, [product, owner, category]],
-          [`${category} ${capability} 对比 推荐`, [category, capability, owner]],
-          [`"${product}" ${capability} 选型 真实体验`, [product, capability, category]]
+          ...(provider ? [[
+            `企业如何选择 "${product}" 实施服务商 "${provider}" 交付 验收`,
+            compact([product, provider, owner]),
+            "service_provider_answer_baseline"
+          ] as QuerySpec] : []),
+          [`"${product}" "${owner}" ${category} 用户评价 常见问题`, [product, owner, category], "answer_engine_baseline"],
+          [`${category} ${capability} 对比 推荐`, [category, capability, owner], "answer_engine_baseline"],
+          [`"${product}" ${capability} 选型 真实体验`, [product, capability, category], "answer_engine_baseline"]
         ];
-  return querySets.slice(0, input.maxQueries).map(([queryValue, anchors], index) => ({
+  return querySets.slice(0, input.maxQueries).map(([queryValue, anchors, evidenceRole], index) => ({
     queryId: `geo-query-${input.taskType}-${round ? `supplement-${round}-` : ""}${index + 1}`,
     query: clipQuery(`${queryValue} ${suffix}`),
     intent: round ? "evidence_gap_resolution" : input.taskType,
-    expectedEvidenceRole: input.taskType === "live_question_discovery"
-      ? "user_demand"
-      : input.taskType === "live_competitor_discovery"
-        ? "competitive_relationship"
-        : "answer_engine_baseline",
+    expectedEvidenceRole: evidenceRole,
     freshnessRequirement: "year",
     stopCondition: "至少两家 Provider 返回两个通过产品实体校验的独立 URL",
     round,
@@ -219,6 +274,9 @@ function recalculatePack(pack: MultiSearchEvidencePack, candidates: GeoSearchEvi
   const configuredProviders = [...new Set(providerRuns
     .filter((item) => item.status !== "pending_config")
     .map((item) => item.provider))];
+  const failedProviders = [...new Set(providerRuns
+    .filter((item) => item.status === "failed")
+    .map((item) => item.provider))];
   const gaps = [
     successfulProviders.length < 2 ? "通过实体校验并返回来源的 Provider 少于 2 家" : undefined,
     candidates.length < 2 ? "通过实体校验的独立原始来源少于 2 个" : undefined
@@ -229,6 +287,8 @@ function recalculatePack(pack: MultiSearchEvidencePack, candidates: GeoSearchEvi
     candidates,
     gate: {
       decision: gaps.length ? "blocked" : "passed",
+      degraded: gaps.length === 0 && failedProviders.length > 0,
+      failedProviders,
       successfulProviders,
       configuredProviders,
       independentSourceCount: candidates.length,

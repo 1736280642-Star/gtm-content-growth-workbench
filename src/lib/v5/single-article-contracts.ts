@@ -1,4 +1,15 @@
-export type SingleArticleOperationStatus = "running" | "completed" | "blocked" | "pending_config" | "failed";
+export type SingleArticleOperationStatus = "queued" | "running" | "completed" | "blocked" | "pending_config" | "failed";
+
+export type SingleArticleProgressStage =
+  | "queued"
+  | "retrieving_evidence"
+  | "compiling_contract"
+  | "provider_preflight"
+  | "calling_provider"
+  | "local_repair"
+  | "quality_validation"
+  | "completed"
+  | "failed";
 
 export interface SingleArticleActor {
   actorId: string;
@@ -29,6 +40,10 @@ export interface HardRuleResult {
   traceableFactCount: number;
   technicalRetryCount?: number;
   automaticRepairCount?: number;
+  providerCallCount?: number;
+  providerDurationMs?: number;
+  providerInputTokens?: number;
+  providerOutputTokens?: number;
 }
 
 export interface FormalGenerationRun {

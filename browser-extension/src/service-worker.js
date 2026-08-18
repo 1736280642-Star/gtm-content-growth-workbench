@@ -1,11 +1,12 @@
 const RUNNER_URL = "http://127.0.0.1:17321";
 const PLATFORM_CONFIG = {
-  doubao: { label: "豆包", version: "doubao-dom@1.0.0", urls: ["https://www.doubao.com/*"], newConversationUrl: "https://www.doubao.com/chat/" },
-  deepseek: { label: "DeepSeek", version: "deepseek-dom@1.0.0", urls: ["https://chat.deepseek.com/*"], newConversationUrl: "https://chat.deepseek.com/" },
+  doubao: { label: "豆包", version: "doubao-dom@1.0.1", urls: ["https://www.doubao.com/*"], newConversationUrl: "https://www.doubao.com/chat/" },
+  deepseek: { label: "DeepSeek", version: "deepseek-dom@1.0.1", urls: ["https://chat.deepseek.com/*"], newConversationUrl: "https://chat.deepseek.com/" },
   chatgpt: { label: "ChatGPT", version: "chatgpt-dom@1.0.0", urls: ["https://chatgpt.com/*"], newConversationUrl: "https://chatgpt.com/" },
-  qwen: { label: "千问", version: "qwen-dom@1.0.0", urls: ["https://tongyi.aliyun.com/qianwen/*", "https://chat.qwen.ai/*"], newConversationUrl: "https://chat.qwen.ai/" }
+  qwen: { label: "千问", version: "qwen-dom@1.0.2", urls: ["https://tongyi.aliyun.com/qianwen/*", "https://chat.qwen.ai/*", "https://www.qianwen.com/*", "https://qianwen.com/*"], newConversationUrl: "https://www.qianwen.com/" }
 };
 let pollInProgress = false;
+let pollStartedAt = 0;
 
 async function runnerFetch(path, options = {}) {
   const response = await fetch(`${RUNNER_URL}${path}`, {
@@ -25,9 +26,13 @@ async function waitForTabComplete(tabId, timeoutMs = 30000) {
   const current = await chrome.tabs.get(tabId);
   if (current.status === "complete") return current;
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    const timeout = setTimeout(async () => {
       chrome.tabs.onUpdated.removeListener(onUpdated);
-      reject(new Error("新会话页面加载超时。"));
+      try {
+        resolve(await chrome.tabs.get(tabId));
+      } catch {
+        reject(new Error("新会话标签页已关闭，无法继续采集。"));
+      }
     }, timeoutMs);
     function onUpdated(updatedTabId, changeInfo, tab) {
       if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
@@ -48,15 +53,22 @@ async function createConversationTab(platform) {
   return tab;
 }
 
+function withTimeout(promise, timeoutMs, message) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(Object.assign(new Error(message), { code: "timed_out", stage: "capturing" })), timeoutMs);
+    promise.then((value) => { clearTimeout(timeout); resolve(value); }, (error) => { clearTimeout(timeout); reject(error); });
+  });
+}
+
 async function sendCaptureTask(tabId, task) {
   const message = { type: "RUN_CAPTURE", task, startedAt: new Date().toISOString() };
   try {
-    return await chrome.tabs.sendMessage(tabId, message);
+    return await withTimeout(chrome.tabs.sendMessage(tabId, message), 270000, `${task.platform} 采集页面超过 270 秒未返回。`);
   } catch (error) {
     if (!String(error?.message || error).includes("Receiving end does not exist")) throw error;
     await chrome.scripting.executeScript({ target: { tabId }, files: ["src/adapters/china-ai.js"] });
     await chrome.scripting.executeScript({ target: { tabId }, files: ["src/content/capture.js"] });
-    return chrome.tabs.sendMessage(tabId, message);
+    return withTimeout(chrome.tabs.sendMessage(tabId, message), 270000, `${task.platform} 采集页面超过 270 秒未返回。`);
   }
 }
 
@@ -106,6 +118,7 @@ async function postFailure(task, error, adapterVersion) {
 async function pollTask() {
   if (pollInProgress) return;
   pollInProgress = true;
+  pollStartedAt = Date.now();
   let task;
   try {
     await heartbeat().catch(() => undefined);
@@ -121,11 +134,19 @@ async function pollTask() {
     await sendCaptureTask(tab.id, task);
   } catch (error) {
     if (task) {
-      await postFailure(task, { code: "adapter_mismatch", stage: "environment_checking", message: error.message || "浏览器伴侣无法创建新会话页面。" }, PLATFORM_CONFIG[task.platform]?.version || "unknown");
+      await postFailure(task, { code: error.code || "adapter_mismatch", stage: error.stage || "environment_checking", message: error.message || "浏览器伴侣无法创建新会话页面。" }, PLATFORM_CONFIG[task.platform]?.version || "unknown");
     }
   } finally {
     pollInProgress = false;
+    pollStartedAt = 0;
   }
+}
+
+function recoverStalePoll() {
+  if (!pollInProgress || !pollStartedAt || Date.now() - pollStartedAt <= 300000) return false;
+  pollInProgress = false;
+  pollStartedAt = 0;
+  return true;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -134,9 +155,15 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 chrome.runtime.onStartup.addListener(() => pollTask().catch(() => undefined));
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "capture-poll") pollTask().catch(() => undefined);
+  if (alarm.name === "capture-poll") {
+    recoverStalePoll();
+    (pollInProgress ? heartbeat() : pollTask()).catch(() => undefined);
+  }
 });
-chrome.action.onClicked.addListener(() => pollTask().catch(() => undefined));
+chrome.action.onClicked.addListener(() => {
+  recoverStalePoll();
+  (pollInProgress ? heartbeat() : pollTask()).catch(() => undefined);
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {

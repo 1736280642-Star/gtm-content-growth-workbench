@@ -33,12 +33,20 @@ x-app-environment: &app-environment
   DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
   DOUBAO_MODEL: ${DOUBAO_MODEL:-}
   DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+  DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
   V5_FORMAL_ARTICLE_PROVIDER: ${V5_FORMAL_ARTICLE_PROVIDER:-qwen}
   V5_SAMPLE_ARTICLE_PROVIDER: ${V5_SAMPLE_ARTICLE_PROVIDER:-qwen}
   CONTENT_GENERATION_PROVIDER: ${CONTENT_GENERATION_PROVIDER:-qwen}
   ARTICLE_TYPE_AI_PROVIDER: ${ARTICLE_TYPE_AI_PROVIDER:-qwen}
   EMBEDDING_PROVIDER_TIMEOUT_MS: ${EMBEDDING_PROVIDER_TIMEOUT_MS:-60000}
   AI_PROVIDER_TIMEOUT_MS: ${AI_PROVIDER_TIMEOUT_MS:-120000}
+  AI_PROVIDER_PREFLIGHT_TIMEOUT_MS: ${AI_PROVIDER_PREFLIGHT_TIMEOUT_MS:-8000}
+  AI_PROVIDER_FORMAL_TIMEOUT_MS: ${AI_PROVIDER_FORMAL_TIMEOUT_MS:-180000}
+  AI_PROVIDER_FORMAL_DEADLINE_MS: ${AI_PROVIDER_FORMAL_DEADLINE_MS:-360000}
+  AI_PROVIDER_FORMAL_MAX_CALLS: ${AI_PROVIDER_FORMAL_MAX_CALLS:-3}
+  AI_PROVIDER_FORMAL_MAX_ATTEMPTS_PER_ROUND: ${AI_PROVIDER_FORMAL_MAX_ATTEMPTS_PER_ROUND:-2}
   GEO_RESEARCH_ZHIPU_API_KEY: ${GEO_RESEARCH_ZHIPU_API_KEY:-}
   GEO_RESEARCH_ZHIPU_MODEL: ${GEO_RESEARCH_ZHIPU_MODEL:-glm-4-air}
   GEO_RESEARCH_ZHIPU_BASE_URL: ${GEO_RESEARCH_ZHIPU_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
@@ -69,6 +77,11 @@ x-app-environment: &app-environment
   V5_SINGLE_ARTICLE_ACTOR_ID: ${V5_SINGLE_ARTICLE_ACTOR_ID:-local-docker-operator}
   V5_SINGLE_ARTICLE_ACTOR_ROLE: ${V5_SINGLE_ARTICLE_ACTOR_ROLE:-developer_admin}
   V5_CONTENT_WORKER_BATCH_SIZE: ${V5_CONTENT_WORKER_BATCH_SIZE:-20}
+  V5_SAMPLE_WORKER_BATCH_SIZE: ${V5_SAMPLE_WORKER_BATCH_SIZE:-3}
+  V5_SAMPLE_WORKER_CONCURRENCY: ${V5_SAMPLE_WORKER_CONCURRENCY:-2}
+  V5_CONTENT_WORKER_CONCURRENCY: ${V5_CONTENT_WORKER_CONCURRENCY:-2}
+  V5_SAMPLE_OPERATION_STALE_MINUTES: ${V5_SAMPLE_OPERATION_STALE_MINUTES:-20}
+  V5_SAMPLE_OPERATION_MAX_ATTEMPTS: ${V5_SAMPLE_OPERATION_MAX_ATTEMPTS:-3}
   GEO_RESEARCH_INTERVAL_SECONDS: ${GEO_RESEARCH_INTERVAL_SECONDS:-60}
   GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS: ${GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS:-300}
   MONTHLY_AUTOMATION_INTERVAL_SECONDS: ${MONTHLY_AUTOMATION_INTERVAL_SECONDS:-60}
@@ -76,6 +89,14 @@ x-app-environment: &app-environment
   WECHATSYNC_ENABLED: ${WECHATSYNC_ENABLED:-false}
   WECHATSYNC_MOCK: ${WECHATSYNC_MOCK:-true}
   WECHATSYNC_BRIDGE_URL: ${WECHATSYNC_BRIDGE_URL:-http://host.docker.internal:9528}
+  CONTENT_METRICS_RUNNER_URL: http://content-metrics-runner:9531
+  CONTENT_METRICS_RUNNER_TOKEN: ${CONTENT_METRICS_RUNNER_TOKEN:-}
+  CONTENT_METRICS_INTERVAL_SECONDS: ${CONTENT_METRICS_INTERVAL_SECONDS:-21600}
+  SITE_AUDIT_MAX_PAGES: ${SITE_AUDIT_MAX_PAGES:-25}
+  SITE_AUDIT_WORKER_INTERVAL_SECONDS: ${SITE_AUDIT_WORKER_INTERVAL_SECONDS:-30}
+  SITE_AUDIT_RENDERER_URL: ${SITE_AUDIT_RENDERER_URL:-}
+  SITE_AUDIT_RENDERER_TOKEN: ${SITE_AUDIT_RENDERER_TOKEN:-}
+  GEO_MONITORING_SCHEDULER_INTERVAL_SECONDS: ${GEO_MONITORING_SCHEDULER_INTERVAL_SECONDS:-3600}
 
 x-app-volumes: &app-volumes
   - workbench_data:/app/data
@@ -165,6 +186,9 @@ services:
     ports:
       - "127.0.0.1:${WORKBENCH_PORT:-3027}:3027"
     volumes: *app-volumes
+    networks:
+      - default
+      - content_metrics_private
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3027/api/health?scope=web').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
@@ -174,6 +198,59 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+    logging: *default-logging
+
+  content-metrics-runner:
+    build:
+      context: .
+      target: worker
+    image: joto-gtm-workbench-worker:${WORKBENCH_IMAGE_TAG:-0.1.0}
+    profiles: [core, full]
+    restart: unless-stopped
+    stop_grace_period: 20s
+    env_file:
+      - path: .env.local
+        required: false
+        format: raw
+    environment:
+      <<: *app-environment
+      CONTENT_METRICS_RUNNER_HOST: 0.0.0.0
+      CONTENT_METRICS_RUNNER_PORT: 9531
+    command: ["node", "scripts/content-metrics-runner.mjs"]
+    networks:
+      - default
+      - content_metrics_private
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9531/health').then(async r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 15s
+    logging: *default-logging
+
+  content-metrics-worker:
+    build:
+      context: .
+      target: worker
+    image: joto-gtm-workbench-worker:${WORKBENCH_IMAGE_TAG:-0.1.0}
+    profiles: [core, full]
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment: *app-environment
+    command: ["node", "workers/content-metrics-worker.mjs"]
+    networks:
+      - content_metrics_private
+    depends_on:
+      workbench-web:
+        condition: service_healthy
+      content-metrics-runner:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "try{process.kill(1,0)}catch{process.exit(1)}"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
     logging: *default-logging
 
   opensearch:
@@ -296,4 +373,9 @@ volumes:
   workbench_data:
   workbench_artifacts:
   worker_runtime:
+
+networks:
+  default: {}
+  content_metrics_private:
+    internal: true
 

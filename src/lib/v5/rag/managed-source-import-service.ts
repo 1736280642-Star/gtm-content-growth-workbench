@@ -17,6 +17,8 @@ import {
 } from "./managed-source-contracts";
 import { writeRagSourceImport } from "./source-import-repository";
 import { prepareRagSourceImport } from "./source-import-service";
+import { cleanParsedWebMarkdown } from "./automatic-knowledge-production";
+import { registerOfficialWebsiteSourcesAndEnsureAudits } from "../website-coverage-repository";
 
 export const MANAGED_SOURCE_IMPORT_VERSION = "workbench-managed-source@1";
 
@@ -110,7 +112,10 @@ function assertInput(input: ManagedSourceImportInput) {
   if (!input.idempotencyKey.trim() || input.idempotencyKey.length > 128) throw new V5GovernanceRepositoryError("invalid_idempotency_key", "缺少有效的 idempotencyKey。", 400);
   if (!input.sources.length) throw new V5GovernanceRepositoryError("empty_sources", "至少需要一个已解析来源。", 400);
   for (const source of input.sources) {
-    const markdown = normalizedMarkdown(source.markdown);
+    const parsed = normalizedMarkdown(source.markdown);
+    const markdown = source.canonicalUrl
+      ? cleanParsedWebMarkdown(parsed, { productName: input.productId }).markdown
+      : parsed;
     const body = markdown.replace(/^#{1,6}\s+.*$/gm, "").trim();
     if (!source.sourceKey.trim() || !source.title.trim() || body.length < 8) {
       throw new V5GovernanceRepositoryError("source_text_too_short", `来源 ${source.title || source.sourceKey} 没有足够的可用正文。`, 400);
@@ -128,7 +133,10 @@ function buildCandidate(
   const knowledgeBaseId = stableId("kb-product-", input.productId, 32);
   const canonicalSourceKey = source.canonicalUrl?.trim().toLowerCase() || source.sourceKey.trim().toLowerCase();
   const sourceId = stableId("src-managed-", `${knowledgeBaseId}:${canonicalSourceKey}`, 32);
-  const markdown = normalizedMarkdown(source.markdown);
+  const parsedMarkdown = normalizedMarkdown(source.markdown);
+  const markdown = source.canonicalUrl
+    ? cleanParsedWebMarkdown(parsedMarkdown, { productName: product.displayName }).markdown
+    : parsedMarkdown;
   const contentHash = createHash("sha256").update(markdown).digest("hex");
   const sourceRevisionId = buildManagedSourceRevisionId(sourceId, contentHash);
   const normalizedTextRef = buildManagedNormalizedTextRef(sourceRevisionId);
@@ -186,6 +194,18 @@ export async function importManagedSources(input: ManagedSourceImportInput) {
         actor: { ...input.actor, auditReason: `${input.actor.auditReason}；从已确认 A2 来源补全产品身份空缺` }
       })
     : undefined;
+  const websiteAudit = await registerOfficialWebsiteSourcesAndEnsureAudits({
+    productId: input.productId,
+    candidates: candidates.flatMap((candidate) => candidate.canonicalUrl ? [{
+      productId: candidate.productId,
+      sourceId: candidate.sourceId,
+      sourceRevisionId: buildManagedSourceRevisionId(candidate.sourceId, candidate.contentHash),
+      canonicalUrl: candidate.canonicalUrl,
+      contentHash: candidate.contentHash,
+      authorityLevel: candidate.authorityLevel
+    }] : []),
+    actor: { ...input.actor, auditReason: `${input.actor.auditReason}；登记正式官网来源并自动启动 GEO 基线审计` }
+  });
   const infrastructure = getRagInfrastructureStatus();
   return {
     knowledgeBaseId: candidates[0].knowledgeBaseId,
@@ -201,6 +221,13 @@ export async function importManagedSources(input: ManagedSourceImportInput) {
     officialUrl: product.officialUrl || identityWrite?.officialUrl,
     productIdentityUpdated: identityWrite?.updated === true,
     officialUrlUpdated: identityWrite?.updated === true && !product.officialUrl && Boolean(identityWrite.officialUrl),
+    websiteAudit: {
+      officialSourceCount: websiteAudit.officialSourceCount,
+      auditRunIds: websiteAudit.auditRunIds,
+      knowledgeReadiness: websiteAudit.profile?.knowledgeReadiness,
+      publicGeoReadiness: websiteAudit.profile?.publicGeoReadiness,
+      coverageProfileVersion: websiteAudit.profile?.profileVersion
+    },
     pipelineStatus: infrastructure.status === "ready" ? "queued" as const : "pending_config" as const,
     missingConfiguration: infrastructure.status === "ready"
       ? []

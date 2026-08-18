@@ -32,6 +32,8 @@ export type ObservationGapCode =
   | "observation_uncertain";
 
 export type ObservationGapDestination = "blog_candidate" | "knowledge_issue" | "site_audit" | "manual_review";
+export type ObservationGapRootCause = "site_accessibility" | "site_content_coverage" | "evidence_missing" | "content_coverage_missing" | "distribution_weak" | "sample_insufficient";
+export type ObservationGapRecommendedAction = "fix_site" | "create_content_candidate" | "refresh_existing_content" | "collect_evidence" | "continue_monitoring" | "manual_review";
 
 export interface V5MutationActor {
   actorId: string;
@@ -205,6 +207,8 @@ export interface ObservationGap {
   evidenceLocation: string;
   confidence: number;
   suggestedDestinations: ObservationGapDestination[];
+  rootCause?: ObservationGapRootCause;
+  recommendedAction?: ObservationGapRecommendedAction;
   status: "candidate" | "confirmed" | "rejected";
   analysisVersion: number;
   createdAt: string;

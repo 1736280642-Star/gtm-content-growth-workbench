@@ -13,17 +13,11 @@ const ids = {
   product: `phase2d-product-${suffix}`,
   pack: `phase2d-pack-${suffix}`,
   contract: `phase2d-contract-${suffix}`,
-  draft: `phase2d-draft-${suffix}`
+  draft: `phase2d-draft-${suffix}`,
+  task: `phase2d-task-${suffix}`
 };
 
-const feedback = {
-  decision: "approved",
-  ratings: { scenarioAuthenticity: 4, boundaryClarity: 5, factualReliability: 5, readability: 4, productFit: 4 },
-  strengths: ["边界清楚"],
-  issues: [],
-  expressionDirectives: ["先讲真实协作场景，再说明 WorkBuddy 能力", "明确保留人工最终判断"],
-  reason: "达到正式批量生产的表达基线"
-};
+const feedback = { decision: "approved" };
 
 test("human sample approval freezes one calibration and advances strategy to production_ready", { skip: missing.length ? `missing ${missing.join(",")}` : false }, async () => {
   const pool = mysql.createPool({
@@ -43,11 +37,22 @@ test("human sample approval freezes one calibration and advances strategy to pro
       [ids.pack, ids.product, "a".repeat(64)]
     );
     await pool.query(
+      `INSERT INTO product_sample_article_task
+       (id, product_id, product_strategy_pack_id, article_type_version_id, channel, platform_content_type,
+        title, target_audience, secondary_distilled_term_ids, knowledge_base_ids, rule_package_version_id,
+        prompt_group_id, prompt_group_version_id, channel_rule_version_id, status, review_status,
+        approved_at, approved_by)
+       VALUES (?, ?, ?, 'type-v1', 'wechat', 'explicit_product_intro', '样文', '决策者', JSON_ARRAY(),
+        JSON_ARRAY(), 'rule-v1', 'prompt-v1', 'prompt-version-v1', 'channel-v1', 'generated',
+        'pending_review', NOW(), 'test')`,
+      [ids.task, ids.product, ids.pack]
+    );
+    await pool.query(
       `INSERT INTO production_contract_snapshot
        (id, contract_version, contract_hash, task_id, task_version, product_id, product_strategy_pack_id,
         article_type_version_id, final_evidence_pack_id, production_mode, contract_json, created_by, immutable_at)
        VALUES (?, 'content-production.v2', ?, ?, 1, ?, ?, 'type-v1', 'pack-v1', 'sample', JSON_OBJECT(), 'test', NOW())`,
-      [ids.contract, "b".repeat(64), `task-${suffix}`, ids.product, ids.pack]
+      [ids.contract, "b".repeat(64), ids.task, ids.product, ids.pack]
     );
     await pool.query(
       `INSERT INTO draft_version
@@ -56,14 +61,14 @@ test("human sample approval freezes one calibration and advances strategy to pro
         markdown, fact_traces, hard_rule_result, copy_allowed, test_only, created_by)
        VALUES (?, ?, ?, 1, ?, 'pack-v1', ?, ?, 'rule-v1', 1, '样稿', '# 样稿', JSON_ARRAY(),
         JSON_OBJECT('passed', TRUE), TRUE, FALSE, 'test')`,
-      [ids.draft, `generation-${suffix}`, `task-${suffix}`, `task-${suffix}`, ids.contract, "b".repeat(64)]
+      [ids.draft, `generation-${suffix}`, ids.task, ids.task, ids.contract, "b".repeat(64)]
     );
 
     await assert.rejects(
       () => decideSampleArticle({ draftVersionId: ids.draft, idempotencyKey: `sample-${suffix}`, feedback, actor: { actorId: "system", actorRole: "developer_admin", actorType: "system", auditReason: "not human" } }),
       (error) => error.code === "human_actor_required"
     );
-    const actor = { actorId: "phase2d-reviewer", actorRole: "developer_admin", actorType: "human", auditReason: feedback.reason };
+    const actor = { actorId: "phase2d-reviewer", actorRole: "developer_admin", actorType: "human", auditReason: "确认样文" };
     const first = await decideSampleArticle({ draftVersionId: ids.draft, idempotencyKey: `sample-${suffix}`, feedback, actor });
     const replay = await decideSampleArticle({ draftVersionId: ids.draft, idempotencyKey: `sample-${suffix}`, feedback, actor });
     assert.equal(first.decision, "approved");
@@ -74,15 +79,17 @@ test("human sample approval freezes one calibration and advances strategy to pro
       (error) => error.code === "sample_already_approved"
     );
     const [[pack]] = await pool.query("SELECT status FROM product_strategy_packs WHERE id = ?", [ids.pack]);
-    const [[calibration]] = await pool.query("SELECT status, directives_json, immutable_at FROM expression_calibration_version WHERE id = ?", [first.calibrationVersionId]);
+    const [[calibration]] = await pool.query("SELECT status, article_type_version_id, immutable_at FROM expression_calibration_version WHERE id = ?", [first.calibrationVersionId]);
     assert.equal(pack.status, "production_ready");
     assert.equal(calibration.status, "active");
+    assert.equal(calibration.article_type_version_id, "type-v1");
     assert.ok(calibration.immutable_at);
   } finally {
     await pool.query("DELETE FROM expression_calibration_version WHERE product_id = ?", [ids.product]);
     await pool.query("DELETE FROM sample_article_feedback WHERE product_id = ?", [ids.product]);
     await pool.query("DELETE FROM draft_version WHERE id = ?", [ids.draft]);
     await pool.query("DELETE FROM production_contract_snapshot WHERE id = ?", [ids.contract]);
+    await pool.query("DELETE FROM product_sample_article_task WHERE id = ?", [ids.task]);
     await pool.query("DELETE FROM product_strategy_packs WHERE id = ?", [ids.pack]);
     await pool.end();
     await getV5GovernancePool().end();

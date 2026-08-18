@@ -8,6 +8,7 @@ import { WECHAT_LAYOUT_TEMPLATES } from "@/lib/v5/wechat-layout-selector";
 import type { WechatRenderableTemplateId } from "@/lib/v5/wechat-presentation-contracts";
 import { VisualSuggestionPlaceholder } from "./VisualSuggestionPlaceholder";
 import { VisualAssetBindingPanel } from "./VisualAssetBindingPanel";
+import { WechatCoverBindingPanel, type WechatCoverFile } from "./WechatCoverBindingPanel";
 
 const layoutOptions = [
   { label: "品牌排版", options: [{ value: "joto-official-v1", label: "JOTO 官方排版" }] },
@@ -21,7 +22,7 @@ function bodyWithoutTitle(artifact: ContentDraftArtifact) {
   return artifact.articleBody.replace(/\r\n?/g, "\n").trim().replace(/^#\s+[^\n]+\n+/, "");
 }
 
-export function WechatArticlePreview({ artifact, productId, changingLayout, savingContent, onChangeLayout, onEditContent, onBindVisual }: { artifact: ContentDraftArtifact; productId: string; changingLayout?: boolean; savingContent?: boolean; onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void> }) {
+export function WechatArticlePreview({ artifact, productId, batchId, batchVersion, coverRisk, changingLayout, savingContent, savingCover, locked, onChangeLayout, onEditContent, onBindVisual, onSaveCover }: { artifact: ContentDraftArtifact; productId: string; batchId: string; batchVersion: number; coverRisk?: import("@/lib/v5/free-production-contracts").RiskAndGapItem; changingLayout?: boolean; savingContent?: boolean; savingCover?: boolean; locked?: boolean; onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void>; onSaveCover: (file: WechatCoverFile) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(artifact.selectedTitle);
   const [summary, setSummary] = useState(artifact.summary);
@@ -61,6 +62,7 @@ export function WechatArticlePreview({ artifact, productId, changingLayout, savi
             <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>
           </Space>
         </div>
+        <WechatCoverBindingPanel batchId={batchId} batchVersion={batchVersion} coverRisk={coverRisk} saving={savingCover} locked={locked} onSave={onSaveCover} />
         <VisualAssetBindingPanel suggestions={artifact.visualSuggestions} productId={productId} onBind={onBindVisual} />
         <iframe
           className="wechat-official-preview-frame"

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JOTO AI Front Test Companion",
-  "version": "1.2.0",
+  "version": "1.2.3",
   "description": "Runs user-initiated, single AI frontend captures through a local Runner.",
   "permissions": ["activeTab", "alarms", "tabs", "scripting"],
   "host_permissions": [
@@ -10,7 +10,9 @@
     "https://chat.deepseek.com/*",
     "https://chatgpt.com/*",
     "https://tongyi.aliyun.com/qianwen/*",
-    "https://chat.qwen.ai/*"
+    "https://chat.qwen.ai/*",
+    "https://www.qianwen.com/*",
+    "https://qianwen.com/*"
   ],
   "background": {
     "service_worker": "src/service-worker.js"
@@ -25,7 +27,9 @@
         "https://chat.deepseek.com/*",
         "https://chatgpt.com/*",
         "https://tongyi.aliyun.com/qianwen/*",
-        "https://chat.qwen.ai/*"
+        "https://chat.qwen.ai/*",
+        "https://www.qianwen.com/*",
+        "https://qianwen.com/*"
       ],
       "js": ["src/adapters/china-ai.js", "src/content/capture.js"],
       "run_at": "document_idle"

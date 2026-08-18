@@ -1,4 +1,6 @@
 import type { V5MutationContext } from "./observation-contracts";
+import type { GeoQuestionMetric } from "./geo-monitoring-contracts";
+import type { ProductGeoOptimizationSnapshot } from "./product-geo-optimization-contracts";
 
 export interface MonthlyQuestionReview {
   id: string;
@@ -23,6 +25,8 @@ export interface MonthlyQuestionReview {
   }>;
   captureTaskIds: string[];
   captureSummary: string;
+  geoMetric?: GeoQuestionMetric;
+  crossLineObservation?: string;
   lastRetestedAt?: string;
   confirmedGapCodes: string[];
   recommendationEvidenceRefs: string[];
@@ -62,8 +66,20 @@ export interface MonthlyReview {
     survival72hEligible: number;
     captureTasks: number;
     pendingGaps: number;
+    activeMonitoringQuestions: number;
+  };
+  siteMonitoring: {
+    source: "formal_database" | "pending_config" | "empty";
+    latestRunId?: string;
+    coreReadinessScore: number | null;
+    openFindingCount: number;
+    criticalFindingCount: number;
+    newFindingCount: number;
+    resolvedFindingCount: number;
+    note: string;
   };
   questions: MonthlyQuestionReview[];
+  productOptimizations: ProductGeoOptimizationSnapshot[];
   proposals: NextMonthProposal[];
   message?: string;
 }

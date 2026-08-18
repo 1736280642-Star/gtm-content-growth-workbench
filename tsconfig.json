@@ -35,6 +35,8 @@
     ".next-dev-3027/types/**/*.ts",
     ".next-dev-3030/types/**/*.ts",
     ".next-dev-3047/types/**/*.ts",
+    ".next-dev-3048/types/**/*.ts",
+    ".next-dev-3050/types/**/*.ts",
     ".next-live-acceptance-3069/types/**/*.ts",
     ".next-smoke-browser-3068/types/**/*.ts",
     ".next-smoke-browser-3069/types/**/*.ts",
@@ -43,7 +45,7 @@
     ".next-smoke-workflow-3062/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-dev-3050/types/**/*.ts"
+    ".next-smoke-browser-3058/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

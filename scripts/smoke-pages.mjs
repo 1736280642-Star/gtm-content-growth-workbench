@@ -49,7 +49,7 @@ const targets = [
   { name: "daily_execution_page", path: "/daily-execution", expect: "当日执行" },
   { name: "ai_front_test_page", path: "/ai-front-test", expect: "AI 前台测试" },
   { name: "ai_front_test_environment_page", path: "/ai-front-test/environment", expect: "采集环境" },
-  { name: "monthly_review_page", path: "/monthly-review", expect: "月度复盘" },
+  { name: "content_monitor_page", path: "/content-monitor", expect: "内容监控塔" },
   { name: "monthly_plan_page", path: "/monthly-plan", expect: "内容自动化" },
   { name: "content_automation_page", path: "/content-automation", expect: "内容自动化" },
   { name: "today_compat_page", path: "/today", expectRedirect: "/monthly-plan?step=execution&view=today" },

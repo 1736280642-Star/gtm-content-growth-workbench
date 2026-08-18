@@ -11,22 +11,22 @@ export const workspaceRoleLabels: Record<WorkspaceRole, string> = {
 export const workspaceRouteLabels: Record<string, string> = {
   "/knowledge": "知识库",
   "/monthly-plan": "GEO 内容中心",
-  "/geo-monitor": "GEO 监控塔",
+  "/content-monitor": "内容监控塔",
   "/settings": "设置"
 };
 
 const roleVisibleRoutes: Record<WorkspaceRole, string[]> = {
-  content_publisher: ["/monthly-plan", "/geo-monitor", "/settings"],
-  content_growth: ["/knowledge", "/monthly-plan", "/geo-monitor", "/settings"],
-  workbench_operator: ["/knowledge", "/monthly-plan", "/geo-monitor", "/settings"],
-  knowledge_manager: ["/knowledge", "/geo-monitor", "/settings"],
-  developer_admin: ["/knowledge", "/monthly-plan", "/geo-monitor", "/settings"]
+  content_publisher: ["/monthly-plan", "/content-monitor", "/settings"],
+  content_growth: ["/knowledge", "/monthly-plan", "/content-monitor", "/settings"],
+  workbench_operator: ["/knowledge", "/monthly-plan", "/content-monitor", "/settings"],
+  knowledge_manager: ["/knowledge", "/content-monitor", "/settings"],
+  developer_admin: ["/knowledge", "/monthly-plan", "/content-monitor", "/settings"]
 };
 
 const roleDefaultRoutes: Record<WorkspaceRole, string> = {
   content_publisher: "/monthly-plan?step=execution",
-  content_growth: "/geo-monitor",
-  workbench_operator: "/geo-monitor",
+  content_growth: "/content-monitor",
+  workbench_operator: "/content-monitor",
   knowledge_manager: "/knowledge",
   developer_admin: "/settings"
 };

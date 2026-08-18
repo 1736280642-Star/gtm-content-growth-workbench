@@ -50,6 +50,39 @@ function Start-DockerEngine {
   throw "Docker Desktop did not become ready within 120 seconds. Open Docker Desktop, resolve its startup error, and run the command again."
 }
 
+function Test-WorkbenchHttpReady {
+  param([string]$Url = "http://127.0.0.1:3027/api/health?scope=web")
+  try {
+    $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3
+    $payload = $response.Content | ConvertFrom-Json
+    return $response.StatusCode -eq 200 -and $payload.ok -eq $true
+  } catch {
+    return $false
+  }
+}
+
+function Enter-WorkbenchStartupLock {
+  param([int]$TimeoutSeconds = 180)
+  $mutex = [System.Threading.Mutex]::new($false, "Local\JotoGtmWorkbench3027Startup")
+  try {
+    if (-not $mutex.WaitOne([TimeSpan]::FromSeconds($TimeoutSeconds))) {
+      $mutex.Dispose()
+      throw "Another 3027 startup or deployment is still running after $TimeoutSeconds seconds."
+    }
+    return $mutex
+  } catch {
+    $mutex.Dispose()
+    throw
+  }
+}
+
+function Exit-WorkbenchStartupLock {
+  param([System.Threading.Mutex]$Mutex)
+  if ($null -eq $Mutex) { return }
+  try { $Mutex.ReleaseMutex() } catch { }
+  $Mutex.Dispose()
+}
+
 function Invoke-WorkbenchCompose {
   param([string[]]$Arguments)
 
@@ -106,19 +139,44 @@ function Build-WorkbenchProductionImages {
   Invoke-WorkbenchDocker -Arguments @("build", "--target", "web", "--tag", $webImage, ".")
 }
 
-function Assert-WorkbenchProductionMode {
+function Assert-WorkbenchProductionImagesAvailable {
+  $resolvedImages = & node $script:WorkbenchComposeLauncher -f compose.yaml --profile full config --images
+  if ($LASTEXITCODE -ne 0) { throw "Unable to resolve production image names from compose.yaml." }
+  $requiredImages = @($resolvedImages | Where-Object { $_ -match "workbench-(web|worker):" } | Sort-Object -Unique)
+  if ($requiredImages.Count -lt 2) { throw "Unable to identify both production Web and Worker images from compose.yaml." }
+
+  $missingImages = @()
+  foreach ($image in $requiredImages) {
+    & docker image inspect $image *> $null
+    if ($LASTEXITCODE -ne 0) { $missingImages += $image }
+  }
+  if ($missingImages.Count -gt 0) {
+    throw "Production image missing: $($missingImages -join ', '). Run npm.cmd run docker:3027:deploy once; the daily launcher never builds images."
+  }
+  Write-WorkbenchStep "Production images are available; no build is required."
+}
+
+function Test-WorkbenchProductionMode {
   $containerName = "joto-gtm-workbench-workbench-web-1"
-  $commandJson = & docker inspect $containerName --format "{{json .Config.Cmd}}"
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to inspect the 3027 Web container after startup."
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $commandJson = & docker inspect $containerName --format "{{json .Config.Cmd}}" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $labelsJson = & docker inspect $containerName --format "{{json .Config.Labels}}" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $labels = $labelsJson | ConvertFrom-Json
+    $configFiles = $labels.'com.docker.compose.project.config_files'
+    return $commandJson -match 'server\.js' -and $configFiles -notmatch 'compose\.dev-3027\.yaml'
+  } catch {
+    return $false
+  } finally {
+    $ErrorActionPreference = $previousPreference
   }
-  $labelsJson = & docker inspect $containerName --format "{{json .Config.Labels}}"
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to inspect the Compose source files for the 3027 Web container."
-  }
-  $labels = $labelsJson | ConvertFrom-Json
-  $configFiles = $labels.'com.docker.compose.project.config_files'
-  if ($commandJson -notmatch 'server\.js' -or $configFiles -match 'compose\.dev-3027\.yaml') {
+}
+
+function Assert-WorkbenchProductionMode {
+  if (-not (Test-WorkbenchProductionMode)) {
     throw "Port 3027 is not running the production-like standalone container. Run npm.cmd run docker:3027 again."
   }
   Write-WorkbenchStep "Verified production mode: standalone server.js from compose.yaml."

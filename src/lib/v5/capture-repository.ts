@@ -114,7 +114,7 @@ export async function registerCaptureDevice(input: {
   pairingCode?: string;
   platforms: string[];
 }) {
-  return withV5GovernanceTransaction(async (connection) => {
+  const saved = await withV5GovernanceTransaction(async (connection) => {
     let workspaceId = input.workspaceId;
     let userId = input.userId;
     if (input.pairingCode) {
@@ -159,6 +159,7 @@ export async function registerCaptureDevice(input: {
     );
     return mapDevice(saved[0]);
   });
+  return saved;
 }
 
 export async function heartbeatCaptureDevice(input: {
@@ -166,7 +167,7 @@ export async function heartbeatCaptureDevice(input: {
   status: string;
   adapterVersion?: string;
 }) {
-  return withV5GovernanceTransaction(async (connection) => {
+  const saved = await withV5GovernanceTransaction(async (connection) => {
     const [rows] = await connection.query<RowDataPacket[]>(
       "SELECT * FROM capture_devices WHERE device_id = ? FOR UPDATE",
       [input.deviceId]
@@ -180,6 +181,7 @@ export async function heartbeatCaptureDevice(input: {
     const [saved] = await connection.query<RowDataPacket[]>("SELECT * FROM capture_devices WHERE device_id = ?", [input.deviceId]);
     return mapDevice(saved[0]);
   });
+  return saved;
 }
 
 export async function revokeCaptureDevice(deviceId: string) {
@@ -201,15 +203,18 @@ export async function revokeCaptureDevice(deviceId: string) {
 
 export async function createCaptureTask(input: {
   productId: string;
+  targetEntityName?: string;
   question: string;
   questionVersionId?: string;
+  monitoringQuestionId?: string;
   publishedContentId?: string;
   sourcePublishResultId?: string;
-  triggerType?: "manual_once" | "published_content_retest";
+  triggerType?: "manual_once" | "published_content_retest" | "monitoring_question";
   captureCondition?: FrontendCaptureCondition;
   platform: string;
   idempotencyKey: string;
   priority: number;
+  scheduledFor?: string;
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [existing] = await connection.query<RowDataPacket[]>(
@@ -225,12 +230,12 @@ export async function createCaptureTask(input: {
     const taskId = `capture-task-${randomUUID()}`;
     await connection.query(
       `INSERT INTO capture_tasks
-       (task_id, product_id, question, question_version_id, published_content_id, source_publish_result_id,
-        trigger_type, capture_condition, platform, status, attempt_count, idempotency_key, priority, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, NOW())`,
-      [taskId, input.productId, input.question, input.questionVersionId || null, input.publishedContentId || null,
+       (task_id, product_id, target_entity_name, question, question_version_id, monitoring_question_id, published_content_id, source_publish_result_id,
+        trigger_type, capture_condition, platform, status, attempt_count, idempotency_key, priority, scheduled_for, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NOW())`,
+      [taskId, input.productId, input.targetEntityName || null, input.question, input.questionVersionId || null, input.monitoringQuestionId || null, input.publishedContentId || null,
         input.sourcePublishResultId || null, input.triggerType || "manual_once",
-        stringifyV5Json(input.captureCondition || DEFAULT_CAPTURE_CONDITION), input.platform, input.idempotencyKey, input.priority]
+        stringifyV5Json(input.captureCondition || DEFAULT_CAPTURE_CONDITION), input.platform, input.idempotencyKey, input.priority, input.scheduledFor ? new Date(input.scheduledFor) : null]
     );
     return { taskId, status: "pending", replayed: false };
   });
@@ -262,10 +267,10 @@ export async function createManualFormalCaptureTasks(input: {
 
 export async function listCaptureTasks(taskId?: string) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
-    `SELECT t.task_id, t.product_id, t.question, t.question_version_id, t.published_content_id, t.source_publish_result_id,
+    `SELECT t.task_id, t.product_id, t.question, t.question_version_id, t.monitoring_question_id, t.published_content_id, t.source_publish_result_id,
             t.trigger_type, t.capture_condition, t.platform, t.device_id, t.lease_expires_at, t.status,
-            t.attempt_count, t.idempotency_key, t.priority, t.created_at, t.completed_at, p.display_name AS target_entity
-     FROM capture_tasks t LEFT JOIN product_entity p ON p.id = t.product_id ${taskId ? "WHERE t.task_id = ?" : ""}
+            t.attempt_count, t.idempotency_key, t.priority, t.scheduled_for, t.created_at, t.completed_at, COALESCE(t.target_entity_name, p.display_name) AS target_entity
+     FROM capture_tasks t LEFT JOIN product_entity p ON p.id = t.product_id ${taskId ? "WHERE t.task_id = ?" : "WHERE (t.scheduled_for IS NULL OR t.scheduled_for <= NOW())"}
      ORDER BY t.priority DESC, t.created_at ASC`,
     taskId ? [taskId] : []
   );
@@ -274,6 +279,7 @@ export async function listCaptureTasks(taskId?: string) {
     productId: String(row.product_id),
     question: String(row.question),
     questionVersionId: row.question_version_id ? String(row.question_version_id) : undefined,
+    monitoringQuestionId: row.monitoring_question_id ? String(row.monitoring_question_id) : undefined,
     publishedContentId: row.published_content_id ? String(row.published_content_id) : undefined,
     sourcePublishResultId: row.source_publish_result_id ? String(row.source_publish_result_id) : undefined,
     triggerType: String(row.trigger_type || "manual_once"),
@@ -286,6 +292,7 @@ export async function listCaptureTasks(taskId?: string) {
     attemptCount: Number(row.attempt_count),
     idempotencyKey: String(row.idempotency_key),
     priority: Number(row.priority),
+    scheduledFor: iso(row.scheduled_for),
     createdAt: iso(row.created_at),
     completedAt: iso(row.completed_at)
   }));
@@ -307,6 +314,7 @@ export async function leaseCaptureTask(input: { taskId: string; deviceId: string
     const [tasks] = await connection.query<RowDataPacket[]>("SELECT * FROM capture_tasks WHERE task_id = ? FOR UPDATE", [input.taskId]);
     const task = tasks[0];
     if (!task) throw new V5GovernanceRepositoryError("capture_task_not_found", "采集任务不存在。", 404);
+    if (task.scheduled_for && new Date(task.scheduled_for).getTime() > Date.now()) throw new V5GovernanceRepositoryError("capture_task_not_due", "采集任务尚未到计划执行时间。", 409);
     if (String(task.status) === "completed") throw new V5GovernanceRepositoryError("capture_task_completed", "采集任务已完成。", 409);
     const leaseActive = task.lease_expires_at && new Date(task.lease_expires_at).getTime() > Date.now();
     if (leaseActive && task.device_id && String(task.device_id) !== input.deviceId) {
@@ -334,7 +342,7 @@ export async function uploadCaptureEvidence(input: {
     throw new V5GovernanceRepositoryError("capture_evidence_hash_mismatch", "证据哈希与服务端复算结果不一致。", 422);
   }
   const payload = normalizeCaptureEvidencePayload(input.payload);
-  return withV5GovernanceTransaction(async (connection) => {
+  const saved = await withV5GovernanceTransaction(async (connection) => {
     const [tasks] = await connection.query<RowDataPacket[]>("SELECT * FROM capture_tasks WHERE task_id = ? FOR UPDATE", [input.taskId]);
     const task = tasks[0];
     if (!task) throw new V5GovernanceRepositoryError("capture_task_not_found", "采集任务不存在。", 404);
@@ -345,7 +353,7 @@ export async function uploadCaptureEvidence(input: {
       "SELECT * FROM capture_evidence WHERE task_id = ? AND artifact_hash = ? LIMIT 1 FOR UPDATE",
       [input.taskId, input.artifactHash]
     );
-    if (existing[0]) return { id: String(existing[0].id), taskId: input.taskId, artifactHash: input.artifactHash, replayed: true };
+    if (existing[0]) return { id: String(existing[0].id), taskId: input.taskId, artifactHash: input.artifactHash, replayed: true, productId: String(task.product_id), triggerType: String(task.trigger_type || "manual_once") };
     const [versions] = await connection.query<RowDataPacket[]>(
       "SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM capture_evidence WHERE task_id = ?",
       [input.taskId]
@@ -361,47 +369,19 @@ export async function uploadCaptureEvidence(input: {
       "UPDATE capture_tasks SET status = 'completed', completed_at = NOW(), lease_expires_at = NULL WHERE task_id = ?",
       [input.taskId]
     );
-    const gaps = payload.gaps.map((item) => ({
-      type: item.code === "citation_gap" ? "citation_gap" : "question_gap",
-      question: String(task.question || "").slice(0, 500),
-      priority: Math.max(1, Math.min(100, Math.round((item.confidence || 0.5) * 100)))
-    }));
-    let strategyAdjustmentId: string | undefined;
-    if (gaps.length) {
-      const [packs] = await connection.query<RowDataPacket[]>(
-        `SELECT pack.*
-         FROM product_strategy_packs pack
-         JOIN product_entity product ON product.strategy_pack_id = pack.id
-         WHERE pack.product_id = ? AND pack.status IN ('active', 'production_ready')
-         ORDER BY pack.compiled_at DESC LIMIT 1 FOR UPDATE`,
-        [task.product_id]
-      );
-      if (packs[0]) {
-        strategyAdjustmentId = `strategy-adjustment-${randomUUID()}`;
-        const contentPlan = parseV5Json<Record<string, unknown>>(packs[0].content_plan_json, {});
-        const existingAdjustments = Array.isArray(contentPlan.executionAdjustments) ? contentPlan.executionAdjustments : [];
-        const adjustment = {
-          id: strategyAdjustmentId,
-          sourceEvidenceId: id,
-          observedAt: new Date().toISOString(),
-          gaps,
-          recommendedAdditionalArticles: Math.min(3, gaps.length),
-          approvalBoundary: "execution_priority_only"
-        };
-        await connection.query(
-          "UPDATE product_strategy_packs SET content_plan_json = ? WHERE id = ?",
-          [stringifyV5Json({ ...contentPlan, executionAdjustments: [...existingAdjustments, adjustment] }), packs[0].id]
-        );
-      }
-    }
     await connection.query(
       `INSERT INTO attribution_chain
        (id, source_event_id, platform, change_type, evidence_ids, strategy_adjustment_id, article_ids, outcome, recorded_at)
        VALUES (?, ?, ?, ?, ?, ?, '[]', ?, NOW())`,
-      [`attribution-${randomUUID()}`, input.taskId, task.platform, gaps[0]?.type || "capture_evidence_recorded", stringifyV5Json([id]), strategyAdjustmentId || null, strategyAdjustmentId ? "execution_strategy_adjusted" : "evidence_recorded"]
+      [`attribution-${randomUUID()}`, input.taskId, task.platform, "capture_evidence_recorded", stringifyV5Json([id]), null, "awaiting_batch_geo_diagnosis"]
     );
-    return { id, taskId: input.taskId, artifactHash: input.artifactHash, version, replayed: false };
+    return { id, taskId: input.taskId, artifactHash: input.artifactHash, version, replayed: false, productId: String(task.product_id), triggerType: String(task.trigger_type || "manual_once") };
   });
+  if (saved.triggerType === "published_content_retest") {
+    const { reconcileProductGeoOptimizations } = await import("./product-geo-optimization-repository");
+    await reconcileProductGeoOptimizations([saved.productId]);
+  }
+  return saved;
 }
 
 const OBSERVATION_GAP_CODES = new Set<ObservationGapCode>([
@@ -478,6 +458,18 @@ export async function createPublishedContentRetestTasks(connection: PoolConnecti
   publishedContentId: string;
   sourcePublishResultId: string;
 }) {
+  const [productRows] = await connection.query<RowDataPacket[]>(
+    "SELECT display_name, entity_relationship FROM product_entity WHERE id = ? LIMIT 1",
+    [input.productId]
+  );
+  const relationship = productRows[0]?.entity_relationship ? String(productRows[0].entity_relationship) : "";
+  const provider = relationship.split(/[；。]/).map((item) => item.trim()).flatMap((segment) => {
+    if (!/(?:服务商|实施伙伴|合作伙伴|提供|支持|负责|实施|交付)/.test(segment)) return [];
+    const match = segment.match(/^([A-Za-z][A-Za-z0-9._-]{1,40})\s*(?:是|作为|可|为|向|提供|支持|负责)/);
+    return match?.[1] ? [match[1]] : [];
+  })[0];
+  const isCategoryEnumeration = /服务商.*(?:有哪些|哪家|推荐|名单|选择|选型)|(?:有哪些|哪家|推荐|名单).*服务商|实施伙伴.*(?:有哪些|哪家|推荐|选择)/.test(input.question);
+  const targetEntityName = isCategoryEnumeration && provider ? provider : String(productRows[0]?.display_name || "") || undefined;
   const [packRows] = await connection.query<RowDataPacket[]>(
     `SELECT content_plan_json FROM product_strategy_packs
      WHERE product_id = ? AND status IN ('active', 'production_ready', 'pending_sample_review')
@@ -504,10 +496,10 @@ export async function createPublishedContentRetestTasks(connection: PoolConnecti
     const taskId = `capture-task-${randomUUID()}`;
     await connection.query(
       `INSERT INTO capture_tasks
-       (task_id, product_id, question, question_version_id, published_content_id, source_publish_result_id,
+       (task_id, product_id, target_entity_name, question, question_version_id, published_content_id, source_publish_result_id,
         trigger_type, capture_condition, platform, status, attempt_count, idempotency_key, priority, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'published_content_retest', ?, ?, 'pending', 0, ?, 80, NOW())`,
-      [taskId, input.productId, input.question, input.questionVersionId || null, input.publishedContentId,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'published_content_retest', ?, ?, 'pending', 0, ?, 80, NOW())`,
+      [taskId, input.productId, targetEntityName || null, input.question, input.questionVersionId || null, input.publishedContentId,
         input.sourcePublishResultId, stringifyV5Json(condition), platform, idempotencyKey]
     );
     created.push(taskId);
@@ -551,6 +543,12 @@ export async function listFormalCaptureObservations(input: { month?: string; ans
       id: `gap-${String(row.evidence_id)}-${index + 1}`, answerId: answerId!, code: item.code,
       title: item.title || item.code, explanation: item.explanation, evidenceLocation: item.evidenceLocation || "answer",
       confidence: item.confidence || 0.5, suggestedDestinations: item.code === "evidence_gap" ? ["knowledge_issue"] : item.code === "observation_uncertain" ? ["manual_review"] : ["blog_candidate"],
+      rootCause: item.code === "evidence_gap" || item.code === "relationship_gap" || item.code === "freshness_gap" ? "evidence_missing"
+        : item.code === "observation_uncertain" ? "sample_insufficient"
+          : item.code === "citation_gap" ? "distribution_weak" : "content_coverage_missing",
+      recommendedAction: item.code === "evidence_gap" || item.code === "relationship_gap" || item.code === "freshness_gap" ? "collect_evidence"
+        : item.code === "observation_uncertain" ? "continue_monitoring"
+          : item.code === "citation_gap" ? "refresh_existing_content" : "create_content_candidate",
       status: selectedGapIds.has(`gap-${String(row.evidence_id)}-${index + 1}`)
         ? (String(reviewRow?.decision) === "confirmed" ? "confirmed" : "rejected")
         : item.status || "candidate",

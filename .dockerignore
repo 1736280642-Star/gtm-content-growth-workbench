@@ -14,3 +14,4 @@ backups
 data/*.tmp
 data/*.json.*.tmp
 publish-extension/runtime-config.js
+content-publish-engine

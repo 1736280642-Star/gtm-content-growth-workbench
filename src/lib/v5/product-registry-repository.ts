@@ -279,6 +279,175 @@ export async function assertActiveProductRegistryRecord(productId: string) {
   return product;
 }
 
+export async function deleteProductKnowledgeBaseRecord(input: {
+  productId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+  actor: V5GovernanceActor;
+}) {
+  const requestHash = hashV5GovernancePayload({
+    productId: input.productId,
+    expectedVersion: input.expectedVersion,
+    operation: "delete_product_knowledge_base"
+  });
+
+  return withV5GovernanceTransaction(async (connection) => {
+    const replay = await readV5Idempotency(connection, input.idempotencyKey, requestHash);
+    if (replay) {
+      return {
+        replayed: true,
+        productId: input.productId,
+        deletedMaterialCount: Number((replay.responseSummary as { deletedMaterialCount?: number }).deletedMaterialCount || 0)
+      };
+    }
+
+    const [productRows] = await connection.query<RowDataPacket[]>(
+      "SELECT * FROM product_entity WHERE id = ? FOR UPDATE",
+      [input.productId]
+    );
+    const current = productRows[0];
+    if (!current || String(current.status) !== "active") {
+      throw new V5GovernanceRepositoryError("product_not_found", "未找到可删除的产品知识库。", 404);
+    }
+    if (Number(current.row_version) !== input.expectedVersion) {
+      throw new V5GovernanceRepositoryError(
+        "product_version_conflict",
+        "产品知识库已被更新，请刷新后重新删除。",
+        409,
+        "刷新产品知识库列表，确认最新资料后再次删除。"
+      );
+    }
+
+    const [knowledgeBaseRows] = await connection.query<RowDataPacket[]>(
+      "SELECT knowledge_base_id FROM knowledge_base_product_link WHERE product_id = ? AND status = 'active' FOR UPDATE",
+      [input.productId]
+    );
+    const knowledgeBaseIds = knowledgeBaseRows.map((row) => String(row.knowledge_base_id));
+    let sourceIds: string[] = [];
+    let revisionIds: string[] = [];
+
+    const [indexSnapshotRows] = await connection.query<RowDataPacket[]>(
+      "SELECT id, index_name FROM rag_index_snapshot WHERE product_id = ?",
+      [input.productId]
+    );
+    const indexSnapshotIds = indexSnapshotRows.map((row) => String(row.id));
+    const indexNames = indexSnapshotRows.map((row) => String(row.index_name)).filter(Boolean);
+    if (indexSnapshotIds.length) {
+      await connection.query("DELETE FROM rag_chunk_embedding WHERE index_snapshot_id IN (?)", [indexSnapshotIds]);
+      await connection.query("DELETE FROM rag_chunk_relation WHERE index_snapshot_id IN (?)", [indexSnapshotIds]);
+    }
+    await connection.query("DELETE FROM rag_knowledge_chunk WHERE product_id = ?", [input.productId]);
+    await connection.query(
+      "UPDATE rag_index_snapshot SET status = 'archived', row_version = row_version + 1 WHERE product_id = ?",
+      [input.productId]
+    );
+
+    if (knowledgeBaseIds.length) {
+      const [sourceRows] = await connection.query<RowDataPacket[]>(
+        `SELECT DISTINCT member.source_id
+         FROM knowledge_base_source_asset member
+         WHERE member.knowledge_base_id IN (?)
+           AND NOT EXISTS (
+             SELECT 1 FROM knowledge_base_source_asset other
+             WHERE other.source_id = member.source_id
+               AND other.knowledge_base_id NOT IN (?)
+           )`,
+        [knowledgeBaseIds, knowledgeBaseIds]
+      );
+      sourceIds = sourceRows.map((row) => String(row.source_id));
+    }
+
+    if (sourceIds.length) {
+      const [revisionRows] = await connection.query<RowDataPacket[]>(
+        "SELECT id FROM source_revision WHERE source_id IN (?)",
+        [sourceIds]
+      );
+      revisionIds = revisionRows.map((row) => String(row.id));
+
+      if (revisionIds.length) {
+        await connection.query("DELETE FROM source_revision_content WHERE source_revision_id IN (?)", [revisionIds]);
+        await connection.query("DELETE FROM rule_package_source_revision WHERE source_revision_id IN (?)", [revisionIds]);
+        await connection.query("DELETE FROM source_snapshot_item WHERE source_revision_id IN (?)", [revisionIds]);
+        await connection.query("DELETE FROM final_evidence_pack_item WHERE source_revision_id IN (?)", [revisionIds]);
+      }
+      await connection.query("DELETE FROM product_claim WHERE product_id = ? OR source_id IN (?)", [input.productId, sourceIds]);
+      await connection.query("DELETE FROM ingestion_batch_source_asset WHERE source_id IN (?)", [sourceIds]);
+      await connection.query("DELETE FROM knowledge_base_source_asset WHERE source_id IN (?)", [sourceIds]);
+      await connection.query("DELETE FROM source_revision WHERE source_id IN (?)", [sourceIds]);
+      await connection.query("DELETE FROM source_asset WHERE id IN (?)", [sourceIds]);
+    } else {
+      await connection.query("DELETE FROM product_claim WHERE product_id = ?", [input.productId]);
+    }
+
+    await connection.query("DELETE FROM knowledge_collection_snapshot WHERE product_id = ?", [input.productId]);
+    await connection.query(
+      "UPDATE knowledge_collection_source SET enabled = FALSE, default_product_id = NULL, default_product_name = NULL, last_status = 'disabled' WHERE default_product_id = ?",
+      [input.productId]
+    );
+    await connection.query("UPDATE knowledge_base_product_link SET status = 'archived' WHERE product_id = ?", [input.productId]);
+    if (knowledgeBaseIds.length) {
+      await connection.query(
+        `UPDATE knowledge_base kb
+         SET status = 'disabled', row_version = row_version + 1
+         WHERE kb.id IN (?)
+           AND NOT EXISTS (
+             SELECT 1 FROM knowledge_base_product_link link
+             WHERE link.knowledge_base_id = kb.id AND link.status = 'active'
+           )`,
+        [knowledgeBaseIds]
+      );
+    }
+    const [sourceSnapshotRows] = await connection.query<RowDataPacket[]>(
+      "SELECT id FROM source_snapshot WHERE product_id = ?",
+      [input.productId]
+    );
+    const sourceSnapshotIds = sourceSnapshotRows.map((row) => String(row.id));
+    if (sourceSnapshotIds.length) {
+      await connection.query("DELETE FROM source_snapshot_item WHERE source_snapshot_id IN (?)", [sourceSnapshotIds]);
+    }
+    await connection.query("DELETE FROM source_snapshot WHERE product_id = ?", [input.productId]);
+    await connection.query("DELETE FROM product_knowledge_profile_override_version WHERE product_id = ?", [input.productId]);
+    await connection.query(
+      `UPDATE product_entity
+       SET status = 'archived', is_promoting = FALSE, promotion_status = 'paused', strategy_pack_id = NULL,
+           row_version = row_version + 1
+       WHERE id = ?`,
+      [input.productId]
+    );
+
+    const deletedMaterialCount = sourceIds.length;
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "product_knowledge_base_deleted",
+      objectType: "product_entity",
+      objectId: input.productId,
+      beforeSummary: {
+        displayName: String(current.display_name),
+        status: String(current.status),
+        rowVersion: Number(current.row_version)
+      },
+      afterSummary: {
+        status: "archived",
+        deletedMaterialCount,
+        deletedRevisionCount: revisionIds.length,
+        disabledKnowledgeBaseCount: knowledgeBaseIds.length
+      },
+      correlationId: input.productId
+    });
+    await writeV5Idempotency(connection, {
+      idempotencyKey: input.idempotencyKey,
+      operationType: "delete_product_knowledge_base",
+      requestHash,
+      resourceType: "product_entity",
+      resourceId: input.productId,
+      responseStatus: "deleted",
+      responseSummary: { productId: input.productId, deletedMaterialCount }
+    });
+
+    return { replayed: false, productId: input.productId, deletedMaterialCount, indexNames };
+  });
+}
+
 export async function confirmProductOfficialUrlFromSourceRecord(input: {
   productId: string;
   officialUrl: string;

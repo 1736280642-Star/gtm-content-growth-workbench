@@ -59,6 +59,7 @@ const requiredFiles = [
   "src/app/monthly-review/page.tsx",
   "src/app/monthly-plan/page.tsx",
   "src/app/geo-monitor/page.tsx",
+  "src/app/content-monitor/page.tsx",
   "src/app/today/page.tsx",
   "src/app/products/[productId]/page.tsx",
   "src/components/ProductMaterialImport.tsx",
@@ -183,7 +184,29 @@ const requiredFiles = [
   "scripts/v5-phase2f-rollout-readiness.test.mjs",
   // Phase 2G: evidence-backed MonthlyReview proposals
   "scripts/v5-phase2g-monthly-review-contract.test.mjs",
-  "scripts/v5-phase2g-publish-lifecycle.integration.test.mjs"
+  "scripts/v5-phase2g-publish-lifecycle.integration.test.mjs",
+  // GEO parallel monitoring P0-P4: deterministic website audit + governed question monitoring
+  "database/migrations/20260816_032_v5_parallel_geo_monitoring.sql",
+  "src/lib/v5/site-audit-runner.ts",
+  "src/lib/v5/site-audit-repository.ts",
+  "src/lib/v5/geo-monitoring-contracts.ts",
+  "src/lib/v5/geo-monitoring-repository.ts",
+  "src/lib/v5/geo-monitoring-service.ts",
+  "src/components/GeoQuestionMonitoringPanel.tsx",
+  "src/app/api/v5/geo-monitoring-questions/route.ts",
+  "src/app/api/v5/geo-monitoring-questions/[id]/route.ts",
+  "workers/site-audit-worker.mjs",
+  "workers/geo-monitoring-scheduler.mjs",
+  "scripts/v5-parallel-geo-monitoring.test.mjs",
+  "database/migrations/20260817_035_v5_website_geo_closed_loop.sql",
+  "src/lib/v5/website-coverage-contracts.ts",
+  "src/lib/v5/website-coverage-repository.ts",
+  "src/lib/v5/product-geo-optimization-contracts.ts",
+  "src/lib/v5/product-geo-optimization-repository.ts",
+  "src/lib/v5/product-geo-optimization-service.ts",
+  "src/app/api/v5/content-monitor/product-optimizations/route.ts",
+  "scripts/v5-website-geo-closed-loop.test.mjs",
+  "docs/方案与规划/2026-08-17-产品官网前置审计与GEO批次闭环实现.md"
 ];
 
 for (const filePath of requiredFiles) addFileCheck(`required file: ${filePath}`, filePath);
@@ -193,14 +216,14 @@ addContentCheck("monthly navigation", "src/components/AppShell.tsx", [
   "/products",
   "/monthly-plan",
   "内容自动化",
-  "/geo-monitor",
-  "GEO 监控塔",
+  "/content-monitor",
+  "内容监控塔",
   "/settings"
 ]);
 addContentCheck("monthly permissions", "src/lib/permissions.ts", [
   "/knowledge",
   "/monthly-plan",
-  "/geo-monitor",
+  "/content-monitor",
   "/settings",
   "canManageMonthlyReviewProposals"
 ]);
@@ -320,10 +343,11 @@ addContentCheck("exception-first publishing monitor", "src/app/publishing/page.t
   "自动运行中的任务",
   "处理异常"
 ]);
-addContentCheck("unified GEO monitor tower", "src/app/geo-monitor/page.tsx", [
+addContentCheck("unified content monitor tower", "src/app/geo-monitor/page.tsx", [
   "总览",
   "内容表现",
   "AI 可见性",
+  "失败告警",
   "系统记录"
 ]);
 addContentCheck("automatic monthly orchestration", "src/lib/v5/monthly-automation-service.ts", [
@@ -551,10 +575,19 @@ addContentCheck("3027 Docker commands use the safe environment launcher", "scrip
   "node $script:WorkbenchComposeLauncher @Arguments",
   "node $script:WorkbenchComposeLauncher --profile full config --images"
 ]);
-addContentCheck("3027 production launcher clears dev override and verifies standalone mode", "scripts/start-docker-3027.ps1", [
-  '"-f", "compose.dev-3027.yaml"',
-  '"down", "--remove-orphans"',
-  '"-f", "compose.yaml"',
+addContentCheck("3027 production launcher delegates to the idempotent no-build entrypoint", "scripts/start-docker-3027.ps1", [
+  "ensure-workbench-3027.ps1"
+]);
+addContentCheck("3027 daily startup is locked, health-aware, and never rebuilds", "scripts/ensure-workbench-3027.ps1", [
+  "Enter-WorkbenchStartupLock",
+  "Test-WorkbenchHttpReady",
+  "Assert-WorkbenchProductionImagesAvailable",
+  '"up", "-d", "--no-build", "--pull", "never"',
+  "Assert-WorkbenchProductionMode"
+]);
+addContentCheck("3027 image building stays behind the explicit deployment command", "scripts/deploy-docker-3027.ps1", [
+  "Build-WorkbenchProductionImages",
+  '"up", "-d", "--no-build"',
   "Assert-WorkbenchProductionMode"
 ]);
 addContentCheck("3027 production mode assertion", "scripts/workbench-3027-common.ps1", [
@@ -699,6 +732,67 @@ addContentCheck("phase2g proposal freezes formal evidence references", "src/lib/
   "published_content:",
   "geo_capture_task:",
   "confirmed_gap:"
+]);
+addContentCheck("geo website audit is deterministic and fail-closed", "src/lib/v5/site-audit-runner.ts", [
+  "assertSafePublicUrl",
+  "page_audit_deterministic",
+  "SITE_AUDIT_RENDERER_URL",
+  "javascript_rendering_unverified",
+  "coreReadinessScore"
+]);
+addContentCheck("geo parallel monitoring schema separates runs, evidence, findings, diffs and questions", "database/migrations/20260816_032_v5_parallel_geo_monitoring.sql", [
+  "geo_site_audit_run",
+  "geo_site_audit_page",
+  "geo_site_audit_finding",
+  "geo_site_remediation_task",
+  "geo_site_audit_diff",
+  "geo_monitoring_question",
+  "monitoring_question_id",
+  "scheduled_for"
+]);
+addContentCheck("geo monitoring metrics use formal capture evidence", "src/lib/v5/geo-monitoring-repository.ts", [
+  "monitoring_question_id",
+  "ui_capture_real",
+  "wilson95",
+  "citationShareOfVoice",
+  "ensureCurrentMonthGeoMonitoringTasks"
+]);
+addContentCheck("geo monitor keeps website and question lines separate", "src/app/geo-monitor/page.tsx", [
+  "SiteAuditPanel",
+  "GeoQuestionMonitoringPanel",
+  "官网监控",
+  "问题监控"
+]);
+addContentCheck("monthly review only correlates same-product evidence", "src/lib/v5/monthly-review-service.ts", [
+  "item.productId === monitoringQuestion.productId",
+  "geo_site_audit_finding:",
+  "只支持相关性假设",
+  "hasCrossLineEvidence"
+]);
+addContentCheck("official website ingestion starts an incremental GEO audit", "src/lib/v5/rag/managed-source-import-service.ts", [
+  "registerOfficialWebsiteSourcesAndEnsureAudits",
+  "coverageProfileVersion",
+  "publicGeoReadiness"
+]);
+addContentCheck("website coverage constrains strategy types without creating a second plan", "src/lib/v5/product-strategy-pack-contracts.ts", [
+  "websiteCoverageDisposition",
+  "refresh_existing",
+  "applyWebsiteCoverageToArticlePortfolio"
+]);
+addContentCheck("product batch optimizer combines publication, capture and site evidence", "src/lib/v5/product-geo-optimization-repository.ts", [
+  "published_content_retest",
+  "stable_published_at",
+  "site_accessibility",
+  "current_month_candidate_pool",
+  "automaticExecutionAllowed: false"
+]);
+addContentCheck("GEO closed loop schema keeps diagnostics outside MonthlyPlan", "database/migrations/20260817_035_v5_website_geo_closed_loop.sql", [
+  "product_website_source_status",
+  "product_website_coverage_profile",
+  "product_geo_optimization_snapshot",
+  "scope_mode",
+  "target_solution_urls",
+  "target_entity_name"
 ]);
 
 const obsoleteCycleTokens = [

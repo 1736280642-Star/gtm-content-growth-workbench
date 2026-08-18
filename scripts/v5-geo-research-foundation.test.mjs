@@ -30,7 +30,7 @@ test("GEO research schema persists the auditable agent chain", async () => {
 test("research run cannot start without a governed source snapshot", async () => {
   const repository = await read("src/lib/v5/geo-research-repository.ts");
   assert.match(repository, /FROM source_snapshot/);
-  assert.match(repository, /research_source_snapshot_missing/);
+  assert.match(repository, /research_governance_bundle_missing/);
   assert.match(repository, /readV5Idempotency/);
   assert.match(repository, /writeV5GovernanceAudit/);
   assert.match(repository, /expectedProjectVersion/);
@@ -125,6 +125,8 @@ test("research synthesis cannot approve business strategy and hands off to the h
   assert.doesNotMatch(orchestration, /approveGeoBlueprint/);
   assert.match(automation, /compileProductStrategyPack/);
   assert.match(automation, /compileProductGeoStrategyContentPlan/);
+  assert.match(automation, /readLatestProductFixedExpression/);
+  assert.match(strategyRepository, /readLatestProductFixedExpression/);
   assert.match(strategyRepository, /pending_strategy_review/);
   assert.match(strategyService, /human_strategy_approval_required/);
 });
@@ -216,4 +218,28 @@ test("only the human-confirmed product GEO strategy is visible in the monthly st
   assert.match(handoff, /strategyPackId/);
   assert.match(handoff, /不是已批准的 MonthlyPlan/);
   assert.match(strategyPage, /GeoMonthlyStrategyHandoff/);
+});
+
+
+test("probe set is version-bound, persisted immutably, and reused by the worker", async () => {
+  const contracts = await read("src/lib/v5/geo-probe-contracts.ts");
+  const compiler = await read("src/lib/v5/geo-probe-compiler.ts");
+  const repository = await read("src/lib/v5/geo-research-repository.ts");
+  const worker = await read("workers/geo-research-worker.mjs");
+  const migration = await read("database/migrations/20260817_036_v5_geo_probe_snapshot.sql");
+  const probeTest = await read("scripts/v5-geo-probe-compiler.test.mjs");
+  const resultContracts = await read("src/lib/v5/geo-research-result-contracts.ts");
+  assert.match(contracts, /ProductEntityGraph/);
+  assert.match(contracts, /RoleScenarioMatrix/);
+  assert.match(contracts, /ProbeSetSnapshot/);
+  assert.match(compiler, /relationship_verification/);
+  assert.match(compiler, /scoringOnlyEntityIds/);
+  assert.match(repository, /geo_research_probe_set_snapshot/);
+  assert.match(repository, /probeSetSnapshot/);
+  assert.match(worker, /probeSetSnapshot: context\.probeSetSnapshot/);
+  assert.match(migration, /UNIQUE KEY uq_geo_probe_snapshot_run/);
+  assert.match(migration, /snapshot_json JSON NOT NULL/);
+  assert.match(probeTest, /blind probes do not expose target/);
+  assert.match(resultContracts, /ModelAnswerObservation/);
+  assert.match(resultContracts, /GeoResearchResultPack/);
 });

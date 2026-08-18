@@ -170,7 +170,7 @@ function createSettingsRuleChecks(input: {
           item: "日志接入",
           status: logModeLabels[input.logMode],
           detail: input.logMode === "demo_csv" ? "用于熟悉数据分析流程。" : "通过人工文件导入补充访问数据。",
-          action: "可以继续在 GEO 监控塔的官网监控中导入日志。",
+          action: "可以继续在内容监控塔的官网监控中导入日志。",
           nextStep: "ready"
         },
   ];

@@ -72,6 +72,7 @@ const stableStatusMeta: Partial<Record<FreeProductionStatus, FreeProductionStatu
   checking: { label: "检查中", color: "processing", nextAction: "等待系统完成确定性检查。" },
   repairing: { label: "修复中", color: "processing", nextAction: "等待系统完成一次自动修复。" },
   publishing: { label: "发布中", color: "processing", nextAction: "等待渠道返回发布结果。" },
+  draft_created: { label: "已写入草稿箱", color: "success", nextAction: "到公众号后台预览并人工发布。" },
   published: { label: "已发布", color: "success", nextAction: "查看发布结果。" },
   generation_failed: { label: "生成失败", color: "error", nextAction: "检查失败原因后安全重试。" },
   publish_failed: { label: "发布失败", color: "error", nextAction: "检查渠道连接后安全重试。" },

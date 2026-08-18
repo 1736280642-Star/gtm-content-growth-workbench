@@ -80,7 +80,9 @@ function toWorkspacePlanRecord(plan: V5MonthlyPlan, rulePackages: RulePackageOpt
 }
 
 function toFormalProductionTask(item: BatchQueueItem, strategyPackageId?: string): ProductionMatrixTask {
-  const status: ProductionMatrixTask["status"] = item.displayStatus === "published"
+  const status: ProductionMatrixTask["status"] = item.displayStatus === "intercepted"
+    ? "intercepted"
+    : item.displayStatus === "published"
     ? "published"
     : item.scheduleStatus === "active"
     ? "scheduled"

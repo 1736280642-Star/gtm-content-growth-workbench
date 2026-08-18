@@ -11,6 +11,7 @@ import { createCsdnGatewayHeaders } from "./lib/csdn-api-gateway.mjs";
 import { enforceCsdnContentFields, prepareCsdnArticleContent } from "./lib/csdn-content-format.mjs";
 import { submitAndPollWechatPublish, verifyWechatPublish } from "./lib/wechat-formal-publish.mjs";
 import { rewriteWorkbenchMediaSources } from "./lib/workbench-media-rewrite.mjs";
+import { fetchWorkbenchCover, parseWorkbenchCoverReference } from "./lib/workbench-cover-source.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -55,6 +56,7 @@ const mediaLibraryStoragePath = isAbsolute(process.env.V5_MEDIA_LIBRARY_STORAGE_
 const externalPlatformTimeoutMs = Number(process.env.WECHATSYNC_PLATFORM_TIMEOUT_MS || 30_000);
 const implementedPlatforms = ["weixin", "csdn", "juejin", "zhihu"];
 const arcsRunnerUrl = process.env.ARCS_RUNNER_URL || "http://127.0.0.1:9530";
+const workbenchAssetBaseUrl = process.env.WECHATSYNC_WORKBENCH_ASSET_BASE_URL || "http://127.0.0.1:3027";
 const publishLedgerPath =
   process.env.JOTO_PUBLISH_BRIDGE_LEDGER_PATH ||
   join(process.env.LOCALAPPDATA || join(homedir(), ".joto"), "JotoPublishRunner", "bridge-ledger.json");
@@ -512,23 +514,28 @@ async function checkCookiePlatformAuth(platform, platformLabel, cookieEnvName, e
   };
 }
 
-async function getWeixinAccessToken() {
+async function getWeixinAccessToken(forceRefresh = false) {
   const missingConfig = ["WECHAT_MP_APP_ID", "WECHAT_MP_APP_SECRET"].filter((name) => !process.env[name]?.trim());
 
   if (missingConfig.length) {
     return { ok: false, missingConfig, message: `缺少配置：${missingConfig.join(", ")}` };
   }
 
-  if (cachedAccessToken && cachedAccessToken.expiresAt > Date.now() + 60_000) {
+  if (!forceRefresh && cachedAccessToken && cachedAccessToken.expiresAt > Date.now() + 60_000) {
     return { ok: true, accessToken: cachedAccessToken.value };
   }
 
-  const url = new URL(`${wechatApiBase}/cgi-bin/token`);
-  url.searchParams.set("grant_type", "client_credential");
-  url.searchParams.set("appid", process.env.WECHAT_MP_APP_ID);
-  url.searchParams.set("secret", process.env.WECHAT_MP_APP_SECRET);
-
-  const response = await fetch(url);
+  const url = new URL(`${wechatApiBase}/cgi-bin/stable_token`);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "client_credential",
+      appid: process.env.WECHAT_MP_APP_ID,
+      secret: process.env.WECHAT_MP_APP_SECRET,
+      force_refresh: forceRefresh
+    })
+  });
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok || !payload.access_token) {
@@ -560,6 +567,7 @@ function getImageMimeType(filePath) {
   if (ext === ".gif") return "image/gif";
   if (ext === ".bmp") return "image/bmp";
   if (ext === ".jpeg" || ext === ".jpg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
 
   return "application/octet-stream";
 }
@@ -592,12 +600,29 @@ async function getWeixinThumbMediaId(accessToken, coverImageRef) {
     return { ok: true, mediaId: thumbMediaId };
   }
 
-  const resolvedPath = resolveProjectPath(thumbImagePath);
-
-  if (!existsSync(resolvedPath)) {
-    return {
-      ok: false,
-      message: `微信公众号封面图片不存在：${resolvedPath}`
+  let image;
+  if (parseWorkbenchCoverReference(thumbImagePath) !== undefined) {
+    try {
+      image = await fetchWorkbenchCover(thumbImagePath, {
+        baseUrl: workbenchAssetBaseUrl,
+        token: bridgeToken,
+        timeoutMs: Number(process.env.WECHATSYNC_WORKBENCH_ASSET_TIMEOUT_MS || 15_000)
+      });
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "工作台封面读取失败。" };
+    }
+  } else {
+    const resolvedPath = resolveProjectPath(thumbImagePath);
+    if (!existsSync(resolvedPath)) {
+      return {
+        ok: false,
+        message: `微信公众号封面图片不存在：${resolvedPath}`
+      };
+    }
+    image = {
+      data: readFileSync(resolvedPath),
+      mimeType: getImageMimeType(resolvedPath),
+      fileName: basename(resolvedPath)
     };
   }
 
@@ -606,8 +631,8 @@ async function getWeixinThumbMediaId(accessToken, coverImageRef) {
   url.searchParams.set("type", "image");
 
   const form = new FormData();
-  const imageBlob = new Blob([readFileSync(resolvedPath)], { type: getImageMimeType(resolvedPath) });
-  form.append("media", imageBlob, basename(resolvedPath));
+  const imageBlob = new Blob([image.data], { type: image.mimeType });
+  form.append("media", imageBlob, image.fileName);
 
   const response = await fetch(url, {
     method: "POST",
@@ -670,7 +695,7 @@ async function checkAuth(platform) {
     };
   }
 
-  const token = await getWeixinAccessToken();
+  let token = await getWeixinAccessToken();
   if (!token.ok) {
     return {
       authenticated: false,
@@ -1085,7 +1110,12 @@ async function syncWeixinArticle(input) {
     };
   }
 
-  const thumb = await getWeixinThumbMediaId(token.accessToken, coverImageRef);
+  let thumb = await getWeixinThumbMediaId(token.accessToken, coverImageRef);
+  if (!thumb.ok && [40014, 42001].includes(Number(thumb.errcode))) {
+    cachedAccessToken = undefined;
+    token = await getWeixinAccessToken(true);
+    if (token.ok) thumb = await getWeixinThumbMediaId(token.accessToken, coverImageRef);
+  }
   if (!thumb.ok) {
     return {
       ok: false,

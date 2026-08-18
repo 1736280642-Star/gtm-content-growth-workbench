@@ -1,27 +1,21 @@
 "use client";
 
-import { Alert, Button, Card, Form, Input, InputNumber, Radio, Space, Typography, message } from "antd";
+import { CheckOutlined, SendOutlined } from "@ant-design/icons";
+import { Alert, Button, Input, Space, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import type { SampleArticleFeedbackInput, SampleArticleReviewState } from "@/lib/v5/sample-calibration-contracts";
 
-const ratingLabels: Array<[keyof SampleArticleFeedbackInput["ratings"], string]> = [
-  ["boundaryClarity", "产品理解准确度"],
-  ["scenarioAuthenticity", "用户场景真实度"],
-  ["readability", "结构和重点合理度"],
-  ["productFit", "表达自然度与可信度"],
-  ["factualReliability", "发布就绪度"]
-];
-
-function lines(value: string) {
-  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-}
-
-export function SampleArticleReviewPanel({ draftVersionId }: { draftVersionId: string }) {
+export function SampleArticleReviewPanel({
+  draftVersionId,
+  onUpdated
+}: {
+  draftVersionId: string;
+  onUpdated?: () => void | Promise<void>;
+}) {
   const [state, setState] = useState<SampleArticleReviewState>();
-  const [loading, setLoading] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [loading, setLoading] = useState<"approve" | "revise">();
   const [messageApi, holder] = message.useMessage();
-  const [form] = Form.useForm();
-  const decision = Form.useWatch("decision", form);
 
   useEffect(() => {
     void fetch(`/api/v5/drafts/${encodeURIComponent(draftVersionId)}/sample-review`, { cache: "no-store" })
@@ -31,56 +25,72 @@ export function SampleArticleReviewPanel({ draftVersionId }: { draftVersionId: s
 
   if (!state?.eligible) return null;
 
-  async function submit() {
-    const values = await form.validateFields();
-    const feedback: SampleArticleFeedbackInput = {
-      decision: values.decision,
-      ratings: Object.fromEntries(ratingLabels.map(([key]) => [key, values[key]])) as SampleArticleFeedbackInput["ratings"],
-      strengths: lines(values.strengths || ""),
-      issues: values.issue?.trim() ? [{ category: values.issueCategory, segment: values.issueSegment || "全文", instruction: values.issue.trim() }] : [],
-      expressionDirectives: lines(values.expressionDirectives || ""),
-      reason: values.reason
-    };
-    setLoading(true);
+  async function submit(decision: SampleArticleFeedbackInput["decision"]) {
+    const revisionInstruction = instruction.trim();
+    if (decision === "changes_requested" && !revisionInstruction) {
+      messageApi.warning("请先写下希望模型如何修改这篇文章。");
+      return;
+    }
+    setLoading(decision === "approved" ? "approve" : "revise");
     try {
       const response = await fetch(`/api/v5/drafts/${encodeURIComponent(draftVersionId)}/sample-review`, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-idempotency-key": `sample-${draftVersionId}-${Date.now()}` },
-        body: JSON.stringify(feedback)
+        headers: { "content-type": "application/json", "x-idempotency-key": `sample-${draftVersionId}-${crypto.randomUUID()}` },
+        body: JSON.stringify({ decision, ...(revisionInstruction ? { revisionInstruction } : {}) })
       });
       const body = await response.json();
-      if (!response.ok || !body.ok) throw new Error(body.error?.message || "样稿验收失败");
-      setState((current) => current ? { ...current, latestDecision: feedback.decision, latestFeedback: feedback, strategyStatus: feedback.decision === "approved" ? "production_ready" : "pending_sample_review", calibrationVersionId: body.data.calibrationVersionId } : current);
-      if (feedback.decision === "changes_requested" && body.data.revision?.status === "generated") {
-        window.dispatchEvent(new CustomEvent("product-sample-updated"));
-        messageApi.success("反馈已记录，并已生成一版修订稿。");
-      } else if (feedback.decision === "changes_requested" && body.data.revision?.status === "failed") {
-        messageApi.warning(body.data.revision.nextAction || "反馈已记录，修订稿等待重试。");
+      if (!response.ok || !body.ok) throw new Error(body.error?.message || "样文操作失败");
+      if (decision === "approved") {
+        messageApi.success(body.data.strategyReady ? "这篇样文已确认，全部样文验收完成。" : "这篇样文已确认。");
       } else {
-        messageApi.success("样稿已确认，表达校准版本已冻结。");
+        setInstruction("");
+        messageApi.success("修改要求已发送，系统正在生成新版本。");
       }
+      await onUpdated?.();
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "样稿验收失败");
-    } finally { setLoading(false); }
+      messageApi.error(error instanceof Error ? error.message : "样文操作失败");
+    } finally {
+      setLoading(undefined);
+    }
   }
 
-  return <Card size="small" title="样稿质量验收" style={{ marginTop: 18 }}>
-    {holder}
-    {state.strategyStatus === "production_ready" ? <Alert showIcon type="success" message="样稿已通过，策略已进入 production_ready" description={<Space direction="vertical" size={2}><span>{`校准版本：${state.calibrationVersionId || "已冻结"}`}</span>{state.latestFeedback ? <span>{ratingLabels.map(([key, label]) => `${label} ${state.latestFeedback!.ratings[key]} 分`).join(" · ")}</span> : null}</Space>} /> : null}
-    <Typography.Paragraph type="secondary">只验收读者最终看到的正文。事实追溯和原始摘录保留在系统内部，不要求正文展示审计信息。</Typography.Paragraph>
-    <Form form={form} layout="vertical" initialValues={{ decision: "approved", scenarioAuthenticity: 4, boundaryClarity: 4, factualReliability: 4, readability: 4, productFit: 4, issueCategory: "expression" }}>
-      <Form.Item name="decision" label="验收结论" rules={[{ required: true }]}><Radio.Group options={[{ label: "确认通过", value: "approved" }, { label: "需要修改", value: "changes_requested" }]} /></Form.Item>
-      <Alert showIcon type="info" message="通过标准：五项均不低于 4 分，且不存在事实、结构或策略问题。" />
-      <Space wrap align="start">{ratingLabels.map(([key, label]) => <Form.Item key={key} name={key} label={label} rules={[{ required: true }]}><InputNumber min={1} max={5} precision={0} /></Form.Item>)}</Space>
-      <Form.Item name="strengths" label="值得保留的表达（一行一条）"><Input.TextArea rows={2} /></Form.Item>
-      <Space.Compact block>
-        <Form.Item name="issueCategory" label="主要问题类型" style={{ width: 150 }}><Radio.Group optionType="button" options={[{ label: "表达", value: "expression" }, { label: "结构", value: "structure" }, { label: "事实", value: "fact" }, { label: "策略", value: "strategy" }]} /></Form.Item>
-      </Space.Compact>
-      <Form.Item name="issueSegment" label="问题位置"><Input placeholder="例如：第二节或全文" /></Form.Item>
-      <Form.Item name="issue" label="具体修改要求"><Input.TextArea rows={2} /></Form.Item>
-      <Form.Item name="expressionDirectives" label="后续批量正文都应遵循的表达原则（一行一条）"><Input.TextArea rows={3} /></Form.Item>
-      <Form.Item name="reason" label="本次判断原因" rules={[{ required: true, max: 500 }]}><Input.TextArea rows={2} /></Form.Item>
-      <Button type="primary" loading={loading} onClick={() => void submit()}>{decision === "changes_requested" ? "提交并生成修订稿" : "提交样稿验收"}</Button>
-    </Form>
-  </Card>;
+  if (state.reviewStatus === "approved") {
+    return <Alert showIcon type="success" message="这篇样文已确认" description="系统已将最终版本冻结为当前文章类型的批量写作参考。" />;
+  }
+
+  return (
+    <div className="sample-review-composer">
+      {holder}
+      <div>
+        <Typography.Title level={5}>想修改哪里？直接告诉模型</Typography.Title>
+        <Typography.Text type="secondary">不用打分，也不用判断问题类型。事实与身份规则仍由系统自动校验。</Typography.Text>
+      </div>
+      <Input.TextArea
+        value={instruction}
+        onChange={(event) => setInstruction(event.target.value)}
+        rows={4}
+        maxLength={1200}
+        showCount
+        placeholder="例如：开头太官方，先从企业负责人真实遇到的效率困境写起；减少清单，多用连贯叙述。"
+      />
+      <Space wrap className="sample-review-actions">
+        <Button
+          icon={<SendOutlined />}
+          disabled={!instruction.trim()}
+          loading={loading === "revise"}
+          onClick={() => void submit("changes_requested")}
+        >
+          按要求重新生成
+        </Button>
+        <Button
+          type="primary"
+          icon={<CheckOutlined />}
+          loading={loading === "approve"}
+          onClick={() => void submit("approved")}
+        >
+          确认这篇样文
+        </Button>
+      </Space>
+    </div>
+  );
 }

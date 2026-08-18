@@ -17,6 +17,7 @@ const compiler = await import("../src/lib/v5/free-production-compiler.ts");
 const evidence = await import("../src/lib/v5/free-production-evidence.ts");
 const expressionPlan = await import("../src/lib/v5/free-production-expression-plan.ts");
 const validator = await import("../src/lib/v5/free-production-output-validator.ts");
+const humanWriting = await import("../src/lib/v5/human-writing-wechat.ts");
 const expressionRepository = await import("../src/lib/v5/free-content-expression-type-repository.ts");
 const expressionService = await import("../src/lib/v5/free-content-expression-type-service.ts");
 const productionService = await import("../src/lib/v5/free-production-service.ts");
@@ -173,6 +174,67 @@ test("generation evidence is cleaned, deduplicated, bounded, and traceable by so
   assert.deepEqual(evidence.supportedClaimsFromSections(sections, sources), ["AI 进入工作流"]);
 });
 
+test("task list supports guarded multi-select deletion and cover-gated publishing", async () => {
+  const [pageSource, tableSource, routeSource] = await Promise.all([
+    readFile(new URL("../src/app/free-production/tasks/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/FreeProductionTaskTable.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/free-production/batches/route.ts", import.meta.url), "utf8")
+  ]);
+  assert.match(pageSource, /取消选择/);
+  assert.match(pageSource, /删除/);
+  assert.match(pageSource, /发送到草稿箱/);
+  assert.match(pageSource, /hasRequiredFreeProductionAssets/);
+  assert.match(pageSource, /ready_for_confirmation/);
+  assert.match(tableSource, /rowSelection/);
+  assert.match(tableSource, /"publishing", "draft_created", "published"/);
+  assert.match(routeSource, /export async function DELETE/);
+
+  const batch = { id: "free-batch-delete", status: "ready_for_confirmation", version: 2, currentDraftArtifactId: "draft-delete" };
+  await productionRepository.updateFreeProductionState((state) => {
+    state.batches[batch.id] = batch;
+    state.tasks[`free-task-${batch.id}`] = { id: `free-task-${batch.id}`, batchId: batch.id };
+  });
+  const input = { items: [{ id: batch.id, expectedVersion: batch.version }], auditReason: "验收批量删除幂等与审计" };
+  const first = await productionService.deleteFreeProductionBatches(input, "test-delete-free-production");
+  const replay = await productionService.deleteFreeProductionBatches(input, "test-delete-free-production");
+  assert.deepEqual(first.deletedIds, [batch.id]);
+  assert.deepEqual(replay, first);
+  const state = await productionRepository.readFreeProductionState();
+  assert.equal(state.batches[batch.id], undefined);
+  assert.equal(state.tasks[`free-task-${batch.id}`], undefined);
+  assert.equal(state.audits.some((event) => event.action === "free_production_deleted" && event.objectId === batch.id), true);
+  await assert.rejects(
+    productionService.deleteFreeProductionBatches({ items: [{ id: "free-batch-idempotency", expectedVersion: 4 }], auditReason: "验收发布记录保护" }, "test-delete-published-batch"),
+    (error) => error?.code === "FREE_PRODUCTION_DELETE_PUBLISH_LOCKED"
+  );
+});
+
+test("正文预览可配置单篇公众号封面并随草稿请求传给 bridge", async () => {
+  const [pageSource, previewSource, coverSource, routeSource, serviceSource, storeSource, bridgeSource] = await Promise.all([
+    readFile(new URL("../src/app/free-production/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/WechatArticlePreview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/free-production/WechatCoverBindingPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/free-production/batches/[id]/cover/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/free-production-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/workbench-store.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/wechatsync-client.ts", import.meta.url), "utf8")
+  ]);
+  assert.match(pageSource, /onSaveCover=\{saveCover\}/);
+  assert.match(previewSource, /WechatCoverBindingPanel/);
+  assert.match(coverSource, /选择封面/);
+  assert.match(coverSource, /保存封面/);
+  assert.match(routeSource, /saveFreeProductionCover/);
+  assert.match(serviceSource, /free_production_cover_saved/);
+  assert.match(serviceSource, /coverUrl:\s*`workbench-cover:/);
+  assert.match(serviceSource, /workbench-cover:\$\{batch\.id\}/);
+  assert.match(serviceSource, /sendWechatsyncDraft/);
+  assert.match(serviceSource, /free_production_confirmed_and_sent_to_draft/);
+  assert.match(storeSource, /coverUrl:\s*schedule\.platform === "wechat"/);
+  assert.match(storeSource, /!schedule\.coverUrl\s*\?\s*process\.env\.WECHAT_MP_THUMB_MEDIA_ID/);
+  assert.match(bridgeSource, /host\.docker\.internal/);
+  assert.match(bridgeSource, /failure\.message\s*\|\|\s*`平台草稿创建失败/);
+});
+
 test("expression plan preserves the preset structure and exposes only missing business facts", async () => {
   const state = await expressionRepository.readFreeContentExpressionTypeState();
   const expression = Object.values(state.versions).find((item) => item.presetKey === "product_release");
@@ -240,17 +302,32 @@ test("JOTO 官方预览和正式 HTML 使用同一渲染器且正式产物不含
   assert.equal(wechatValidator.validateWechatHtml(publishHtml).passed, true);
 });
 
-test("公众号自由生产使用 human-writing 成稿检查", async () => {
+test("公众号自由生产保留 human-writing 提示但不阻断用户确认后的草稿发送", async () => {
   const state = await expressionRepository.readFreeContentExpressionTypeState();
   const expression = Object.values(state.versions).find((item) => item.presetKey === "industry_insight");
   assert.ok(expression);
   const sections = expression.structureModules.map((sectionKey, index) => ({
     sectionKey,
     heading: `章节 ${index + 1}`,
-    markdown: index === 0 ? "先说结论：这不是工具问题，而是业务问题。" : "团队先记录实际处理时间，再决定是否扩大使用范围。"
+    markdown: index === 0 ? "先说结论：这不是工具问题，而是业务问题。" : "团队先记录实际处理时间，由人工完成最终决策，再决定是否扩大使用范围。",
+    citations: [{ claimText: "团队记录实际处理时间", sourceIds: ["source-test"] }]
   }));
   const result = validator.validateFreeProductionOutput({ expression, productName: "JOTO", titleCandidates: ["标题一", "标题二", "标题三"], summary: "摘要", sections });
-  assert.equal(result.repairableIssues.some((item) => item.includes("human-writing") || item.includes("翻案腔") || item.includes("提示性冒号")), true);
+  assert.equal(result.repairableIssues.some((item) => item.includes("human-writing") || item.includes("翻案腔") || item.includes("提示性冒号")), false);
+  assert.equal(result.advisoryIssues.some((item) => item.includes("翻案腔") || item.includes("提示性冒号")), true);
+  assert.equal(result.passed, true);
+});
+
+test("公众号中文成稿检查会拦截句长齐平和指代短接造成的机械断句", () => {
+  const issues = humanWriting.findHumanWritingWechatIssues([
+    "这些任务有一个共同点：它们不是单次提问，而是完整任务。规则明确、重复度高、依赖专业经验，而且结果可以验收。过去，它们靠熟练员工投入大量时间完成；现在，团队希望 AI 参与执行。问题往往出现在执行之前——AI 不知道怎么接入真实工作。",
+    "模型没有变，任务也都是寻找漏洞，组织方式变化后，发现结果差出十倍以上，而且大多不重合。这组数字把企业使用 AI 时常被忽略的问题摆到眼前。"
+  ].join("\n\n"));
+  assert.equal(issues.some((item) => item.includes("连续四个长度接近")), true);
+  assert.equal(issues.some((item) => item.includes("这组数字")), true);
+
+  const natural = humanWriting.findHumanWritingWechatIssues("合同签完，他请全组吃了顿饭。回来的路上没人说话。\n\n这个项目谈了十一个月，中间黄过两次，第二次连办公室租金都是他自己垫的，垫到第四个月，家里已经拿不出更多现金。\n\n值不值，他不想算。");
+  assert.equal(natural.some((item) => item.includes("机械断句") || item.includes("连续四个长度接近")), false);
 });
 
 test("八套公众号风格使用不同结构而不是只更换标题颜色", () => {
@@ -287,12 +364,16 @@ test("自由内容公众号产物支持多风格、人工编辑和已绑定账�
 
   assert.match(contractSource, /wechatPresentation\?:/);
   assert.match(contractSource, /templateId:\s*WechatRenderableTemplateId/);
-  assert.match(serviceSource, /contentFormat:\s*isWechat\s*\?\s*"wechat_html"\s*:\s*"markdown"/);
+  assert.match(serviceSource, /sendWechatsyncDraft\(\{/);
+  assert.match(serviceSource, /contentFormat:\s*"wechat_html"/);
   assert.match(serviceSource, /renderJotoOfficialWechatPreviewDocument/);
   assert.match(serviceSource, /renderWechatHtml/);
   assert.match(serviceSource, /selectFreeProductionWechatLayout/);
   assert.match(serviceSource, /process\.env\.CONTENT_GENERATION_PROVIDER/);
   assert.match(serviceSource, /callAiProvider\(\{ provider,/);
+  assert.match(serviceSource, /regenerateFreeProductionArticle/);
+  assert.match(serviceSource, /frozenKnowledgeForRegeneration/);
+  assert.match(serviceSource, /artifact\.editorCheck = \{ deterministicResults: validation\.repairableIssues/);
   assert.match(previewSource, /artifact\.wechatPresentation\.previewHtml/);
   assert.match(previewSource, /WECHAT_LAYOUT_TEMPLATES/);
   assert.match(previewSource, /选择公众号排版风格/);
@@ -306,7 +387,7 @@ test("自由内容公众号产物支持多风格、人工编辑和已绑定账�
   assert.match(serviceSource, /FREE_PRODUCTION_WECHAT_ACCOUNT_NOT_BOUND/);
   assert.match(workspaceSource, /WechatPublishAccountBar/);
   assert.match(accountBarSource, /新增账号绑定/);
-  assert.match(accountBarSource, /去发布/);
+  assert.match(accountBarSource, /发送到草稿箱/);
   assert.match(accountBarSource, /publish-account-binding/);
   assert.equal((previewSource.match(/ConfirmAutoPublishButton/g) || []).length, 0);
 });

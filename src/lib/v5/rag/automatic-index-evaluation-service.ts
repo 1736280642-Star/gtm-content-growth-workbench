@@ -97,7 +97,7 @@ export async function evaluateAutomaticRagIndexSnapshot(
       const hits = (await openSearch.keywordSearch(snapshot.indexName, request, 10)).map((item) => item.chunk);
       const exactClaimHit = hits.some((chunk) => chunk.claimIds.includes(claim.claimId));
       const forbiddenText = normalized(claim.normalizedClaim);
-      const forbiddenTextHit = expected === "blocked" && claim.reviewStatus !== "superseded" && forbiddenText.length >= 8 && hits.some((chunk) => {
+      const forbiddenTextHit = expected === "blocked" && claim.reviewStatus === "rejected" && forbiddenText.length >= 8 && hits.some((chunk) => {
         const content = normalized(`${chunk.content}\n${chunk.originalQuote}`);
         return content.includes(forbiddenText) || forbiddenText.includes(content);
       });

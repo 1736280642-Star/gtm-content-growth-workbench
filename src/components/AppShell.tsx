@@ -18,7 +18,7 @@ const mainNavItems = [
   { key: "/products", icon: <BookOutlined />, label: <Link href="/products">产品知识库</Link> },
   { key: "/content-automation", icon: <ControlOutlined />, label: <Link href="/content-automation">内容自动化</Link> },
   { key: "/free-production", icon: <WechatOutlined />, label: <Link href="/free-production">公众号内容生产</Link> },
-  { key: "/geo-monitor", icon: <FundProjectionScreenOutlined />, label: <Link href="/geo-monitor">GEO 监控塔</Link> },
+  { key: "/content-monitor", icon: <FundProjectionScreenOutlined />, label: <Link href="/content-monitor">内容监控塔</Link> },
   { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">设置</Link> },
 ];
 

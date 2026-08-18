@@ -6,6 +6,7 @@ import {
   type ContentTypeRuleSnapshot,
   type ExpressionRuleSnapshot,
   type FinalEvidencePackSnapshot,
+  type ProductionEntityIdentitySnapshot,
   type ProductRuleSnapshot,
   type ProductionArtifact,
   type ProductionContractSnapshot,
@@ -25,8 +26,8 @@ export interface CompileProductionContractInput {
   expressionRule: ExpressionRuleSnapshot;
   governance: ProductionContractSnapshot["governance"];
   promotionProfiles: PromotionProfileVersion[];
-  minTraceableFactCount?: number;
-  requireHumanBoundary?: boolean;
+  requiredCoreClaimIds: string[];
+  entityIdentity: ProductionEntityIdentitySnapshot;
   fixedExpressions?: RequiredFixedExpression[];
   compiledAt?: string;
 }
@@ -78,6 +79,15 @@ function assertEvidence(input: CompileProductionContractInput) {
   const missingRoles = requiredRoles.filter((role) => !availableRoles.has(role));
   if (missingRoles.length) {
     throw new ProductionDomainError("evidence_missing", "EvidencePack 缺少内容类型或产品规则要求的证据角色。", missingRoles);
+  }
+  const approvedClaimIds = new Set(evidencePack.evidenceItems.flatMap((item) => item.claimIds));
+  const missingCoreClaims = input.requiredCoreClaimIds.filter((claimId) => !approvedClaimIds.has(claimId));
+  if (!input.requiredCoreClaimIds.length || missingCoreClaims.length) {
+    throw new ProductionDomainError(
+      "evidence_missing",
+      "当前选题没有形成可执行的核心 Claim 计划。",
+      missingCoreClaims.length ? missingCoreClaims : [evidencePack.evidencePackId]
+    );
   }
 }
 
@@ -143,8 +153,8 @@ export function compileProductionContract(input: CompileProductionContractInput)
     ctaPlan,
     fixedExpressions: input.fixedExpressions || [],
     validatorPolicy: {
-      minTraceableFactCount: input.minTraceableFactCount ?? 8,
-      requireHumanBoundary: input.requireHumanBoundary ?? true,
+      requiredCoreClaimIds: uniqueSorted(input.requiredCoreClaimIds),
+      entityIdentity: input.entityIdentity,
       allowedUrls,
       prohibitedTerms,
       requiredSections,

@@ -12,6 +12,7 @@ import { resolveWechatPlatformKey } from "@/lib/v5/wechat-presentation-contracts
 import { SampleArticleReviewPanel } from "@/components/SampleArticleReviewPanel";
 
 const statusMeta: Record<ProductionMatrixTask["status"], { label: string; color: string }> = {
+  intercepted: { label: "已拦截", color: "default" },
   ready_for_generation: { label: "待生成", color: "blue" },
   generating: { label: "生成中", color: "processing" },
   available: { label: "可用 · 系统已检查", color: "green" },

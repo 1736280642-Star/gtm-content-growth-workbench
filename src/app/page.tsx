@@ -62,6 +62,7 @@ interface HomeState {
 const initialState: HomeState = { publishJobs: [], products: [] };
 
 const taskStatusLabels: Record<ProductionTaskStatus, string> = {
+  intercepted: "已拦截",
   ready_for_generation: "待生成",
   generating: "生成中",
   available: "已成稿",
@@ -199,7 +200,7 @@ export default function WorkbenchHomePage() {
       { key: "production", label: "内容生产", metric: `${produced}/${tasks.length} 篇`, progress: percent(produced, tasks.length), href: "/monthly-plan" },
       { key: "schedule", label: "发布排程", metric: `${scheduled}/${tasks.length} 篇`, progress: percent(scheduled, tasks.length), href: "/monthly-plan" },
       { key: "publishing", label: "发布回传", metric: `${publicJobs} 个公开结果`, progress: percent(publicJobs, state.publishJobs.length), href: "/geo-monitor" },
-      { key: "review", label: "数据复盘", metric: `${state.dashboard?.metrics.aiBotPv || 0} AI 访问`, progress: percent(published, target), href: "/geo-monitor" }
+      { key: "review", label: "内容监控塔", metric: `${state.dashboard?.metrics.aiBotPv || 0} AI 访问`, progress: percent(published, target), href: "/content-monitor" }
     ].map((item) => ({ ...item, status: statusByKey[item.key]?.status || "waiting", detail: statusByKey[item.key]?.detail }));
 
     const productionBreakdown = (["ready_for_generation", "generating", "available", "scheduled", "published", "awaiting_material", "system_recovering"] as ProductionTaskStatus[])

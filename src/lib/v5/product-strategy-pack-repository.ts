@@ -102,6 +102,31 @@ export async function readCurrentProductStrategyPack(productId: string) {
   return rows[0] ? mapPack(rows[0]) : undefined;
 }
 
+export async function readLatestProductFixedExpression(productId: string): Promise<ProductFixedExpressionRule | undefined> {
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT content_plan_json
+     FROM product_strategy_packs
+     WHERE product_id = ? AND status <> 'rejected'
+     ORDER BY strategy_version DESC, compiled_at DESC`,
+    [productId]
+  );
+  for (const row of rows) {
+    const plan = parseV5Json<Record<string, unknown>>(row.content_plan_json, {});
+    const fixedExpression = plan.fixedExpression;
+    if (!fixedExpression || typeof fixedExpression !== "object" || Array.isArray(fixedExpression)) continue;
+    const rule = fixedExpression as Record<string, unknown>;
+    const text = typeof rule.text === "string" ? rule.text.trim() : "";
+    const positions = Array.isArray(rule.positions)
+      ? rule.positions.filter((item): item is "opening" | "body" | "ending" => ["opening", "body", "ending"].includes(String(item)))
+      : [];
+    const channels = Array.isArray(rule.channels)
+      ? rule.channels.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [];
+    if (text && positions.length > 0 && channels.length > 0) return { text, positions, channels };
+  }
+  return undefined;
+}
+
 export async function compileProductStrategyPack(input: {
   productId: string;
   geoBlueprintId: string;

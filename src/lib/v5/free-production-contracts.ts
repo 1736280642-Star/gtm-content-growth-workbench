@@ -23,7 +23,7 @@ export type VisualSuggestionMode = "off" | "placeholders";
 export type FreeProductionSourceMode = "knowledge" | "facts" | "facts_with_meeting_text";
 export type FreeContentExpressionTypeStatus = "draft" | "active" | "archived";
 export type PromotionStrength = "restrained" | "moderate" | "explicit";
-export type FreeProductionStatus = "draft" | "compiling" | "generating" | "checking" | "repairing" | "needs_input" | "ready_for_confirmation" | "blocked" | "publishing" | "published" | "generation_failed" | "publish_failed" | "cancelled";
+export type FreeProductionStatus = "draft" | "compiling" | "generating" | "checking" | "repairing" | "needs_input" | "ready_for_confirmation" | "blocked" | "publishing" | "draft_created" | "published" | "generation_failed" | "publish_failed" | "cancelled";
 export type RiskAndGapStatus = "ready" | "needs_input" | "needs_approval" | "warning" | "blocked";
 export type SupplementInputType = "text" | "textarea" | "date" | "url" | "select" | "file";
 
@@ -247,6 +247,14 @@ export interface DraftSection {
   citations?: Array<{ claimText: string; sourceIds: string[] }>;
 }
 
+export interface HotspotHookPlan {
+  hookType: "contrast" | "consequence" | "question" | "scene";
+  factAnchor: string;
+  readerTension: string;
+  bridgeQuestion: string;
+  titleUse: "use" | "optional" | "avoid";
+}
+
 export interface HotspotIntegrationPlan {
   provider: "aihot";
   hotspotId: string;
@@ -260,8 +268,15 @@ export interface HotspotIntegrationPlan {
   relevanceScore: number;
   selectionReason: string;
   writingAngle: string;
+  hookPlan: HotspotHookPlan;
   affectedSectionKeys: string[];
   riskNotes: string[];
+  sourceEvidenceVersion: string;
+  sourceTitle: string;
+  sourceProvider: string;
+  sourceContentHash: string;
+  sourceFetchedAt: string;
+  sourceEvidenceIds: string[];
   hotspotDataUpdatedAt: string;
   hotspotDataFreshness: "live" | "cached";
   integratedAt: string;
@@ -359,6 +374,8 @@ export interface FreeProductionBatch {
   confirmedContentDigest?: string;
   publishedAt?: string;
   publishedUrl?: string;
+  draftCreatedAt?: string;
+  draftUrl?: string;
   externalRecordId?: string;
   failureCode?: string;
   failureMessage?: string;
@@ -382,6 +399,8 @@ export interface FreeProductionTask {
   contentDigest?: string;
   publishedAt?: string;
   publishedUrl?: string;
+  draftCreatedAt?: string;
+  draftUrl?: string;
   failureCode?: string;
   failureMessage?: string;
   nextAction?: string;

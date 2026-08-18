@@ -1,11 +1,12 @@
 "use client";
 
-import { CheckCircleFilled, EyeOutlined, ReloadOutlined, SettingOutlined, WarningOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Checkbox, Collapse, Descriptions, Drawer, Empty, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
+import { CheckCircleFilled, EyeOutlined, ReloadOutlined, SettingOutlined, StopOutlined, WarningOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Checkbox, Collapse, Descriptions, Drawer, Empty, Popconfirm, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
 import type { TableProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { MarkdownArticle } from "@/components/MarkdownArticle";
 import type { ProductGeoOverview } from "@/lib/v5/geo-research-contracts";
 import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
 import type { ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
@@ -25,6 +26,7 @@ function taskStatus(task: ProductionMatrixTask) {
   if (task.status === "generating") return { label: "正在生成", color: "processing" };
   if (task.status === "awaiting_material") return { label: "等待资料", color: "gold" };
   if (task.status === "system_recovering") return { label: "系统处理中", color: "orange" };
+  if (task.status === "intercepted") return { label: "已拦截", color: "red" };
   return { label: task.status, color: "default" };
 }
 
@@ -53,6 +55,11 @@ function ContentAutomationWorkspace() {
   const [scopeOpen, setScopeOpen] = useState(false);
   const [strategyProductId, setStrategyProductId] = useState<string>();
   const [savingProductId, setSavingProductId] = useState<string>();
+  const [previewTask, setPreviewTask] = useState<ProductionMatrixTask>();
+  const [previewMarkdown, setPreviewMarkdown] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string>();
+  const [interceptingTaskId, setInterceptingTaskId] = useState<string>();
   const [messageApi, contextHolder] = message.useMessage();
 
   useEffect(() => {
@@ -93,8 +100,9 @@ function ContentAutomationWorkspace() {
   const promoting = overviews.filter((item) => item.isPromoting);
   const published = tasks.filter((item) => item.status === "published").length;
   const generating = tasks.filter((item) => item.status === "generating" || item.status === "ready_for_generation").length;
-  const pendingPublish = tasks.filter((item) => Boolean(item.scheduledAt) && item.status !== "published").length;
-  const failureAlerts = tasks.filter((item) => classifyProductionResponsibility(item.status).userActionRequired);
+  const pendingPublish = tasks.filter((item) => Boolean(item.scheduledAt) && !["published", "intercepted"].includes(item.status)).length;
+  const interceptedTasks = tasks.filter((item) => item.status === "intercepted");
+  const failureAlerts = tasks.filter((item) => item.status !== "intercepted" && (classifyProductionResponsibility(item.status).userActionRequired || Boolean(item.failureReason) || item.ctaValidationStatus === "failed"));
   const taskProductById = useMemo(() => new Map(productGroups.flatMap((group) => group.tasks.map((task) => [task.taskId, { productId: group.productId, productName: group.productName }] as const))), [productGroups]);
   const activeTasks = useMemo(() => tasks
     .filter((task) => task.status !== "published")
@@ -105,19 +113,88 @@ function ContentAutomationWorkspace() {
   const selectedGroup = productGroups.find((item) => item.productId === strategyProductId);
   const selectedPack = selectedGroup ? packages.find((item) => item.productId === selectedGroup.productId) : undefined;
 
+  async function openArticle(task: ProductionMatrixTask) {
+    setPreviewTask(task);
+    setPreviewMarkdown("");
+    setPreviewError(undefined);
+    const summary = task.currentDraft || task.lastUsableDraft;
+    if (summary?.markdown && summary.bodyIncluded !== false) {
+      setPreviewMarkdown(summary.markdown);
+      return;
+    }
+    const draftId = task.formalDraftId || summary?.draftId;
+    if (!draftId) {
+      setPreviewError("正文仍在生成，暂时无法查看。");
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const response = await fetch(`/api/v5/drafts/${encodeURIComponent(draftId)}`, { cache: "no-store" });
+      const body = await response.json() as { ok?: boolean; data?: { markdown?: string }; error?: { message?: string } };
+      if (!response.ok || !body.ok || !body.data?.markdown) throw new Error(body.error?.message || "正文读取失败，请稍后重试。");
+      setPreviewMarkdown(body.data.markdown);
+    } catch (reason) {
+      setPreviewError(reason instanceof Error ? reason.message : "正文读取失败，请稍后重试。");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function interceptPublish(task: ProductionMatrixTask) {
+    if (!workspace?.plan) {
+      messageApi.error("月度计划状态尚未就绪，请刷新后重试。");
+      return;
+    }
+    setInterceptingTaskId(task.taskId);
+    try {
+      const response = await fetch(`/api/v5/monthly-plans/${encodeURIComponent(month)}/tasks/${encodeURIComponent(task.taskId)}/interception`, {
+        method: "PATCH",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({ expectedVersion: workspace.plan.version, auditReason: "用户从内容自动化页面拦截发布" })
+      });
+      const body = await response.json() as { ok?: boolean; message?: string; error?: { message?: string } };
+      if (!response.ok || !body.ok) throw new Error(body.error?.message || "拦截发布失败，请稍后重试。");
+      await refresh(month);
+      messageApi.success(body.message || "已拦截发布");
+    } catch (reason) {
+      messageApi.error(reason instanceof Error ? reason.message : "拦截发布失败，请稍后重试。");
+    } finally {
+      setInterceptingTaskId(undefined);
+    }
+  }
+
   const taskColumns: NonNullable<TableProps<ProductionMatrixTask>["columns"]> = [
     { title: "文章", dataIndex: "title", ellipsis: true },
     { title: "产品", render: (_, task) => taskProductById.get(task.taskId)?.productName || "待确认" },
     { title: "渠道", dataIndex: "channel" },
     { title: "预计发布时间", dataIndex: "scheduledAt", render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "系统计算中" },
     { title: "状态", render: (_, task) => { const status = taskStatus(task); return <Tag color={status.color}>{status.label}</Tag>; } },
-    { title: "结果", render: (_, task) => {
+    { title: "操作", width: 260, render: (_, task) => {
       const taskProduct = taskProductById.get(task.taskId);
-      return task.formalDraftId
-        ? <Link href={`/v5/drafts/${encodeURIComponent(task.formalDraftId)}`}>查看正文</Link>
-        : classifyProductionResponsibility(task.status).userActionRequired && taskProduct?.productId !== "unassigned"
+      const hasDraft = Boolean(task.formalDraftId || task.currentDraft || task.lastUsableDraft);
+      return <Space size={8} wrap>
+        {hasDraft ? <Button size="small" icon={<EyeOutlined />} onClick={() => void openArticle(task)}>查看正文</Button> : null}
+        {classifyProductionResponsibility(task.status).userActionRequired && taskProduct?.productId !== "unassigned"
           ? <Link href={`/products/${encodeURIComponent(taskProduct?.productId || "")}?tab=materials`}><Button danger size="small" icon={<WarningOutlined />}>补充资料</Button></Link>
-          : <Typography.Text type="secondary">系统自动处理</Typography.Text>;
+          : null}
+        {task.status === "published"
+          ? null
+          : task.status === "intercepted"
+          ? <Typography.Text type="danger">已停止自动发布</Typography.Text>
+          : <Popconfirm
+              title="确认拦截发布？"
+              description="拦截后，这篇文章不会进入后续自动发布。"
+              okText="确认拦截"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => interceptPublish(task)}
+            >
+              <Button danger size="small" icon={<StopOutlined />} loading={interceptingTaskId === task.taskId}>拦截发布</Button>
+            </Popconfirm>}
+        {!hasDraft && !classifyProductionResponsibility(task.status).userActionRequired && task.status !== "intercepted"
+          ? <Typography.Text type="secondary">正文生成后可查看</Typography.Text>
+          : null}
+      </Space>;
     } }
   ];
 
@@ -148,10 +225,11 @@ function ContentAutomationWorkspace() {
     </Card>
 
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 16 }}>
-      <Card><Statistic title="已发布" value={published} suffix="篇" /></Card>
-      <Card><Statistic title="正在生成" value={generating} suffix="篇" /></Card>
-      <Card><Statistic title="待发布" value={pendingPublish} suffix="篇" /></Card>
-      <Card><Statistic title="失败告警" value={failureAlerts.length} suffix="项" valueStyle={{ color: failureAlerts.length ? "#cf1322" : undefined }} /></Card>
+      <Card><Statistic title="已发布" value={published} suffix="篇" valueStyle={{ color: "#389e0d" }} /></Card>
+      <Card><Statistic title="正在生成" value={generating} suffix="篇" valueStyle={{ color: "#389e0d" }} /></Card>
+      <Card><Statistic title="待发布" value={pendingPublish} suffix="篇" valueStyle={{ color: "#389e0d" }} /></Card>
+      <Card><Statistic title="被拦截" value={interceptedTasks.length} suffix="篇" valueStyle={{ color: "#cf1322" }} /></Card>
+      <Card><Statistic title="失败告警" value={failureAlerts.length} suffix="项" valueStyle={{ color: "#d46b08" }} /></Card>
     </div>
 
     <Card title="产品运行状态" style={{ marginBottom: 16 }}>
@@ -167,7 +245,7 @@ function ContentAutomationWorkspace() {
 
     <Card
       title="文章与排程队列"
-      extra={<Space size={8}><Tag color="blue">流转中 {activeTasks.length}</Tag><Tag>已归档 {publishedTasks.length}</Tag></Space>}
+      extra={<Space size={8}><Tag color="blue">流转中 {activeTasks.length - interceptedTasks.length}</Tag><Tag color="red">被拦截 {interceptedTasks.length}</Tag><Tag>已归档 {publishedTasks.length}</Tag></Space>}
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>默认只展示仍在生成、排程或等待处理的文章；发布完成后自动移入下方归档。</Typography.Paragraph>
       {activeTasks.length ? (
@@ -185,6 +263,18 @@ function ContentAutomationWorkspace() {
         />
       ) : null}
     </Card>
+
+    <Drawer
+      title={previewTask ? `查看正文：${previewTask.title}` : "查看正文"}
+      open={Boolean(previewTask)}
+      onClose={() => { setPreviewTask(undefined); setPreviewMarkdown(""); setPreviewError(undefined); }}
+      width={760}
+      extra={previewTask ? <Tag color={previewTask.status === "intercepted" ? "red" : "green"}>{taskStatus(previewTask).label}</Tag> : null}
+    >
+      {previewLoading ? <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "24px 0" }}><Spin /><span>正在读取正文</span></div> : null}
+      {previewError ? <Alert type="error" showIcon message="正文读取失败" description={previewError} /> : null}
+      {!previewLoading && !previewError ? <MarkdownArticle markdown={previewMarkdown} /> : null}
+    </Drawer>
 
     <Drawer title="选择推广产品" open={scopeOpen} onClose={() => setScopeOpen(false)} width={520}>
       <Space direction="vertical" size={14} style={{ width: "100%" }}>{products.map((product) => { const checked = Boolean(overviews.find((item) => item.productId === product.productId)?.isPromoting); return <Card size="small" key={product.productId}><Checkbox checked={checked} disabled={savingProductId === product.productId} onChange={(event) => void togglePromotion(product.productId, event.target.checked)}>{product.displayName}</Checkbox></Card>; })}</Space>

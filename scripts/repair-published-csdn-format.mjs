@@ -14,6 +14,7 @@ const args = new Map(
 );
 const apply = args.get("apply") === "true";
 const onlyIndex = args.has("only-index") ? Number(args.get("only-index")) : undefined;
+const onlyArticleId = String(args.get("article-id") || "").trim();
 const auditReason = String(args.get("audit-reason") || "").trim();
 const baseUrl = String(args.get("base-url") || "http://127.0.0.1:3027").replace(/\/$/, "");
 const runnerToken = String(process.env.JOTO_PUBLISH_RUNNER_TOKEN || process.env.WECHATSYNC_BRIDGE_TOKEN || "").trim();
@@ -27,7 +28,7 @@ async function readState() {
   return payload.state;
 }
 
-function selectArticles(state) {
+function selectArticles(state, targetArticleId = "") {
   const variants = new Map((state.platformDraftVariants || []).map((item) => [item.id, item]));
   const drafts = new Map((state.drafts || []).map((item) => [item.id, item]));
   const attempts = state.publishAttempts || [];
@@ -36,13 +37,14 @@ function selectArticles(state) {
 
   for (const schedule of state.publishSchedules || []) {
     if (schedule.platform !== "csdn" || !schedule.publicUrl || seen.has(schedule.matrixItemId)) continue;
+    const publicArticleId = String(schedule.publicUrl).match(/\/details\/(\d+)/)?.[1] || "";
+    if (targetArticleId && publicArticleId !== targetArticleId) continue;
     const variant = variants.get(schedule.platformVariantId);
     const draft = drafts.get(schedule.draftId);
     const relatedAttempts = attempts
       .filter((item) => item.scheduleId === schedule.id)
       .sort((left, right) => String(right.finishedAt || right.startedAt || "").localeCompare(String(left.finishedAt || left.startedAt || "")));
     const articleId = String(schedule.platformArticleId || relatedAttempts.find((item) => item.platformArticleId)?.platformArticleId || "").trim();
-    const publicArticleId = String(schedule.publicUrl).match(/\/details\/(\d+)/)?.[1] || "";
     if (!articleId || articleId !== publicArticleId) {
       throw new Error(`CSDN article identity mismatch for schedule ${schedule.id}`);
     }
@@ -83,7 +85,11 @@ async function updateCsdnArticle(article) {
 }
 
 const state = await readState();
-let articles = selectArticles(state);
+let articles = selectArticles(state, onlyArticleId);
+if (onlyArticleId) {
+  articles = articles.filter((article) => article.articleId === onlyArticleId);
+  if (!articles.length) throw new Error(`article-id ${onlyArticleId} was not found in published CSDN schedules`);
+}
 if (Number.isInteger(onlyIndex)) {
   if (onlyIndex < 1 || onlyIndex > articles.length) throw new Error(`only-index must be between 1 and ${articles.length}`);
   articles = [articles[onlyIndex - 1]];
@@ -91,6 +97,9 @@ if (Number.isInteger(onlyIndex)) {
 
 const preview = articles.map((article, index) => ({
   index: Number.isInteger(onlyIndex) ? onlyIndex : index + 1,
+  scheduleId: article.schedule.id,
+  articleId: article.articleId,
+  title: article.title,
   sourceLength: article.sourceMarkdown.length,
   formattedLength: article.formattedMarkdown.length,
   duplicateLeadingH1Removed: /^#\s+/.test(article.sourceMarkdown) && !/^#\s+/.test(article.formattedMarkdown),

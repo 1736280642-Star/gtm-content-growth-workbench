@@ -9,3 +9,8 @@ function load() { const filePath = path.join(process.cwd(), "src/lib/v5/rag/eval
 const passing = { unapprovedProductionSources: 0, crossProductHits: 0, permissionBoundaryHits: 0, blockedClaimHits: 0, plannedAsCurrentHits: 0, claimLocatorCompleteness: 1, scopedFactRetention: 1, coreClaimRecallAt10: .95, conditionalLimitationRecall: 1, officialCitationHitRate: 1, duplicateClusterTop5Max: 1, previewRiskAccuracy: .95, finalPackDecisionAccuracy: .95, blockingFalseNegatives: 0 };
 test("blocking safety metrics cannot be hidden by averages", () => { const { evaluateRagMetrics } = load(); assert.equal(evaluateRagMetrics(passing).passed, true); const failed = evaluateRagMetrics({ ...passing, coreClaimRecallAt10: 1, permissionBoundaryHits: 1 }); assert.equal(failed.passed, false); assert.equal(failed.blockers.some((item) => item.startsWith("permissionBoundaryHits")), true); });
 test("badcases return to the owning stage", () => { const { routeRagBadcase } = load(); assert.equal(routeRagBadcase("claim_status_wrong").stage, "governance"); assert.equal(routeRagBadcase("cross_product_recall").stage, "retrieval"); assert.equal(routeRagBadcase("stale_pack_used").stage, "evidence"); });
+test("disputed claim text overlap is advisory while rejected text remains blocking", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/lib/v5/rag/automatic-index-evaluation-service.ts"), "utf8");
+  assert.match(source, /claim\.reviewStatus === "rejected"/);
+  assert.doesNotMatch(source, /claim\.reviewStatus !== "superseded"/);
+});

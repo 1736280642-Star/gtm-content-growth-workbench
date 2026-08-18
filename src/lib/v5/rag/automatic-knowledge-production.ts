@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { V5AuthorityLevel, V5SourceLocator } from "../knowledge-governance-contracts";
 
-export const AUTOMATIC_KNOWLEDGE_POLICY_VERSION = "automatic-knowledge-policy@4";
-export const AUTOMATIC_CLAIM_EXTRACTOR_VERSION = "automatic-markdown-claim-extractor@3";
+export const AUTOMATIC_KNOWLEDGE_POLICY_VERSION = "automatic-knowledge-policy@6";
+export const AUTOMATIC_CLAIM_EXTRACTOR_VERSION = "automatic-markdown-claim-extractor@4";
 
 export interface AutomaticKnowledgeDocument {
   sourceId: string;
@@ -174,7 +174,7 @@ function claimDisplayText(value: string) {
     .trim();
 }
 
-function claimNoiseReasons(unit: MarkdownUnit, document: AutomaticKnowledgeDocument) {
+function claimNoiseReasons(unit: MarkdownUnit, document: Pick<AutomaticKnowledgeDocument, "productName">) {
   const text = unit.text.trim();
   const display = claimDisplayText(text);
   const links = [...text.matchAll(/\[[^\]]*\]\(https?:\/\/[^)]+\)/gi)];
@@ -255,6 +255,36 @@ function markdownUnits(markdown: string): MarkdownUnit[] {
     paragraphIndex += 1;
   }
   return units;
+}
+
+export interface ParsedWebNoiseCleaningResult {
+  markdown: string;
+  removed: Array<{ originalQuote: string; reasons: string[] }>;
+}
+
+export function cleanParsedWebMarkdown(
+  markdown: string,
+  input: { productName: string }
+): ParsedWebNoiseCleaningResult {
+  const normalized = markdown.replace(/\r\n/g, "\n").trim();
+  const noiseByStart = new Map<number, { originalQuote: string; reasons: string[] }>();
+  for (const unit of markdownUnits(normalized)) {
+    const reasons = claimNoiseReasons(unit, { productName: input.productName });
+    if (reasons.length) noiseByStart.set(unit.characterRange[0], { originalQuote: unit.originalQuote, reasons });
+  }
+  const kept: string[] = [];
+  const removed: Array<{ originalQuote: string; reasons: string[] }> = [];
+  let offset = 0;
+  for (const line of normalized.split("\n")) {
+    const noise = noiseByStart.get(offset);
+    if (noise) removed.push(noise);
+    else kept.push(line);
+    offset += line.length + 1;
+  }
+  return {
+    markdown: kept.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
+    removed
+  };
 }
 
 function boundaryText(text: string) {

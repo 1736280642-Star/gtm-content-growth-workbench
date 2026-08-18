@@ -170,8 +170,16 @@ function createCompileInput(overrides = {}) {
       productionMode: "single"
     },
     promotionProfiles: [createProfile()],
-    minTraceableFactCount: 2,
-    requireHumanBoundary: true,
+    requiredCoreClaimIds: ["claim-a", "claim-boundary"],
+    entityIdentity: {
+      productId: "product-a",
+      canonicalName: "产品 A",
+      displayName: "产品 A",
+      aliases: [],
+      brandName: "示例品牌",
+      officialEntity: "示例品牌",
+      entityRelationship: "产品 A 属于示例品牌。"
+    },
     compiledAt: NOW,
     ...overrides
   };
@@ -385,7 +393,7 @@ test("输出校验捕获标题、事实、CTA、URL 和敏感信息问题", () =
     }
   });
   const codes = new Set(result.issues.map((item) => item.code));
-  for (const code of ["title_mismatch", "prohibited_term", "fact_trace_invalid", "traceable_fact_count_low", "cta_missing", "url_not_allowed", "sensitive_output"]) {
+  for (const code of ["title_mismatch", "prohibited_term", "fact_trace_invalid", "core_claim_missing", "cta_missing", "url_not_allowed", "sensitive_output"]) {
     assert.ok(codes.has(code), `expected validation code: ${code}`);
   }
 });

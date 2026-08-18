@@ -1,15 +1,16 @@
 "use client";
 
-import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Checkbox, Collapse, Descriptions, Empty, Input, List, Popconfirm, Space, Tag, Typography, message } from "antd";
+import { CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Checkbox, Collapse, Descriptions, Drawer, Empty, Input, List, Popconfirm, Space, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { callJsonApi } from "@/lib/client-api";
 import type {
+  FixedExpressionPosition,
+  ProductGeoArticleTypePortfolioItem,
   ProductGeoStrategyContentPlanV2,
   ProductGeoStrategyDecision,
   ProductGeoStrategyPackRecord,
-  ProductStrategyArticleTypeVersionRecord,
-  FixedExpressionPosition
+  ProductStrategyArticleTypeVersionRecord
 } from "@/lib/v5/product-strategy-pack-contracts";
 import { GeoStructuredData } from "@/components/geo/GeoStructuredData";
 
@@ -26,7 +27,7 @@ interface ProductGeoStrategyDecisionResponse {
   ok: true;
   status: string;
   sample?: {
-    status: "generated" | "failed";
+    status: "queued" | "running" | "failed";
     draftVersionId?: string;
     error?: { message?: string; nextAction?: string };
   };
@@ -79,6 +80,46 @@ function evidenceReadinessTag(readiness: keyof typeof evidenceReadinessLabels) {
   return <Tag color={item.color}>{item.text}</Tag>;
 }
 
+const materialSuggestionRules: Array<{ pattern: RegExp; suggestions: string[] }> = [
+  {
+    pattern: /架构|技术对比|竞品|竞争|选型|差异/,
+    suggestions: ["双方同版本的官方产品与架构资料", "可复核的功能对比矩阵及测试口径", "资料版本日期与适用范围"]
+  },
+  {
+    pattern: /实施|部署|集成|配置|交付|验收/,
+    suggestions: ["正式部署前提与环境要求", "系统集成及配置操作文档", "交付范围与验收清单"]
+  },
+  {
+    pattern: /安全|合规|隐私|数据保护|权限|认证/,
+    suggestions: ["安全白皮书或数据处理流程", "权限、存储与访问控制说明", "有效的合规认证或审计证明"]
+  },
+  {
+    pattern: /案例|实践|价值|效果|效率|指标/,
+    suggestions: ["获授权的客户案例与参与角色证明", "实施过程、适用条件及限制", "可追溯的前后对比指标与统计口径"]
+  },
+  {
+    pattern: /服务商|伙伴|资质|培训|支持/,
+    suggestions: ["服务商资质与厂商关系证明", "实施、培训、支持和验收范围", "可核验的交付案例与服务承诺"]
+  },
+  {
+    pattern: /价格|定价|费用|成本/,
+    suggestions: ["当前有效的官方定价与套餐说明", "计费边界、附加费用及生效日期"]
+  }
+];
+
+function materialSuggestions(item: ProductGeoArticleTypePortfolioItem, limit = 5) {
+  const semanticText = [
+    item.name,
+    item.definition,
+    item.contentGoal,
+    ...item.suitableQuestions,
+    ...item.evidencePreferences
+  ].join(" ");
+  const inferred = materialSuggestionRules.flatMap((rule) => rule.pattern.test(semanticText) ? rule.suggestions : []);
+  const preferred = item.evidencePreferences.map((preference) => `可公开引用的${preference}`);
+  return [...new Set([...inferred, ...preferred])].slice(0, limit);
+}
+
 export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
   const [data, setData] = useState<ProductGeoStrategyResponse>();
   const [loading, setLoading] = useState(true);
@@ -88,6 +129,7 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
   const [fixedText, setFixedText] = useState("");
   const [fixedPositions, setFixedPositions] = useState<FixedExpressionPosition[]>([]);
   const [fixedChannels, setFixedChannels] = useState<string[]>([]);
+  const [detailTypeId, setDetailTypeId] = useState<string>();
   const [error, setError] = useState<string>();
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -133,8 +175,8 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
         })
       });
       if (decision === "approve") {
-        if (result.sample?.status === "generated") {
-          messageApi.success("策略已确认，示例正文已生成，请直接验收内容质量");
+        if (result.sample?.status === "queued" || result.sample?.status === "running") {
+          messageApi.success("策略已确认，示例正文任务已提交，可查看实时进度");
         } else {
           messageApi.warning(result.sample?.error?.message || "策略已确认，示例正文等待系统恢复");
         }
@@ -168,7 +210,7 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
         method: "POST",
         headers: { "x-idempotency-key": `product-sample-after-fixed:${pack.id}:${crypto.randomUUID()}` }
       });
-      messageApi.success("固定文案已冻结，示例正文已生成，请继续验收内容质量");
+      messageApi.success("固定文案已冻结，示例正文任务已提交，可查看实时进度");
       window.dispatchEvent(new CustomEvent("product-sample-updated"));
       await refresh();
     } catch (requestError) {
@@ -193,6 +235,7 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
     () => articleTypeItems.filter((item) => item.evidenceReadiness === "partial").length,
     [articleTypeItems]
   );
+  const detailItem = articleTypeItems.find((item) => item.portfolioItemId === detailTypeId);
 
   useEffect(() => {
     setSelectedTypeIds(articleTypeItems
@@ -338,16 +381,27 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                       dataSource={articleTypeItems}
                       renderItem={(item) => (
                         <List.Item
-                          extra={latest.status === "pending_strategy_review" ? (
-                            <Checkbox
-                              checked={selectedTypeIds.includes(item.portfolioItemId)}
-                              disabled={item.evidenceReadiness === "blocked"
-                                || (selectedTypeIds.includes(item.portfolioItemId) && selectedTypeIds.length <= 2)}
-                              onChange={(event) => setSelectedTypeIds((current) => event.target.checked
-                                ? [...new Set([...current, item.portfolioItemId])]
-                                : current.filter((id) => id !== item.portfolioItemId))}
-                            >纳入策略</Checkbox>
-                          ) : null}
+                          extra={(
+                            <Space wrap>
+                              <Button
+                                type="link"
+                                size="small"
+                                icon={<EyeOutlined />}
+                                aria-label={`查看 ${item.name} 详情`}
+                                onClick={() => setDetailTypeId(item.portfolioItemId)}
+                              >查看详情</Button>
+                              {latest.status === "pending_strategy_review" ? (
+                                <Checkbox
+                                  checked={selectedTypeIds.includes(item.portfolioItemId)}
+                                  disabled={item.evidenceReadiness === "blocked"
+                                    || (selectedTypeIds.includes(item.portfolioItemId) && selectedTypeIds.length <= 2)}
+                                  onChange={(event) => setSelectedTypeIds((current) => event.target.checked
+                                    ? [...new Set([...current, item.portfolioItemId])]
+                                    : current.filter((id) => id !== item.portfolioItemId))}
+                                >纳入策略</Checkbox>
+                              ) : null}
+                            </Space>
+                          )}
                         >
                           <List.Item.Meta
                             title={<Space wrap>
@@ -356,12 +410,13 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                               {evidenceReadinessTag(item.evidenceReadiness)}
                             </Space>}
                             description={(
-                              <Space direction="vertical" size={2}>
-                                <Typography.Text type="secondary">{[item.definition, item.contentGoal, item.recommendationReason].filter(Boolean).join(" · ")}</Typography.Text>
-                                <Typography.Text type="secondary">结构：{item.structureModules.map((module) => module.key).join(" → ") || "待补充"}；篇幅：{item.lengthRange.min}-{item.lengthRange.max} 字</Typography.Text>
-                                <Typography.Text type="secondary">适用：{item.suitableQuestions.join("；") || "见对应问题簇"}；不适用：{item.unsuitableQuestions.join("；") || "未标记"}</Typography.Text>
-                                {item.evidenceReadiness === "partial" ? <Typography.Text type="warning">补齐正式资料前仅保留为策略候选，不进入批量生产。</Typography.Text> : null}
-                                {item.evidenceReadiness === "blocked" ? <Typography.Text type="danger">当前证据不足，禁止生成或发布。</Typography.Text> : null}
+                              <Space direction="vertical" size={4}>
+                                <Typography.Text type="secondary">内容目标：{item.contentGoal || item.definition}</Typography.Text>
+                                {item.evidenceReadiness !== "ready" ? (
+                                  <Typography.Text type={item.evidenceReadiness === "blocked" ? "danger" : "warning"}>
+                                    建议补充资料：{materialSuggestions(item, 3).join("；") || "可公开引用的正式产品事实、来源与适用范围"}。
+                                  </Typography.Text>
+                                ) : null}
                               </Space>
                             )}
                           />
@@ -370,6 +425,58 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                     />
                   ) : <Alert showIcon type="info" message="文章类型组合将在下一阶段生成" description="本阶段先保证策略门禁正确；AI 匹配、改造和新建文章类型不会绕过你的确认。" />}
                 </Card>
+
+                <Drawer
+                  open={Boolean(detailItem)}
+                  width="min(720px, 100vw)"
+                  title={detailItem ? (
+                    <Space wrap>
+                      <span>{detailItem.name}</span>
+                      <Tag>{articleTypeOriginLabels[detailItem.origin]}</Tag>
+                      {evidenceReadinessTag(detailItem.evidenceReadiness)}
+                    </Space>
+                  ) : "文章类型详情"}
+                  onClose={() => setDetailTypeId(undefined)}
+                  destroyOnHidden
+                >
+                  {detailItem ? (
+                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                      {detailItem.evidenceReadiness !== "ready" ? (
+                        <Alert
+                          showIcon
+                          type={detailItem.evidenceReadiness === "blocked" ? "error" : "warning"}
+                          message={detailItem.evidenceReadiness === "blocked" ? "当前资料不足，禁止生产" : "补齐资料后才能进入批量生产"}
+                          description={`建议补充：${materialSuggestions(detailItem).join("；") || "可公开引用的正式产品事实、来源与适用范围"}。`}
+                        />
+                      ) : null}
+                      <Descriptions bordered size="small" column={1}>
+                        <Descriptions.Item label="类型定义">{detailItem.definition}</Descriptions.Item>
+                        <Descriptions.Item label="内容目标">{detailItem.contentGoal}</Descriptions.Item>
+                        <Descriptions.Item label="推荐理由">{detailItem.recommendationReason}</Descriptions.Item>
+                        <Descriptions.Item label="目标读者">{detailItem.targetAudience.join("、") || "未单独限定"}</Descriptions.Item>
+                        <Descriptions.Item label="文章结构">
+                          <Space direction="vertical" size={4}>
+                            {detailItem.structureModules.map((module) => (
+                              <Typography.Text key={`${module.key}-${module.purpose}`}>
+                                {module.key}：{module.purpose}{module.required ? "（必需）" : ""}
+                              </Typography.Text>
+                            ))}
+                          </Space>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="篇幅与风格">
+                          {detailItem.lengthRange.min}-{detailItem.lengthRange.max} 字
+                          {detailItem.style.length ? `；${detailItem.style.join("、")}` : ""}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="表达重点">{detailItem.emphasisOrder.join(" → ") || "未单独限定"}</Descriptions.Item>
+                        <Descriptions.Item label="适用问题">{detailItem.suitableQuestions.join("；") || "见对应问题簇"}</Descriptions.Item>
+                        <Descriptions.Item label="不适用问题">{detailItem.unsuitableQuestions.join("；") || "未标记"}</Descriptions.Item>
+                        <Descriptions.Item label="证据偏好">{detailItem.evidencePreferences.join("、") || "正式产品事实与可追溯来源"}</Descriptions.Item>
+                        <Descriptions.Item label="适用渠道">{detailItem.channelFit.map((channel) => channelLabels[channel] || channel).join("、") || "未单独限定"}</Descriptions.Item>
+                        <Descriptions.Item label="行动引导">{detailItem.ctaIntent || "未单独限定"}</Descriptions.Item>
+                      </Descriptions>
+                    </Space>
+                  ) : null}
+                </Drawer>
 
                 <Collapse
                   items={[{

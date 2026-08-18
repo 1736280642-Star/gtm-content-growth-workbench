@@ -1872,6 +1872,20 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+async function fetchPublicUrlWithSafeRedirects(rawUrl: string, init: RequestInit, timeoutMs: number) {
+  let currentUrl = rawUrl;
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    const validation = await validateCrawlUrl(currentUrl);
+    if (!validation.ok) throw new KnowledgeCrawlError("invalid_url", validation.message);
+    const response = await fetchWithTimeout(validation.url, { ...init, redirect: "manual" }, timeoutMs);
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get("location");
+    if (!location) throw new KnowledgeCrawlError("http_error", "URL 重定向缺少目标地址。");
+    currentUrl = new URL(location, validation.url).toString();
+  }
+  throw new KnowledgeCrawlError("http_error", "URL 重定向次数超过安全上限。");
+}
+
 function parseCrawlerPayload(payload: Record<string, unknown>, provider: KnowledgeFetchProvider) {
   const text = normalizeKnowledgeText(findTextField(payload, /markdown|text|content|html/i) || "");
 
@@ -2116,7 +2130,7 @@ async function crawlWithProxyFetch(url: string): Promise<{ title?: string; text:
 
 async function crawlWithLocalFetch(url: string) {
   await waitForKnowledgeCrawlSlot(url);
-  const response = await fetchWithTimeout(
+  const response = await fetchPublicUrlWithSafeRedirects(
     url,
     {
       headers: {
@@ -2178,6 +2192,37 @@ async function crawlWithProvider(provider: LiveKnowledgeCrawler, url: string) {
 function getPreferredKnowledgeFetchProvider() {
   const [provider] = getConfiguredKnowledgeCrawlers();
   return provider || "local_fetch";
+}
+
+export async function fetchPublicKnowledgeDocument(rawUrl: string) {
+  const validation = await validateCrawlUrl(rawUrl);
+  if (!validation.ok) throw new KnowledgeCrawlError("invalid_url", validation.message);
+
+  let crawled: { title?: string; text: string; provider: KnowledgeFetchProvider } | undefined;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2 && !crawled; attempt += 1) {
+    for (const provider of getConfiguredKnowledgeCrawlers()) {
+      try {
+        crawled = await crawlWithProvider(provider, validation.url);
+        if (crawled) break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!crawled && attempt === 0) await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+  if (!crawled) throw lastError instanceof Error ? lastError : new KnowledgeCrawlError("empty_content", "URL 抓取没有返回可用正文。");
+
+  const text = normalizeKnowledgeText(crawled.text);
+  assertUsableCrawledText(text);
+  return {
+    url: validation.url,
+    title: normalizeKnowledgeText(crawled.title || new URL(validation.url).hostname).slice(0, 240),
+    text,
+    provider: crawled.provider,
+    fetchedAt: nowIso(),
+    contentHash: createContentHash(`${validation.url}\n${text}`)
+  };
 }
 
 export async function probeKnowledgeUrlCrawler(rawUrl = "https://www.jotoai.com/") {
@@ -6703,6 +6748,7 @@ function buildDirectPublishPayload(
     sourceDraftId: draft.id,
     publishRecordId: schedule.publishRecordId,
     matrixItemId: schedule.matrixItemId,
+    coverUrl: schedule.platform === "wechat" ? schedule.coverUrl : undefined,
     categoryId:
       schedule.platform === "juejin"
         ? process.env.JUEJIN_CATEGORY_ID
@@ -6715,7 +6761,7 @@ function buildDirectPublishPayload(
         : schedule.platform === "csdn" && process.env.CSDN_TAGS
           ? process.env.CSDN_TAGS.split(",").map((item) => item.trim()).filter(Boolean)
           : undefined,
-    coverMediaId: schedule.platform === "wechat" ? process.env.WECHAT_MP_THUMB_MEDIA_ID : undefined,
+    coverMediaId: schedule.platform === "wechat" && !schedule.coverUrl ? process.env.WECHAT_MP_THUMB_MEDIA_ID : undefined,
     dryRun: process.env.DIRECT_PUBLISH_ENABLED !== "true"
   };
 }
@@ -6749,6 +6795,7 @@ export interface ApprovedPublishContentInput {
   scheduledAt?: string;
   matrixItemId?: string;
   contentFormat?: "markdown" | "wechat_html";
+  coverUrl?: string;
 }
 
 /**
@@ -6802,7 +6849,8 @@ export function createPublishSchedulesFromApprovedContent(
     platform: input.platform,
     scheduledAt: input.scheduledAt,
     matrixItemId: input.matrixItemId || input.sourceTaskId,
-    contentFormat: input.contentFormat
+    contentFormat: input.contentFormat,
+    coverUrl: input.coverUrl
   });
 }
 
@@ -6880,6 +6928,7 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
       publishRecordId: record.id,
       matrixItemId: typeof input.matrixItemId === "string" ? input.matrixItemId : undefined,
       contentFormat: input.contentFormat === "wechat_html" ? "wechat_html" : "markdown",
+      coverUrl: platform === "wechat" && typeof input.coverUrl === "string" ? input.coverUrl : undefined,
       contentHash,
       idempotencyKey: buildPublishIdempotencyKey(scheduleId, platform, contentHash),
       attemptIds: [],
@@ -6906,6 +6955,28 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
       record
     }
   };
+}
+
+/** Prevents queued machine publishing after a human intercepts a content task. */
+export function blockPublishSchedulesForMatrixItem(matrixItemId: string, reason: string): number {
+  const state = readWorkbenchState();
+  const now = nowIso();
+  let blocked = 0;
+  for (let index = 0; index < state.publishSchedules.length; index += 1) {
+    const schedule = state.publishSchedules[index];
+    if (schedule.matrixItemId !== matrixItemId || schedule.status !== "scheduled") continue;
+    state.publishSchedules[index] = {
+      ...schedule,
+      status: "risk_blocked",
+      failureCode: "risk_blocked",
+      failureReason: reason,
+      nextAction: "该文章已被人工拦截；如需发布，请先重新批准并创建新排程。",
+      updatedAt: now
+    };
+    blocked += 1;
+  }
+  if (blocked) saveWithEvent(state, "publish_schedules_intercepted", `Blocked ${blocked} publish schedule(s) for matrix item ${matrixItemId}.`);
+  return blocked;
 }
 
 const dispatchedPublishStatuses: PublishScheduleStatus[] = [

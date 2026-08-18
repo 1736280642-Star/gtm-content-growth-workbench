@@ -1,3 +1,6 @@
+import type { GeoResearchResultPack } from "./geo-research-result-contracts";
+import type { GeoResearchDownstreamCandidates } from "./geo-research-downstream";
+
 export type GeoResearchProjectStatus =
   | "draft"
   | "ready"
@@ -203,6 +206,7 @@ export type GeoResearchReadinessKey =
   | "product_identity"
   | "research_boundary"
   | "source_snapshot"
+  | "website_coverage"
   | "live_search_provider";
 
 export interface GeoResearchReadinessCheck {
@@ -282,6 +286,12 @@ export interface GeoResearchWorkspace {
   latestEvidence: GeoResearchEvidence[];
   latestFindings: GeoResearchFinding[];
   currentBlueprint?: GeoBlueprintVersion;
+  latestResultPack?: GeoResearchResultPackArtifact;
+}
+
+export interface GeoResearchResultPackArtifact {
+  artifactId: string;
+  resultPack: GeoResearchResultPack;
 }
 
 export interface GeoResearchRunWorkspace {
@@ -291,6 +301,9 @@ export interface GeoResearchRunWorkspace {
   findings: GeoResearchFinding[];
   blueprint?: GeoBlueprintVersion;
   questionCatalog?: GeoResearchQuestionCatalog;
+  resultPack?: GeoResearchResultPack;
+  resultPackArtifactId?: string;
+  downstreamCandidates?: GeoResearchDownstreamCandidates;
 }
 
 export interface ProductGeoOverview {

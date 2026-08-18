@@ -12,6 +12,12 @@ import type { RagSourceImportCandidate } from "./source-registry";
 import { writeRagSourceImport } from "./source-import-repository";
 import { prepareRagSourceImport } from "./source-import-service";
 import { AUTOMATIC_CLAIM_EXTRACTOR_VERSION } from "./automatic-knowledge-production";
+import { cleanParsedWebMarkdown } from "./automatic-knowledge-production";
+import {
+  buildManagedNormalizedTextRef,
+  buildManagedRawAssetRef,
+  buildManagedSourceRevisionId
+} from "./managed-content-reference";
 
 function iso(value: unknown) {
   return value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
@@ -52,6 +58,12 @@ export async function extractManagedClaimsForProduct(productId: string, actor: V
   const candidates = rows.map((row): RagSourceImportCandidate => {
     const monthlySupport = parseV5Json<{ evidenceRoles?: string[]; limitationCodes?: string[] }>(row.monthly_support, {});
     const rawContent = Buffer.isBuffer(row.raw_content) ? row.raw_content : undefined;
+    const parsedText = String(row.normalized_text);
+    const normalizedText = String(row.document_type) === "workbench_managed_url"
+      ? cleanParsedWebMarkdown(parsedText, { productName: String(row.product_name || productId) }).markdown
+      : parsedText;
+    const contentHash = createHash("sha256").update(normalizedText).digest("hex");
+    const sourceRevisionId = buildManagedSourceRevisionId(String(row.id), contentHash);
     return {
       registryId: `workbench-managed:${String(row.primary_knowledge_base_id)}`,
       sourceId: String(row.id),
@@ -63,13 +75,13 @@ export async function extractManagedClaimsForProduct(productId: string, actor: V
       absolutePath: String(row.revision_raw_asset_ref || row.raw_asset_ref),
       title: String(row.title || row.file_name || row.id),
       canonicalUrl: row.canonical_url ? String(row.canonical_url) : undefined,
-      contentHash: String(row.revision_content_hash),
-      contentLength: String(row.normalized_text).length,
+      contentHash,
+      contentLength: normalizedText.length,
       sourceUpdatedAt: iso(row.revision_source_updated_at || row.source_updated_at || row.updated_at),
-      normalizedTextRef: String(row.revision_normalized_text_ref),
-      rawAssetRef: row.revision_raw_asset_ref ? String(row.revision_raw_asset_ref) : undefined,
+      normalizedTextRef: buildManagedNormalizedTextRef(sourceRevisionId),
+      rawAssetRef: buildManagedRawAssetRef(sourceRevisionId),
       managedContent: {
-        normalizedText: String(row.normalized_text),
+        normalizedText,
         rawContent,
         mimeType: row.managed_mime_type ? String(row.managed_mime_type) : undefined,
         originalFileName: row.original_file_name ? String(row.original_file_name) : undefined
