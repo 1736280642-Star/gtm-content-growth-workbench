@@ -174,6 +174,14 @@ export default function WorkbenchHomePage() {
     const produced = tasks.filter((item) => ["available", "scheduled", "published"].includes(item.status)).length;
     const scheduled = tasks.filter((item) => ["scheduled", "published"].includes(item.status)).length;
     const published = tasks.filter((item) => item.status === "published").length;
+    const urlReturnedByMatrixItemId = new Set<string>();
+    for (const item of state.publishJobs) {
+      const schedule = item.schedule;
+      if (schedule.matrixItemId && (schedule.publicUrl || schedule.urlStatus === "provisional" || schedule.urlStatus === "stable")) {
+        urlReturnedByMatrixItemId.add(schedule.matrixItemId);
+      }
+    }
+    const currentProducts = state.products.length;
     const openExceptions = workspace?.exceptionItems.filter((item) => item.status === "open") || [];
 
     // Phase 0: 修正责任聚合 — system_recovering、awaiting_material 不再计入"需人工处理"
@@ -232,6 +240,7 @@ export default function WorkbenchHomePage() {
       const productProduced = group.tasks.filter((item) => ["available", "scheduled", "published"].includes(item.status)).length;
       const productScheduled = group.tasks.filter((item) => ["scheduled", "published"].includes(item.status)).length;
       const productPublished = group.tasks.filter((item) => item.status === "published").length;
+      const productUrlReturned = group.tasks.filter((item) => Boolean(item.publicUrl) || urlReturnedByMatrixItemId.has(item.taskId)).length;
       const taskIssues = group.tasks.filter((item) => item.ctaValidationStatus === "failed").length;
       const exceptionIssues = openExceptions.filter((item) => {
         const registryProduct = productByAlias.get(normalizeProductKey(item.productId)) || productByAlias.get(normalizeProductKey(item.product));
@@ -240,7 +249,7 @@ export default function WorkbenchHomePage() {
       const issueCount = taskIssues + exceptionIssues;
       const total = group.tasks.length;
       const stateRank = issueCount ? 0 : total && productPublished < total ? 1 : total ? 2 : 3;
-      return { ...group, total, produced: productProduced, scheduled: productScheduled, published: productPublished, issueCount, stateRank };
+      return { ...group, total, produced: productProduced, scheduled: productScheduled, published: productPublished, urlReturned: productUrlReturned, issueCount, stateRank };
     }).sort((left, right) => left.stateRank - right.stateRank || right.total - left.total || left.productName.localeCompare(right.productName, "zh-CN"));
 
     // Phase 0: 统一责任聚合 — 只把真正需要用户介入的计入 AttentionAlert
@@ -288,7 +297,7 @@ export default function WorkbenchHomePage() {
     const statusText = systemNormal ? "系统正常运行" : `${attentionItems.length} 项需你处理`;
 
     return {
-      target, allocated, readyKnowledge, questions, tasks, produced, scheduled, published,
+      currentProducts, target, allocated, readyKnowledge, questions, tasks, produced, scheduled, published,
       stages, productionBreakdown, productProduction, attentionItems, recentTasks,
       systemNormal, statusText, systemAutoCount, externalWaitingCount, publicJobs,
     };
@@ -313,14 +322,12 @@ export default function WorkbenchHomePage() {
         </div>
       </section>
 
-      {/* Phase 0: KPI 条 — 紧凑指标 */}
-      <section className={styles.kpiRibbon} aria-label="本月关键指标">
+      {/* 核心 KPI：只保留产品、计划、成稿、发布和告警 */}
+      <section className={styles.kpiRibbon} aria-label="核心指标">
         {[
-          { label: "知识可用", value: derived.readyKnowledge, suffix: "个" },
-          { label: "真实问题", value: derived.questions, suffix: "个" },
-          { label: "本月目标", value: derived.target, suffix: "篇" },
+          { label: "当前产品", value: derived.currentProducts, suffix: "个" },
+          { label: "计划发布", value: derived.target, suffix: "篇" },
           { label: "已成稿", value: derived.produced, suffix: "篇" },
-          { label: "已排程", value: derived.scheduled, suffix: "篇" },
           { label: "已发布", value: derived.published, suffix: "篇" }
         ].map((item) => (
           <div className={styles.kpiItem} key={item.label}><span>{item.label}</span><strong>{initialLoading ? "—" : item.value}</strong><small>{item.suffix}</small></div>
@@ -343,9 +350,7 @@ export default function WorkbenchHomePage() {
         </div>
         <div className={styles.productPipelineGrid}>
           {derived.productProduction.length ? derived.productProduction.slice(0, 6).map((product) => {
-            const scheduledOnly = Math.max(0, product.scheduled - product.published);
-            const producedOnly = Math.max(0, product.produced - product.scheduled);
-            const pending = Math.max(0, product.total - product.produced);
+            const pendingPublish = Math.max(0, product.total - product.published);
             const statusLabel = product.issueCount ? `${product.issueCount} 项待处理` : !product.total ? "本月暂无任务" : product.published === product.total ? "本月已完成" : "自动运行中";
             const productHref = product.total ? `/monthly-plan?productId=${encodeURIComponent(product.productId)}` : `/products/${encodeURIComponent(product.productId)}`;
             return (
@@ -356,23 +361,12 @@ export default function WorkbenchHomePage() {
                 </div>
                 {product.total ? (
                   <>
-                    <div className={styles.productPipelineNumbers}><strong>{product.total} 篇任务</strong><span>{product.published} 篇已发布</span></div>
                     <div className={styles.productPipelineStages}>
-                      <span>正文 {product.produced}/{product.total}</span><i />
-                      <span>排程 {product.scheduled}/{product.total}</span><i />
-                      <span>发布 {product.published}/{product.total}</span>
-                    </div>
-                    <div className={styles.productPipelineBar} aria-label={`${product.productName}任务状态`}>
-                      <span className={styles.segmentPublished} style={{ width: `${percent(product.published, product.total)}%` }} />
-                      <span className={styles.segmentScheduled} style={{ width: `${percent(scheduledOnly, product.total)}%` }} />
-                      <span className={styles.segmentProduced} style={{ width: `${percent(producedOnly, product.total)}%` }} />
-                      <span className={product.issueCount ? styles.segmentAttention : styles.segmentPending} style={{ width: `${percent(pending, product.total)}%` }} />
-                    </div>
-                    <div className={styles.productPipelineLegend}>
-                      <span><i className={styles.segmentPublished} />已发布 {product.published}</span>
-                      <span><i className={styles.segmentScheduled} />已排程 {scheduledOnly}</span>
-                      <span><i className={styles.segmentProduced} />待排程 {producedOnly}</span>
-                      {pending ? <span><i className={product.issueCount ? styles.segmentAttention : styles.segmentPending} />继续推进 {pending}</span> : null}
+                      <span><strong>{product.total}</strong><small>计划状态</small></span>
+                      <span><strong>{product.produced}</strong><small>成稿状态</small></span>
+                      <span><strong>{pendingPublish}</strong><small>待发布状态</small></span>
+                      <span><strong>{product.published}</strong><small>已发布状态</small></span>
+                      <span><strong>{product.urlReturned}</strong><small>回传 URL 状态</small></span>
                     </div>
                   </>
                 ) : <p className={styles.productPipelineEmpty}>资料、GEO 调研和策略条件满足后，系统会自动创建文章任务。</p>}
