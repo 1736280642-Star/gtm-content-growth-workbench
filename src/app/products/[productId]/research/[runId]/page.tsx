@@ -22,12 +22,40 @@ import type {
   GeoResearchTaskStatus,
   GeoResearchTaskType
 } from "@/lib/v5/geo-research-contracts";
+import type { GeoResearchDownstreamCandidates } from "@/lib/v5/geo-research-downstream";
 import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
 
 interface RunResponse {
   ok: true;
   product: ProductRegistryItem;
   runWorkspace: GeoResearchRunWorkspace;
+}
+
+function DownstreamCandidatePanel({ candidates }: { candidates: GeoResearchDownstreamCandidates }) {
+  const rows = [
+    { key: "questionPool", label: "GEO 问题池候选", count: candidates.questionPool.length, detail: "需人工确认真实需求后导入" },
+    { key: "strategyPack", label: "策略包机会候选", count: candidates.strategyPack.length, detail: "需人工确认机会、证据和文章组合" },
+    { key: "websiteRemediation", label: "官网整改候选", count: candidates.websiteRemediation.length, detail: "需结合官网覆盖审计后处理" },
+    { key: "monitoring", label: "监控问题候选", count: candidates.monitoring.length, detail: "需人工确认平台、采样量和关系" }
+  ];
+  return (
+    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Alert showIcon type="info" message="研究结果已投影到四个下游入口" description="这些记录全部保持候选状态，不会自动写入问题池、策略包、官网整改或月度监控。" />
+      <Table
+        rowKey="key"
+        size="small"
+        pagination={false}
+        dataSource={rows}
+        columns={[
+          { title: "下游入口", dataIndex: "label" },
+          { title: "候选数", dataIndex: "count", width: 100 },
+          { title: "下一步", dataIndex: "detail" },
+          { title: "状态", width: 100, render: () => <Tag color="gold">候选</Tag> }
+        ]}
+      />
+      <Typography.Text type="secondary">结果包 Artifact：{candidates.sourceArtifactId || "尚未生成"}</Typography.Text>
+    </Space>
+  );
 }
 
 const taskLabels: Record<GeoResearchTaskType, string> = {
@@ -181,6 +209,11 @@ export default function GeoResearchRunPage() {
             <Tabs
               defaultActiveKey="question-catalog"
               items={[
+                ...(workspace.downstreamCandidates ? [{
+                  key: "downstream",
+                  label: "下游候选",
+                  children: <DownstreamCandidatePanel candidates={workspace.downstreamCandidates} />
+                }] : []),
                 {
                   key: "question-catalog",
                   label: `GEO 问题目录 ${questionCatalog?.confirmable ? questionCatalog.totalCount : 0}`,

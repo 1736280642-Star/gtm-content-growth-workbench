@@ -1,11 +1,18 @@
 import process from "node:process";
 
 const baseUrl = String(process.argv.find((item) => item.startsWith("--base-url="))?.split("=", 2)[1] || "http://127.0.0.1:3027").replace(/\/$/, "");
+const requestedTaskIds = new Set(String(process.argv.find((item) => item.startsWith("--task-ids="))?.split("=", 2)[1] || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean));
 const jobsResponse = await fetch(`${baseUrl}/api/publish-jobs`, { cache: "no-store" });
 const jobsBody = await jobsResponse.json();
 if (!jobsResponse.ok) throw new Error("Publish Job ledger read failed.");
 
-const blocked = jobsBody.jobs.filter(({ schedule }) => schedule.platform === "juejin" && schedule.status === "precheck_failed" && schedule.failureCode === "content_blocked");
+const blocked = jobsBody.jobs.filter(({ schedule }) => schedule.platform === "juejin"
+  && schedule.status === "precheck_failed"
+  && schedule.failureCode === "content_blocked"
+  && (!requestedTaskIds.size || requestedTaskIds.has(schedule.matrixItemId)));
 process.stdout.write(`${JSON.stringify({ event: "juejin_repair_plan", blocked: blocked.length })}\n`);
 const results = [];
 

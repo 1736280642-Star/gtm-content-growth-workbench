@@ -69,6 +69,27 @@ const candidate = {
   publishedAt: "2026-08-14T00:00:00.000Z"
 };
 
+const sourceEvidence = buildHotspotSourceEvidence({
+  hotspot: candidate,
+  document: {
+    title: "智能体进入应用维护流程",
+    text: [
+      "开发者把智能体接入应用的日常维护流程，让它持续处理崩溃测试和死代码清理。每次任务都有明确输入和可检查的代码改动，系统会记录任务从创建到提交的状态。维护人员不必在聊天窗口里反复描述同一个问题，可以直接查看改动范围和测试结果。",
+      "智能体生成的代码不会直接合并。自动检查先运行测试和静态分析，开发者随后审核改动，确认符合要求以后才进入主分支。检查失败的任务会保留原因，后续任务根据反馈缩小范围。人工审核仍然负责判断改动是否符合产品要求和风险边界。",
+      "这套流程把原本零散的对话变成持续运行的任务链。团队可以看到每次改动、检查结果和人工决定，也能在失败后调整下一轮任务。衡量效果时，开发者查看完成的维护任务和成功合并的改动，不再只统计向模型发出了多少次提问。负责人还能追溯某次修改为何通过审核，出了问题以后由谁决定回退，维护流程因此有了明确责任。"
+    ].join("\n\n"),
+    provider: "local_fetch",
+    fetchedAt: "2026-08-16T00:00:00.000Z",
+    contentHash: "source-hash"
+  }
+});
+
+const selection = { hotspotId: candidate.id, relevanceScore: 86, readerTension: "AI 使用很多，业务结果仍然不清楚。", hookAngle: "从可验收的维护任务引出组织工作流。" };
+const verifiedDetails = [
+  { evidenceId: sourceEvidence.fragments[0].id, exactQuote: "开发者把智能体接入应用的日常维护流程", relevance: "具体动作可以直接作为开场。" },
+  { evidenceId: sourceEvidence.fragments[1].id, exactQuote: "自动检查先运行测试和静态分析", relevance: "体现任务有验收环节。" }
+];
+
 test("AIHOT v1 fields are normalized into traceable trend candidates", () => {
   const items = parseAihotV1Items({ items: [{
     id: candidate.id,
@@ -87,13 +108,29 @@ test("AIHOT v1 fields are normalized into traceable trend candidates", () => {
   assert.equal(items[0].aihotUrl, candidate.aihotUrl);
 });
 
-test("hotspot prompt sends the complete content type rules to the model", () => {
-  const prompt = buildHotspotIntegrationPrompt({ expression, artifact, productName: "JOTO", productKnowledge: [{ fact: "公开事实" }], brandBaseline: {}, candidates: [candidate], excludedHotspotIds: [] });
+test("hotspot selection ranks candidates before any article rewrite", () => {
+  const prompt = buildHotspotSelectionPrompt({ expression, artifact, candidates: [candidate], excludedHotspotIds: [] });
   const payload = JSON.parse(prompt.userPrompt);
   assert.equal(payload.currentContentTypeAndRules.freeContentExpressionTypeVersionId, expression.freeContentExpressionTypeVersionId);
   assert.deepEqual(payload.currentContentTypeAndRules.structureModules, expression.structureModules);
   assert.equal(payload.currentContentTypeAndRules.additionalWritingRequirements, expression.additionalWritingRequirements);
   assert.equal(payload.currentArticle.title, artifact.selectedTitle);
+  const output = parseHotspotSelectionOutput(JSON.stringify({ decision: "integrate", selectionReason: "有直接的任务流程连接。", rankedCandidates: [selection] }));
+  assert.deepEqual(validateHotspotSelectionOutput({ output, candidates: [candidate] }), []);
+});
+
+test("hotspot writing prompt receives original-source evidence and human-writing rules", () => {
+  const evidencePrompt = buildHotspotEvidenceExtractionPrompt({ expression, artifact, hotspot: candidate, sourceEvidence, selection });
+  const evidenceOutput = parseHotspotEvidenceOutput(JSON.stringify({ usable: true, reason: "细节足够", details: verifiedDetails }));
+  assert.deepEqual(validateHotspotEvidenceOutput({ output: evidenceOutput, sourceEvidence }), []);
+  assert.match(evidencePrompt.systemPrompt, /exactQuote 必须逐字复制/);
+  const prompt = buildHotspotIntegrationPrompt({ expression, artifact, productName: "JOTO", productKnowledge: [{ fact: "公开事实" }], brandBaseline: {}, hotspot: candidate, sourceEvidence, selection, verifiedDetails });
+  const payload = JSON.parse(prompt.userPrompt);
+  assert.equal(payload.sourceEvidence.contentHash, "source-hash");
+  assert.equal(payload.sourceEvidence.fragments.length, 3);
+  assert.equal(payload.articleEditorialAnchor.openingSectionKey, "opening");
+  assert.match(prompt.systemPrompt, /热点不是需要单独介绍的新闻/);
+  assert.match(prompt.systemPrompt, /human-writing|具体业务问题|自然白话/i);
 });
 
 test("model output must select a real candidate and declare valid affected sections", () => {
@@ -103,16 +140,17 @@ test("model output must select a real candidate and declare valid affected secti
     relevanceScore: 86,
     selectionReason: "热点与文章讨论的真实工作流直接相关。",
     writingAngle: "从自动执行扩展到人机责任边界。",
-    affectedSectionKeys: ["opening", "industry_judgement"],
+    hookPlan: { hookType: "contrast", factAnchor: "智能体持续处理应用维护任务", readerTension: "个人试用和组织结果之间存在落差", bridgeQuestion: "为什么同样使用 AI，组织结果差异很大", titleUse: "optional" },
+    usedEvidenceIds: [sourceEvidence.fragments[0].id],
+    affectedSectionKeys: ["opening"],
     riskNotes: ["数字需回原文核对"],
     titleCandidates: ["标题一", "标题二", "标题三"],
     summary: "结合最新行业信号重新审视真实工作流。",
     sections: [
-      { sectionKey: "opening", heading: "变化已经发生", markdown: "开头正文" },
-      { sectionKey: "industry_judgement", heading: "真正需要判断的事", markdown: "判断正文" }
+      { sectionKey: "opening", heading: "变化已经发生", markdown: "智能体持续处理应用维护任务，改动经过检查后才合并。", citations: [{ claimText: "智能体持续处理应用维护任务", sourceIds: [sourceEvidence.fragments[0].id] }] }
     ]
   }));
-  assert.deepEqual(validateHotspotModelOutput({ output, expression, candidates: [candidate] }), []);
+  assert.deepEqual(validateHotspotModelOutput({ output, expression, hotspot: candidate, sourceEvidence, verifiedDetails }), []);
   assert.equal(output.hotspotId, candidate.id);
 });
 

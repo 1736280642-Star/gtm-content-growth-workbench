@@ -3,7 +3,7 @@ import type { RowDataPacket } from "mysql2/promise";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { channelLabels, productLabels } from "@/lib/labels";
-import { createInitialWorkbenchState, normalizeWorkbenchState } from "@/lib/workbench-store";
+import { blockPublishSchedulesForMatrixItem, createInitialWorkbenchState, normalizeWorkbenchState } from "@/lib/workbench-store";
 import type { ProductPlanConfig } from "@/lib/types";
 import { WORKSPACE_ACTOR } from "@/lib/workspace-actor";
 import type {
@@ -36,7 +36,7 @@ import { readV5FoundationSnapshot } from "./foundation-repository";
 import { getV5GovernancePool, parseV5Json, V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 import { readV5MonthlyState, updateV5MonthlyState } from "./monthly-repository";
 import { loadMonthlyWorkspaceGovernance } from "./monthly-workspace-governance";
-import { persistFormalApprovedStrategy, persistFormalMonthlyPlan, removeFormalProductionTasks, saveFormalPublishResult, scheduleFormalProductionTask } from "./monthly-execution-repository";
+import { interceptFormalProductionTask, persistFormalApprovedStrategy, persistFormalMonthlyPlan, removeFormalProductionTasks, saveFormalPublishResult, scheduleFormalProductionTask } from "./monthly-execution-repository";
 import { readV5MonthlyPlanRecord } from "./monthly-plan-repository";
 import { calculateExpandedDeliverableCount, evaluateStrategyPreflight, expandApprovedStrategyTasks } from "./monthly-strategy-policy";
 
@@ -921,6 +921,55 @@ export async function removeV5StrategyItem(month: string, quotaRuleId: string, r
     state.auditLog.unshift({ id: randomUUID(), event: "strategy_item_removed", month, actor, version: plan.version, createdAt: now, auditReason: request.auditReason, objectId: quotaRuleId, summary: { mode: versioned ? "next_version" : "direct", affectedTaskCount: affectedTasks.length, publishedCount } });
     return { mode: versioned ? "next_version" : "direct", affectedTaskCount: affectedTasks.length, publishedCount };
   });
+}
+
+export async function interceptV5ProductionTask(month: string, taskId: string, request: StrategyMutationRequest) {
+  assertMonth(month);
+  assertStrategyMutationRequest(request);
+  const actor = await getWritableActor();
+  const reason = request.auditReason || "用户从内容自动化页面拦截发布";
+  const formalPlan = await readV5MonthlyPlanRecord(month);
+  if (formalPlan) {
+    const result = await interceptFormalProductionTask({
+      month,
+      taskId,
+      expectedVersion: request.expectedVersion,
+      actor: { actorId: `local-${actor}`, actorRole: actor, actorType: "human", auditReason: reason }
+    });
+    const blockedScheduleCount = blockPublishSchedulesForMatrixItem(taskId, reason);
+    return { ...result, blockedScheduleCount };
+  }
+
+  const result = await updateV5MonthlyState((state) => {
+    const plan = state.plans[month];
+    if (!plan || plan.version !== request.expectedVersion) throw new V5ServiceError(409, "MONTHLY_PLAN_VERSION_CONFLICT", "月度计划已更新，请刷新后重试。");
+    const tasks = plan.matrixTasks || [];
+    const index = tasks.findIndex((item) => item.taskId === taskId);
+    if (index < 0) throw new V5ServiceError(404, "PRODUCTION_TASK_NOT_FOUND", "内容任务不存在。");
+    if (tasks[index].status === "published") throw new V5ServiceError(422, "PUBLISHED_TASK_CANNOT_BE_INTERCEPTED", "文章已经发布，无法再拦截发布。");
+    if (tasks[index].status === "intercepted") return { intercepted: true, planVersion: plan.version };
+    const now = new Date().toISOString();
+    tasks[index] = {
+      ...tasks[index],
+      status: "intercepted",
+      scheduledAt: undefined,
+      interceptedAt: now,
+      interceptedBy: actor,
+      interceptionReason: reason,
+      updatedAt: now
+    };
+    plan.matrixTasks = tasks;
+    plan.version += 1;
+    plan.updatedAt = now;
+    plan.updatedBy = actor;
+    state.auditLog.unshift({
+      id: randomUUID(), event: "publish_intercepted", month, actor, version: plan.version, createdAt: now,
+      auditReason: reason, objectId: taskId, summary: { status: "intercepted", automaticPublishAllowed: false }
+    });
+    return { intercepted: true, planVersion: plan.version };
+  });
+  const blockedScheduleCount = blockPublishSchedulesForMatrixItem(taskId, reason);
+  return { ...result, blockedScheduleCount };
 }
 
 export async function removeV5ProductionTasks(month: string, taskIds: string[], request: StrategyMutationRequest) {

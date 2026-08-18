@@ -4,6 +4,22 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci
 
+FROM node:22.14.0-bookworm-slim AS worker
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs worker
+COPY --from=dependencies --chown=worker:nodejs /app/node_modules ./node_modules
+COPY --chown=worker:nodejs package.json ./package.json
+COPY --chown=worker:nodejs workers ./workers
+COPY --chown=worker:nodejs scripts ./scripts
+COPY --chown=worker:nodejs src ./src
+COPY --chown=worker:nodejs database ./database
+COPY --chown=worker:nodejs data ./data
+COPY --chown=worker:nodejs config ./config
+RUN mkdir -p /app/artifacts /app/runtime/worker-status && chown -R worker:nodejs /app/data /app/artifacts /app/runtime
+USER worker
+CMD ["node", "workers/production-supervisor.mjs"]
+
 FROM dependencies AS builder
 COPY . .
 RUN npm run build
@@ -25,19 +41,3 @@ RUN mkdir -p /app/artifacts /app/runtime/worker-status && chown -R nextjs:nodejs
 USER nextjs
 EXPOSE 3027
 CMD ["node", "server.js"]
-
-FROM node:22.14.0-bookworm-slim AS worker
-WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
-RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs worker
-COPY --from=dependencies --chown=worker:nodejs /app/node_modules ./node_modules
-COPY --chown=worker:nodejs package.json ./package.json
-COPY --chown=worker:nodejs workers ./workers
-COPY --chown=worker:nodejs scripts ./scripts
-COPY --chown=worker:nodejs src ./src
-COPY --chown=worker:nodejs database ./database
-COPY --chown=worker:nodejs data ./data
-COPY --chown=worker:nodejs config ./config
-RUN mkdir -p /app/artifacts /app/runtime/worker-status && chown -R worker:nodejs /app/data /app/artifacts /app/runtime
-USER worker
-CMD ["node", "workers/production-supervisor.mjs"]

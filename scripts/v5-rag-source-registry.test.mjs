@@ -39,8 +39,18 @@ test("fixed source registry enforces authority and namespace boundaries", () => 
   assert.equal(wechat.classify("01.md").disposition, "production_candidate");
   assert.equal(wechat.classify("article.cleaned.md").namespace, "governance_preview");
   const adp = ragSourceRegistry.find((item) => item.registryId === "joto-tencent-adp-official-20260724");
+  assert.equal(adp.productName, "腾讯云 ADP");
   assert.equal(adp.classify("joto-ai-solutions-xcrawl-2026-07-24/structured/02-tencent-adp-structured.md").governanceMode, "automatic_policy");
   assert.equal(adp.classify("腾讯云ADP × JOTO 联合解决方案.md").authorityLevel, "B1");
+  const workbuddy = ragSourceRegistry.find((item) => item.registryId === "joto-workbuddy-official-20260724");
+  assert.equal(workbuddy.productName, "WorkBuddy");
+  const supplement = workbuddy.classify("One More Thing — WorkBuddy 桌面智能体配套材料.md");
+  assert.equal(supplement.authorityLevel, "B1");
+  assert.equal(supplement.allowedEvidenceRoles.includes("solution_hypothesis"), true);
+  assert.equal(supplement.forbiddenUsage.includes("current_product_capability"), true);
+  const rawSnapshot = workbuddy.classify("joto-ai-solutions-xcrawl-2026-07-24/workbuddy/combined.md");
+  assert.equal(rawSnapshot.disposition, "audit_only");
+  assert.equal(rawSnapshot.documentType, "official_raw_validation_snapshot");
   sourceRootEnvNames.forEach((name) => saved[name] === undefined ? delete process.env[name] : process.env[name] = saved[name]);
 });
 
@@ -66,6 +76,33 @@ test("source roots support environment overrides without changing local defaults
   assert.equal(RAG_SOURCE_ROOT_ENV.command, "RAG_SOURCE_ROOT_PHARAOH_COMMAND");
   assert.equal(ragSourceRegistry.find((item) => item.registryId.startsWith("pharaoh-command-official")).rootPath, "D:/custom/pharaoh-command-source");
   saved === undefined ? delete process.env.RAG_SOURCE_ROOT_PHARAOH_COMMAND : process.env.RAG_SOURCE_ROOT_PHARAOH_COMMAND = saved;
+});
+
+test("missing optional legacy source roots are idle instead of a Docker worker failure", async () => {
+  const saved = Object.fromEntries(sourceRootEnvNames.map((name) => [name, process.env[name]]));
+  const missingRoot = path.join(process.cwd(), ".tmp", "missing-rag-source-root");
+  sourceRootEnvNames.forEach((name) => { process.env[name] = missingRoot; });
+  const { buildRagSourceImportPlan } = loadSourceRegistry();
+  assert.deepEqual(await buildRagSourceImportPlan(), []);
+  sourceRootEnvNames.forEach((name) => saved[name] === undefined ? delete process.env[name] : process.env[name] = saved[name]);
+
+  const result = require("node:child_process").spawnSync(
+    process.execPath,
+    ["--no-warnings", "--experimental-transform-types", "--loader", "./workers/typescript-loader.mjs", "workers/rag-source-import-worker.mjs", "--write"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: Object.fromEntries([
+        ...Object.entries(process.env),
+        ...sourceRootEnvNames.map((name) => [name, missingRoot])
+      ])
+    }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout.trim());
+  assert.equal(output.status, "idle");
+  assert.equal(output.reason, "no_registered_source_files");
+  assert.equal(output.summary.discovered, 0);
 });
 
 test("source import worker defaults to dry-run and never promotes governed truth", () => {

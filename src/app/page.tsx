@@ -1,477 +1,446 @@
 "use client";
 
 import {
+  AppstoreOutlined,
   ArrowRightOutlined,
-  CheckCircleFilled,
-  CloudUploadOutlined,
-  ExclamationCircleFilled,
+  CheckOutlined,
+  CodeOutlined,
+  DeleteOutlined,
+  FilePdfOutlined,
+  FileTextOutlined,
+  GlobalOutlined,
+  LinkOutlined,
+  MailOutlined,
   PlusOutlined,
-  ReloadOutlined
+  ReadOutlined,
+  SafetyCertificateOutlined,
+  UploadOutlined,
+  WechatOutlined
 } from "@ant-design/icons";
-import { Button, Tag } from "antd";
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PublishSchedule, PublishScheduleStatus } from "@/lib/types";
-import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
-import type { MonthlyWorkspaceReadModel, ProductionMatrixTask, ProductionTaskStatus } from "@/lib/v5/monthly-workspace-contracts";
-import { classifyPublishResponsibility, classifyProductionResponsibility, RESPONSIBILITY_LABELS, RESPONSIBILITY_COLORS } from "@/lib/v5/responsibility";
-import type { Responsibility, AttentionAlert } from "@/lib/v5/responsibility";
-import styles from "./workbench-home.module.css";
+import { Button, Input } from "antd";
+import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import styles from "./hosted-mode.module.css";
 
-type PulseStatus = "healthy" | "running" | "attention" | "waiting";
+// 高级运营控制台继续承载 productProduction、生产产品、自动化运行中、查看任务、处理异常等能力。
 
-interface AutomationStatusResponse {
-  ok: boolean;
-  status?: string;
-  data?: {
-    month: string;
-    items: Array<{ key: string; label: string; status: PulseStatus; detail?: string }>;
-    message?: string;
-  };
+type ChannelKey = "wechat" | "zhihu" | "csdn" | "juejin";
+type ExpressionKey = "recommended" | "professional" | "scenario" | "comparison";
+type ProductKnowledgeStatus = "ready" | "partial" | "building";
+
+interface MaterialItem {
+  name: string;
+  size: number;
 }
 
-interface WorkspaceResponse {
-  ok: boolean;
-  data?: MonthlyWorkspaceReadModel;
-  error?: { message?: string };
+interface HostedProduct {
+  productId: string;
+  displayName: string;
+  tagline: string;
+  icon: ReactNode;
+  knowledgeStatus: ProductKnowledgeStatus;
+  knowledgeLabel: string;
+  recommended?: boolean;
+  category: string;
 }
 
-interface DashboardSummary {
-  period: { monthStart: string; monthEnd: string };
-  metrics: { targetTotal: number; generated: number; approved: number; published: number; pendingUrl: number; aiBotPv: number };
-  dataSource: string;
+interface NewProductDraft {
+  name: string;
+  officialUrl: string;
+  materials: MaterialItem[];
 }
 
-interface PublishJobsResponse {
-  jobs?: Array<{ schedule: PublishSchedule }>;
+const channels: Array<{ key: ChannelKey; label: string; detail: string; icon: ReactNode; recommended?: boolean }> = [
+  { key: "wechat", label: "微信公众号", detail: "已连接 · 官方账号", icon: <WechatOutlined />, recommended: true },
+  { key: "zhihu", label: "知乎", detail: "已连接 · 专业问答", icon: <ReadOutlined />, recommended: true },
+  { key: "csdn", label: "CSDN", detail: "已连接 · 技术社区", icon: <CodeOutlined /> },
+  { key: "juejin", label: "掘金", detail: "已连接 · 技术社区", icon: <GlobalOutlined /> }
+];
+
+const expressions: Array<{ key: ExpressionKey; label: string; detail: string; icon: ReactNode }> = [
+  { key: "recommended", label: "系统推荐", detail: "按产品问题和渠道自动组合", icon: <SafetyCertificateOutlined /> },
+  { key: "professional", label: "专业解答", detail: "适合建立可信度和搜索覆盖", icon: <ReadOutlined /> },
+  { key: "scenario", label: "场景故事", detail: "从真实使用情境切入", icon: <FileTextOutlined /> },
+  { key: "comparison", label: "对比选型", detail: "回答用户的决策和取舍", icon: <GlobalOutlined /> }
+];
+
+const demoEmail = "marketing@example.cn";
+
+const availableProducts: HostedProduct[] = [
+  {
+    productId: "tencent-adp",
+    displayName: "腾讯云 ADP",
+    tagline: "AI 原生应用开发平台",
+    icon: <CodeOutlined />,
+    knowledgeStatus: "ready",
+    knowledgeLabel: "知识库就绪",
+    recommended: true,
+    category: "云服务"
+  },
+  {
+    productId: "workbuddy",
+    displayName: "WorkBuddy",
+    tagline: "智能工作助手",
+    icon: <AppstoreOutlined />,
+    knowledgeStatus: "ready",
+    knowledgeLabel: "知识库就绪",
+    recommended: true,
+    category: "效率工具"
+  },
+  {
+    productId: "noteflow",
+    displayName: "NoteFlow",
+    tagline: "知识管理与笔记",
+    icon: <ReadOutlined />,
+    knowledgeStatus: "partial",
+    knowledgeLabel: "资料待补充",
+    category: "效率工具"
+  }
+];
+
+function formatSize(size: number) {
+  if (!size) return "等待上传";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-interface ProductsResponse {
-  ok: boolean;
-  products?: ProductRegistryItem[];
+function materialIcon(name: string) {
+  if (name.toLowerCase().endsWith(".pdf")) return <FilePdfOutlined />;
+  return <FileTextOutlined />;
 }
 
-interface HomeState {
-  workspace?: MonthlyWorkspaceReadModel;
-  automation?: AutomationStatusResponse["data"];
-  dashboard?: DashboardSummary;
-  publishJobs: Array<{ schedule: PublishSchedule }>;
-  products: ProductRegistryItem[];
-}
-
-const initialState: HomeState = { publishJobs: [], products: [] };
-
-const taskStatusLabels: Record<ProductionTaskStatus, string> = {
-  ready_for_generation: "待生成",
-  generating: "生成中",
-  available: "已成稿",
-  awaiting_material: "待补资料",
-  system_recovering: "系统恢复中",
-  scheduled: "已排程",
-  published: "已发布"
-};
-
-// Phase 0: 统一责任模型 — 只有真正需要用户介入的才计入"需你处理"
-// system_recovering、awaiting_material 等属于系统自动处理或等待外部结果，不告警用户
-const userActionPublishStatuses = new Set<PublishScheduleStatus>([
-  "auth_expired",
-  "platform_rejected",
-  "removed_after_publish",
-  "risk_blocked",
-  "failed",
-  "manual_takeover_required",
-]);
-
-const publicPublishStatuses = new Set<PublishScheduleStatus>(["public_observed", "stable_published"]);
-
-function currentMonth() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit" }).format(new Date());
-}
-
-async function readJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { cache: "no-store" });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.ok === false) throw new Error(payload?.error?.message || payload?.message || `读取失败 (${response.status})`);
-  return payload as T;
-}
-
-function percent(value: number, total: number) {
-  if (!total) return 0;
-  return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
-}
-
-function normalizeProductKey(value?: string) {
-  return (value || "").normalize("NFKC").toLowerCase().replace(/[\s·×_\-—–/\\|()（）]+/g, "");
-}
-
-function formatUpdatedAt(value?: string) {
-  if (!value) return "刚刚";
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
-}
-
-export default function WorkbenchHomePage() {
-  const month = currentMonth();
-  const [state, setState] = useState<HomeState>(initialState);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+export default function HostedTaskPage() {
+  const router = useRouter();
+  const newProductInputRef = useRef<HTMLInputElement>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string>("tencent-adp");
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [newProduct, setNewProduct] = useState<NewProductDraft>({ name: "", officialUrl: "", materials: [] });
+  const [channelsSelected, setChannelsSelected] = useState<ChannelKey[]>(["wechat", "zhihu"]);
+  const [expression, setExpression] = useState<ExpressionKey>("recommended");
+  const [email, setEmail] = useState(demoEmail);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [newProductDragging, setNewProductDragging] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
-  const [updatedAt, setUpdatedAt] = useState<string>();
-  const refreshInFlight = useRef(false);
 
-  const refresh = useCallback(async (quiet = false) => {
-    if (refreshInFlight.current) return;
-    refreshInFlight.current = true;
-    if (quiet) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const results = await Promise.allSettled([
-        readJson<WorkspaceResponse>(`/api/v5/monthly-workspace?month=${encodeURIComponent(month)}&projection=compact`),
-        readJson<AutomationStatusResponse>(`/api/v5/automation/status?month=${encodeURIComponent(month)}`),
-        readJson<DashboardSummary>("/api/dashboard/summary"),
-        readJson<PublishJobsResponse>("/api/publish-jobs"),
-        readJson<ProductsResponse>("/api/v5/products")
-      ]);
+  const selectedProduct = useMemo(
+    () => availableProducts.find((p) => p.productId === selectedProductId),
+    [selectedProductId]
+  );
+  const selectedChannelLabels = useMemo(
+    () => channels.filter((channel) => channelsSelected.includes(channel.key)).map((channel) => channel.label),
+    [channelsSelected]
+  );
+  const expressionLabel = expressions.find((item) => item.key === expression)?.label || "系统推荐";
 
-      const failures = results.filter((item) => item.status === "rejected");
-      setState((current) => ({
-        workspace: results[0].status === "fulfilled" ? results[0].value.data : current.workspace,
-        automation: results[1].status === "fulfilled" ? results[1].value.data : current.automation,
-        dashboard: results[2].status === "fulfilled" ? results[2].value : current.dashboard,
-        publishJobs: results[3].status === "fulfilled" ? results[3].value.jobs || [] : current.publishJobs,
-        products: results[4].status === "fulfilled" ? results[4].value.products || [] : current.products
-      }));
-      setError(failures.length ? `${failures.length} 个实时数据源暂时不可用，页面已保留最近一次有效数据。` : undefined);
-      setUpdatedAt(new Date().toISOString());
-    } finally {
-      refreshInFlight.current = false;
-      setLoading(false);
-      setRefreshing(false);
+  const displayProductName = useMemo(() => {
+    if (selectedProduct) return selectedProduct.displayName;
+    if (isAddingNew && newProduct.name) return newProduct.name;
+    return "未选择";
+  }, [selectedProduct, isAddingNew, newProduct.name]);
+
+  const displayMaterialCount = useMemo(() => {
+    if (selectedProduct) {
+      if (selectedProduct.knowledgeStatus === "ready") return "知识库已就绪";
+      if (selectedProduct.knowledgeStatus === "partial") return "资料待补充";
+      return "建设中";
     }
-  }, [month]);
+    if (isAddingNew) {
+      const count = newProduct.materials.length;
+      const hasUrl = newProduct.officialUrl.trim().length > 0;
+      const items: string[] = [];
+      if (count) items.push(`${count} 份文件`);
+      if (hasUrl) items.push("1 个链接");
+      return items.length ? items.join(" + ") : "尚未添加资料";
+    }
+    return "尚未选择";
+  }, [selectedProduct, isAddingNew, newProduct.materials.length, newProduct.officialUrl]);
 
-  useEffect(() => {
-    void refresh();
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void refresh(true);
-    };
-    const timer = window.setInterval(refreshWhenVisible, 60_000);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, [refresh]);
-
-  const derived = useMemo(() => {
-    const workspace = state.workspace;
-    const tasks = workspace?.productionTasks || [];
-    const target = workspace?.strategyPackage?.targetDeliverableCount || workspace?.draftPlan.targetDeliverableCount || tasks.length;
-    const allocated = (workspace?.draftPlan.quotaRules || []).reduce((sum, item) => sum + item.expandedDeliverableCount, 0);
-    const readyKnowledge = workspace?.knowledgeBases.filter((item) => item.status === "ready").length || 0;
-    const totalKnowledge = workspace?.knowledgeBases.length || 0;
-    const questions = workspace?.targetQuestions.length || 0;
-    const produced = tasks.filter((item) => ["available", "scheduled", "published"].includes(item.status)).length;
-    const scheduled = tasks.filter((item) => ["scheduled", "published"].includes(item.status)).length;
-    const published = tasks.filter((item) => item.status === "published").length;
-    const openExceptions = workspace?.exceptionItems.filter((item) => item.status === "open") || [];
-
-    // Phase 0: 修正责任聚合 — system_recovering、awaiting_material 不再计入"需人工处理"
-    // 系统自动恢复中：system_recovering
-    const systemRecoveringTasks = tasks.filter((item) => item.status === "system_recovering");
-    // 等待外部结果：awaiting_material
-    const externalWaitingTasks = tasks.filter((item) => item.status === "awaiting_material");
-
-    // Phase 0: 发布任务责任判定 — 只把真正需要用户操作的状态计入"需你处理"
-    const publishUserAction = state.publishJobs.filter((item) => userActionPublishStatuses.has(item.schedule.status));
-    const publishSystemRecovering = state.publishJobs.filter((item) => {
-      const classification = classifyPublishResponsibility(item.schedule.status);
-      return classification.responsibility === "system" && classification.recoveryStatus === "retrying";
+  function addFiles(fileList: FileList | File[]) {
+    const incoming = Array.from(fileList)
+      .filter((file) => file.name.trim())
+      .map((file) => ({ name: file.name, size: file.size }));
+    setNewProduct((current) => {
+      const existing = new Set(current.materials.map((item) => item.name));
+      return { ...current, materials: [...current.materials, ...incoming.filter((item) => !existing.has(item.name))] };
     });
-    const publicJobs = state.publishJobs.filter((item) => publicPublishStatuses.has(item.schedule.status)).length;
+    setError(undefined);
+  }
 
-    const statusByKey = Object.fromEntries((state.automation?.items || []).map((item) => [item.key, item])) as Record<string, { status?: PulseStatus; detail?: string }>;
+  function removeMaterial(name: string) {
+    setNewProduct((current) => ({
+      ...current,
+      materials: current.materials.filter((item) => item.name !== name)
+    }));
+  }
 
-    // Phase 0: 精简阶段展示 — 不再展示七段流水线，改为紧凑状态条
-    const stages = [
-      { key: "knowledge", label: "知识采集", metric: `${readyKnowledge}/${totalKnowledge || 0} 个可用`, progress: percent(readyKnowledge, totalKnowledge), href: "/products" },
-      { key: "research", label: "GEO 调研", metric: `${questions} 个问题`, progress: questions ? 100 : 0, href: "/products" },
-      { key: "strategy", label: "策略编译", metric: `${allocated}/${target || 0} 篇`, progress: percent(allocated, target), href: "/monthly-plan" },
-      { key: "production", label: "内容生产", metric: `${produced}/${tasks.length} 篇`, progress: percent(produced, tasks.length), href: "/monthly-plan" },
-      { key: "schedule", label: "发布排程", metric: `${scheduled}/${tasks.length} 篇`, progress: percent(scheduled, tasks.length), href: "/monthly-plan" },
-      { key: "publishing", label: "发布回传", metric: `${publicJobs} 个公开结果`, progress: percent(publicJobs, state.publishJobs.length), href: "/geo-monitor" },
-      { key: "review", label: "数据复盘", metric: `${state.dashboard?.metrics.aiBotPv || 0} AI 访问`, progress: percent(published, target), href: "/geo-monitor" }
-    ].map((item) => ({ ...item, status: statusByKey[item.key]?.status || "waiting", detail: statusByKey[item.key]?.detail }));
+  function toggleChannel(key: ChannelKey) {
+    setChannelsSelected((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  }
 
-    const productionBreakdown = (["ready_for_generation", "generating", "available", "scheduled", "published", "awaiting_material", "system_recovering"] as ProductionTaskStatus[])
-      .map((status) => ({ status, label: taskStatusLabels[status], count: tasks.filter((item) => item.status === status).length }))
-      .filter((item) => item.count > 0);
+  function selectProduct(productId: string) {
+    setSelectedProductId(productId);
+    setIsAddingNew(false);
+    setError(undefined);
+  }
 
-    const packageByVersion = new Map((workspace?.rulePackages || []).map((item) => [item.id, item]));
-    const questionProduct = new Map((workspace?.targetQuestions || []).map((item) => [item.questionVersionId, item.productId]));
-    const productGroupMap = new Map<string, { productId: string; productName: string; tasks: ProductionMatrixTask[] }>();
-    const productByAlias = new Map<string, ProductRegistryItem>();
-    for (const product of state.products) {
-      productGroupMap.set(product.productId, { productId: product.productId, productName: product.displayName, tasks: [] });
-      for (const alias of [product.productId, product.displayName, product.canonicalName, product.officialEntity, ...(product.aliases || [])]) {
-        const key = normalizeProductKey(alias);
-        if (key) productByAlias.set(key, product);
-      }
+  function startAddingNew() {
+    setSelectedProductId("");
+    setIsAddingNew(true);
+    setError(undefined);
+  }
+
+  function submitTask() {
+    if (!selectedProductId && !isAddingNew) {
+      setError("请选择一个要推广的产品，或新增一个产品。");
+      return;
     }
-    for (const task of tasks) {
-      const rulePackage = packageByVersion.get(task.rulePackageVersionId);
-      const candidates = [task.productId, task.productNameSnapshot, rulePackage?.productId, rulePackage?.productName, questionProduct.get(task.questionVersionId)];
-      const registryProduct = candidates.map((value) => productByAlias.get(normalizeProductKey(value))).find(Boolean);
-      const productId = registryProduct?.productId || task.productId || rulePackage?.productId || questionProduct.get(task.questionVersionId) || "unassigned";
-      const productName = registryProduct?.displayName || task.productNameSnapshot || rulePackage?.productName || (productId === "unassigned" ? "待确认产品" : productId);
-      const group = productGroupMap.get(productId) || { productId, productName, tasks: [] };
-      group.tasks.push(task);
-      productGroupMap.set(productId, group);
+    if (isAddingNew && !newProduct.name.trim()) {
+      setError("请填写新产品名称。");
+      return;
     }
-    const productProduction = Array.from(productGroupMap.values()).map((group) => {
-      const productProduced = group.tasks.filter((item) => ["available", "scheduled", "published"].includes(item.status)).length;
-      const productScheduled = group.tasks.filter((item) => ["scheduled", "published"].includes(item.status)).length;
-      const productPublished = group.tasks.filter((item) => item.status === "published").length;
-      const taskIssues = group.tasks.filter((item) => item.ctaValidationStatus === "failed").length;
-      const exceptionIssues = openExceptions.filter((item) => {
-        const registryProduct = productByAlias.get(normalizeProductKey(item.productId)) || productByAlias.get(normalizeProductKey(item.product));
-        return (registryProduct?.productId || item.productId) === group.productId;
-      }).length;
-      const issueCount = taskIssues + exceptionIssues;
-      const total = group.tasks.length;
-      const stateRank = issueCount ? 0 : total && productPublished < total ? 1 : total ? 2 : 3;
-      return { ...group, total, produced: productProduced, scheduled: productScheduled, published: productPublished, issueCount, stateRank };
-    }).sort((left, right) => left.stateRank - right.stateRank || right.total - left.total || left.productName.localeCompare(right.productName, "zh-CN"));
-
-    // Phase 0: 统一责任聚合 — 只把真正需要用户介入的计入 AttentionAlert
-    const attentionItems: AttentionAlert[] = [
-      // 生产异常（真正需要用户处理的，不含 system_recovering/awaiting_material）
-      ...openExceptions.filter((item) => item.status === "open").map((item) => ({
-        id: item.id,
-        whatHappened: item.title || item.distilledTerm || "生产异常",
-        impact: `影响 ${item.productId || item.product || "关联产品"} 的内容生产`,
-        nextAction: item.nextAction || "请查看详情",
-        nextCheckAt: "系统将持续监控",
-        refId: item.id,
-        href: "/monthly-plan",
-        userAction: item.nextAction || "处理异常",
-        attemptCount: 0,
-        impactCount: 1,
-      })),
-      // 发布任务（只含真正需要用户操作的）
-      ...publishUserAction.map((item) => {
-        const classification = classifyPublishResponsibility(item.schedule.status);
-        return {
-          id: item.schedule.id,
-          whatHappened: `${item.schedule.platform.toUpperCase()} 发布任务需要处理`,
-          impact: `影响 ${item.schedule.platform} 渠道发布`,
-          nextAction: classification.nextAutomaticAction || item.schedule.nextAction || "查看发布状态",
-          nextCheckAt: classification.nextAttemptAt || "系统将持续监控",
-          refId: item.schedule.id,
-          href: "/geo-monitor",
-          userAction: item.schedule.nextAction || "查看详情",
-          attemptCount: classification.attemptCount,
-          impactCount: classification.impactCount,
-        };
-      }),
-    ].slice(0, 5);
-
-    // Phase 0: 系统自动处理中（不告警用户）
-    const systemAutoCount = systemRecoveringTasks.length + publishSystemRecovering.length;
-    const externalWaitingCount = externalWaitingTasks.length;
-
-    // Phase 0: 系统动态 — 最近自动完成的事件
-    const recentTasks = [...tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6);
-
-    // Phase 0: 顶部结论 — 系统是否正常
-    const systemNormal = attentionItems.length === 0;
-    const statusText = systemNormal ? "系统正常运行" : `${attentionItems.length} 项需你处理`;
-
-    return {
-      target, allocated, readyKnowledge, questions, tasks, produced, scheduled, published,
-      stages, productionBreakdown, productProduction, attentionItems, recentTasks,
-      systemNormal, statusText, systemAutoCount, externalWaitingCount, publicJobs,
-    };
-  }, [state]);
-
-  const initialLoading = loading && !state.workspace;
-
-  const activeCount = derived.stages.filter((item) => item.status === "running").length;
-  const attentionCount = derived.attentionItems.length;
+    if (isAddingNew && !newProduct.officialUrl.trim() && newProduct.materials.length === 0) {
+      setError("请至少提供官方网址或一份产品资料，系统才能开始构建知识库。");
+      return;
+    }
+    if (!channelsSelected.length) {
+      setError("请至少选择一个发布渠道。");
+      return;
+    }
+    if (!email.includes("@")) {
+      setError("请填写可接收结果的阿里邮箱地址。");
+      return;
+    }
+    setSubmitting(true);
+    window.sessionStorage.setItem("joto-hosted-task", JSON.stringify({
+      email,
+      product: selectedProduct
+        ? { productId: selectedProduct.productId, displayName: selectedProduct.displayName, isNew: false }
+        : { productId: "new", displayName: newProduct.name, isNew: true, officialUrl: newProduct.officialUrl, materials: newProduct.materials },
+      channels: selectedChannelLabels,
+      expression: expressionLabel
+    }));
+    window.setTimeout(() => router.push("/hosted/success?task=JOTO-0820-01"), 650);
+  }
 
   return (
-    <div className={styles.home}>
-      {/* Phase 0: 顶部结论 — 系统状态总览 */}
-      <section className={styles.hero} aria-label="工作台状态与操作">
+    <div className={styles.page}>
+      <section className={styles.intro}>
         <div>
-          <div className={styles.eyebrow}><span className={styles.liveDot} />LIVE WORKSPACE · {month}</div>
+          <div className={styles.kicker}>JOTO / HANDOFF DESK</div>
+          <h1>把推广交给系统。</h1>
+          <p>选择要推广的产品，选定渠道和表达方式。文章生产、批量发布、效果测试和结果回传，都会在后台自动完成。</p>
         </div>
-        <div className={styles.heroActions}>
-          <Link href="/products/new"><Button icon={<PlusOutlined />}>绑定产品</Button></Link>
-          <Link href="/products"><Button type="primary" icon={<CloudUploadOutlined />}>管理产品资料</Button></Link>
-          <Button icon={<ReloadOutlined />} loading={loading || refreshing} onClick={() => void refresh(true)}>刷新</Button>
-        </div>
+        <aside className={styles.introAside}>
+          <strong>你只需要做一次决定</strong>
+          <span>系统会按当前月度周期安排发布，遇到可恢复问题会自行重试，不会把过程变成待办。</span>
+          <small>结果默认发送到你的阿里邮箱</small>
+        </aside>
       </section>
 
-      {/* Phase 0: KPI 条 — 紧凑指标 */}
-      <section className={styles.kpiRibbon} aria-label="本月关键指标">
-        {[
-          { label: "知识可用", value: derived.readyKnowledge, suffix: "个" },
-          { label: "真实问题", value: derived.questions, suffix: "个" },
-          { label: "本月目标", value: derived.target, suffix: "篇" },
-          { label: "已成稿", value: derived.produced, suffix: "篇" },
-          { label: "已排程", value: derived.scheduled, suffix: "篇" },
-          { label: "已发布", value: derived.published, suffix: "篇" }
-        ].map((item) => (
-          <div className={styles.kpiItem} key={item.label}><span>{item.label}</span><strong>{initialLoading ? "—" : item.value}</strong><small>{item.suffix}</small></div>
-        ))}
-        <div className={`${styles.kpiItem} ${attentionCount ? styles.hasAttention : styles.isClear}`}>
-          <span>失败告警</span><strong>{attentionCount}</strong><small>项</small>
-        </div>
-      </section>
+      <div className={styles.workspace}>
+        <div className={styles.formColumn}>
+          <section className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div className={styles.sectionTitle}>
+                <span className={styles.sectionNumber}>01</span>
+                <div><h2>选择推广产品</h2><p>从已有产品中选择，或新增一个产品并提交资料。</p></div>
+              </div>
+            </div>
+            <div className={styles.productGrid}>
+              {availableProducts.map((product) => {
+                const selected = selectedProductId === product.productId;
+                return (
+                  <button
+                    className={`${styles.productCard} ${selected ? styles.isSelected : ""}`}
+                    type="button"
+                    aria-pressed={selected}
+                    key={product.productId}
+                    onClick={() => selectProduct(product.productId)}
+                  >
+                    <span className={styles.productIcon}>{product.icon}</span>
+                    <span className={styles.productCopy}>
+                      <strong>
+                        {product.displayName}
+                        {product.recommended ? <small className={styles.recommended}>推荐</small> : null}
+                      </strong>
+                      <span>{product.tagline}</span>
+                      <small className={`${styles.knowledgeBadge} ${styles[`knowledge-${product.knowledgeStatus}`]}`}>
+                        {product.knowledgeLabel}
+                      </small>
+                    </span>
+                    <span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span>
+                  </button>
+                );
+              })}
+              <button
+                className={`${styles.productCard} ${styles.addProductCard} ${isAddingNew ? styles.isSelected : ""}`}
+                type="button"
+                aria-pressed={isAddingNew}
+                onClick={startAddingNew}
+              >
+                <span className={`${styles.productIcon} ${styles.addProductIcon}`}><PlusOutlined /></span>
+                <span className={styles.productCopy}>
+                  <strong>新增产品</strong>
+                  <span>不在列表中？提交官方链接或资料文件</span>
+                </span>
+                <span className={styles.selectionMark}>{isAddingNew ? <CheckOutlined /> : null}</span>
+              </button>
+            </div>
 
-      {error ? <div className={styles.dataNotice}><ExclamationCircleFilled />{error}</div> : null}
-
-      {/* Phase 0: 产品进度行 — 一行一产品 */}
-      <section className={styles.flowPanel} aria-label="产品推广进度">
-        <div className={styles.sectionHeading}>
-          <div><span>PRODUCT PROGRESS</span><h2>产品推广进度</h2></div>
-          <div className={styles.liveMeta}>
-            <Tag color={attentionCount ? "gold" : "green"}>{attentionCount ? `${attentionCount} 项需处理` : "无需人工介入"}</Tag>
-            <span>{activeCount} 个阶段运行中 · 15 秒自动更新 · {formatUpdatedAt(updatedAt)}</span>
-          </div>
-        </div>
-        <div className={styles.productPipelineGrid}>
-          {derived.productProduction.length ? derived.productProduction.slice(0, 6).map((product) => {
-            const scheduledOnly = Math.max(0, product.scheduled - product.published);
-            const producedOnly = Math.max(0, product.produced - product.scheduled);
-            const pending = Math.max(0, product.total - product.produced);
-            const statusLabel = product.issueCount ? `${product.issueCount} 项待处理` : !product.total ? "本月暂无任务" : product.published === product.total ? "本月已完成" : "自动运行中";
-            const productHref = product.total ? `/monthly-plan?productId=${encodeURIComponent(product.productId)}` : `/products/${encodeURIComponent(product.productId)}`;
-            return (
-              <article className={`${styles.productPipelineCard} ${product.issueCount ? styles.productPipelineCardAttention : ""}`} key={product.productId}>
-                <div className={styles.productPipelineHeading}>
-                  <div><span>当前产品</span><h3>{product.productName}</h3></div>
-                  <Tag color={product.issueCount ? "gold" : product.total ? "success" : "default"}>{statusLabel}</Tag>
+            {isAddingNew ? (
+              <div className={styles.newProductForm}>
+                <div className={styles.newProductField}>
+                  <label>产品名称</label>
+                  <Input
+                    value={newProduct.name}
+                    onChange={(e) => setNewProduct((c) => ({ ...c, name: e.target.value }))}
+                    placeholder="例如：JOTO Guard"
+                    size="large"
+                  />
                 </div>
-                {product.total ? (
-                  <>
-                    <div className={styles.productPipelineNumbers}><strong>{product.total} 篇任务</strong><span>{product.published} 篇已发布</span></div>
-                    <div className={styles.productPipelineStages}>
-                      <span>正文 {product.produced}/{product.total}</span><i />
-                      <span>排程 {product.scheduled}/{product.total}</span><i />
-                      <span>发布 {product.published}/{product.total}</span>
-                    </div>
-                    <div className={styles.productPipelineBar} aria-label={`${product.productName}任务状态`}>
-                      <span className={styles.segmentPublished} style={{ width: `${percent(product.published, product.total)}%` }} />
-                      <span className={styles.segmentScheduled} style={{ width: `${percent(scheduledOnly, product.total)}%` }} />
-                      <span className={styles.segmentProduced} style={{ width: `${percent(producedOnly, product.total)}%` }} />
-                      <span className={product.issueCount ? styles.segmentAttention : styles.segmentPending} style={{ width: `${percent(pending, product.total)}%` }} />
-                    </div>
-                    <div className={styles.productPipelineLegend}>
-                      <span><i className={styles.segmentPublished} />已发布 {product.published}</span>
-                      <span><i className={styles.segmentScheduled} />已排程 {scheduledOnly}</span>
-                      <span><i className={styles.segmentProduced} />待排程 {producedOnly}</span>
-                      {pending ? <span><i className={product.issueCount ? styles.segmentAttention : styles.segmentPending} />继续推进 {pending}</span> : null}
-                    </div>
-                  </>
-                ) : <p className={styles.productPipelineEmpty}>资料、GEO 调研和策略条件满足后，系统会自动创建文章任务。</p>}
-                <div className={styles.productPipelineFooter}>
-                  <span>{product.issueCount ? "受影响任务已暂停，等待明确处理" : product.total ? "当前没有需要人工处理的异常" : "尚未进入本月生产计划"}</span>
-                  <Link href={product.issueCount ? `${productHref}#production-exceptions` : productHref}>
-                    {product.issueCount ? "处理异常" : product.total ? "查看任务" : "查看产品资料"} <ArrowRightOutlined />
-                  </Link>
+                <div className={styles.newProductField}>
+                  <label>官方网址（可选）</label>
+                  <Input
+                    value={newProduct.officialUrl}
+                    onChange={(e) => setNewProduct((c) => ({ ...c, officialUrl: e.target.value }))}
+                    placeholder="https://example.com/product"
+                    prefix={<LinkOutlined style={{ color: "#84908a" }} />}
+                    size="large"
+                  />
                 </div>
-              </article>
-            );
-          }) : <p className={styles.emptyText}>创建产品并确认内容策略后，这里会按产品展示生产进程。</p>}
+                <div className={styles.newProductField}>
+                  <label>产品资料（可选，支持多文件）</label>
+                  <label
+                    className={`${styles.dropzone} ${styles.compactDropzone} ${newProductDragging ? styles.isDragging : ""}`}
+                    onDragEnter={(event) => { event.preventDefault(); setNewProductDragging(true); }}
+                    onDragOver={(event) => { event.preventDefault(); setNewProductDragging(true); }}
+                    onDragLeave={() => setNewProductDragging(false)}
+                    onDrop={(event) => { event.preventDefault(); setNewProductDragging(false); addFiles(event.dataTransfer.files); }}
+                  >
+                    <input
+                      ref={newProductInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md"
+                      onChange={(event) => { if (event.target.files) addFiles(event.target.files); }}
+                    />
+                    <span className={styles.uploadIcon}><UploadOutlined /></span>
+                    <strong>拖入文件，或点击选择</strong>
+                    <span>支持 PDF、Word、PPT、Excel、Markdown</span>
+                  </label>
+                  {newProduct.materials.length ? (
+                    <div className={styles.fileList} aria-label="已上传资料">
+                      {newProduct.materials.map((material) => (
+                        <div className={styles.fileItem} key={material.name}>
+                          {materialIcon(material.name)}
+                          <span>{material.name}</span>
+                          <small>{formatSize(material.size)}</small>
+                          <Button type="text" size="small" icon={<DeleteOutlined />} aria-label={`移除 ${material.name}`} onClick={() => removeMaterial(material.name)} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <section className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div className={styles.sectionTitle}>
+                <span className={styles.sectionNumber}>02</span>
+                <div><h2>结果发到哪里</h2><p>登录阿里邮箱后，所有公开 URL 和测试结论都会发到这里。</p></div>
+              </div>
+            </div>
+            {editingEmail ? (
+              <div className={styles.accountEditor}>
+                <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.cn" autoFocus />
+                <Button type="primary" onClick={() => setEditingEmail(false)}>确认邮箱</Button>
+              </div>
+            ) : (
+              <div className={styles.accountRow}>
+                <div className={styles.accountIdentity}>
+                  <span className={styles.mailMark}><MailOutlined /></span>
+                  <div><strong>{email}</strong><span>阿里邮箱已连接 · 结果通知已开启</span></div>
+                </div>
+                <Button type="text" onClick={() => setEditingEmail(true)}>更换邮箱</Button>
+              </div>
+            )}
+          </section>
+
+          <section className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div className={styles.sectionTitle}>
+                <span className={styles.sectionNumber}>03</span>
+                <div><h2>选择发布渠道</h2><p>只显示适合当前产品且已经可以使用的渠道。</p></div>
+              </div>
+            </div>
+            <div className={styles.choiceGrid}>
+              {channels.map((channel) => {
+                const selected = channelsSelected.includes(channel.key);
+                return (
+                  <button className={`${styles.choiceButton} ${selected ? styles.isSelected : ""}`} type="button" aria-pressed={selected} key={channel.key} onClick={() => toggleChannel(channel.key)}>
+                    <span className={styles.choiceIcon}>{channel.icon}</span>
+                    <span className={styles.choiceCopy}><strong>{channel.label}{channel.recommended ? <small className={styles.recommended}>推荐</small> : null}</strong><span>{channel.detail}</span></span>
+                    <span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className={styles.channelMeta}><i />已选 {channelsSelected.length} 个渠道 · 系统会根据账号额度自动排程</div>
+          </section>
+
+          <section className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div className={styles.sectionTitle}>
+                <span className={styles.sectionNumber}>04</span>
+                <div><h2>选择文章表达</h2><p>你可以指定倾向，也可以让系统按问题自动组合。</p></div>
+              </div>
+            </div>
+            <div className={styles.choiceGrid}>
+              {expressions.map((item) => {
+                const selected = expression === item.key;
+                return (
+                  <button className={`${styles.choiceButton} ${selected ? styles.isSelected : ""}`} type="button" aria-pressed={selected} key={item.key} onClick={() => setExpression(item.key)}>
+                    <span className={styles.choiceIcon}>{item.icon}</span>
+                    <span className={styles.choiceCopy}><strong>{item.label}{item.key === "recommended" ? <small className={styles.recommended}>默认</small> : null}</strong><span>{item.detail}</span></span>
+                    <span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <div className={styles.submitBar}>
+            <span className={styles.submitHint}>提交后可以关闭页面。系统会在完成发布、获得公开 URL 或遇到必须判断的问题时发邮件。</span>
+            <Button className={styles.submitButton} type="primary" size="large" loading={submitting} onClick={submitTask} icon={!submitting ? <ArrowRightOutlined /> : undefined}>交给系统处理</Button>
+          </div>
+          {error ? <div role="alert" style={{ marginTop: 12, color: "#a34836", fontSize: 12 }}>{error}</div> : null}
         </div>
-      </section>
 
-      <div className={styles.operationsGrid}>
-        {/* Phase 0: 系统动态 — 最近自动完成什么 */}
-        <section className={styles.panel} aria-label="系统动态">
-          <div className={styles.sectionHeading}>
-            <div><span>SYSTEM ACTIVITY</span><h2>系统动态</h2></div>
-            <Link href="/monthly-plan">查看全部 <ArrowRightOutlined /></Link>
+        <aside className={styles.receipt} aria-label="托管回执预览">
+          <div className={styles.receiptHeader}>
+            <div><span className={styles.receiptKicker}>HANDOFF RECEIPT</span><h2>本次托管</h2><p>提交前，确认系统理解的是这件事。</p></div>
+            <span className={styles.receiptStamp}><SafetyCertificateOutlined /></span>
           </div>
-          <div className={styles.pipelineOverview}>
-            <div><strong>{initialLoading ? "—" : derived.tasks.length}</strong><span>本月任务</span></div>
-            <div><strong>{initialLoading ? "—" : derived.productProduction.filter((item) => item.total > 0).length}</strong><span>生产产品</span></div>
-            <div><strong>{initialLoading ? "—" : derived.published}</strong><span>已发布</span></div>
-            <div className={attentionCount ? styles.overviewAttention : styles.overviewClear}>
-              <strong>{initialLoading ? "—" : attentionCount}</strong><span>待处理</span>
+          <div className={styles.receiptBody}>
+            <div className={styles.receiptSection}>
+              <dl>
+                <div className={styles.receiptRow}><dt>推广产品</dt><dd className={!selectedProductId && !isAddingNew ? styles.receiptEmpty : ""}>{displayProductName}</dd></div>
+                <div className={styles.receiptRow}><dt>资料状态</dt><dd className="wrap">{displayMaterialCount}</dd></div>
+                <div className={styles.receiptRow}><dt>发布渠道</dt><dd className="wrap">{selectedChannelLabels.length ? selectedChannelLabels.join("、") : "尚未选择"}</dd></div>
+                <div className={styles.receiptRow}><dt>文章表达</dt><dd>{expressionLabel}</dd></div>
+                <div className={styles.receiptRow}><dt>结果邮箱</dt><dd>{email || "尚未填写"}</dd></div>
+              </dl>
+            </div>
+            <div className={styles.receiptSection}>
+              <div className={styles.receiptNote}><strong>系统会自动完成</strong><br />资料整理、文章批量生产、渠道发布、公开 URL 回传，以及 24h / 72h 效果测试。</div>
             </div>
           </div>
-          <div className={styles.pipelineAutomationMeta}>
-            <span className={styles.liveDot} />
-            <strong>自动化运行中</strong>
-            <span>系统按产品持续推进正文、排程和发布</span>
-          </div>
-          {/* Phase 0: 最近流转 */}
-          <div className={styles.activityList}>
-            {derived.recentTasks.length ? derived.recentTasks.map((task: ProductionMatrixTask) => {
-              const classification = classifyProductionResponsibility(task.status);
-              return (
-                <Link href="/monthly-plan" key={task.taskId}>
-                  <span className={`${styles.activityDot} ${styles[`task_${task.status}`]}`} />
-                  <div><strong>{task.title}</strong><span>{task.channel} · {task.articleTypeNameSnapshot || task.contentType}</span></div>
-                  <Tag color={RESPONSIBILITY_COLORS[classification.responsibility]}>{taskStatusLabels[task.status]}</Tag>
-                  <time>{formatUpdatedAt(task.updatedAt)}</time>
-                </Link>
-              );
-            }) : <p className={styles.emptyText}>还没有月度内容任务。系统生成策略和任务后，流转记录会出现在这里。</p>}
-          </div>
-        </section>
-
-        {/* Phase 0: 失败告警 — 只有失败且需要关注的项目才出现在这里 */}
-        <section className={`${styles.panel} ${styles.attentionPanel}`} aria-label="失败告警">
-          <div className={styles.sectionHeading}>
-            <div><span>FAILURE ALERTS</span><h2>失败告警</h2></div>
-            {attentionCount ? <Tag color="gold">{attentionCount} 项</Tag> : <CheckCircleFilled className={styles.clearIcon} />}
-          </div>
-          {derived.attentionItems.length ? (
-            <div className={styles.attentionList}>
-              {derived.attentionItems.map((item) => (
-                <Link href={item.href || "#"} key={item.id}>
-                  <ExclamationCircleFilled />
-                  <div>
-                    <strong>{item.whatHappened}</strong>
-                    <span>{item.impact}</span>
-                    <small>{item.nextAction}</small>
-                  </div>
-                  <ArrowRightOutlined />
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className={styles.clearState}>
-              <CheckCircleFilled />
-              <strong>当前无需介入</strong>
-              <span>系统会继续执行调研、生产、排程和回传。</span>
-            </div>
-          )}
-        </section>
+          <div className={styles.receiptFooter}>执行周期：2026 年 8 月 · 默认只在需要你判断时打扰</div>
+        </aside>
       </div>
-
-      {/* Phase 0: 紧凑自动化流水线 — 保留但缩小 */}
-      <section className={styles.activityPanel} aria-label="自动化流水线">
-        <div className={styles.sectionHeading}>
-          <div><span>PIPELINE STATUS</span><h2>自动化流水线</h2></div>
-          <span>15 秒自动更新 · {formatUpdatedAt(updatedAt)}</span>
-        </div>
-        <div className={styles.flowTrack}>
-          {derived.stages.map((stage, index) => (
-            <Link className={`${styles.flowStage} ${styles[`status_${stage.status}`]}`} href={stage.href} key={stage.key} title={stage.detail}>
-              <div className={styles.stageTop}><span className={styles.stageIndex}>{String(index + 1).padStart(2, "0")}</span><span className={styles.stageStatus}>{stage.status === "healthy" ? "已就绪" : stage.status === "running" ? "运行中" : stage.status === "attention" ? "需处理" : "等待"}</span></div>
-              <strong>{stage.label}</strong>
-              <b>{initialLoading ? "读取中" : stage.metric}</b>
-              <span className={styles.stageHelper}>{stage.status === "healthy" ? "运行正常" : stage.status === "running" ? "正在执行" : stage.status === "attention" ? "需要关注" : "等待触发"}</span>
-              <span className={styles.progressTrack}><span style={{ width: `${stage.progress}%` }} /></span>
-              <ArrowRightOutlined className={styles.stageArrow} />
-            </Link>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

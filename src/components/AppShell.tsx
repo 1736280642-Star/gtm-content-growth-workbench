@@ -14,11 +14,11 @@ const contentStyle: CSSProperties = { minWidth: 0, padding: "20px 24px 32px" };
 
 // 用户业务入口保持一级可见，避免用二级工具菜单重复表达同一流程。
 const mainNavItems = [
-  { key: "/", icon: <DashboardOutlined />, label: <Link href="/">首页</Link> },
+  { key: "/", icon: <DashboardOutlined />, label: <Link href="/">托管模式</Link> },
   { key: "/products", icon: <BookOutlined />, label: <Link href="/products">产品知识库</Link> },
   { key: "/content-automation", icon: <ControlOutlined />, label: <Link href="/content-automation">内容自动化</Link> },
   { key: "/free-production", icon: <WechatOutlined />, label: <Link href="/free-production">公众号内容生产</Link> },
-  { key: "/geo-monitor", icon: <FundProjectionScreenOutlined />, label: <Link href="/geo-monitor">GEO 监控塔</Link> },
+  { key: "/content-monitor", icon: <FundProjectionScreenOutlined />, label: <Link href="/content-monitor">内容监控塔</Link> },
   { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">设置</Link> },
 ];
 
@@ -51,20 +51,22 @@ async function fetchSystemStatus(): Promise<SystemStatusSummary> {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const navigationPathname = pathname === "/monthly-plan" ? "/content-automation" : pathname;
+  const isHostedMode = pathname === "/" || pathname.startsWith("/hosted");
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [systemStatus, setSystemStatus] = useState<SystemStatusSummary>({ statusText: "系统状态读取中", statusColor: "green", autoCount: 0, attentionCount: 0 });
   const statusRefreshInFlight = useRef(false);
   const selectedKey = allNavKeys.filter((key) => navigationPathname.startsWith(key)).sort((a, b) => b.length - a.length)[0];
 
   const refreshStatus = useCallback(() => {
-    if (statusRefreshInFlight.current || document.visibilityState !== "visible") return;
+    if (isHostedMode || statusRefreshInFlight.current || document.visibilityState !== "visible") return;
     statusRefreshInFlight.current = true;
     void fetchSystemStatus()
       .then(setSystemStatus)
       .finally(() => { statusRefreshInFlight.current = false; });
-  }, []);
+  }, [isHostedMode]);
 
   useEffect(() => {
+    if (isHostedMode) return;
     if (window.matchMedia("(max-width: 760px)").matches) setSiderCollapsed(true);
     refreshStatus();
     const timer = window.setInterval(refreshStatus, 60_000);
@@ -73,7 +75,54 @@ export function AppShell({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshStatus);
     };
-  }, [refreshStatus]);
+  }, [isHostedMode, refreshStatus]);
+
+  if (isHostedMode) {
+    return (
+      <ConfigProvider
+        theme={{
+          token: {
+            colorPrimary: "#176b52",
+            colorInfo: "#2967a3",
+            colorText: "#18201d",
+            colorTextSecondary: "#63716b",
+            colorBorder: "#dce4df",
+            colorBgLayout: "#f5f7f4",
+            colorBgContainer: "#ffffff",
+            borderRadius: 8,
+            borderRadiusLG: 12,
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+            fontSize: 14,
+            controlHeight: 38,
+            controlHeightLG: 46,
+            boxShadow: "0 1px 2px rgba(24, 32, 29, 0.04)",
+            boxShadowSecondary: "0 18px 45px rgba(24, 32, 29, 0.1)"
+          },
+          components: {
+            Button: { fontWeight: 650, primaryShadow: "none", defaultShadow: "none" },
+            Input: { activeShadow: "0 0 0 3px rgba(23, 107, 82, 0.12)" },
+            Card: { headerHeight: 48, bodyPadding: 20 }
+          }
+        }}
+      >
+        <div className="hosted-shell">
+          <header className="hosted-topbar">
+            <Link className="hosted-brand" href="/">
+              <span className="hosted-brand-mark">J</span>
+              <span><strong>JOTO</strong><small>推广托管</small></span>
+            </Link>
+            <nav className="hosted-nav" aria-label="托管模式导航">
+              <Link className={pathname === "/" ? "is-active" : ""} href="/">发起推广</Link>
+              <Link className={pathname.startsWith("/hosted/email") ? "is-active" : ""} href="/hosted/email">结果邮件</Link>
+              <Link className="hosted-console-link" href="/content-automation">进入运营控制台 <span aria-hidden="true">↗</span></Link>
+            </nav>
+          </header>
+          <main className="hosted-main">{children}</main>
+          <footer className="hosted-footer"><span>JOTO GTM</span><span>默认自动运行 · 只有必须判断时才打扰你</span></footer>
+        </div>
+      </ConfigProvider>
+    );
+  }
 
   return (
     <ConfigProvider

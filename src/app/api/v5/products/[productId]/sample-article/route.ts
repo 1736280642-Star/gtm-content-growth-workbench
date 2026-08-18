@@ -3,8 +3,8 @@ import { getSingleArticleActor, singleArticleErrorResponse } from "@/lib/v5/sing
 import { getActiveProduct } from "@/lib/v5/product-registry-service";
 import { getProductGeoStrategyPackView } from "@/lib/v5/product-strategy-pack-service";
 import {
-  generateProductSampleArticle,
-  readLatestProductSampleArticle
+  enqueueProductSampleArticles,
+  readProductSampleArticles
 } from "@/lib/v5/product-sample-article-service";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET(
     await getActiveProduct(productId);
     return NextResponse.json({
       ok: true,
-      data: await readLatestProductSampleArticle(productId) || null
+      data: await readProductSampleArticles(productId) || null
     }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return singleArticleErrorResponse(error);
@@ -46,20 +46,24 @@ export async function POST(
       }, { status: 409 });
     }
     const requestedKey = String(request.headers.get("x-idempotency-key") || "").trim();
-    const generated = await generateProductSampleArticle({
+    const queued = await enqueueProductSampleArticles({
       productId,
       strategyPackId: strategy.id,
-      idempotencyKey: requestedKey || `product-sample:${strategy.id}:v1`,
+      idempotencyKey: requestedKey || `product-samples:${strategy.id}:v2`,
       actor: getSingleArticleActor()
     });
     return NextResponse.json({
       ok: true,
-      data: {
-        taskId: generated.taskId,
-        draftVersionId: generated.result.draftVersion.draftVersionId,
-        title: generated.result.draftVersion.title
-      }
-    }, { headers: { "cache-control": "no-store" } });
+      data: queued.map((item) => ({
+        taskId: item.taskId,
+        operationId: item.operation.operationId,
+        status: item.operation.status,
+        progressStage: item.operation.progressStage,
+        title: item.title,
+        articleTypeVersionId: item.articleTypeVersionId,
+        articleTypeName: item.articleTypeName
+      }))
+    }, { status: 202, headers: { "cache-control": "no-store" } });
   } catch (error) {
     return singleArticleErrorResponse(error);
   }

@@ -8,12 +8,16 @@ import type {
   GeoResearchProject,
   GeoResearchRun,
   GeoResearchRunWorkspace,
+  GeoResearchResultPackArtifact,
   GeoResearchTask,
   GeoResearchTaskStatus,
   GeoResearchTaskType,
   GeoResearchWorkspace
 } from "./geo-research-contracts";
+import type { GeoResearchResultPack } from "./geo-research-result-contracts";
 import type { GeoResearchProviderResult } from "./geo-research-provider";
+import type { ProbeSetSnapshot } from "./geo-probe-contracts";
+import { compileGeoProbeSet, defaultGeoProbeContract } from "./geo-probe-compiler";
 import { evaluateGeoSourceSnapshotQuality, type GeoSnapshotSourceMetadata } from "./geo-source-quality";
 import {
   getV5GovernancePool,
@@ -59,6 +63,60 @@ const GEO_SOURCE_QUALITY_QUERY = `SELECT ssi.source_id, ssi.source_revision_id,
    FROM source_snapshot_item ssi
    LEFT JOIN source_asset sa ON sa.id = ssi.source_id
    WHERE ssi.source_snapshot_id = ?`;
+
+export interface GeoResearchGovernanceBinding {
+  sourceSnapshotId: string;
+  sourceSnapshotHash: string;
+  rulePackageVersionId: string;
+  indexSnapshotId: string;
+}
+
+async function readActiveGeoResearchGovernanceBindingFromConnection(
+  connection: PoolConnection,
+  productId: string
+): Promise<GeoResearchGovernanceBinding | undefined> {
+  const [rows] = await connection.query<RowDataPacket[]>(
+    `SELECT ss.id AS source_snapshot_id, ss.snapshot_hash,
+            manifest.active_rule_package_version_id AS rule_package_version_id,
+            idx.id AS index_snapshot_id
+     FROM source_snapshot ss
+     JOIN rag_ingestion_manifest manifest
+       ON manifest.product_id = ss.product_id
+      AND manifest.status = 'approved'
+     JOIN rag_index_snapshot idx
+       ON idx.manifest_id = manifest.id
+      AND idx.product_id = ss.product_id
+      AND idx.namespace = 'production_public'
+      AND idx.language = 'zh-CN'
+      AND idx.status = 'active'
+     JOIN rule_package_version rule_version
+       ON rule_version.id = manifest.active_rule_package_version_id
+      AND rule_version.product_id = ss.product_id
+      AND rule_version.status = 'active'
+      AND rule_version.immutable_at IS NOT NULL
+     WHERE ss.product_id = ?
+       AND rule_version.source_snapshot_hash = ss.snapshot_hash
+     ORDER BY idx.activated_at DESC, ss.created_at DESC
+     LIMIT 1`,
+    [productId]
+  );
+  const row = rows[0];
+  return row ? {
+    sourceSnapshotId: String(row.source_snapshot_id),
+    sourceSnapshotHash: String(row.snapshot_hash),
+    rulePackageVersionId: String(row.rule_package_version_id),
+    indexSnapshotId: String(row.index_snapshot_id)
+  } : undefined;
+}
+
+export async function readActiveGeoResearchGovernanceBinding(productId: string) {
+  const connection = await getV5GovernancePool().getConnection();
+  try {
+    return await readActiveGeoResearchGovernanceBindingFromConnection(connection, productId);
+  } finally {
+    connection.release();
+  }
+}
 
 function mapSnapshotSourceMetadata(rows: RowDataPacket[]): GeoSnapshotSourceMetadata[] {
   return rows.map((row) => ({
@@ -420,8 +478,9 @@ export async function readGeoResearchWorkspace(productId: string): Promise<GeoRe
   let latestTasks: GeoResearchTask[] = [];
   let latestEvidence: GeoResearchEvidence[] = [];
   let latestFindings: GeoResearchFinding[] = [];
+  let latestResultPack: GeoResearchResultPackArtifact | undefined;
   if (latestRun) {
-    const [[taskRows], [evidenceRows], [findingRows]] = await Promise.all([
+    const [[taskRows], [evidenceRows], [findingRows], resultPackArtifact] = await Promise.all([
       getV5GovernancePool().query<RowDataPacket[]>(
         "SELECT * FROM geo_research_task WHERE run_id = ? ORDER BY created_at, id",
         [latestRun.runId]
@@ -433,11 +492,13 @@ export async function readGeoResearchWorkspace(productId: string): Promise<GeoRe
       getV5GovernancePool().query<RowDataPacket[]>(
         "SELECT * FROM geo_research_finding WHERE run_id = ? ORDER BY finding_type, confidence DESC, created_at",
         [latestRun.runId]
-      )
+      ),
+      readLatestGeoResearchResultPack(latestRun.runId)
     ]);
     latestTasks = taskRows.map(mapTask);
     latestEvidence = evidenceRows.map(mapEvidence);
     latestFindings = findingRows.map(mapFinding);
+    latestResultPack = resultPackArtifact;
   }
   let currentBlueprint: GeoBlueprintVersion | undefined;
   if (project.currentApprovedBlueprintVersionId) {
@@ -453,7 +514,7 @@ export async function readGeoResearchWorkspace(productId: string): Promise<GeoRe
     );
     currentBlueprint = blueprintRows[0] ? mapBlueprint(blueprintRows[0]) : undefined;
   }
-  return { project, runs, latestRun, latestTasks, latestEvidence, latestFindings, currentBlueprint };
+  return { project, runs, latestRun, latestTasks, latestEvidence, latestFindings, currentBlueprint, latestResultPack };
 }
 
 export async function readLatestGeoSourceSnapshot(productId: string) {
@@ -482,6 +543,22 @@ export async function readLatestGeoSourceSnapshot(productId: string) {
   };
 }
 
+async function readLatestGeoResearchResultPack(runId: string): Promise<GeoResearchResultPackArtifact | undefined> {
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT id, payload_json
+     FROM geo_research_artifact
+     WHERE run_id = ? AND artifact_type = 'geo_research_result_pack'
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [runId]
+  );
+  const row = rows[0];
+  if (!row) return undefined;
+  const resultPack = parseV5Json<GeoResearchResultPack | null>(row.payload_json, null);
+  if (!resultPack || typeof resultPack !== "object") return undefined;
+  return { artifactId: String(row.id), resultPack };
+}
+
 export async function readGeoResearchRunWorkspace(input: {
   productId: string;
   runId: string;
@@ -491,7 +568,7 @@ export async function readGeoResearchRunWorkspace(input: {
     [input.runId, input.productId]
   );
   if (!runRows[0]) return undefined;
-  const [[taskRows], [evidenceRows], [findingRows], [blueprintRows]] = await Promise.all([
+  const [[taskRows], [evidenceRows], [findingRows], [blueprintRows], resultPackArtifact] = await Promise.all([
     getV5GovernancePool().query<RowDataPacket[]>(
       "SELECT * FROM geo_research_task WHERE run_id = ? ORDER BY created_at, id",
       [input.runId]
@@ -507,14 +584,17 @@ export async function readGeoResearchRunWorkspace(input: {
     getV5GovernancePool().query<RowDataPacket[]>(
       "SELECT * FROM geo_blueprint_version WHERE run_id = ? LIMIT 1",
       [input.runId]
-    )
+    ),
+    readLatestGeoResearchResultPack(input.runId)
   ]);
   return {
     run: mapRun(runRows[0]),
     tasks: taskRows.map(mapTask),
     evidence: evidenceRows.map(mapEvidence),
     findings: findingRows.map(mapFinding),
-    blueprint: blueprintRows[0] ? mapBlueprint(blueprintRows[0]) : undefined
+    blueprint: blueprintRows[0] ? mapBlueprint(blueprintRows[0]) : undefined,
+    resultPack: resultPackArtifact?.resultPack,
+    resultPackArtifactId: resultPackArtifact?.artifactId
   };
 }
 
@@ -543,6 +623,8 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
     String(row.product_id),
     String(row.display_name || row.canonical_name)
   );
+  const { readProductWebsiteCoverageProfile } = await import("./website-coverage-repository");
+  const websiteCoverageProfile = await readProductWebsiteCoverageProfile(String(row.product_id));
   return {
     task: mapTask(row),
     product: {
@@ -557,6 +639,7 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
       aliases: parseV5Json<string[]>(row.aliases, [])
     },
     productKnowledgeProfile,
+    websiteCoverageProfile,
     project: {
       expressionFocus: String(row.expression_focus),
       forbiddenFocus: parseV5Json<string[]>(row.forbidden_focus, []),
@@ -572,6 +655,38 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
   };
 }
 
+function buildDefaultGeoProbeAssets(productId: string, productRow: RowDataPacket, projectRow: RowDataPacket) {
+  const displayName = String(productRow.display_name || productRow.canonical_name || productId);
+  const brandName = productRow.brand_name ? String(productRow.brand_name) : '';
+  const ownerName = productRow.official_entity ? String(productRow.official_entity) : '';
+  const relationshipText = productRow.entity_relationship ? String(productRow.entity_relationship) : '';
+  const providerMatch = relationshipText.match(/(?:^|[；;。])\s*([A-Za-z][A-Za-z0-9._-]{1,30})\s*(?:是|为|可|支持|负责)/i);
+  const providerName = providerMatch?.[1] || '';
+  const targetEntityId = productId;
+  const entities = [
+    ...(brandName ? [{ entityId: 'brand:' + brandName, entityType: 'brand' as const, canonicalName: brandName, aliases: [], status: 'confirmed' as const }] : []),
+    ...(ownerName && ownerName !== brandName ? [{ entityId: 'owner:' + ownerName, entityType: 'owner' as const, canonicalName: ownerName, aliases: [], status: 'confirmed' as const }] : []),
+    ...(providerName ? [{ entityId: 'provider:' + providerName, entityType: 'service_provider' as const, canonicalName: providerName, aliases: [], status: 'confirmed' as const }] : [])
+  ];
+  const relations = [
+    ...(brandName ? [{ subjectEntityId: targetEntityId, relation: 'owned_by' as const, objectEntityId: 'brand:' + brandName, conditions: [], limitations: [], evidenceIds: ['product_registry'], status: 'confirmed' as const }] : ownerName ? [{ subjectEntityId: targetEntityId, relation: 'owned_by' as const, objectEntityId: 'owner:' + ownerName, conditions: [], limitations: [], evidenceIds: ['product_registry'], status: 'confirmed' as const }] : []),
+    ...(providerName ? [{ subjectEntityId: targetEntityId, relation: 'provided_by' as const, objectEntityId: 'provider:' + providerName, conditions: [], limitations: [], evidenceIds: ['product_registry'], status: 'confirmed' as const }, { subjectEntityId: targetEntityId, relation: 'implemented_by' as const, objectEntityId: 'provider:' + providerName, conditions: relationshipText ? [relationshipText] : [], limitations: [], evidenceIds: ['product_registry'], status: 'confirmed' as const }] : [])
+  ];
+  const graph = { graphId: 'entity-graph:' + productId + ':' + String(productRow.row_version || 1), productId, version: Number(productRow.row_version || 1), targetEntity: { entityId: targetEntityId, entityType: 'product' as const, canonicalName: String(productRow.canonical_name || displayName), displayName, aliases: parseV5Json<string[]>(productRow.aliases, []), officialDomain: productRow.official_url ? String(productRow.official_url) : undefined, category: productRow.product_category ? String(productRow.product_category) : undefined }, entities, relations, claims: [] };
+  const roles = [
+    { roleId: 'business-decider', name: '业务决策负责人', roleType: 'business_decider' as const, responsibilities: ['判断业务价值与适用场景'], decisionInfluence: 'decision' as const, sourceIds: ['product_registry'], status: 'active' as const },
+    { roleId: 'technical-evaluator', name: '负责系统接入的 IT 负责人', roleType: 'technical_evaluator' as const, responsibilities: ['评估集成、部署与权限'], decisionInfluence: 'evaluation' as const, sourceIds: ['product_registry'], status: 'active' as const },
+    ...(providerName ? [{ roleId: 'implementation-owner', name: '实施与验收负责人', roleType: 'implementation_owner' as const, responsibilities: ['管理交付、培训与验收'], decisionInfluence: 'execution' as const, sourceIds: ['product_registry'], status: 'active' as const }] : [])
+  ];
+  const focus = String(projectRow.expression_focus || productRow.product_category || '核心业务场景');
+  const scenarios = [
+    { scenarioId: 'core-decision', name: focus, trigger: '项目立项或方案评估', jobToBeDone: '判断产品是否适合当前业务任务', expectedOutcome: '形成可比较的选型判断', constraints: parseV5Json<string[]>(projectRow.forbidden_focus, []), relatedCapabilityClaimIds: [], priority: 'high' as const, sourceIds: ['product_registry'], status: 'active' as const },
+    ...(providerName ? [{ scenarioId: 'implementation-and-acceptance', name: '实施 ' + displayName + ' 并完成验收', trigger: '采购后落地', jobToBeDone: '完成系统接入、培训和验收', expectedOutcome: '形成可追溯的交付结果', constraints: [], relatedCapabilityClaimIds: [], priority: 'high' as const, sourceIds: ['product_registry'], status: 'active' as const }] : []),
+    { scenarioId: 'evidence-review', name: '公开资料核验 ' + displayName + ' 的能力与边界', trigger: '供应商尽调', jobToBeDone: '核对产品事实与证据', expectedOutcome: '降低误购和误用风险', constraints: [], relatedCapabilityClaimIds: [], priority: 'medium' as const, sourceIds: ['product_registry'], status: 'active' as const }
+  ];
+  const roleScenarioLinks = roles.flatMap((role) => scenarios.slice(0, role.roleId === 'implementation-owner' ? 2 : 1).map((scenario) => ({ roleId: role.roleId, scenarioId: scenario.scenarioId, journeyStage: role.roleId === 'implementation-owner' ? 'implementation' as const : role.roleId === 'business-decider' ? 'selection' as const : 'evaluation' as const, decisions: [scenario.jobToBeDone], informationNeeds: [], evidenceNeeds: ['官方资料或可追溯公开证据'], priority: scenario.priority })));
+  return { graph, matrix: { matrixId: 'role-scenario:' + productId + ':' + String(projectRow.row_version || 1), productId, version: Number(projectRow.row_version || 1), roles, scenarios, roleScenarioLinks } };
+}
 export async function createGeoResearchRunRecord(input: {
   productId: string;
   triggerType: GeoResearchRun["triggerType"];
@@ -628,20 +743,20 @@ export async function createGeoResearchRunRecord(input: {
       );
     }
 
-    const [snapshotRows] = await connection.query<RowDataPacket[]>(
-      `SELECT id, snapshot_hash, source_ids, source_revision_ids FROM source_snapshot
-       WHERE product_id = ? ORDER BY created_at DESC LIMIT 1`,
-      [input.productId]
-    );
-    const snapshot = snapshotRows[0];
-    if (!snapshot) {
+    const governanceBinding = await readActiveGeoResearchGovernanceBindingFromConnection(connection, input.productId);
+    if (!governanceBinding) {
       throw new V5GovernanceRepositoryError(
-        "research_source_snapshot_missing",
+        "research_governance_bundle_missing",
         "尚未形成可追溯的产品资料快照，不能启动联网调研。",
         409,
         "先上传产品资料或绑定知识库，完成资料导入与快照生成。"
       );
     }
+    const [snapshotRows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, snapshot_hash, source_ids, source_revision_ids FROM source_snapshot WHERE id = ? LIMIT 1`,
+      [governanceBinding.sourceSnapshotId]
+    );
+    const snapshot = snapshotRows[0];
     const [sourceRows] = await connection.query<RowDataPacket[]>(GEO_SOURCE_QUALITY_QUERY, [String(snapshot.id)]);
     const sourceQuality = evaluateGeoSourceSnapshotQuality({
       declaredSourceCount: parseV5Json<unknown[]>(snapshot.source_ids, []).length,
@@ -657,15 +772,43 @@ export async function createGeoResearchRunRecord(input: {
       );
     }
 
+    const [productRows] = await connection.query<RowDataPacket[]>(
+      "SELECT * FROM product_entity WHERE id = ? LIMIT 1 FOR UPDATE",
+      [input.productId]
+    );
+    const productRow = productRows[0];
+    if (!productRow) throw new V5GovernanceRepositoryError("product_not_found", "产品实体不存在。", 404);
+    const runId = 'geo-run-' + randomUUID();
+    const probeAssets = buildDefaultGeoProbeAssets(input.productId, productRow, projectRow);
+    const [strategyPackRows] = await connection.query<RowDataPacket[]>(
+      "SELECT id, strategy_version, status FROM product_strategy_packs WHERE product_id = ? ORDER BY strategy_version DESC LIMIT 1",
+      [input.productId]
+    );
+    const latestStrategyPack = strategyPackRows[0];
+    const probeSetSnapshot = compileGeoProbeSet({
+      productId: input.productId,
+      researchRunId: runId,
+      entityGraph: probeAssets.graph,
+      roleScenarioMatrix: probeAssets.matrix,
+      contract: defaultGeoProbeContract,
+      websiteCoverageProfileHash: hashV5GovernancePayload({ productId: input.productId, coverage: 'bound-at-run-start' }),
+      sourceSnapshotId: String(snapshot.id)
+    });
+
     const [versionRows] = await connection.query<RowDataPacket[]>(
       "SELECT run_version FROM geo_research_run WHERE project_id = ? ORDER BY run_version DESC LIMIT 1 FOR UPDATE",
       [String(projectRow.id)]
     );
     const runVersion = Number(versionRows[0]?.run_version || 0) + 1;
-    const runId = `geo-run-${randomUUID()}`;
     const plan = {
       objective: "produce_auditable_geo_blueprint",
       sourceSnapshotId: String(snapshot.id),
+      governanceBinding,
+      probeSetSnapshot,
+      entityGraphVersion: probeAssets.graph.version,
+      roleScenarioMatrixVersion: probeAssets.matrix.version,
+      probeContractVersion: defaultGeoProbeContract.contractVersion,
+      strategyPackBinding: latestStrategyPack ? { id: String(latestStrategyPack.id), strategyVersion: Number(latestStrategyPack.strategy_version || 0), status: String(latestStrategyPack.status || '') } : undefined,
       requiredStages: RESEARCH_TASK_GRAPH.map((item) => item.type),
       gates: {
         liveSearchEvidenceRequired: true,
@@ -690,6 +833,26 @@ export async function createGeoResearchRunRecord(input: {
       ]
     );
 
+    await connection.query(
+      `INSERT INTO geo_research_probe_set_snapshot
+        (id, run_id, product_id, entity_graph_version, role_scenario_matrix_version, probe_contract_version,
+         source_snapshot_id, website_coverage_profile_hash, snapshot_hash, snapshot_json, compiled_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        probeSetSnapshot.probeSetId,
+        runId,
+        input.productId,
+        probeSetSnapshot.entityGraphVersion,
+        probeSetSnapshot.roleScenarioMatrixVersion,
+        probeSetSnapshot.probeContractVersion,
+        probeSetSnapshot.sourceSnapshotId,
+        probeSetSnapshot.websiteCoverageProfileHash,
+        probeSetSnapshot.snapshotHash,
+        stringifyV5Json(probeSetSnapshot),
+        new Date(probeSetSnapshot.compiledAt)
+      ]
+    );
+
     const taskIds = new Map<GeoResearchTaskType, string>();
     for (const node of RESEARCH_TASK_GRAPH) taskIds.set(node.type, `geo-task-${randomUUID()}`);
     for (const node of RESEARCH_TASK_GRAPH) {
@@ -708,7 +871,11 @@ export async function createGeoResearchRunRecord(input: {
             productId: input.productId,
             projectId: String(projectRow.id),
             sourceSnapshotId: String(snapshot.id),
-            sourceSnapshotHash: String(snapshot.snapshot_hash)
+            sourceSnapshotHash: String(snapshot.snapshot_hash),
+            probeSetId: probeSetSnapshot.probeSetId,
+            probeSetSnapshotHash: probeSetSnapshot.snapshotHash,
+            rulePackageVersionId: governanceBinding.rulePackageVersionId,
+            indexSnapshotId: governanceBinding.indexSnapshotId
           }),
           dependencyIds.length === 0 ? "queued" : "blocked",
           `${runId}:${node.type}`
@@ -738,7 +905,9 @@ export async function createGeoResearchRunRecord(input: {
         runVersion,
         taskCount: RESEARCH_TASK_GRAPH.length,
         liveSearchRequired: true,
-        sourceSnapshotHash: String(snapshot.snapshot_hash)
+        sourceSnapshotHash: String(snapshot.snapshot_hash),
+        rulePackageVersionId: governanceBinding.rulePackageVersionId,
+        indexSnapshotId: governanceBinding.indexSnapshotId
       },
       correlationId: runId
     });
@@ -953,6 +1122,35 @@ export async function persistGeoResearchProviderResult(input: {
       ]
     );
 
+    let observationArtifactId: string | undefined;
+    const observationEvidenceIds: string[] = [];
+    if (input.result.answerObservations?.length) {
+      observationArtifactId = 'geo-artifact-' + randomUUID();
+      const observationPayload = { observations: input.result.answerObservations, rawResponses: input.result.answerRawResponses || {} };
+      await connection.query(
+        "INSERT INTO geo_research_artifact (id, run_id, task_id, artifact_type, provider, provider_model, payload_json, payload_hash) VALUES (?, ?, ?, 'model_answer_observations', 'multi_provider', 'multi_model', ?, ?)",
+        [observationArtifactId, runId, input.taskId, stringifyV5Json(observationPayload), hashV5GovernancePayload(observationPayload)]
+      );
+      for (const observation of input.result.answerObservations) {
+        for (const url of observation.visibleCitations) {
+          const evidenceId = 'geo-evidence-' + randomUUID();
+          observationEvidenceIds.push(evidenceId);
+          await connection.query(
+            "INSERT INTO geo_research_evidence (id, run_id, evidence_type, source_url, content_locator, captured_at, verification_status, visibility, artifact_id) VALUES (?, ?, 'visible_citation', ?, ?, NOW(), 'unverified', 'public', ?)",
+            [evidenceId, runId, url, stringifyV5Json({ observationId: observation.observationId, probeId: observation.probeId, provider: observation.provider, model: observation.model }), observationArtifactId]
+          );
+        }
+      }
+    }
+
+    let resultPackArtifactId: string | undefined;
+    if (input.result.resultPack) {
+      resultPackArtifactId = 'geo-artifact-' + randomUUID();
+      await connection.query(
+        "INSERT INTO geo_research_artifact (id, run_id, task_id, artifact_type, provider, provider_model, payload_json, payload_hash) VALUES (?, ?, ?, 'geo_research_result_pack', 'workbench', 'deterministic_result_compiler', ?, ?)",
+        [resultPackArtifactId, runId, input.taskId, stringifyV5Json(input.result.resultPack), hashV5GovernancePayload(input.result.resultPack)]
+      );
+    }
     const evidenceIdsByUrl = new Map<string, string>();
     const allEvidenceIds: string[] = [];
     for (const source of input.result.sources) {
@@ -1045,6 +1243,10 @@ export async function persistGeoResearchProviderResult(input: {
       evidenceIds: allEvidenceIds,
       sourceCount: input.result.sources.length,
       findingCount: findings.length,
+      observationArtifactId,
+      observationCount: input.result.answerObservations?.length || 0,
+      observationEvidenceIds,
+      resultPackArtifactId,
       liveSearchVerified: input.result.liveSearchVerified
     };
     await connection.query(
@@ -1493,11 +1695,13 @@ export async function cancelStaleGeoResearchRunRecord(input: {
   runId: string;
   productId: string;
   replacementSourceSnapshotHash: string;
+  replacementRulePackageVersionId?: string;
+  replacementIndexSnapshotId?: string;
   actor: V5GovernanceActor;
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [rows] = await connection.query<RowDataPacket[]>(
-      `SELECT id, project_id, status, input_source_snapshot_hash, row_version
+      `SELECT id, project_id, status, input_source_snapshot_hash, plan_json, row_version
        FROM geo_research_run
        WHERE id = ? AND product_id = ?
        LIMIT 1 FOR UPDATE`,
@@ -1509,33 +1713,48 @@ export async function cancelStaleGeoResearchRunRecord(input: {
     if (["completed", "failed", "cancelled"].includes(status)) {
       return { runId: input.runId, cancelled: false, status, replayed: true };
     }
-    if (String(row.input_source_snapshot_hash) === input.replacementSourceSnapshotHash) {
+    const runPlan = parseV5Json<Record<string, unknown>>(row.plan_json, {});
+    const runBinding = runPlan.governanceBinding && typeof runPlan.governanceBinding === "object"
+      ? runPlan.governanceBinding as Record<string, unknown>
+      : {};
+    const sourceSnapshotChanged = String(row.input_source_snapshot_hash) !== input.replacementSourceSnapshotHash;
+    const governanceBundleChanged = Boolean(
+      input.replacementRulePackageVersionId
+      && input.replacementIndexSnapshotId
+      && (String(runBinding.rulePackageVersionId || "") !== input.replacementRulePackageVersionId
+        || String(runBinding.indexSnapshotId || "") !== input.replacementIndexSnapshotId)
+    );
+    if (!sourceSnapshotChanged && !governanceBundleChanged) {
       throw new V5GovernanceRepositoryError(
         "research_run_not_stale",
-        "当前 GEO 调研仍绑定最新资料快照，不能作为过期运行取消。",
+        "当前 GEO 调研仍绑定最新资料快照、规则包与索引，不能作为过期运行取消。",
         409
       );
     }
+    const failureCode = sourceSnapshotChanged ? "source_snapshot_superseded" : "governance_bundle_superseded";
+    const failureMessage = sourceSnapshotChanged
+      ? "产品资料快照已更新，任务由新运行替代。"
+      : "产品规则包或索引已更新，任务由绑定最新治理包的新运行替代。";
     await connection.query(
       `UPDATE geo_research_task
        SET status = 'cancelled', lease_owner = NULL, lease_expires_at = NULL,
-           failure_code = 'source_snapshot_superseded',
-           failure_message = '产品资料快照已更新，任务由新运行替代。'
+           failure_code = ?, failure_message = ?
        WHERE run_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')`,
-      [input.runId]
+      [failureCode, failureMessage, input.runId]
     );
     await connection.query(
       `UPDATE geo_research_run
        SET status = 'cancelled', completed_at = NOW(),
-           failure_code = 'source_snapshot_superseded',
-           failure_message = '产品资料快照已更新，运行由新快照上的调研替代。',
+           failure_code = ?, failure_message = ?,
            row_version = row_version + 1
        WHERE id = ?`,
-      [input.runId]
+      [failureCode, failureMessage, input.runId]
     );
     await writeV5GovernanceAudit(connection, {
       ...input.actor,
-      eventType: "geo_research_run_superseded_by_source_snapshot",
+      eventType: sourceSnapshotChanged
+        ? "geo_research_run_superseded_by_source_snapshot"
+        : "geo_research_run_superseded_by_governance_bundle",
       objectType: "geo_research_run",
       objectId: input.runId,
       beforeSummary: {
@@ -1546,6 +1765,8 @@ export async function cancelStaleGeoResearchRunRecord(input: {
       afterSummary: {
         status: "cancelled",
         replacementSourceSnapshotHash: input.replacementSourceSnapshotHash,
+        replacementRulePackageVersionId: input.replacementRulePackageVersionId,
+        replacementIndexSnapshotId: input.replacementIndexSnapshotId,
         rowVersion: Number(row.row_version) + 1
       },
       correlationId: input.productId

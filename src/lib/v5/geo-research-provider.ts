@@ -1,14 +1,20 @@
 import { createHash } from "node:crypto";
 import type { GeoResearchTaskType } from "./geo-research-contracts";
+import type { ProbeSetSnapshot } from "./geo-probe-contracts";
+import type { ModelAnswerObservation, GeoResearchResultPack } from "./geo-research-result-contracts";
+import { buildGeoResearchResultPack } from "./geo-research-result-pack";
+
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 import {
   combineMultiSearchEvidencePacks,
   getMultiSearchProviderReadiness,
-  runMultiProviderWebSearch
+  runMultiProviderWebSearch,
+  runMultiProviderProbeAnswers
 } from "./geo-search-adapters";
-import type { GeoSearchQuery, GeoSearchQueryPlan } from "./geo-search-contracts";
+import type { GeoSearchEvidenceCandidate, GeoSearchQuery, GeoSearchQueryPlan } from "./geo-search-contracts";
 import { pruneGeoResearchCitations, verifyGeoResearchEvidence } from "./geo-evidence-verifier";
 import type { ProductKnowledgeProfile } from "./product-knowledge-profile";
+import type { ProductWebsiteCoverageProfile } from "./website-coverage-contracts";
 import {
   applyGeoEntityResolution,
   assertGeoProductIdentityReady,
@@ -50,6 +56,7 @@ export interface GeoResearchProviderContext {
     aliases: string[];
   };
   productKnowledgeProfile: ProductKnowledgeProfile;
+  websiteCoverageProfile?: ProductWebsiteCoverageProfile;
   project: {
     expressionFocus: string;
     forbiddenFocus: string[];
@@ -58,6 +65,7 @@ export interface GeoResearchProviderContext {
     targetChannels: string[];
   };
   sourceSnapshotHash: string;
+  probeSetSnapshot?: ProbeSetSnapshot;
   previousOutputs: Array<{
     taskType: GeoResearchTaskType;
     outputSummary: Record<string, unknown>;
@@ -74,6 +82,9 @@ export interface GeoResearchProviderResult {
   sources: GeoResearchProviderSource[];
   liveSearchVerified: boolean;
   rawResponse: Record<string, unknown>;
+  answerObservations?: ModelAnswerObservation[];
+  answerRawResponses?: Record<string, Record<string, unknown>>;
+  resultPack?: GeoResearchResultPack;
   payloadHash: string;
 }
 
@@ -102,12 +113,13 @@ function taskInstruction(taskType: GeoResearchTaskType) {
 {"identityStatus":"ready|identity_insufficient","identitySummary":{"strongIdentityAnchors":[],"missingIdentityFields":[],"homonymRisks":[]},"researchQuestions":[],"searchQueries":[{"query":"","queryType":"target_entity|user_demand|category_alternative|competitor_verification|frontend_baseline|homonym_detection","identityAnchorsUsed":[],"intent":"","expectedEvidenceRole":"","candidateAcceptanceRule":"","candidateRejectionRule":"","freshnessRequirement":"day|week|month|year|no_limit","stopCondition":""}],"frontendTestQuestions":[],"competitorDimensions":[],"successCriteria":[]}.
 The supplied productIdentity is authoritative and comes from user-provided materials. Never redefine, merge or guess the target identity. A name or alias match alone never proves entity identity. Every product-specific query must use at least two identity anchors from ownership/brand, official domain, category, positioning, capabilities, audiences or scenarios. Never generate a generic '<product name> + review/features/competitor/comparison' query. Separate target-entity, user-demand, category-alternative, competitor-verification, AI-baseline and homonym-detection intents. Competitors must be discovered from the same user task or purchase decision and then independently verified. If identity information cannot distinguish homonyms, return identityStatus=identity_insufficient and no queries.`;
     case "live_question_discovery":
-      return `Search the live web for real user questions and search intents relevant to the product and its category. Build a reusable product question catalog, not a short article-topic list. Search across diverse public source types such as Q&A/community pages, forums, reviews, social discussions, search-intent pages, issue discussions, and official support communities. Use both the product name/aliases and category-level language. Return 30-40 verified questions when sources permit and never exceed 40. Deduplicate semantic variants while preserving distinct intents. Keep every string concise; each question may cite at most 3 sourceUrls, 3 suggestedArticleTypes and 6 keywords. Return at most 10 queryClusters and 12 contentGaps.
+      return `Search the live web for real user questions and search intents relevant to the product and its category. Build a reusable product question catalog, not a short article-topic list. Search across diverse public source types such as Q&A/community pages, forums, reviews, social discussions, search-intent pages, issue discussions, and official support communities. Use both the product name/aliases and category-level language. When productIdentity.serviceProvider exists, explicitly investigate implementation-service-provider and implementation-partner selection demand: how users select or recommend providers, which qualifications and delivery scope they check, how implementation, training, support and acceptance are evaluated, and which case evidence buyers expect. Keep product ownership separate from the provider role. Public search may prove user demand or third-party facts, but it must not overwrite the authoritative product/provider relationship or turn unverified logos and mentions into customer cases. Return 30-40 verified questions when sources permit and never exceed 40. Deduplicate semantic variants while preserving distinct intents. Keep every string concise; each question may cite at most 3 sourceUrls, 3 suggestedArticleTypes and 6 keywords. Return at most 10 queryClusters and 12 contentGaps.
+All article types are public-facing promotional content. Treat any provider delivery, implementation, acceptance, training or support topic above as a decision-level overview only. Never require or expose project-specific deployment prerequisites, environment parameters, configuration runbooks, delivery scopes, acceptance checklists or other internal customer-project artifacts.
 Return JSON with:
 {"questions":[{"text":"","intent":"","audience":"","module":"","sourceType":"community_forum|q_and_a|review|social_media|search_intent|official_support|other","sourceUrls":[],"priority":0.0,"confidence":0.0,"suggestedArticleTypes":[],"keywords":[]}],"queryClusters":[],"contentGaps":[]}.
 Every question must be a natural-language question a real user could ask, cite at least one source URL found in this run, and be grouped into a stable user-journey module such as awareness_selection, pricing_procurement, deployment_architecture, capabilities, integration, implementation_service, security_compliance, comparison, operations_support, or business_scenarios. Do not invent demand from product documentation alone. If a source only proves a product fact but not that users ask the question, exclude it from the catalog. ${claimRequirement}`;
     case "live_competitor_discovery":
-      return `Identify verified competitors and how they distribute content for GEO visibility using only entity-resolved evidence.
+      return `Identify verified competitors and how they distribute content for GEO visibility using only entity-resolved evidence. When productIdentity.serviceProvider exists, also inspect the public implementation-service-provider selection landscape, but never classify the product owner, target product or its implementation provider as the same entity. Provider comparison must be supported by explicit delivery-scope or buyer-selection evidence.
 Return JSON with:
 {"competitors":[{"name":"","entityClassification":"verified_competitor","reason":"","overlapDimensions":[],"relationshipEvidence":"","mentionedFor":[],"contentTypes":[],"channels":[],"sourceUrls":[]}],"citationPatterns":[],"contentOpportunities":[]}.
 A URL proves only that a page exists. Include a competitor only when it is a distinct entity and evidence proves overlap in target users, user tasks, category or purchase decision. Same-name products, keyword overlap, search-query appearance, vague semantic resemblance and generic directory pages are never competitor evidence. Exclude homonyms completely. Every competitor requires entityClassification=verified_competitor, a non-empty relationshipEvidence, at least one overlapDimension and sourceUrls. ${claimRequirement}`;
@@ -122,11 +134,13 @@ Return JSON with:
 {"verifiedPatterns":[],"unsupportedPatterns":[],"priorityGaps":[],"recommendedArticleTypes":[],"retestRequirements":[]}.
 Do not upgrade an unsupported pattern into a fact.`;
     case "blueprint_synthesis":
-      return `Produce a draft GEO content-distribution blueprint for human review. Select 3-5 semantically distinct article types (hard maximum 6). For each question cluster choose one of: matched (an existing active version already fits), adapted (an existing type needs a new product-specific version), or generated (no existing type fits). Never claim that an adapted/generated version is active.
+      return `Produce a draft GEO content-distribution blueprint for human review. Select 3-5 semantically distinct article types (hard maximum 6). For each question cluster choose one of: matched (an existing active version already fits), adapted (an existing type needs a new product-specific version), or generated (no existing type fits). Never claim that an adapted/generated version is active. Treat websiteCoverageProfile as the deterministic current-state audit of official website coverage: do not recommend a new article that merely repeats a topic marked sufficient; prefer an adjacent unanswered question, refresh/distribution work, or a missing/partial topic. A topic marked partial or missing may become a content opportunity only when productKnowledgeProfile has the required governed evidence. A blocked publicGeoReadiness is a website remediation dependency, not a reason to produce duplicate articles. When productIdentity.serviceProvider exists, the strategy must contain one implementation-service-provider selection question cluster and one article type for choosing/recommending an implementation provider unless websiteCoverageProfile already marks provider_selection sufficient; in that case retain the question opportunity but assign the content type to refresh/distribution or an adjacent missing topic. Its definition must cover provider qualifications, delivery scope, implementation process, acceptance, training/support and evidence boundaries; it must present the provider as a service role rather than a co-branded product. A specific case may be used only when governed evidence proves the provider's involvement and outcome.
 Return JSON with:
 {"questionStrategy":{"priorityClusters":[{"id":"","name":"","intent":"","priority":"high|medium|low","evidenceReadiness":"ready|partial|blocked","representativeQuestions":[],"sourceIds":[]}],"journeyCoverage":[],"recommendedQuestions":[]},"competitorLandscape":{"competitors":[{"name":"","entityClassification":"verified_competitor","reason":"","overlapDimensions":[],"relationshipEvidence":"","sourceUrls":[],"evidenceStrength":"strong|moderate|weak"}],"differentiationAngles":[],"contentGaps":[]},"citationStrategy":{"productClaimPolicy":"official_and_governed_sources_first","comparativeClaimPolicy":"two_sided_traceable_evidence_required","preferredSourceTypes":[],"citationPatterns":[],"sourceRequirements":[]},"contentTypeStrategy":{"articleTypes":[{"portfolioItemId":"","origin":"matched|adapted|generated","articleTypeId":"","articleTypeVersionId":"","baseArticleTypeId":"","baseArticleTypeVersionId":"","name":"","definition":"","suitableQuestions":[],"unsuitableQuestions":[],"targetAudience":[],"contentGoal":"","structureModules":[{"key":"","purpose":"","required":true}],"emphasisOrder":[],"style":[],"lengthRange":{"min":1200,"max":2400},"evidencePreferences":[],"ctaIntent":"","channelFit":[],"questionClusterIds":[],"recommendationReason":"","confidence":0.0,"evidenceReadiness":"ready|partial|blocked","proposedMonthlyShare":0.0}]},"evidenceRequirements":{"claimsRequiringEvidence":[],"blockedClaims":[],"sourceGaps":[]},"monthlyStrategyInput":{"objectives":[],"channelPriorities":[],"contentMix":[]},"retestBaseline":{"questions":[],"targetMentionRate":0.0,"citationDomains":[]}}.
+All article types are public-facing promotional content. Treat any provider delivery, implementation, acceptance, training or support topic above as a decision-level overview only. Never require or expose project-specific deployment prerequisites, environment parameters, configuration runbooks, delivery scopes, acceptance checklists or other internal customer-project artifacts.
 Every one of the seven top-level strategy modules must contain the named fields above and substantive values grounded in previous outputs. Do not return an empty object for any required module.
 Each priority cluster must own a non-duplicated subset of representativeQuestions; do not repeat the full question list under every cluster. Include a competitor only when prior live evidence contains direct traceable support. Name similarity, vague possibility, or semantic resemblance is never competitor evidence. Treat comparative, architecture, pricing, ROI, compliance, and customer-case statements as claimsRequiringEvidence or blockedClaims until governed first-party evidence supports them; never present them as approved product facts. Community posts and media articles may reveal user demand but cannot independently prove a product claim. Mark an article type ready only when its required factual evidence is already available; otherwise use partial or blocked.
+Missing internal delivery artifacts alone must never make a promotional article type partial or blocked. evidencePreferences must contain only the minimum public sources needed for the article's intended claims. If an existing template requires internal project artifacts or step-level configuration, adapt it into a public decision-level type instead of selecting it as matched.
 For matched items, copy an exact existing articleTypeId/articleTypeVersionId. For adapted items, copy exact baseArticleTypeId/baseArticleTypeVersionId but leave articleTypeVersionId empty so the system creates a governed draft. For generated items, leave all IDs empty. Explain why each type fits, its unsuitable questions, evidence needs and boundaries.
 The output is a draft only and must not claim approval or activation.`;
     default:
@@ -285,51 +299,151 @@ function strings(value: unknown) {
     : [];
 }
 
-async function resolveSearchEvidencePack(input: {
+function logGeoProviderStage(stage: string, detail: Record<string, unknown>) {
+  console.log(JSON.stringify({
+    event: "geo_research_provider_stage",
+    stage,
+    timestamp: new Date().toISOString(),
+    ...detail
+  }));
+}
+
+function boundedInteger(value: string | undefined, fallback: number, minimum: number, maximum: number) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, Math.floor(parsed))) : fallback;
+}
+
+export function buildGeoEntityResolutionBatches(
+  candidates: GeoSearchEvidenceCandidate[],
+  batchSize = boundedInteger(process.env.GEO_ENTITY_RESOLUTION_BATCH_SIZE, 12, 4, 30)
+) {
+  const boundedBatchSize = Math.min(30, Math.max(1, Math.floor(batchSize)));
+  const batches: GeoSearchEvidenceCandidate[][] = [];
+  for (let offset = 0; offset < candidates.length; offset += boundedBatchSize) {
+    batches.push(candidates.slice(offset, offset + boundedBatchSize));
+  }
+  return batches;
+}
+
+export function selectGeoEntityResolutionCandidates(
+  candidates: GeoSearchEvidenceCandidate[],
+  maximum = boundedInteger(process.env.GEO_ENTITY_RESOLUTION_MAX_CANDIDATES, 60, 12, 120)
+) {
+  const boundedMaximum = Math.min(120, Math.max(1, Math.floor(maximum)));
+  if (candidates.length <= boundedMaximum) return [...candidates];
+  const selected: GeoSearchEvidenceCandidate[] = [];
+  const selectedIds = new Set<string>();
+  const append = (candidate: GeoSearchEvidenceCandidate | undefined) => {
+    if (!candidate || selectedIds.has(candidate.candidateId) || selected.length >= boundedMaximum) return;
+    selected.push(candidate);
+    selectedIds.add(candidate.candidateId);
+  };
+  const queryIds = [...new Set(candidates.flatMap((candidate) => candidate.queryIds))].sort();
+  for (const queryId of queryIds) append(candidates.find((candidate) => candidate.queryIds.includes(queryId)));
+  for (const provider of ["zhipu", "doubao", "qwen"] as const) {
+    append(candidates.find((candidate) => candidate.providerKeys.includes(provider)));
+  }
+  for (const candidate of candidates) append(candidate);
+  return selected;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  operation: (value: T, index: number) => Promise<R>
+) {
+  if (values.length === 0) return [] as R[];
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(values.length, Math.max(1, concurrency));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await operation(values[index], index);
+    }
+  }));
+  return results;
+}
+
+async function requestEntityResolutionBatch(input: {
   config: ZhipuProviderConfig;
   taskType: GeoResearchTaskType;
   identity: GeoProductIdentityCard;
-  evidencePack: Awaited<ReturnType<typeof runMultiProviderWebSearch>>;
-  signal: AbortSignal;
+  candidates: GeoSearchEvidenceCandidate[];
+  parentSignal: AbortSignal;
+  batchIndex: number;
 }) {
-  if (input.evidencePack.candidates.length === 0) {
-    return applyGeoEntityResolution({
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort(input.parentSignal.reason);
+  if (input.parentSignal.aborted) onParentAbort();
+  else input.parentSignal.addEventListener("abort", onParentAbort, { once: true });
+  const batchTimeoutMs = boundedInteger(process.env.GEO_ENTITY_RESOLUTION_BATCH_TIMEOUT_MS, 45_000, 10_000, 90_000);
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("entity resolution batch timed out", "TimeoutError")),
+    batchTimeoutMs
+  );
+  const startedAt = Date.now();
+  try {
+    const payload = await requestZhipu(input.config, "/chat/completions", {
+      model: input.config.model,
+      stream: false,
+      temperature: 0,
+      max_tokens: 8192,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You are a product entity-resolution gate. The supplied productIdentity is authoritative and comes from user-provided materials. Classify every candidate before any research persistence or synthesis. A matching name or alias alone is never identity evidence. Compare brand/owner, official domain, category, positioning, audiences, capabilities and scenarios. Same-name products with different ownership, category, capabilities or use cases are homonyms and must be classified homonym. A verified_competitor must be a distinct entity competing for the same user task or purchase decision, with at least one overlapDimension and explicit relationship support. Use insufficient_evidence whenever title and excerpt cannot prove a safe classification. Return strict JSON only with {"results":[{"candidateId":"","classification":"target_match|verified_competitor|category_related|user_demand|homonym|unrelated|insufficient_evidence","matchedIdentityAnchors":[],"contradictingIdentityAnchors":[],"competitorRelationshipSupported":false,"overlapDimensions":[],"confidence":0.0}]}. Return one result for every supplied candidateId and do not invent candidates.`
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            researchTask: input.taskType,
+            productIdentity: input.identity,
+            candidates: input.candidates.map((candidate) => ({
+              candidateId: candidate.candidateId,
+              url: candidate.canonicalUrl,
+              title: candidate.title || "",
+              publisher: candidate.publisher || "",
+              excerpt: candidate.excerpt?.slice(0, 900) || "",
+              queries: candidate.queries
+            }))
+          })
+        }
+      ]
+    }, controller.signal);
+    const resolutions = parseEntityResolutions(payload);
+    logGeoProviderStage("entity_resolution_batch_completed", {
       taskType: input.taskType,
-      identity: input.identity,
-      pack: input.evidencePack,
-      resolutions: []
+      batchIndex: input.batchIndex,
+      durationMs: Date.now() - startedAt,
+      candidateCount: input.candidates.length,
+      resolutionCount: resolutions.length
     });
+    return { resolutions, failed: false };
+  } catch (error) {
+    const degradable = controller.signal.aborted
+      || input.parentSignal.aborted
+      || (error instanceof V5GovernanceRepositoryError && error.code === "research_provider_unreachable");
+    if (!degradable) throw error;
+    logGeoProviderStage("entity_resolution_batch_degraded", {
+      taskType: input.taskType,
+      batchIndex: input.batchIndex,
+      durationMs: Date.now() - startedAt,
+      candidateCount: input.candidates.length,
+      failureCode: error instanceof V5GovernanceRepositoryError ? error.code : "entity_resolution_batch_timed_out"
+    });
+    return { resolutions: [] as GeoEntityResolution[], failed: true };
+  } finally {
+    clearTimeout(timeout);
+    input.parentSignal.removeEventListener("abort", onParentAbort);
   }
-  const payload = await requestZhipu(input.config, "/chat/completions", {
-    model: input.config.model,
-    stream: false,
-    temperature: 0,
-    max_tokens: 16384,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: `You are a product entity-resolution gate. The supplied productIdentity is authoritative and comes from user-provided materials. Classify every candidate before any research persistence or synthesis. A matching name or alias alone is never identity evidence. Compare brand/owner, official domain, category, positioning, audiences, capabilities and scenarios. Same-name products with different ownership, category, capabilities or use cases are homonyms and must be classified homonym. A verified_competitor must be a distinct entity competing for the same user task or purchase decision, with at least one overlapDimension and explicit relationship support. Use insufficient_evidence whenever title and excerpt cannot prove a safe classification. Return strict JSON only with {"results":[{"candidateId":"","classification":"target_match|verified_competitor|category_related|user_demand|homonym|unrelated|insufficient_evidence","matchedIdentityAnchors":[],"contradictingIdentityAnchors":[],"competitorRelationshipSupported":false,"overlapDimensions":[],"confidence":0.0}]}. Return one result for every candidateId and do not invent candidates.`
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          researchTask: input.taskType,
-          productIdentity: input.identity,
-          candidates: input.evidencePack.candidates.map((candidate) => ({
-            candidateId: candidate.candidateId,
-            url: candidate.canonicalUrl,
-            title: candidate.title || "",
-            publisher: candidate.publisher || "",
-            excerpt: candidate.excerpt || "",
-            queries: candidate.queries
-          }))
-        })
-      }
-    ]
-  }, input.signal);
+}
+
+function parseEntityResolutions(payload: Record<string, unknown>) {
   const parsed = parseStructuredOutput(extractOutputText(payload));
-  const resolutions = Array.isArray(parsed.results) ? parsed.results.flatMap((item) => {
+  return Array.isArray(parsed.results) ? parsed.results.flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const record = item as Record<string, unknown>;
     const candidateId = typeof record.candidateId === "string" ? record.candidateId : "";
@@ -348,12 +462,150 @@ async function resolveSearchEvidencePack(input: {
       confidence: typeof record.confidence === "number" ? Math.max(0, Math.min(1, record.confidence)) : 0
     } as GeoEntityResolution];
   }) : [];
-  return applyGeoEntityResolution({
+}
+
+export function mergeQuestionDiscoveryShardOutputs(payloads: Record<string, unknown>[]) {
+  const outputs = payloads.map((payload) => parseStructuredOutput(extractOutputText(payload)));
+  const uniqueItems = (field: string, maximum: number) => {
+    const values = outputs.flatMap((output) => Array.isArray(output[field]) ? output[field] : []);
+    const seen = new Set<string>();
+    return values.filter((value) => {
+      const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+      const identity = typeof value === "string"
+        ? value
+        : [record?.text, record?.claim, record?.name, record?.id, record?.pattern]
+            .find((candidate) => typeof candidate === "string") || JSON.stringify(value);
+      const key = String(identity).toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, maximum);
+  };
+  return {
+    questions: uniqueItems("questions", 40),
+    queryClusters: uniqueItems("queryClusters", 10),
+    contentGaps: uniqueItems("contentGaps", 12),
+    claimAssessments: uniqueItems("claimAssessments", 80)
+  };
+}
+
+export function buildDegradedFrontendBaseline(input: {
+  queries: GeoSearchQuery[];
+  candidates: GeoSearchEvidenceCandidate[];
+}) {
+  const fallbackCandidates = input.candidates.filter((candidate) =>
+    candidate.providerKeys.some((provider) => provider === "doubao" || provider === "qwen")
+  );
+  const tests = input.queries.map((query) => {
+    const candidates = fallbackCandidates.filter((candidate) => candidate.queryIds.includes(query.queryId));
+    const targetMatches = candidates.filter((candidate) =>
+      candidate.entityClassification === "target_match"
+      && (candidate.matchedIdentityAnchors || []).filter((anchor) => !/^name|alias$/i.test(anchor)).length >= 2
+    );
+    return {
+      question: query.query,
+      answerSummary: targetMatches.length > 0
+        ? "豆包或千问的联网结果中出现了与目标产品身份一致的可核验来源。"
+        : "豆包和千问的联网结果中未发现满足目标产品身份门禁的可计入提及。",
+      mentionEntityClassification: targetMatches.length > 0 ? "target_match" : "not_mentioned",
+      matchedIdentityAnchors: [...new Set(targetMatches.flatMap((candidate) => candidate.matchedIdentityAnchors || []))],
+      contradictingIdentityAnchors: [],
+      targetMentioned: targetMatches.length > 0,
+      competitorsMentioned: [],
+      citedUrls: candidates.slice(0, 5).map((candidate) => candidate.canonicalUrl),
+      claimsUsed: []
+    };
+  });
+  const citationDomains = [...new Set(tests.flatMap((item) => item.citedUrls).flatMap((url) => {
+    try {
+      return [new URL(url).hostname.toLowerCase()];
+    } catch {
+      return [];
+    }
+  }))];
+  return {
+    tests,
+    aggregate: {
+      targetMentionRate: tests.length > 0
+        ? tests.filter((item) => item.targetMentioned).length / tests.length
+        : 0,
+      competitors: [],
+      citationDomains
+    },
+    claimAssessments: [],
+    degraded: true,
+    degradedReason: "zhipu_semantic_output_invalid",
+    fallbackProviders: ["doubao", "qwen"]
+  };
+}
+
+async function resolveSearchEvidencePack(input: {
+  config: ZhipuProviderConfig;
+  taskType: GeoResearchTaskType;
+  identity: GeoProductIdentityCard;
+  evidencePack: Awaited<ReturnType<typeof runMultiProviderWebSearch>>;
+  signal: AbortSignal;
+}) {
+  if (input.evidencePack.candidates.length === 0) {
+    return applyGeoEntityResolution({
+      taskType: input.taskType,
+      identity: input.identity,
+      pack: input.evidencePack,
+      resolutions: []
+    });
+  }
+  const candidatesToResolve = selectGeoEntityResolutionCandidates(input.evidencePack.candidates);
+  const batches = buildGeoEntityResolutionBatches(candidatesToResolve);
+  const concurrency = boundedInteger(process.env.GEO_ENTITY_RESOLUTION_CONCURRENCY, 1, 1, 4);
+  const batchResults = await mapWithConcurrency(batches, concurrency, async (candidates, batchIndex) => requestEntityResolutionBatch({
+    config: input.config,
+    taskType: input.taskType,
+    identity: input.identity,
+    candidates,
+    parentSignal: input.signal,
+    batchIndex
+  }));
+  const resolutions = batchResults.flatMap((result) => result.resolutions);
+  const resolvedPack = applyGeoEntityResolution({
     taskType: input.taskType,
     identity: input.identity,
     pack: input.evidencePack,
     resolutions
   });
+  resolvedPack.gate.entityResolution = {
+    inputCandidateCount: input.evidencePack.candidates.length,
+    attemptedCandidateCount: candidatesToResolve.length,
+    resolvedCandidateCount: resolutions.length,
+    droppedCandidateCount: input.evidencePack.candidates.length - resolutions.length,
+    failedBatchCount: batchResults.filter((result) => result.failed).length
+  };
+  return resolvedPack;
+}
+
+async function resolveSearchEvidencePackWithTimeout(
+  input: Omit<Parameters<typeof resolveSearchEvidencePack>[0], "signal">,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("Zhipu entity resolution timed out", "TimeoutError")),
+    timeoutMs
+  );
+  try {
+    return await resolveSearchEvidencePack({ ...input, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new V5GovernanceRepositoryError(
+        "geo_entity_resolution_timed_out",
+        "智谱 GEO 实体语义解析在有界时间内未完成。",
+        502,
+        "检查候选证据预算、批次耗时和智谱 Chat Completions 状态后重试当前任务。"
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function enforceTaskEntityRules(
@@ -441,6 +693,10 @@ export function enforceTaskEntityRules(
 }
 
 export async function runGeoResearchProvider(context: GeoResearchProviderContext): Promise<GeoResearchProviderResult> {
+  const providerTimeoutMs = Math.max(
+    5_000,
+    Math.min(300_000, Number(process.env.GEO_RESEARCH_PROVIDER_TIMEOUT_MS || process.env.AI_PROVIDER_TIMEOUT_MS || 300_000))
+  );
   const config = assertProviderConfig();
   const productIdentity = buildGeoProductIdentityCard({
     product: context.product,
@@ -450,11 +706,10 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
   const researchBoundary = {
     ...context.project,
     authoritativeEntityRelationship: productIdentity.entityRelationship || "未提供",
-    entityInterpretationRule: "目标产品只使用 productIdentity 中的 canonicalName、displayName 和 aliases。品牌方、所有者、实施方或服务商是关系角色，不得与产品名拼接成新的产品实体。"
+    entityInterpretationRule: "目标产品只使用 productIdentity 中的 canonicalName、displayName 和 aliases。品牌方、所有者、实施方或服务商是关系角色，不得与产品名拼接成新的产品实体。若存在 productIdentity.serviceProvider，联网检索必须包含服务商选型、资质、交付范围、实施、培训、验收与案例证据需求，并保持产品事实与服务商事实分开归因。"
   };
   const requiresLiveSearch = LIVE_SEARCH_TASKS.has(context.taskType);
   const searchController = new AbortController();
-  const searchTimeout = setTimeout(() => searchController.abort(), 180_000);
   const searchQueries = requiresLiveSearch ? buildSearchQueries(productIdentity, context.taskType, config.maxQueries) : [];
   const queryPlan: GeoSearchQueryPlan | undefined = requiresLiveSearch ? {
     contractVersion: "geo-search-query-plan.v2",
@@ -467,18 +722,38 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
   } : undefined;
   let completionPayload: Record<string, unknown>;
   try {
+    const initialSearchStartedAt = Date.now();
     const initialSearchPack = requiresLiveSearch
       ? await runMultiProviderWebSearch({ queries: searchQueries, officialUrl: context.product.officialUrl, signal: searchController.signal })
       : undefined;
+    if (initialSearchPack) {
+      logGeoProviderStage("initial_search_completed", {
+        taskType: context.taskType,
+        durationMs: Date.now() - initialSearchStartedAt,
+        candidateCount: initialSearchPack.candidates.length,
+        successfulProviders: initialSearchPack.gate.successfulProviders,
+        failedProviders: initialSearchPack.gate.failedProviders || [],
+        degraded: initialSearchPack.gate.degraded === true
+      });
+    }
+    const initialResolutionStartedAt = Date.now();
     let evidencePack = initialSearchPack
-      ? await resolveSearchEvidencePack({
+      ? await resolveSearchEvidencePackWithTimeout({
           config,
           taskType: context.taskType,
           identity: productIdentity,
-          evidencePack: initialSearchPack,
-          signal: searchController.signal
-        })
+          evidencePack: initialSearchPack
+        }, providerTimeoutMs)
       : undefined;
+    if (initialSearchPack && evidencePack) {
+      logGeoProviderStage("initial_entity_resolution_completed", {
+        taskType: context.taskType,
+        durationMs: Date.now() - initialResolutionStartedAt,
+        inputCandidateCount: initialSearchPack.candidates.length,
+        resolvedCandidateCount: evidencePack.candidates.length,
+        gateDecision: evidencePack.gate.decision
+      });
+    }
     if (evidencePack && evidencePack.gate.configuredProviders.length >= 2) {
       for (const round of [1, 2] as const) {
         if (evidencePack.gate.decision === "passed") break;
@@ -487,12 +762,18 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
           officialUrl: context.product.officialUrl,
           signal: searchController.signal
         });
-        const supplementary = await resolveSearchEvidencePack({
+        const supplementary = await resolveSearchEvidencePackWithTimeout({
           config,
           taskType: context.taskType,
           identity: productIdentity,
-          evidencePack: supplementarySearchPack,
-          signal: searchController.signal
+          evidencePack: supplementarySearchPack
+        }, providerTimeoutMs);
+        logGeoProviderStage("supplementary_round_completed", {
+          taskType: context.taskType,
+          round,
+          searchCandidateCount: supplementarySearchPack.candidates.length,
+          resolvedCandidateCount: supplementary.candidates.length,
+          gateDecision: supplementary.gate.decision
         });
         evidencePack = combineMultiSearchEvidencePacks([evidencePack, supplementary]);
       }
@@ -509,6 +790,18 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
           : "检查失败 Provider、检索查询与原始来源字段后重试；禁止用模型记忆替代。"
       );
     }
+    const answerPack = context.taskType === "frontend_baseline" && context.probeSetSnapshot
+      ? await runMultiProviderProbeAnswers({ snapshot: context.probeSetSnapshot, signal: searchController.signal, entityNames: [context.product.displayName, context.product.canonicalName, ...(context.product.aliases || [])] })
+      : undefined;
+    if (answerPack) {
+      logGeoProviderStage("probe_answer_observations_completed", {
+        taskType: context.taskType,
+        observationCount: answerPack.observations.length,
+        successfulObservationCount: answerPack.observations.filter((item) => item.status === "success").length,
+        providerCount: new Set(answerPack.observations.map((item) => item.provider)).size
+      });
+    }
+
     const sources: GeoResearchProviderSource[] = (evidencePack?.candidates || []).map((candidate) => ({
       url: candidate.canonicalUrl,
       title: candidate.title,
@@ -531,7 +824,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       title: candidate.title || "未命名网页",
       publisher: candidate.publisher || "",
       publishedAt: candidate.publishedAt || "",
-      excerpt: candidate.excerpt || "",
+      excerpt: candidate.excerpt?.slice(0, 1200) || "",
       providerKeys: candidate.providerKeys,
       queryIds: candidate.queryIds,
       sourceType: candidate.sourceType,
@@ -558,36 +851,103 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
         }))
       : [];
 
-    clearTimeout(searchTimeout);
     const synthesisController = new AbortController();
-    const synthesisTimeout = setTimeout(() => synthesisController.abort(), 180_000);
+    const synthesisTimeout = setTimeout(() => synthesisController.abort(), providerTimeoutMs);
     try {
-      completionPayload = await requestZhipu(config, "/chat/completions", {
-        model: config.model,
-        stream: false,
-        temperature: 0.2,
-        max_tokens: 16384,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity is authoritative and comes from user-provided materials. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Name similarity alone never proves identity or competition. A brand owner, implementation partner, reseller or service provider is a relationship role and must never be merged with the target name into a new composite product entity unless that exact composite appears in productIdentity.aliases. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules."
-          },
-          {
-            role: "user",
-            content: JSON.stringify({
-              instruction: taskInstruction(context.taskType),
-              productIdentity,
-              researchBoundary,
-              sourceSnapshotHash: context.sourceSnapshotHash,
-              previousOutputs: context.previousOutputs,
-              existingArticleTypes,
-              searchEvidence,
-              evidenceGate: evidencePack?.gate
-            })
-          }
-        ]
-      }, synthesisController.signal);
+      logGeoProviderStage("semantic_synthesis_started", {
+        taskType: context.taskType,
+        evidenceCount: searchEvidence.length,
+        evidenceCharacterCount: searchEvidence.reduce((total, item) => total + item.excerpt.length, 0),
+        previousOutputCount: context.previousOutputs.length
+      });
+      const probeInstruction = context.probeSetSnapshot?.probes?.length ? ' Use the exact questionText values from probeSetSnapshot.probes for model observation; do not rewrite, merge, or add questions. Keep observationMode and expectedRelations as backend-only scoring metadata.' : '';
+      const synthesisSystemPrompt = "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity is authoritative and comes from user-provided materials. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Name similarity alone never proves identity or competition. A brand owner, implementation partner, reseller or service provider is a relationship role and must never be merged with the target name into a new composite product entity unless that exact composite appears in productIdentity.aliases. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules." + probeInstruction;
+      if (context.taskType === "live_question_discovery" && searchEvidence.length > 6) {
+        const evidenceShards = Array.from(
+          { length: Math.ceil(searchEvidence.length / 6) },
+          (_, index) => searchEvidence.slice(index * 6, index * 6 + 6)
+        );
+        const shardPayloads = await mapWithConcurrency(evidenceShards, 3, async (searchEvidenceShard, shardIndex) => {
+          const payload = await requestZhipu(config, "/chat/completions", {
+            model: config.model,
+            stream: false,
+            temperature: 0.2,
+            max_tokens: 6144,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: synthesisSystemPrompt },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  instruction: `${taskInstruction(context.taskType)} This is evidence shard ${shardIndex + 1} of ${evidenceShards.length}. Return 8-14 high-confidence questions grounded only in this shard; do not attempt the full 30-40 question catalog in one shard.`,
+                  productIdentity,
+                  researchBoundary,
+                  websiteCoverageProfile: context.websiteCoverageProfile,
+                  sourceSnapshotHash: context.sourceSnapshotHash,
+                  probeSetSnapshot: context.probeSetSnapshot,
+                  previousOutputs: context.previousOutputs,
+                  searchEvidence: searchEvidenceShard,
+                  evidenceGate: evidencePack?.gate
+                })
+              }
+            ]
+          }, synthesisController.signal);
+          logGeoProviderStage("question_synthesis_shard_completed", {
+            taskType: context.taskType,
+            shardIndex,
+            evidenceCount: searchEvidenceShard.length
+          });
+          return payload;
+        });
+        const mergedQuestionCatalog = mergeQuestionDiscoveryShardOutputs(shardPayloads);
+        completionPayload = {
+          id: `zhipu-question-shards-${shardPayloads.length}`,
+          choices: [{
+            finish_reason: "stop",
+            message: { content: JSON.stringify(mergedQuestionCatalog) }
+          }]
+        };
+      } else {
+        completionPayload = await requestZhipu(config, "/chat/completions", {
+          model: config.model,
+          stream: false,
+          temperature: 0.2,
+          max_tokens: 16384,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: synthesisSystemPrompt },
+            {
+              role: "user",
+              content: JSON.stringify({
+                instruction: taskInstruction(context.taskType),
+                productIdentity,
+                researchBoundary,
+                websiteCoverageProfile: context.websiteCoverageProfile,
+                sourceSnapshotHash: context.sourceSnapshotHash,
+                probeSetSnapshot: context.probeSetSnapshot,
+                previousOutputs: context.previousOutputs,
+                existingArticleTypes,
+                searchEvidence,
+                evidenceGate: evidencePack?.gate
+              })
+            }
+          ]
+        }, synthesisController.signal);
+      }
+      logGeoProviderStage("semantic_synthesis_completed", {
+        taskType: context.taskType,
+        responseIdPresent: typeof completionPayload.id === "string"
+      });
+    } catch (error) {
+      if (synthesisController.signal.aborted) {
+        throw new V5GovernanceRepositoryError(
+          "geo_semantic_synthesis_timed_out",
+          "智谱 GEO 最终语义综合在有界时间内未完成。",
+          502,
+          "检查进入综合阶段的证据字符数、历史输出数量和模型响应时间后重试当前任务。"
+        );
+      }
+      throw error;
     } finally {
       clearTimeout(synthesisTimeout);
     }
@@ -597,6 +957,18 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
     try {
       semanticOutput = parseStructuredOutput(outputText);
     } catch (error) {
+      if (context.taskType === "frontend_baseline" && evidencePack) {
+        semanticOutput = buildDegradedFrontendBaseline({
+          queries: searchQueries,
+          candidates: evidencePack.candidates
+        });
+        logGeoProviderStage("frontend_baseline_semantic_degraded", {
+          taskType: context.taskType,
+          fallbackProviders: ["doubao", "qwen"],
+          candidateCount: evidencePack.candidates.length,
+          outputLength: outputText.length
+        });
+      } else {
       const choice = Array.isArray(completionPayload.choices) && completionPayload.choices[0] && typeof completionPayload.choices[0] === "object"
         ? completionPayload.choices[0] as Record<string, unknown>
         : {};
@@ -606,6 +978,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
         502,
         error instanceof V5GovernanceRepositoryError ? error.nextAction : undefined
       );
+      }
     }
     const entitySafeSemanticOutput = enforceTaskEntityRules(context.taskType, semanticOutput, productIdentity);
     const citationPruning = evidencePack
@@ -642,8 +1015,11 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
           }
         }
       : semanticOutput;
+    const resultPack = answerPack && context.probeSetSnapshot
+      ? buildGeoResearchResultPack({ productId: context.product.productId, researchRunId: context.probeSetSnapshot.researchRunId, sourceSnapshotId: context.probeSetSnapshot.sourceSnapshotId, snapshot: context.probeSetSnapshot, observations: answerPack.observations, structured })
+      : undefined;
     const safeOutputText = JSON.stringify(structured);
-    const rawResponse = { searchQueryPlan: queryPlan, multiSearchEvidencePack: evidencePack, semanticOutput: structured };
+    const rawResponse = { searchQueryPlan: queryPlan, multiSearchEvidencePack: evidencePack, probeAnswerObservations: answerPack?.observations || [], probeAnswerRawResponses: answerPack?.rawResponses || {}, resultPack, semanticOutput: structured };
     return {
       provider: "zhipu_synthesis",
       model: config.model,
@@ -654,9 +1030,11 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       sources,
       liveSearchVerified,
       rawResponse,
+      answerObservations: answerPack?.observations,
+      answerRawResponses: answerPack?.rawResponses,
       payloadHash: createHash("sha256").update(JSON.stringify(rawResponse)).digest("hex")
     };
   } finally {
-    clearTimeout(searchTimeout);
+    searchController.abort();
   }
 }

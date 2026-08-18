@@ -173,6 +173,16 @@ export interface RequiredFixedExpression {
   channel: string;
 }
 
+export interface ProductionEntityIdentitySnapshot {
+  productId: string;
+  canonicalName: string;
+  displayName: string;
+  aliases: string[];
+  brandName?: string;
+  officialEntity?: string;
+  entityRelationship?: string;
+}
+
 export interface ProductionGovernanceSnapshot {
   productId: string;
   productStrategyPackId: string;
@@ -186,8 +196,8 @@ export interface ProductionGovernanceSnapshot {
 }
 
 export interface ProductionValidatorPolicy {
-  minTraceableFactCount: number;
-  requireHumanBoundary: boolean;
+  requiredCoreClaimIds: string[];
+  entityIdentity: ProductionEntityIdentitySnapshot;
   allowedUrls: string[];
   prohibitedTerms: string[];
   requiredSections: string[];
@@ -237,8 +247,8 @@ export type ProductionValidationCode =
   | "required_artifact_missing"
   | "prohibited_term"
   | "fact_trace_invalid"
-  | "traceable_fact_count_low"
-  | "human_boundary_missing"
+  | "core_claim_missing"
+  | "entity_relationship_invalid"
   | "cta_missing"
   | "cta_modified"
   | "cta_limit_exceeded"

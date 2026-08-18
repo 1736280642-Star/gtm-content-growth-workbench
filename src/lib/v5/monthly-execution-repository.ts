@@ -237,6 +237,50 @@ export async function scheduleFormalProductionTask(input: {
   });
 }
 
+export async function interceptFormalProductionTask(input: {
+  month: string;
+  taskId: string;
+  expectedVersion: number;
+  actor: V5GovernanceActor;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT i.*, p.version AS plan_version, pr.status AS publish_result_status
+       FROM content_matrix_item i
+       JOIN monthly_plan p ON p.id = i.monthly_plan_id
+       LEFT JOIN content_publish_result pr ON pr.matrix_item_id = i.id
+       WHERE i.id = ? AND p.plan_month = ? FOR UPDATE`,
+      [input.taskId, input.month]
+    );
+    const item = rows[0];
+    if (!item) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式矩阵项不存在。", 404);
+    if (Number(item.plan_version) !== input.expectedVersion) {
+      throw new V5GovernanceRepositoryError("formal_monthly_plan_version_conflict", `正式 MonthlyPlan 当前 version 为 ${item.plan_version}。`, 409);
+    }
+    if (String(item.status) === "published" || String(item.publish_result_status) === "published") {
+      throw new V5GovernanceRepositoryError("published_task_cannot_be_intercepted", "文章已经发布，无法再拦截发布。", 422);
+    }
+    if (String(item.status) === "intercepted") return { intercepted: true, planVersion: Number(item.plan_version) };
+
+    await connection.query(
+      "UPDATE content_matrix_item SET status = 'intercepted', scheduled_at = NULL, publish_date = NULL, publish_time = NULL, version = version + 1 WHERE id = ?",
+      [input.taskId]
+    );
+    const nextVersion = Number(item.plan_version) + 1;
+    await connection.query("UPDATE monthly_plan SET version = ? WHERE id = ? AND version = ?", [nextVersion, String(item.monthly_plan_id), Number(item.plan_version)]);
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "formal_publish_intercepted",
+      objectType: "content_matrix_item",
+      objectId: input.taskId,
+      beforeSummary: { status: String(item.status), scheduledAt: item.scheduled_at },
+      afterSummary: { status: "intercepted", automaticPublishAllowed: false },
+      correlationId: String(item.monthly_plan_id)
+    });
+    return { intercepted: true, planVersion: nextVersion };
+  });
+}
+
 export async function removeFormalProductionTasks(input: {
   month: string;
   taskIds: string[];
@@ -363,7 +407,7 @@ export async function backfillFormalPublishJobResult(input: {
   removedAt?: string;
   verificationCount?: number;
 }) {
-  return withV5GovernanceTransaction(async (connection) => {
+  const saved = await withV5GovernanceTransaction(async (connection) => {
     const [itemRows] = await connection.query<RowDataPacket[]>(
       "SELECT id, monthly_plan_id, product_id, question_version_id, source_problem, title, channel FROM content_matrix_item WHERE id = ? FOR UPDATE",
       [input.taskId]
@@ -402,7 +446,7 @@ export async function backfillFormalPublishJobResult(input: {
         questionVersionId: item.question_version_id ? String(item.question_version_id) : undefined,
         publishedContentId: input.taskId, sourcePublishResultId: String(current.id)
       }) : [];
-      return { synced: true, unchanged: true, captureTaskIds };
+      return { synced: true, unchanged: true, captureTaskIds, productId: String(item.product_id) };
     }
     const resultId = current ? String(current.id) : `publish-${randomUUID()}`;
     const [draftRows] = await connection.query<RowDataPacket[]>(
@@ -460,8 +504,13 @@ export async function backfillFormalPublishJobResult(input: {
       },
       correlationId: String(item.monthly_plan_id)
     });
-    return { synced: true, unchanged: false, captureTaskIds };
+    return { synced: true, unchanged: false, captureTaskIds, productId: String(item.product_id) };
   });
+  if (saved.synced && saved.productId && (input.stablePublishedAt || input.removedAt)) {
+    const { reconcileProductGeoOptimizations } = await import("./product-geo-optimization-repository");
+    await reconcileProductGeoOptimizations([saved.productId]);
+  }
+  return saved;
 }
 
 export async function readFormalObservationRows() {

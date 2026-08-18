@@ -199,7 +199,7 @@ export const ragSourceRegistry: RagSourceRegistryEntry[] = [
     registryId: "joto-workbuddy-official-20260724",
     rootPath: roots.jotoAdp,
     productId: "joto-workbuddy",
-    productName: "WorkBuddy × JOTO",
+    productName: "WorkBuddy",
     knowledgeBaseId: "kb-joto-workbuddy-official",
     classify(relativePath) {
       const file = normalizeRelative(relativePath);
@@ -233,7 +233,7 @@ export const ragSourceRegistry: RagSourceRegistryEntry[] = [
     registryId: "joto-tencent-adp-official-20260724",
     rootPath: roots.jotoAdp,
     productId: "tencent-adp-joto",
-    productName: "腾讯云 ADP × JOTO",
+    productName: "腾讯云 ADP",
     knowledgeBaseId: "kb-joto-tencent-adp-official",
     classify(relativePath) {
       const file = normalizeRelative(relativePath);

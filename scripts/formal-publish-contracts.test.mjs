@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -15,6 +16,37 @@ import { createPublishIdempotencyLedger } from "./lib/publish-idempotency.mjs";
 import { createBrowserPublishJobStore } from "./lib/browser-publish-job-store.mjs";
 import { createCsdnGatewayHeaders } from "./lib/csdn-api-gateway.mjs";
 import { submitAndPollWechatPublish } from "./lib/wechat-formal-publish.mjs";
+import { fetchWorkbenchCover, parseWorkbenchCoverReference } from "./lib/workbench-cover-source.mjs";
+
+test("workbench cover references are strict and fetched only from loopback", async () => {
+  assert.equal(parseWorkbenchCoverReference("workbench-cover:free-batch-12345678-abcd"), "free-batch-12345678-abcd");
+  assert.equal(parseWorkbenchCoverReference("data/free-production-assets/cover.png"), undefined);
+  assert.equal(parseWorkbenchCoverReference("workbench-cover:../../secret"), null);
+  await assert.rejects(
+    fetchWorkbenchCover("workbench-cover:free-batch-12345678-abcd", { baseUrl: "https://example.com" }),
+    /loopback HTTP/
+  );
+
+  const image = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const server = createServer((request, response) => {
+    assert.equal(request.url, "/api/v5/free-production/batches/free-batch-12345678-abcd/cover?purpose=publish");
+    assert.equal(request.headers.authorization, "Bearer test-token");
+    response.writeHead(200, { "content-type": "image/png", "content-length": String(image.length) });
+    response.end(image);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    const result = await fetchWorkbenchCover("workbench-cover:free-batch-12345678-abcd", {
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      token: "test-token"
+    });
+    assert.deepEqual(result.data, image);
+    assert.equal(result.mimeType, "image/png");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
 
 test("formal publish idempotency key includes schedule, platform, and content hash", () => {
   const contentHash = hashDirectPublishContent("Title", "Body\r\nline");
@@ -137,6 +169,9 @@ test("hybrid bridge creates one platform draft and passes its identity to the br
   assert.match(source, /failureCode: input\.externalDraftId \? "publish_action_unconfirmed" : "adapter_failed"/);
   assert.match(source, /const directPublicObservation = await verifyKnownPublicArticle\(input\)/);
   assert.match(source, /status: "public_observed"/);
+  assert.match(source, /\/cgi-bin\/stable_token/);
+  assert.match(source, /force_refresh: forceRefresh/);
+  assert.match(source, /\[40014, 42001\]\.includes/);
   assert.match(clientSource, /publicUrl: result\.publicUrl/);
 });
 

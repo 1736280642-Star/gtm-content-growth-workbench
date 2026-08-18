@@ -97,7 +97,7 @@ export function WechatPublishAccountBar({ batch, publishing, onPublish }: { batc
         <Link href="/settings?tab=rules"><Button type="text" icon={<SettingOutlined />}>管理账号</Button></Link>
         {error ? <Tooltip title="重新检查账号连接"><Button type="text" icon={<ReloadOutlined />} onClick={() => void refresh()} /></Tooltip> : null}
         <Tooltip title={blockedReason}>
-          <span><Button type="primary" icon={<SendOutlined />} loading={publishing} disabled={Boolean(blockedReason)} onClick={onPublish}>去发布</Button></span>
+          <span><Button type="primary" icon={<SendOutlined />} loading={publishing} disabled={Boolean(blockedReason)} onClick={onPublish}>发送到草稿箱</Button></span>
         </Tooltip>
       </div>
     </section></>

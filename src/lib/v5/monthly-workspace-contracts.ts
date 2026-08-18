@@ -7,7 +7,7 @@ export type EvidenceReadinessStatus =
   | "blocked"
   | "pending_config";
 export type StrategyRowStatus = "ready" | "ready_with_conditions" | "needs_material" | "needs_review" | "quota_error" | "blocked";
-export type MatrixDisplayStatus = "preparing" | "ready" | "generating" | "qualified" | "exception" | "scheduled" | "published" | "publish_failed";
+export type MatrixDisplayStatus = "preparing" | "ready" | "generating" | "qualified" | "exception" | "scheduled" | "intercepted" | "published" | "publish_failed";
 export type GenerationStatus = "title_pending" | "pending" | "generating" | "generated" | "provider_failed" | "input_expired";
 export type FinalEvidenceGateStatus = "not_created" | "ready" | "needs_review" | "blocked" | "pending_config";
 export type ScheduleDraftStatus = "unscheduled" | "draft" | "active" | "pending_config";
@@ -58,6 +58,7 @@ export type ProductionTaskStatus =
   | "awaiting_material"
   | "system_recovering"
   | "scheduled"
+  | "intercepted"
   | "published";
 
 export interface TargetQuestionOption {
@@ -175,6 +176,9 @@ export interface ProductionMatrixTask {
   platformAccount?: string;
   formal?: boolean;
   formalDraftId?: string;
+  interceptedAt?: string;
+  interceptedBy?: string;
+  interceptionReason?: string;
   ctaType?: string;
   frozenCtaPreview?: string;
   ctaValidationStatus?: "pending" | "passed" | "failed";

@@ -6,6 +6,8 @@ import type {
   GeoSearchQuery,
   MultiSearchEvidencePack
 } from "./geo-search-contracts";
+import type { ModelAnswerObservation } from "./geo-research-result-contracts";
+import type { ProbeSetSnapshot } from "./geo-probe-contracts";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 
 interface ProviderConfig {
@@ -30,6 +32,36 @@ interface RawCandidate {
 function boundedInteger(value: string | undefined, fallback: number, minimum: number, maximum: number) {
   const parsed = Number(value ?? fallback);
   return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, Math.floor(parsed))) : fallback;
+}
+
+function providerSearchTimeoutMs() {
+  return boundedInteger(
+    process.env.GEO_SEARCH_PROVIDER_TIMEOUT_MS,
+    boundedInteger(process.env.GEO_RESEARCH_PROVIDER_TIMEOUT_MS || process.env.AI_PROVIDER_TIMEOUT_MS, 300_000, 5_000, 300_000),
+    5_000,
+    300_000
+  );
+}
+
+async function executeProviderQueryWithTimeout(
+  config: ProviderConfig,
+  query: GeoSearchQuery,
+  parentSignal: AbortSignal
+) {
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort(parentSignal.reason);
+  if (parentSignal.aborted) onParentAbort();
+  else parentSignal.addEventListener("abort", onParentAbort, { once: true });
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException(`${config.provider} web search timed out`, "TimeoutError")),
+    providerSearchTimeoutMs()
+  );
+  try {
+    return await executeProviderQuery(config, query, controller.signal);
+  } finally {
+    clearTimeout(timeout);
+    parentSignal.removeEventListener("abort", onParentAbort);
+  }
 }
 
 function configs(): ProviderConfig[] {
@@ -310,6 +342,83 @@ function mergeCandidates(values: GeoSearchEvidenceCandidate[]) {
   });
 }
 
+function answerTextFromPayload(payload: Record<string, unknown>): string {
+  const texts: string[] = [];
+  const visit = (value: unknown) => {
+    if (typeof value === 'string' && value.trim() && value.length > 8) texts.push(value.trim());
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+      if (key === 'content' || key === 'output_text' || key === 'text' || key === 'message' || key === 'choices' || key === 'output') visit(item);
+    });
+  };
+  visit(payload);
+  return [...new Set(texts)].sort((left, right) => right.length - left.length)[0] || '';
+}
+
+function answerCitations(answer: string, payload: Record<string, unknown>): string[] {
+  const values = new Set<string>();
+  const add = (value: unknown) => { if (typeof value !== 'string') return; for (const match of value.matchAll(/https?:\/\/[^\s\"'<>]+/g)) { const url = canonicalUrl(match[0]); if (url) values.add(url); } };
+  add(answer);
+  const visit = (value: unknown) => {
+    if (typeof value === 'string') add(value);
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') Object.entries(value as Record<string, unknown>).forEach(([key, item]) => { if (/citation|source|url|reference|annotation/i.test(key)) visit(item); });
+  };
+  visit(payload);
+  return [...values];
+}
+
+function answerEndpoint(config: ProviderConfig) {
+  return config.provider === 'zhipu' ? config.baseUrl + '/chat/completions' : config.baseUrl + '/responses';
+}
+
+function answerParameters(config: ProviderConfig, question: string) {
+  if (config.provider === 'zhipu') return { model: config.model, stream: false, temperature: 0.2, messages: [{ role: 'system', content: 'Answer the user question naturally. Separate observed public evidence from uncertainty. Include source URLs when available. Do not mention this evaluation contract.' }, { role: 'user', content: question }] };
+  return { model: config.model, input: question, tools: [{ type: 'web_search' }], tool_choice: 'auto' };
+}
+
+export interface GeoProbeAnswerObservationPack {
+  observations: ModelAnswerObservation[];
+  rawResponses: Record<string, Record<string, unknown>>;
+  providerRuns: Array<{ provider: GeoSearchProviderKey; model: string; probeId: string; status: ModelAnswerObservation['status']; errorCode?: string }>;
+}
+
+export async function runMultiProviderProbeAnswers(input: { snapshot: ProbeSetSnapshot; signal: AbortSignal; entityNames?: string[] }): Promise<GeoProbeAnswerObservationPack> {
+  const providerConfigs = configs();
+  const observations: ModelAnswerObservation[] = [];
+  const rawResponses: Record<string, Record<string, unknown>> = {};
+  const providerRuns: GeoProbeAnswerObservationPack['providerRuns'] = [];
+  await Promise.all(providerConfigs.flatMap((config) => input.snapshot.probes.map(async (probe) => {
+    const observationId = 'geo-observation-' + randomUUID();
+    const key = config.provider + ':' + probe.probeId;
+    if (!config.apiKey || !config.model) {
+      observations.push({ observationId, probeId: probe.probeId, provider: config.provider, model: config.model || 'unsupported', rawAnswer: '', visibleCitations: [], mentionedEntities: [], searchedAt: new Date().toISOString(), status: 'unsupported' });
+      providerRuns.push({ provider: config.provider, model: config.model || 'unsupported', probeId: probe.probeId, status: 'unsupported', errorCode: 'pending_config' });
+      return;
+    }
+    const controller = new AbortController();
+    const onAbort = () => controller.abort(input.signal.reason);
+    if (input.signal.aborted) onAbort(); else input.signal.addEventListener('abort', onAbort, { once: true });
+    const timeout = setTimeout(() => controller.abort(new DOMException('probe answer timed out', 'TimeoutError')), providerSearchTimeoutMs());
+    try {
+      const payload = await requestJson(answerEndpoint(config), config, answerParameters(config, probe.questionText), controller.signal);
+      const rawAnswer = answerTextFromPayload(payload);
+      const visibleCitations = answerCitations(rawAnswer, payload);
+      rawResponses[key] = payload;
+      observations.push({ observationId, probeId: probe.probeId, provider: config.provider, model: config.model, rawAnswer, visibleCitations, mentionedEntities: (input.entityNames || []).filter((name) => rawAnswer.includes(name)), searchedAt: new Date().toISOString(), status: rawAnswer ? 'success' : 'failed' });
+      providerRuns.push({ provider: config.provider, model: config.model, probeId: probe.probeId, status: rawAnswer ? 'success' : 'failed', errorCode: rawAnswer ? undefined : 'empty_answer' });
+    } catch (error) {
+      const pending = error instanceof V5GovernanceRepositoryError && error.code === 'pending_config';
+      observations.push({ observationId, probeId: probe.probeId, provider: config.provider, model: config.model, rawAnswer: '', visibleCitations: [], mentionedEntities: [], searchedAt: new Date().toISOString(), status: pending ? 'unsupported' : 'failed' });
+      providerRuns.push({ provider: config.provider, model: config.model, probeId: probe.probeId, status: pending ? 'unsupported' : 'failed', errorCode: error instanceof V5GovernanceRepositoryError ? error.code : 'probe_answer_failed' });
+    } finally {
+      clearTimeout(timeout);
+      input.signal.removeEventListener('abort', onAbort);
+    }
+  })));
+  return { observations: observations.sort((left, right) => left.probeId.localeCompare(right.probeId) || left.provider.localeCompare(right.provider)), rawResponses, providerRuns: providerRuns.sort((left, right) => left.probeId.localeCompare(right.probeId) || left.provider.localeCompare(right.provider)) };
+}
+
 export async function runMultiProviderWebSearch(input: {
   queries: GeoSearchQuery[];
   officialUrl?: string;
@@ -322,7 +431,7 @@ export async function runMultiProviderWebSearch(input: {
     const startedAt = new Date().toISOString();
     const runId = `geo-search-run-${randomUUID()}`;
     try {
-      const result = await executeProviderQuery(config, query, input.signal);
+      const result = await executeProviderQueryWithTimeout(config, query, input.signal);
       const completedAt = new Date().toISOString();
       const normalized = result.candidates.flatMap((raw) => {
         const item = toEvidenceCandidate({
@@ -373,6 +482,7 @@ export async function runMultiProviderWebSearch(input: {
   const merged = mergeCandidates(candidates);
   const successfulProviders = [...new Set(providerRuns.filter((item) => item.status === "success" && item.sourceCount > 0).map((item) => item.provider))];
   const configuredProviders = [...new Set(providerRuns.filter((item) => item.status !== "pending_config").map((item) => item.provider))];
+  const failedProviders = [...new Set(providerRuns.filter((item) => item.status === "failed").map((item) => item.provider))];
   const requiredSuccessfulProviders = 2;
   const requiredIndependentSources = 2;
   const gaps = [
@@ -386,6 +496,8 @@ export async function runMultiProviderWebSearch(input: {
     candidates: merged,
     gate: {
       decision: gaps.length ? "blocked" : "passed",
+      degraded: gaps.length === 0 && failedProviders.length > 0,
+      failedProviders,
       successfulProviders,
       configuredProviders,
       independentSourceCount: merged.length,
@@ -407,6 +519,9 @@ export function combineMultiSearchEvidencePacks(packs: MultiSearchEvidencePack[]
   const configuredProviders = [...new Set(providerRuns
     .filter((item) => item.status !== "pending_config")
     .map((item) => item.provider))];
+  const failedProviders = [...new Set(providerRuns
+    .filter((item) => item.status === "failed")
+    .map((item) => item.provider))];
   const requiredSuccessfulProviders = 2;
   const requiredIndependentSources = 2;
   const gaps = [
@@ -420,6 +535,8 @@ export function combineMultiSearchEvidencePacks(packs: MultiSearchEvidencePack[]
     candidates,
     gate: {
       decision: gaps.length ? "blocked" : "passed",
+      degraded: gaps.length === 0 && failedProviders.length > 0,
+      failedProviders,
       successfulProviders,
       configuredProviders,
       independentSourceCount: candidates.length,

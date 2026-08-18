@@ -9,12 +9,12 @@
   };
   const configs = {
     doubao: {
-      hosts: ["www.doubao.com", "doubao.com"], version: "doubao-dom@1.0.0",
+      hosts: ["www.doubao.com", "doubao.com"], version: "doubao-dom@1.0.1",
       composer: ["textarea[data-testid*='chat']", "textarea", "div[contenteditable='true']"],
       answer: ["[data-testid*='message'] [class*='markdown' i]", "[class*='message' i] [class*='content' i]", "[class*='markdown' i]"]
     },
     deepseek: {
-      hosts: ["chat.deepseek.com"], version: "deepseek-dom@1.0.0",
+      hosts: ["chat.deepseek.com"], version: "deepseek-dom@1.0.1",
       composer: ["textarea", "div[contenteditable='true']"],
       answer: ["[data-role='assistant']", "[class*='ds-markdown']", "[class*='markdown' i]"]
     },
@@ -27,7 +27,7 @@
       answer: ["[data-message-author-role='assistant']", "article[data-testid^='conversation-turn-'] [class*='markdown' i]"]
     },
     qwen: {
-      hosts: ["tongyi.aliyun.com", "chat.qwen.ai"], version: "qwen-dom@1.0.0",
+      hosts: ["tongyi.aliyun.com", "chat.qwen.ai", "www.qianwen.com", "qianwen.com"], version: "qwen-dom@1.0.2",
       composer: ["textarea", "div[contenteditable='true']"],
       answer: ["[data-role='assistant']", "[class*='qwen-markdown']", "[class*='markdown' i]"]
     }
@@ -62,7 +62,8 @@
       if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
         const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(composer), "value")?.set;
         setter ? setter.call(composer, question) : composer.value = question;
-        composer.dispatchEvent(new Event("input", { bubbles: true }));
+        composer.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertText", data: question }));
+        composer.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
       } else {
         const selection = window.getSelection();
         const range = document.createRange();
@@ -74,13 +75,26 @@
         composer.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertText", data: question }));
       }
       let submit = null;
-      for (let attempt = 0; attempt < 20; attempt += 1) {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
         submit = first(selectors.submit);
         if (submit && !submit.disabled && submit.getAttribute("aria-disabled") !== "true") break;
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      if (submit && !submit.disabled) submit.click();
-      else throw Object.assign(new Error(`${platform} 发送按钮未启用，页面可能未接受输入。`), { code: "adapter_mismatch", stage: "submitting_prompt" });
+      if (submit && !submit.disabled && submit.getAttribute("aria-disabled") !== "true") {
+        submit.click();
+        return;
+      }
+      if (["doubao", "deepseek", "qwen"].includes(platform)) {
+        for (const type of ["keydown", "keypress", "keyup"]) {
+          composer.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, composed: true }));
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const remainingText = composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement
+          ? composer.value.trim()
+          : (composer.textContent || "").trim();
+        if (!remainingText || latestAnswer()) return;
+      }
+      throw Object.assign(new Error(`${platform} 发送按钮未启用，页面可能未接受输入。`), { code: "adapter_mismatch", stage: "submitting_prompt" });
     }
     async function observeCompletion({ firstTokenTimeoutMs = 45000, totalTimeoutMs = 240000, stableWindowMs = 2500 } = {}) {
       const startedAt = Date.now();

@@ -10,6 +10,7 @@ import type { CreateProductRegistryInput, UpdateProductRegistryInput } from "./p
 import {
   assertActiveProductRegistryRecord,
   createProductRegistryRecord,
+  deleteProductKnowledgeBaseRecord,
   listProductRegistryRecords,
   readProductRegistryRecord,
   updateProductRegistryRecord,
@@ -20,6 +21,8 @@ import type { V5GovernanceActor } from "./knowledge-governance-repository";
 import { readLatestProductStrategyPack } from "./product-strategy-pack-repository";
 import { readProductKnowledgeProfile } from "./product-knowledge-profile";
 import { compileProductWorkflowSummary } from "./product-workflow-summary";
+import { getRagInfrastructureStatus } from "./rag/infrastructure";
+import { HttpRagOpenSearchAdapter } from "./rag/opensearch-adapter";
 
 function assertText(value: string | undefined, field: string, maxLength = 255) {
   if (!value?.trim()) {
@@ -194,6 +197,40 @@ export async function getProduct(productId: string) {
 export async function getActiveProduct(productId: string) {
   assertText(productId, "productId", 64);
   return assertActiveProductRegistryRecord(productId);
+}
+
+export async function deleteProductKnowledgeBase(input: {
+  productId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+  actor: V5GovernanceActor;
+}) {
+  assertText(input.productId, "productId", 64);
+  assertText(input.idempotencyKey, "idempotencyKey", 128);
+  assertActor(input.actor);
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+    throw new V5GovernanceServiceError("invalid_contract", "expectedVersion 不合法。", 400);
+  }
+  if (input.actor.actorType !== "human" || !["product_owner", "business_owner", "developer_admin"].includes(input.actor.actorRole)) {
+    throw new V5GovernanceServiceError("permission_denied", "只有产品负责人可以删除产品知识库。", 403);
+  }
+  const { indexNames = [], ...result } = await deleteProductKnowledgeBaseRecord(input);
+  if (!indexNames.length) return result;
+
+  if (getRagInfrastructureStatus().opensearch.status !== "ready") {
+    return {
+      ...result,
+      cleanupWarning: "资料已从工作台主库清除，但检索服务当前不可用，外部索引待服务恢复后清理。"
+    };
+  }
+
+  const openSearch = new HttpRagOpenSearchAdapter();
+  const cleanupResults = await Promise.allSettled(indexNames.map((indexName) => openSearch.deleteIndex(indexName)));
+  const failedCount = cleanupResults.filter((cleanup) => cleanup.status === "rejected"
+    && !(cleanup.reason instanceof Error && cleanup.reason.message.includes("OpenSearch 404"))).length;
+  return failedCount
+    ? { ...result, cleanupWarning: `资料已从工作台主库清除，但有 ${failedCount} 个外部检索索引清理失败。` }
+    : result;
 }
 
 export async function updateProductPromotion(input: {

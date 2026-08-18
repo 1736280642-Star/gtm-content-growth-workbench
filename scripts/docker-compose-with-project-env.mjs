@@ -26,6 +26,9 @@ const businessIntegrationNames = new Set([
   "DOUBAO_API_KEY",
   "DOUBAO_MODEL",
   "DOUBAO_BASE_URL",
+  "DEEPSEEK_API_KEY",
+  "DEEPSEEK_MODEL",
+  "DEEPSEEK_BASE_URL",
   "RAG_EMBEDDING_PROVIDER",
   "V5_FORMAL_ARTICLE_PROVIDER",
   "V5_SAMPLE_ARTICLE_PROVIDER",
@@ -34,7 +37,9 @@ const businessIntegrationNames = new Set([
   "EMBEDDING_PROVIDER_TIMEOUT_MS",
   "AI_PROVIDER_TIMEOUT_MS",
   "WECHATSYNC_ENABLED",
-  "WECHATSYNC_MOCK"
+  "WECHATSYNC_MOCK",
+  "CONTENT_METRICS_RUNNER_TOKEN",
+  "CONTENT_METRICS_INTERVAL_SECONDS"
 ]);
 const childEnvironment = { ...inheritedEnvironment };
 for (const [name, value] of Object.entries(localBusinessEnvironment)) {

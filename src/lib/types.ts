@@ -487,6 +487,7 @@ export interface PlatformPublishPayload {
   publishRecordId?: string;
   matrixItemId?: string;
   coverMediaId?: string;
+  coverUrl?: string;
   categoryId?: string;
   tagIds?: string[];
   externalDraftId?: string;
@@ -504,6 +505,7 @@ export interface PublishSchedule {
   publishRecordId?: string;
   matrixItemId?: string;
   contentFormat?: "markdown" | "wechat_html";
+  coverUrl?: string;
   contentHash: string;
   idempotencyKey: string;
   attemptIds: string[];

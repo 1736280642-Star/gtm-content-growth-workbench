@@ -9,6 +9,7 @@ import { ExpressionPresetList } from "@/components/free-production/ExpressionPre
 import { GenerationResultWorkspace } from "@/components/free-production/GenerationResultWorkspace";
 import { ProductionInputPanel } from "@/components/free-production/ProductionInputPanel";
 import type { SupplementValue } from "@/components/free-production/InlineSupplementField";
+import type { WechatCoverFile } from "@/components/free-production/WechatCoverBindingPanel";
 import { PageHeader } from "@/components/PageHeader";
 import type { CreateFreeExpressionInput, CreateFreeProductionInput, FreeContentExpressionTypeSummary, FreeProductionBatch, FreeProductionCatalog } from "@/lib/v5/free-production-contracts";
 import type { WechatRenderableTemplateId } from "@/lib/v5/wechat-presentation-contracts";
@@ -31,7 +32,7 @@ export default function FreeProductionPage() {
   const [selectedType, setSelectedType] = useState<FreeContentExpressionTypeSummary>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [savingExpression, setSavingExpression] = useState(false);
-  const [working, setWorking] = useState<"supplements" | "visual" | "layout" | "content" | "hotspot" | "restore" | "publish" | "retry">();
+  const [working, setWorking] = useState<"supplements" | "visual" | "cover" | "layout" | "content" | "hotspot" | "restore" | "publish" | "retry">();
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -90,7 +91,7 @@ export default function FreeProductionPage() {
     try {
       const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/confirm-and-publish`, { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key("confirm-publish") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "人工确认当前正文并自动发布", contentDigest: artifact.contentDigest }) });
       setBatch(data);
-      messageApi.success(data.status === "published" ? "正文已发布并回填发布结果。" : "正文已进入正式发布队列。");
+      messageApi.success(data.status === "draft_created" ? "正文已写入公众号草稿箱，请到后台预览并人工发布。" : data.status === "published" ? "正文已发布并回填发布结果。" : "正文已进入正式发布队列。");
     } catch (error) { messageApi.error(error instanceof Error ? error.message : "自动发布失败。"); }
     finally { setWorking(undefined); }
   }
@@ -100,6 +101,15 @@ export default function FreeProductionPage() {
     setWorking("visual");
     try {
       const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/visual-assets`, { method: "PATCH", headers: { "content-type": "application/json", "x-idempotency-key": key("bind-visual") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: mediaAssetId ? "从产品素材图库选择正文配图并更新公众号排版" : "移除正文配图并恢复配图建议", artifactId, suggestionId, mediaAssetId }) });
+      setBatch(data);
+    } finally { setWorking(undefined); }
+  }
+
+  async function saveCover(file: WechatCoverFile) {
+    if (!batch) return;
+    setWorking("cover");
+    try {
+      const data = await request<FreeProductionBatch>(`/api/v5/free-production/batches/${encodeURIComponent(batch.id)}/cover`, { method: "PATCH", headers: { "content-type": "application/json", "x-idempotency-key": key("cover") }, body: JSON.stringify({ expectedVersion: batch.version, auditReason: "在正文预览页选择公众号封面", file }) });
       setBatch(data);
     } finally { setWorking(undefined); }
   }

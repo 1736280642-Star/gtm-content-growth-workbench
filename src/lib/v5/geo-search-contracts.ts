@@ -78,6 +78,15 @@ export interface MultiSearchEvidencePack {
   candidates: GeoSearchEvidenceCandidate[];
   gate: {
     decision: "passed" | "blocked";
+    degraded?: boolean;
+    failedProviders?: GeoSearchProviderKey[];
+    entityResolution?: {
+      inputCandidateCount: number;
+      attemptedCandidateCount: number;
+      resolvedCandidateCount: number;
+      droppedCandidateCount: number;
+      failedBatchCount: number;
+    };
     successfulProviders: GeoSearchProviderKey[];
     configuredProviders: GeoSearchProviderKey[];
     independentSourceCount: number;

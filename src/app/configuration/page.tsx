@@ -6,6 +6,7 @@ import {
   CheckCircleOutlined,
   CloudSyncOutlined,
   DeleteOutlined,
+  LineChartOutlined,
   PlusOutlined,
   ReloadOutlined,
   SettingOutlined
@@ -197,7 +198,8 @@ function ConfigurationPageContent() {
   const grouped = useMemo(() => ({
     models: configurationItems.filter((item) => item.category === "model"),
     publish: configurationItems.filter((item) => item.category === "publish_connection"),
-    observation: configurationItems.filter((item) => item.category === "observation_connection")
+    observation: configurationItems.filter((item) => item.category === "observation_connection"),
+    contentMetrics: configurationItems.filter((item) => item.category === "content_metrics_connection")
   }), [configurationItems]);
 
   const geoModelItems = grouped.models.filter((item) => item.key.startsWith("geo_search_"));
@@ -303,6 +305,11 @@ function ConfigurationPageContent() {
               <Typography.Paragraph type="secondary">用于执行产品前台测试和 GEO 结果调研；缺少连接时任务保持待配置。</Typography.Paragraph>
               {statusTable(grouped.observation, "暂无前台测试连接")}
             </div>
+            <div>
+              <Typography.Title level={4}>内容指标授权</Typography.Title>
+              <Typography.Paragraph type="secondary">只校验平台授权状态，不展示 Cookie、Token 或后台凭证。授权有效后每 6 小时更新一次发布内容指标。</Typography.Paragraph>
+              {statusTable(grouped.contentMetrics, "暂无内容指标连接")}
+            </div>
           </Space>
         )
       : embeddedSection === "expression_profiles"
@@ -329,6 +336,7 @@ function ConfigurationPageContent() {
             { key: "models", label: "模型服务", icon: <SettingOutlined />, children: modelStatusContent },
             { key: "expression_profiles", label: "文章表达预设", children: profilesTab },
             { key: "publish_connections", label: "发布连接", icon: <CloudSyncOutlined />, children: statusTable(grouped.publish, "暂无发布连接") },
+            { key: "content_metrics", label: "内容指标授权", icon: <LineChartOutlined />, children: <><Alert showIcon type="info" message="授权状态与发布连接相互独立" description="指标采集器只读取已发布内容的浏览、点赞和收藏数据，每 6 小时更新；不会创建、修改或删除平台内容。" style={{ marginBottom: 12 }} />{statusTable(grouped.contentMetrics, "暂无内容指标连接")}</> },
             { key: "observation_connections", label: "前台测试连接", children: <><Alert showIcon type="warning" message="本分支只聚合连接状态，不运行 AI 前台采集" style={{ marginBottom: 12 }} />{statusTable(grouped.observation, "暂无前台测试连接")}</> },
             { key: "audit", label: "版本与调用日志", children: auditTab }
           ]}

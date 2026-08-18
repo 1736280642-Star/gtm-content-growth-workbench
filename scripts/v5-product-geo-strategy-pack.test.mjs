@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const contracts = await import("../src/lib/v5/product-strategy-pack-contracts.ts");
+const promotionEvidence = await import("../src/lib/v5/promotion-evidence-policy.ts");
 
 function sampleProject() {
   return {
@@ -26,6 +27,12 @@ function sampleBlueprint() {
     blueprintVersionId: "blueprint-1",
     projectId: "geo-project-1",
     runId: "run-1",
+    governanceBinding: {
+      sourceSnapshotId: "source-snapshot-1",
+      rulePackageVersionId: "rule-version-1",
+      indexSnapshotId: "index-snapshot-1",
+      researchRunId: "run-1"
+    },
     versionNumber: 2,
     status: "pending_review",
     questionStrategy: {
@@ -112,6 +119,136 @@ test("maps the live blueprint field names without losing opportunities, evidence
   assert.deepEqual(plan.evidencePolicy.requiredRoles, ["product_fact", "public_source"]);
   assert.deepEqual(plan.expressionDirection.emphasisOrder, ["回答真实选型问题", "解释实施边界"]);
   assert.deepEqual(plan.expressionDirection.tone, ["客观", "具体", "证据优先"]);
+});
+
+test("a governed JOTO service-provider relationship always yields a provider-selection opportunity and article type", () => {
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint: sampleBlueprint(),
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu",
+    productName: "WorkBuddy",
+    entityRelationship: "WorkBuddy 是腾讯旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。",
+    productKnowledgeProfile: sampleKnowledgeProfile()
+  });
+  const opportunity = plan.geoOpportunities.find((item) => item.intent === "service_provider_selection");
+  const articleType = plan.articleTypePortfolio.find((item) => item.portfolioItemId === "service-provider-selection");
+  assert.ok(opportunity);
+  assert.equal(opportunity.evidenceReadiness, "ready");
+  assert.match(opportunity.title, /WorkBuddy 服务商选型/);
+  assert.ok(articleType);
+  assert.equal(articleType.evidenceReadiness, "ready");
+  assert.match(articleType.name, /WorkBuddy 服务商选型与实施伙伴推荐/);
+  assert.match(articleType.definition, /公开核验.*服务能力.*适用场景.*角色边界/);
+  assert.doesNotMatch(articleType.definition, /交付范围.*验收/);
+  assert.match(articleType.unsuitableQuestions.join(" "), /客户 Logo.*已验证成功案例/);
+  assert.doesNotThrow(() => contracts.assertProductGeoStrategyContentPlanV2(plan));
+});
+
+test("existing website coverage does not remove the governed provider-selection article type", () => {
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint: sampleBlueprint(),
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu",
+    productName: "腾讯云 ADP",
+    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
+    productKnowledgeProfile: sampleKnowledgeProfile(),
+    websiteCoverageProfile: {
+      id: "coverage-1",
+      productId: "product-1",
+      profileVersion: 1,
+      knowledgeReadiness: "ready",
+      publicGeoReadiness: "ready",
+      officialSources: [],
+      topicCoverage: [{
+        topic: "provider_selection",
+        label: "服务商选型",
+        status: "sufficient",
+        pageUrls: ["https://example.com/provider"],
+        sourceIds: ["source-1"],
+        claimIds: ["claim-1"],
+        evidenceRequired: false,
+        reason: "已有官网页面"
+      }],
+      criticalFindingCodes: [],
+      evidenceGaps: [],
+      profileHash: "coverage-hash-1",
+      generatedAt: "2026-08-17T00:00:00.000Z"
+    }
+  });
+  const articleType = plan.articleTypePortfolio.find((item) => item.portfolioItemId === "service-provider-selection");
+  assert.ok(articleType);
+  assert.equal(articleType.evidenceReadiness, "ready");
+  assert.equal(articleType.websiteCoverageDisposition, "refresh_existing");
+});
+
+test("a semantic provider guide is normalized into the governed provider-selection type", () => {
+  const blueprint = sampleBlueprint();
+  blueprint.contentTypeStrategy.articleTypes[0] = {
+    ...blueprint.contentTypeStrategy.articleTypes[0],
+    id: "provider-guide",
+    origin: "generated",
+    name: "服务商实施指南",
+    definition: "说明企业如何完成服务商选型和项目实施。",
+    evidenceReadiness: "partial"
+  };
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint,
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu",
+    productName: "腾讯云 ADP",
+    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
+    productKnowledgeProfile: sampleKnowledgeProfile()
+  });
+  const providerTypes = plan.articleTypePortfolio.filter((item) => item.portfolioItemId === "service-provider-selection");
+  assert.equal(providerTypes.length, 1);
+  assert.equal(providerTypes[0].name, "腾讯云 ADP 服务商选型与实施伙伴推荐");
+  assert.equal(providerTypes[0].evidenceReadiness, "ready");
+  assert.match(providerTypes[0].contentGoal, /JOTO.*实施服务提供方/);
+  assert.match(JSON.stringify(providerTypes[0]), /对外服务范围|角色边界|合作阶段/);
+  assert.doesNotMatch(JSON.stringify(providerTypes[0]), /配置操作文档|交付范围与验收|验收清单/);
+});
+
+test("promotion evidence suggestions exclude internal delivery artifacts", () => {
+  const shared = {
+    definition: "面向客户解释产品与服务。",
+    suitableQuestions: [],
+    evidencePreferences: ["正式部署前提与环境要求", "系统集成及配置操作文档", "交付范围与验收清单"]
+  };
+  const items = [
+    { ...shared, name: "行业场景解决方案", contentGoal: "把业务问题映射为可执行方案" },
+    { ...shared, name: "服务商实施指南", contentGoal: "清晰说明服务范围和实施能力" },
+    { ...shared, name: "实施指南", contentGoal: "帮助客户理解采用路径与实施边界" }
+  ];
+
+  for (const item of items) {
+    const suggestions = promotionEvidence.promotionEvidenceSuggestions(item);
+    assert.ok(suggestions.length >= 2);
+    assert.doesNotMatch(suggestions.join("；"), /部署前提|环境要求|配置操作|交付范围|验收清单/);
+  }
+  assert.match(promotionEvidence.promotionEvidenceSuggestions(items[0]).join("；"), /业务问题|产品能力/);
+  assert.match(promotionEvidence.promotionEvidenceSuggestions(items[1]).join("；"), /对外公布的服务范围|职责边界/);
+  assert.match(promotionEvidence.promotionEvidenceSuggestions(items[2]).join("；"), /公开的产品能力|实施阶段/);
+});
+
+test("website topics without governed evidence stay on hold and never enter the monthly mix", () => {
+  const profile = {
+    id: "coverage-hold", productId: "product-1", profileVersion: 1, knowledgeReadiness: "partial", publicGeoReadiness: "ready",
+    officialSources: [], criticalFindingCodes: [], evidenceGaps: [], profileHash: "coverage-hold-hash", generatedAt: "2026-08-17T00:00:00.000Z",
+    topicCoverage: [{ topic: "case_practice", label: "案例或实践证据", status: "missing", pageUrls: [], sourceIds: [], claimIds: [], evidenceRequired: true, reason: "缺少 Claim" }]
+  };
+  const item = {
+    portfolioItemId: "case", origin: "generated", articleTypeId: "case-type", articleTypeVersionId: "case-version",
+    name: "客户案例与项目实践", definition: "基于客户案例说明结果", suitableQuestions: [], unsuitableQuestions: [], targetAudience: ["企业用户"],
+    contentGoal: "说明实践结果", structureModules: [{ key: "answer", purpose: "回答问题", required: true }], emphasisOrder: ["answer"], style: ["客观"],
+    lengthRange: { min: 1200, max: 1800 }, evidencePreferences: ["真实案例 Claim"], ctaIntent: "了解详情", channelFit: ["official_website"],
+    questionClusterIds: ["case"], recommendationReason: "案例问题", confidence: 0.8, evidenceReadiness: "ready", proposedMonthlyShare: 1, definitionHash: "case-hash", raw: {}
+  };
+  const normalized = contracts.applyWebsiteCoverageToArticlePortfolio([item], profile);
+  assert.equal(normalized[0].websiteCoverageDisposition, "hold");
+  assert.deepEqual(contracts.deriveProductStrategyMonthlyTypeQuotas({ articleTypePortfolio: normalized }, 3), []);
 });
 
 test("strategy compilation removes weak competitor guesses and turns unsupported claims into blocked evidence work", () => {

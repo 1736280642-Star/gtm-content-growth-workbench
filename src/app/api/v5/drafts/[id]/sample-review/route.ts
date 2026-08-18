@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSingleArticleActor, singleArticleErrorResponse } from "@/lib/v5/single-article-api";
 import { decideSampleArticle, readSampleArticleReviewState } from "@/lib/v5/sample-calibration-repository";
 import type { SampleArticleFeedbackInput } from "@/lib/v5/sample-calibration-contracts";
-import { generateProductSampleArticle } from "@/lib/v5/product-sample-article-service";
+import { enqueueProductSampleRevision } from "@/lib/v5/product-sample-article-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,28 +35,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const idempotencyKey = request.headers.get("x-idempotency-key") || "";
     const body = await request.json() as SampleArticleFeedbackInput;
-    const actor = { ...getSingleArticleActor(), auditReason: body.reason || "样稿质量验收" };
+    const actor = {
+      ...getSingleArticleActor(),
+      auditReason: body.decision === "changes_requested" ? "用户提交样文修改要求" : "用户确认样文内容质量"
+    };
     const data = await decideSampleArticle({ draftVersionId: id, idempotencyKey, feedback: body, actor });
     let revision: Record<string, unknown> | undefined;
-    if (body.decision === "changes_requested" && data.productId && data.productStrategyPackId) {
+    if (body.decision === "changes_requested" && data.taskId) {
       try {
-        const generated = await generateProductSampleArticle({
-          productId: data.productId,
-          strategyPackId: data.productStrategyPackId,
-          idempotencyKey: `sample-revision:${data.feedbackId}`,
+        const queued = await enqueueProductSampleRevision({
+          taskId: data.taskId,
+          feedbackId: data.feedbackId,
           actor
         });
         revision = {
-          status: "generated",
-          taskId: generated.taskId,
-          draftVersionId: generated.result.draftVersion.draftVersionId,
-          title: generated.result.draftVersion.title
+          status: queued.operation.status,
+          taskId: data.taskId,
+          operationId: queued.operation.operationId,
+          progressStage: queued.operation.progressStage
         };
       } catch (error) {
         revision = {
           status: "failed",
           message: error instanceof Error ? error.message : "修订稿生成失败。",
-          nextAction: "反馈已保存；处理生成前置条件后，在样稿区域重试。"
+          nextAction: "修改要求已保存；处理生成前置条件后，在样文详情页重试。"
         };
       }
     }

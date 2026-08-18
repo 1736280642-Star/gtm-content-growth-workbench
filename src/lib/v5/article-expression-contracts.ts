@@ -62,7 +62,7 @@ export interface V5ConfigurationStatusItem {
   key: string;
   label: string;
   purpose: string;
-  category: "model" | "publish_connection" | "observation_connection";
+  category: "model" | "publish_connection" | "observation_connection" | "content_metrics_connection";
   status: "ready" | "pending_config" | "failed";
   accountAlias?: string;
   lastCheckedAt?: string;

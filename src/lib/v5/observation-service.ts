@@ -44,42 +44,42 @@ const TRANSIENT_TASK_STATES = new Set<FrontendCaptureTaskStatus>([
 
 export const OBSERVATION_GAP_DEFINITIONS: Record<
   ObservationGapCode,
-  { title: string; question: string; destinations: ObservationGapDestination[] }
+  { title: string; question: string; destinations: ObservationGapDestination[]; rootCause: import("./observation-contracts").ObservationGapRootCause; recommendedAction: import("./observation-contracts").ObservationGapRecommendedAction }
 > = {
   answer_coverage_gap: {
     title: "重要内容未覆盖",
     question: "AI 回答是否缺少用户需要且已有证据支持的重要内容？",
-    destinations: ["blog_candidate"]
+    destinations: ["blog_candidate"], rootCause: "content_coverage_missing", recommendedAction: "create_content_candidate"
   },
   citation_gap: {
     title: "缺少自有引用",
     question: "回答提到主体或能力，但是否缺少官方或自有页面引用？",
-    destinations: ["blog_candidate", "site_audit"]
+    destinations: ["blog_candidate", "site_audit"], rootCause: "distribution_weak", recommendedAction: "refresh_existing_content"
   },
   evidence_gap: {
     title: "公开证据不足",
     question: "希望表达的能力是否缺少公开 Source 或已验证 Claim？",
-    destinations: ["knowledge_issue"]
+    destinations: ["knowledge_issue"], rootCause: "evidence_missing", recommendedAction: "collect_evidence"
   },
   relationship_gap: {
     title: "关系证据不足",
     question: "合作、实施或归属关系是否缺少清晰证据？",
-    destinations: ["knowledge_issue"]
+    destinations: ["knowledge_issue"], rootCause: "evidence_missing", recommendedAction: "collect_evidence"
   },
   freshness_gap: {
     title: "证据版本待确认",
     question: "引用或知识证据是否过期或版本不一致？",
-    destinations: ["knowledge_issue"]
+    destinations: ["knowledge_issue"], rootCause: "evidence_missing", recommendedAction: "collect_evidence"
   },
   entity_gap: {
     title: "目标主体未覆盖",
     question: "目标主体是否未进入回答或被错误归属？",
-    destinations: ["blog_candidate"]
+    destinations: ["blog_candidate"], rootCause: "content_coverage_missing", recommendedAction: "create_content_candidate"
   },
   observation_uncertain: {
     title: "观察结果不确定",
     question: "页面结构、回答解析或证据映射是否不够可靠？",
-    destinations: ["manual_review"]
+    destinations: ["manual_review"], rootCause: "sample_insufficient", recommendedAction: "continue_monitoring"
   }
 };
 
@@ -578,6 +578,8 @@ export async function analyzeObservationGaps(answerId: string, input: V5Mutation
         evidenceLocation: code === "entity_gap" ? "回答正文与目标实体匹配" : code === "citation_gap" ? "回答引用列表" : "证据映射结果",
         confidence: code === "observation_uncertain" ? 0.6 : 0.82,
         suggestedDestinations: definition.destinations,
+        rootCause: definition.rootCause,
+        recommendedAction: definition.recommendedAction,
         status: "candidate",
         analysisVersion,
         createdAt: new Date().toISOString()

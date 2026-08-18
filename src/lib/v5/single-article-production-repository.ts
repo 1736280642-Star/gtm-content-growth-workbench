@@ -16,6 +16,7 @@ import type {
   HardRuleResult,
   SingleArticleActor,
   SingleArticleFailure,
+  SingleArticleProgressStage,
   SingleArticleOperationStatus,
   SingleArticleResult
 } from "./single-article-contracts";
@@ -47,6 +48,9 @@ export interface SingleArticleOperationRecord {
   requestHash: string;
   correlationId: string;
   status: SingleArticleOperationStatus;
+  progressStage?: SingleArticleProgressStage;
+  attemptCount: number;
+  recoveryOfOperationId?: string;
   retrievalRunId?: string;
   evidencePreviewId?: string;
   finalEvidencePackId?: string;
@@ -70,6 +74,9 @@ function mapOperation(row: RowDataPacket): SingleArticleOperationRecord {
     requestHash: String(row.request_hash),
     correlationId: String(row.correlation_id),
     status: String(row.status) as SingleArticleOperationStatus,
+    progressStage: row.progress_stage ? String(row.progress_stage) as SingleArticleProgressStage : undefined,
+    attemptCount: Number(row.attempt_count || 0),
+    recoveryOfOperationId: row.recovery_of_operation_id ? String(row.recovery_of_operation_id) : undefined,
     retrievalRunId: row.retrieval_run_id ? String(row.retrieval_run_id) : undefined,
     evidencePreviewId: row.evidence_preview_id ? String(row.evidence_preview_id) : undefined,
     finalEvidencePackId: row.final_evidence_pack_id ? String(row.final_evidence_pack_id) : undefined,
@@ -131,28 +138,76 @@ export function singleArticleRequestHash(taskId: string, taskVersion: number) {
   return hashV5GovernancePayload({ operation: "v5_single_article_prepare_and_generate_v1", taskId, taskVersion });
 }
 
+async function readSingleArticleTaskVersion(
+  connection: Parameters<Parameters<typeof withV5GovernanceTransaction>[0]>[0],
+  taskId: string
+) {
+  const [taskRows] = await connection.query<RowDataPacket[]>(
+    `SELECT version FROM content_matrix_item WHERE id = ?
+     UNION ALL
+     SELECT row_version AS version FROM product_sample_article_task WHERE id = ?
+     LIMIT 1 FOR UPDATE`,
+    [taskId, taskId]
+  );
+  if (!taskRows[0]) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式矩阵项不存在。", 404, "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
+  return Number(taskRows[0].version);
+}
+
+export async function queueSingleArticleOperation(input: {
+  taskId: string;
+  idempotencyKey: string;
+  actor: SingleArticleActor;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const taskVersion = await readSingleArticleTaskVersion(connection, input.taskId);
+    const requestHash = singleArticleRequestHash(input.taskId, taskVersion);
+    const operationId = `single-op-${randomUUID()}`;
+    const [inserted] = await connection.query<ResultSetHeader>(
+      `INSERT IGNORE INTO single_article_operation
+       (id, task_id, task_version, idempotency_key, request_hash, correlation_id, status, progress_stage,
+        attempt_count, available_at, actor_id, actor_role, audit_reason)
+       VALUES (?, ?, ?, ?, ?, ?, 'queued', 'queued', 0, NOW(), ?, ?, ?)`,
+      [operationId, input.taskId, taskVersion, input.idempotencyKey, requestHash, operationId,
+        input.actor.actorId, input.actor.actorRole, input.actor.auditReason]
+    );
+    const [rows] = await connection.query<RowDataPacket[]>(
+      "SELECT * FROM single_article_operation WHERE task_id = ? AND idempotency_key = ? FOR UPDATE",
+      [input.taskId, input.idempotencyKey]
+    );
+    const row = rows[0];
+    if (!row) throw new V5GovernanceRepositoryError("operation_queue_failed", "无法创建单篇异步生成任务。", 500);
+    if (String(row.request_hash) !== requestHash) {
+      throw new V5GovernanceRepositoryError("idempotency_conflict", "同一幂等键已用于不同的正式生成请求。", 409, "使用原请求重试，或为新操作生成新的幂等键。");
+    }
+    if (inserted.affectedRows === 1) {
+      await writeV5GovernanceAudit(connection, {
+        ...input.actor,
+        eventType: "single_article_operation_queued",
+        objectType: "single_article_operation",
+        objectId: String(row.id),
+        afterSummary: { taskId: input.taskId, taskVersion, status: "queued", progressStage: "queued" },
+        correlationId: String(row.correlation_id)
+      });
+    }
+    return { operation: mapOperation(row), queued: inserted.affectedRows === 1 };
+  });
+}
+
 export async function claimSingleArticleOperation(input: {
   taskId: string;
   idempotencyKey: string;
   actor: SingleArticleActor;
 }) {
   return withV5GovernanceTransaction(async (connection) => {
-    const [taskRows] = await connection.query<RowDataPacket[]>(
-      `SELECT version FROM content_matrix_item WHERE id = ?
-       UNION ALL
-       SELECT row_version AS version FROM product_sample_article_task WHERE id = ?
-       LIMIT 1 FOR UPDATE`,
-      [input.taskId, input.taskId]
-    );
-    if (!taskRows[0]) throw new V5GovernanceRepositoryError("formal_task_not_found", "正式矩阵项不存在。", 404, "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
-    const taskVersion = Number(taskRows[0].version);
+    const taskVersion = await readSingleArticleTaskVersion(connection, input.taskId);
     const requestHash = singleArticleRequestHash(input.taskId, taskVersion);
     const operationId = `single-op-${randomUUID()}`;
     const correlationId = operationId;
     const [inserted] = await connection.query<ResultSetHeader>(
       `INSERT IGNORE INTO single_article_operation
-       (id, task_id, task_version, idempotency_key, request_hash, correlation_id, status, actor_id, actor_role, audit_reason)
-       VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+       (id, task_id, task_version, idempotency_key, request_hash, correlation_id, status, progress_stage,
+        attempt_count, available_at, actor_id, actor_role, audit_reason)
+       VALUES (?, ?, ?, ?, ?, ?, 'running', 'retrieving_evidence', 1, NOW(), ?, ?, ?)`,
       [operationId, input.taskId, taskVersion, input.idempotencyKey, requestHash, correlationId, input.actor.actorId, input.actor.actorRole, input.actor.auditReason]
     );
     const [rows] = await connection.query<RowDataPacket[]>(
@@ -161,21 +216,56 @@ export async function claimSingleArticleOperation(input: {
     );
     const row = rows[0];
     if (!row) throw new V5GovernanceRepositoryError("operation_claim_failed", "无法创建单篇生成操作。", 500);
+    if (String(row.request_hash) !== requestHash && String(row.status) === "queued" && row.recovery_of_operation_id) {
+      await connection.query(
+        `UPDATE single_article_operation SET task_version = ?, request_hash = ?
+         WHERE id = ? AND status = 'queued'`,
+        [taskVersion, requestHash, String(row.id)]
+      );
+      row.task_version = taskVersion;
+      row.request_hash = requestHash;
+    }
     if (String(row.request_hash) !== requestHash) {
       throw new V5GovernanceRepositoryError("idempotency_conflict", "同一幂等键已用于不同的正式生成请求。", 409, "使用原请求重试，或为新操作生成新的幂等键。");
     }
-    if (inserted.affectedRows === 1) {
+    let claimed = inserted.affectedRows === 1;
+    if (!claimed && String(row.status) === "queued") {
+      const [transitioned] = await connection.query<ResultSetHeader>(
+        `UPDATE single_article_operation
+         SET status = 'running', progress_stage = 'retrieving_evidence', attempt_count = attempt_count + 1,
+             error_code = NULL, error_message = NULL, next_action = NULL, completed_at = NULL
+         WHERE id = ? AND status = 'queued' AND (available_at IS NULL OR available_at <= NOW())`,
+        [String(row.id)]
+      );
+      claimed = transitioned.affectedRows === 1;
+      if (claimed) {
+        row.status = "running";
+        row.progress_stage = "retrieving_evidence";
+        row.attempt_count = Number(row.attempt_count || 0) + 1;
+      }
+    }
+    if (claimed) {
       await writeV5GovernanceAudit(connection, {
         ...input.actor,
         eventType: "single_article_operation_started",
         objectType: "single_article_operation",
         objectId: String(row.id),
-        afterSummary: { taskId: input.taskId, taskVersion, status: "running" },
+        afterSummary: { taskId: input.taskId, taskVersion, status: "running", progressStage: "retrieving_evidence" },
         correlationId: String(row.correlation_id)
       });
     }
-    return { operation: mapOperation(row), claimed: inserted.affectedRows === 1 };
+    return { operation: mapOperation(row), claimed };
   });
+}
+
+export async function recordSingleArticleProgress(input: {
+  operationId: string;
+  progressStage: Exclude<SingleArticleProgressStage, "queued" | "completed" | "failed">;
+}) {
+  await getV5GovernancePool().query(
+    `UPDATE single_article_operation SET progress_stage = ? WHERE id = ? AND status = 'running'`,
+    [input.progressStage, input.operationId]
+  );
 }
 
 export async function recordSingleArticleEvidence(input: {
@@ -188,7 +278,7 @@ export async function recordSingleArticleEvidence(input: {
   await withV5GovernanceTransaction(async (connection) => {
     await connection.query(
       `UPDATE single_article_operation
-       SET retrieval_run_id = ?, evidence_preview_id = ?, final_evidence_pack_id = ?
+       SET retrieval_run_id = ?, evidence_preview_id = ?, final_evidence_pack_id = ?, progress_stage = 'compiling_contract'
        WHERE id = ? AND status = 'running'`,
       [input.retrievalRunId, input.evidencePreviewId || null, input.finalEvidencePackId, input.operationId]
     );
@@ -214,9 +304,18 @@ export async function recordSingleArticleFailure(input: {
   actor: SingleArticleActor;
 }) {
   await withV5GovernanceTransaction(async (connection) => {
+    const generationStatus = input.status === "pending_config" ? "pending_config" : "failed";
+    await connection.query(
+      `UPDATE generation_run generation
+       JOIN single_article_operation operation ON operation.generation_run_id = generation.id
+       SET generation.status = ?, generation.failure_code = ?, generation.failure_message = ?,
+           generation.next_action = ?, generation.completed_at = NOW()
+       WHERE operation.id = ? AND generation.status = 'running'`,
+      [generationStatus, input.failure.code, input.failure.message, input.failure.nextAction, input.operationId]
+    );
     await connection.query(
       `UPDATE single_article_operation
-       SET status = ?, error_code = ?, error_message = ?, next_action = ?, completed_at = NOW()
+       SET status = ?, progress_stage = 'failed', error_code = ?, error_message = ?, next_action = ?, completed_at = NOW()
        WHERE id = ? AND status = 'running'`,
       [input.status, input.failure.code, input.failure.message, input.failure.nextAction, input.operationId]
     );
@@ -300,18 +399,17 @@ export async function beginFormalGenerationRun(input: {
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const generationRunId = `generation-${randomUUID()}`;
-    const startedAt = new Date();
     await connection.query(
       `INSERT INTO generation_run
        (id, task_id, task_version, matrix_item_id, final_evidence_pack_id, production_contract_id, production_contract_hash, prompt_group_version_id, rule_package_version_id,
         channel_rule_version_id, provider, status, correlation_id, idempotency_key, hard_rule_result, actor_id, audit_reason, test_only, started_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', correlation_id, ?, ?, ?, ?, FALSE, ?
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', correlation_id, ?, ?, ?, ?, FALSE, NOW()
        FROM single_article_operation WHERE id = ? AND status = 'running'`,
       [generationRunId, input.pack.taskId, input.pack.taskVersion, input.pack.matrixItemId, input.pack.evidencePackId,
         input.productionContractId, input.productionContractHash,
         input.context.promptGroupVersionId, input.context.rulePackageVersionId, input.context.channelRuleVersionId, input.provider,
         input.idempotencyKey, stringifyV5Json({ passed: false, blockers: [], checkedRuleCount: 0, traceableFactCount: 0 }),
-        input.actor.actorId, input.actor.auditReason, startedAt, input.operationId]
+        input.actor.actorId, input.actor.auditReason, input.operationId]
     );
     await connection.query("UPDATE single_article_operation SET generation_run_id = ? WHERE id = ? AND status = 'running'", [generationRunId, input.operationId]);
     await writeV5GovernanceAudit(connection, {
@@ -342,7 +440,7 @@ export async function failFormalGenerationRun(input: {
         input.failure.code, input.failure.message, input.failure.nextAction, input.generationRunId]
     );
     await connection.query(
-      `UPDATE single_article_operation SET status = ?, error_code = ?, error_message = ?, next_action = ?, completed_at = NOW()
+      `UPDATE single_article_operation SET status = ?, progress_stage = 'failed', error_code = ?, error_message = ?, next_action = ?, completed_at = NOW()
        WHERE id = ? AND status = 'running'`,
       [input.status, input.failure.code, input.failure.message, input.failure.nextAction, input.operationId]
     );
@@ -373,7 +471,6 @@ export async function completeFormalGeneration(input: {
 }): Promise<{ generationRun: FormalGenerationRun; draftVersion: FormalDraftVersion }> {
   return withV5GovernanceTransaction(async (connection) => {
     const draftVersionId = `draft-${randomUUID()}`;
-    const completedAt = new Date();
     const [versionRows] = await connection.query<RowDataPacket[]>("SELECT COALESCE(MAX(version_number), 0) AS version_number FROM draft_version WHERE task_id = ? FOR UPDATE", [input.pack.taskId]);
     const versionNumber = Number(versionRows[0]?.version_number || 0) + 1;
     await connection.query(
@@ -386,20 +483,22 @@ export async function completeFormalGeneration(input: {
         input.context.rulePackageVersionId, versionNumber, input.title, input.markdown, stringifyV5Json(input.factTraces), stringifyV5Json(input.hardRuleResult), input.actor.actorId]
     );
     await connection.query(
-      "UPDATE generation_run SET model = ?, status = 'completed', hard_rule_result = ?, completed_at = ? WHERE id = ? AND status = 'running'",
-      [input.providerModel || null, stringifyV5Json(input.hardRuleResult), completedAt, input.generationRunId]
+      "UPDATE generation_run SET model = ?, status = 'completed', hard_rule_result = ?, completed_at = NOW() WHERE id = ? AND status = 'running'",
+      [input.providerModel || null, stringifyV5Json(input.hardRuleResult), input.generationRunId]
     );
     await connection.query(
       `UPDATE single_article_operation
-       SET status = 'completed', draft_version_id = ?, completed_at = ? WHERE id = ? AND status = 'running'`,
-      [draftVersionId, completedAt, input.operationId]
+       SET status = 'completed', progress_stage = 'completed', draft_version_id = ?, completed_at = NOW() WHERE id = ? AND status = 'running'`,
+      [draftVersionId, input.operationId]
     );
     await connection.query(
       "UPDATE content_matrix_item SET status = 'generated', updated_at = NOW() WHERE id = ? AND version = ?",
       [input.pack.taskId, input.pack.taskVersion]
     );
     await connection.query(
-      "UPDATE product_sample_article_task SET status = 'generated', updated_at = NOW() WHERE id = ? AND row_version = ?",
+      `UPDATE product_sample_article_task
+       SET status = 'generated', review_status = 'pending_review', updated_at = NOW()
+       WHERE id = ? AND row_version = ?`,
       [input.pack.taskId, input.pack.taskVersion]
     );
     await connection.query(
@@ -548,7 +647,8 @@ export async function readFormalProductionQueue(month: string): Promise<BatchQue
       : generationStatus === "failed" || generationStatus === "pending_config" ? "provider_failed"
       : "pending";
     const scheduleStatus: BatchQueueItem["scheduleStatus"] = ["scheduled", "published", "publish_failed"].includes(matrixStatus) ? "active" : "unscheduled";
-    const displayStatus: BatchQueueItem["displayStatus"] = matrixStatus === "published" ? "published"
+    const displayStatus: BatchQueueItem["displayStatus"] = matrixStatus === "intercepted" ? "intercepted"
+      : matrixStatus === "published" ? "published"
       : matrixStatus === "publish_failed" ? "publish_failed"
       : scheduleStatus === "active" ? "scheduled"
       : draftId ? "qualified"
@@ -605,4 +705,141 @@ export async function readReadyAutomaticGenerationTasks(limit = 20) {
     [safeLimit]
   );
   return rows.map((row) => ({ taskId: String(row.id), taskVersion: Number(row.version) }));
+}
+
+export async function recordGenerationPromptSnapshot(input: {
+  generationRunId: string;
+  systemPrompt: string;
+  userPrompt: string;
+  brief: Record<string, unknown>;
+}) {
+  await getV5GovernancePool().query(
+    `UPDATE generation_run
+     SET system_prompt_snapshot = ?, user_prompt_snapshot = ?, brief_snapshot = ?
+     WHERE id = ? AND status = 'running'`,
+    [input.systemPrompt, input.userPrompt, stringifyV5Json(input.brief), input.generationRunId]
+  );
+}
+
+export async function readQueuedProductSampleOperations(limit = 10) {
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 50) : 10;
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT o.*
+     FROM single_article_operation o
+     JOIN product_sample_article_task task ON task.id = o.task_id
+     JOIN product_strategy_packs strategy ON strategy.id = task.product_strategy_pack_id
+     WHERE o.status = 'queued' AND (o.available_at IS NULL OR o.available_at <= NOW())
+       AND strategy.status IN ('strategy_approved', 'pending_sample_review')
+     ORDER BY o.available_at, o.created_at
+     LIMIT ?`,
+    [safeLimit]
+  );
+  return rows.map(mapOperation);
+}
+
+export async function recoverStaleProductSampleOperations(input?: {
+  staleAfterMinutes?: number;
+  maxAttempts?: number;
+  actor?: SingleArticleActor;
+}) {
+  const staleAfterMinutes = Number.isInteger(input?.staleAfterMinutes) && Number(input?.staleAfterMinutes) >= 1
+    ? Math.min(Number(input?.staleAfterMinutes), 180)
+    : 20;
+  const maxAttempts = Number.isInteger(input?.maxAttempts) && Number(input?.maxAttempts) >= 1
+    ? Math.min(Number(input?.maxAttempts), 5)
+    : 3;
+  const actor: SingleArticleActor = input?.actor || {
+    actorId: "v5-content-production-worker",
+    actorRole: "knowledge_production_worker",
+    actorType: "system",
+    auditReason: "Recover orphaned product sample generation after worker interruption"
+  };
+  return withV5GovernanceTransaction(async (connection) => {
+    const [orphanedGenerationRows] = await connection.query<RowDataPacket[]>(
+      `SELECT generation.id, generation.correlation_id
+       FROM generation_run generation
+       JOIN single_article_operation operation ON operation.generation_run_id = generation.id
+       WHERE generation.status = 'running' AND operation.status <> 'running'
+         AND generation.started_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)
+       ORDER BY generation.started_at
+       LIMIT 20 FOR UPDATE`,
+      [staleAfterMinutes]
+    );
+    for (const row of orphanedGenerationRows) {
+      await connection.query(
+        `UPDATE generation_run
+         SET status = 'failed', failure_code = 'orphaned_generation_run',
+             failure_message = 'The operation ended without closing its generation run.',
+             next_action = 'The orphaned generation run was reconciled automatically.', completed_at = NOW()
+         WHERE id = ? AND status = 'running'`,
+        [String(row.id)]
+      );
+      await writeV5GovernanceAudit(connection, {
+        ...actor,
+        eventType: "orphaned_generation_run_reconciled",
+        objectType: "generation_run",
+        objectId: String(row.id),
+        afterSummary: { status: "failed", code: "orphaned_generation_run" },
+        correlationId: String(row.correlation_id)
+      });
+    }
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT o.*, task.row_version AS current_task_version
+       FROM single_article_operation o
+       JOIN product_sample_article_task task ON task.id = o.task_id
+       WHERE o.status = 'running' AND o.updated_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)
+       ORDER BY o.updated_at
+       LIMIT 20 FOR UPDATE`,
+      [staleAfterMinutes]
+    );
+    const recovered: string[] = [];
+    const exhausted: string[] = [];
+    for (const row of rows) {
+      const operationId = String(row.id);
+      const attemptCount = Number(row.attempt_count || 1);
+      await connection.query(
+        `UPDATE generation_run
+         SET status = 'failed', failure_code = 'orphaned_worker_operation',
+             failure_message = 'Worker stopped before the generation run completed.',
+             next_action = 'The durable task has been recovered automatically.', completed_at = NOW()
+         WHERE correlation_id = ? AND status = 'running'`,
+        [String(row.correlation_id)]
+      );
+      await connection.query(
+        `UPDATE single_article_operation
+         SET status = 'failed', progress_stage = 'failed', error_code = 'orphaned_worker_operation',
+             error_message = 'Worker stopped before the operation completed.',
+             next_action = 'The system created a recoverable replacement operation.', completed_at = NOW()
+         WHERE id = ? AND status = 'running'`,
+        [operationId]
+      );
+      if (attemptCount >= maxAttempts) {
+        exhausted.push(operationId);
+        continue;
+      }
+      const currentTaskVersion = Number(row.current_task_version || row.task_version);
+      const replacementId = `single-op-${randomUUID()}`;
+      const recoveryKey = `sample-recovery:${operationId}:${attemptCount + 1}`.slice(0, 191);
+      await connection.query(
+        `INSERT INTO single_article_operation
+         (id, task_id, task_version, idempotency_key, request_hash, correlation_id, status, progress_stage,
+          attempt_count, recovery_of_operation_id, available_at, actor_id, actor_role, audit_reason)
+         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'queued', ?, ?, NOW(), ?, ?, ?)`,
+        [replacementId, String(row.task_id), currentTaskVersion, recoveryKey,
+          singleArticleRequestHash(String(row.task_id), currentTaskVersion),
+          String(row.correlation_id), attemptCount, operationId, actor.actorId, actor.actorRole, actor.auditReason]
+      );
+      await writeV5GovernanceAudit(connection, {
+        ...actor,
+        eventType: "single_article_operation_recovered",
+        objectType: "single_article_operation",
+        objectId: replacementId,
+        beforeSummary: { operationId, status: "running", attemptCount },
+        afterSummary: { status: "queued", recoveryOfOperationId: operationId, attemptCount },
+        correlationId: String(row.correlation_id)
+      });
+      recovered.push(replacementId);
+    }
+    return { recovered, exhausted, reconciledGenerationRuns: orphanedGenerationRows.map((row) => String(row.id)) };
+  });
 }

@@ -3,10 +3,34 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   AutomaticKnowledgeProductionPipeline,
+  cleanParsedWebMarkdown,
   extractAutomaticClaims,
   governAutomaticClaims
 } from "../src/lib/v5/rag/automatic-knowledge-production.ts";
 import { buildRagSourceImportPlan } from "../src/lib/v5/rag/source-registry.ts";
+import { buildManagedClaimExtractionIdempotencyKey } from "../src/lib/v5/rag/managed-claim-extraction-service.ts";
+import {
+  buildProtectedProductExpressions,
+  filterAutomaticKnowledgeBlockedClaims,
+  isAutomaticNoiseRejectedClaim
+} from "../src/lib/v5/rag/knowledge-refresh-repository.ts";
+
+test("managed claim extraction keeps versioned idempotency keys within the database contract", () => {
+  const key = buildManagedClaimExtractionIdempotencyKey("joto-workbuddy", "a".repeat(64));
+  assert.ok(key.length <= 128);
+  assert.equal(key, buildManagedClaimExtractionIdempotencyKey("joto-workbuddy", "a".repeat(64)));
+  assert.notEqual(key, buildManagedClaimExtractionIdempotencyKey("joto-workbuddy", "b".repeat(64)));
+});
+
+test("source snapshot rebuild uses the knowledge worker role and one-shot imports close their database pool", async () => {
+  const route = await readFile("src/app/api/v5/products/[productId]/source-snapshot/route.ts", "utf8");
+  const worker = await readFile("workers/rag-source-import-worker.mjs", "utf8");
+  assert.match(route, /const knowledgeActor =/);
+  assert.match(route, /runAutomaticKnowledgeRefresh\(\{ productId: product\.productId, actor: knowledgeActor \}\)/);
+  assert.doesNotMatch(route, /runAutomaticKnowledgeRefresh\(\{ productId: product\.productId, actor: automationActor \}\)/);
+  assert.match(worker, /finally\s*\{/);
+  assert.match(worker, /getV5GovernancePool\(\)\.end\(\)/);
+});
 
 async function representativeDocuments() {
   const candidates = await buildRagSourceImportPlan({
@@ -14,6 +38,10 @@ async function representativeDocuments() {
     productIds: ["joto-workbuddy", "tencent-adp-joto"]
   });
   const selected = candidates.filter((candidate) => candidate.disposition === "production_candidate");
+  assert.equal(
+    selected.find((candidate) => candidate.documentType === "official_structured_snapshot" && candidate.productId === "joto-workbuddy")?.canonicalUrl,
+    "https://joto.ai/solutions/workbuddy"
+  );
   assert.equal(selected.some((candidate) => candidate.relativePath.endsWith("structured/01-workbuddy-structured.md")), true);
   assert.equal(selected.some((candidate) => candidate.relativePath.endsWith("structured/02-tencent-adp-structured.md")), true);
   assert.equal(selected.some((candidate) => candidate.relativePath === "腾讯云adp × joto 联合解决方案.md"), true);
@@ -30,6 +58,138 @@ async function representativeDocuments() {
     canonicalUrl: candidate.canonicalUrl
   })));
 }
+
+test("official webpage navigation, media, forms, labels, and slogan chains never become approved product facts", () => {
+  const document = {
+    sourceId: "official-workbuddy-page",
+    productId: "joto-workbuddy",
+    productName: "WorkBuddy x JOTO",
+    knowledgeBaseId: "kb-workbuddy",
+    title: "WorkBuddy",
+    markdown: [
+      "# WorkBuddy",
+      "",
+      "[JOTO](https://joto.ai/#hero)[Home](https://joto.ai/#hero)",
+      "![WorkBuddy hero](https://joto.ai/workbuddy.png)",
+      "**经营与增长**",
+      "02 · GOVERNANCE",
+      "WorkBuddy",
+      "为什么由 JOTO 落地 WorkBuddy",
+      "Name*Company*Email*Phone or WeChat*",
+      "Product TeamsLeadershipProject Management",
+      "员工用得起来企业管得住业务价值看得见",
+      "预约 WorkBuddy 场景评估[进入场景大厅](https://joto.ai/hall)",
+      "JOTO 基于 WorkBuddy 企业版，为企业规划岗位场景、配置专家与 Skills、接入业务系统并持续运营。",
+      "效率放开、风险管住、资产留下、价值算清。"
+    ].join("\n"),
+    authorityLevel: "A2",
+    sourceUpdatedAt: "2026-08-11T00:00:00.000Z",
+    documentType: "workbench_managed_url",
+    canonicalUrl: "https://joto.ai/solutions/workbuddy"
+  };
+  const claims = extractAutomaticClaims(document, {
+    sourceRevisionId: "revision-workbuddy",
+    sourceId: document.sourceId,
+    revisionNumber: 1,
+    contentHash: "a".repeat(64),
+    sourceUpdatedAt: document.sourceUpdatedAt,
+    title: document.title
+  });
+  const rejected = claims.filter((claim) => claim.status === "rejected");
+  const approved = claims.filter((claim) => ["supported", "conditional"].includes(claim.status));
+
+  assert.equal(rejected.length, 10);
+  assert.equal(rejected.every((claim) => claim.limitations.some((item) => item.startsWith("automatic_noise_filter:"))), true);
+  assert.deepEqual(approved.map((claim) => claim.normalizedClaim), [
+    "JOTO 基于 WorkBuddy 企业版，为企业规划岗位场景、配置专家与 Skills、接入业务系统并持续运营。",
+    "效率放开、风险管住、资产留下、价值算清。"
+  ]);
+});
+
+test("parsed webpage noise is removed before Claim governance and historical noise is not a safety blocker", () => {
+  const parsed = [
+    "# WorkBuddy",
+    "",
+    "* Contact Us",
+    "WORKBUDDY",
+    "3. WorkBuddy",
+    "![会执行任务的 WorkBuddy 机器人猫](https://joto.ai/scenario.png)WORKBUDDY",
+    "* Insights",
+    "JOTO 基于 WorkBuddy 企业版，为企业规划岗位场景、接入业务系统并持续运营。"
+  ].join("\n");
+  const cleaned = cleanParsedWebMarkdown(parsed, { productName: "WorkBuddy" });
+  assert.equal(cleaned.removed.length, 5);
+  assert.equal(cleaned.markdown.includes("Contact Us"), false);
+  assert.equal(cleaned.markdown.includes("scenario.png"), false);
+  assert.equal(cleaned.markdown.includes("JOTO 基于 WorkBuddy 企业版"), true);
+  assert.equal(isAutomaticNoiseRejectedClaim(
+    "rejected",
+    ["automatic_noise_filter:navigation_terms"]
+  ), true);
+  assert.equal(isAutomaticNoiseRejectedClaim(
+    "rejected",
+    ["未经授权的客户案例"]
+  ), false);
+  const protectedExpressions = buildProtectedProductExpressions({
+    canonicalName: "WorkBuddy",
+    displayName: "WorkBuddy",
+    brandName: "Tencent",
+    aliases: ["WORKBUDDY", "JOTO WorkBuddy"],
+    fixedExpressionText: "JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。"
+  });
+  const effectiveBlocked = filterAutomaticKnowledgeBlockedClaims([
+    { id: "noise", normalized_claim: "Contact Us", review_status: "rejected", limitations: ["automatic_noise_filter:navigation_terms"] },
+    { id: "product", normalized_claim: "WORKBUDDY", review_status: "rejected", limitations: ["legacy_manual_reject"] },
+    { id: "fixed-token", normalized_claim: "ADP", review_status: "rejected", limitations: ["legacy_manual_reject"] },
+    { id: "real", normalized_claim: "未经授权的客户案例", review_status: "rejected", limitations: ["unauthorized_customer_case"] }
+  ], protectedExpressions);
+  assert.deepEqual(effectiveBlocked.map((item) => item.id), ["real"]);
+});
+
+test("collapsed taxonomy labels are rejected while complete English facts remain usable", () => {
+  const document = {
+    sourceId: "official-noteflow-page",
+    productId: "noteflow",
+    productName: "Noteflow",
+    knowledgeBaseId: "kb-noteflow",
+    title: "Noteflow",
+    markdown: [
+      "# Use cases",
+      "",
+      "Product TeamsLeadershipProject Management",
+      "Sales Marketing Operations",
+      "FeaturesSecurityPricing",
+      "Noteflow is designed for enterprise product teams that need private document analysis.",
+      "Sales teams upload product manuals and ask questions directly.",
+      "Noteflow supports PDF, Word and audio files."
+    ].join("\n"),
+    authorityLevel: "A2",
+    sourceUpdatedAt: "2026-08-11T00:00:00.000Z",
+    documentType: "workbench_managed_url",
+    canonicalUrl: "https://note.jotoai.com/"
+  };
+  const claims = extractAutomaticClaims(document, {
+    sourceRevisionId: "revision-noteflow",
+    sourceId: document.sourceId,
+    revisionNumber: 1,
+    contentHash: "b".repeat(64),
+    sourceUpdatedAt: document.sourceUpdatedAt,
+    title: document.title
+  });
+
+  assert.deepEqual(
+    claims.filter((claim) => claim.status === "rejected").map((claim) => claim.normalizedClaim),
+    ["Product TeamsLeadershipProject Management", "Sales Marketing Operations", "FeaturesSecurityPricing"]
+  );
+  assert.deepEqual(
+    claims.filter((claim) => claim.status !== "rejected").map((claim) => claim.normalizedClaim),
+    [
+      "Noteflow is designed for enterprise product teams that need private document analysis.",
+      "Sales teams upload product manuals and ask questions directly.",
+      "Noteflow supports PDF, Word and audio files."
+    ]
+  );
+});
 
 test("generic labeled capabilities use authority and recency, while unresolved peers fail closed", () => {
   const revision = (sourceId, sourceUpdatedAt) => ({

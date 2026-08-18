@@ -48,7 +48,7 @@ function nowIso() {
 function isLocalBridgeUrl(value: string) {
   try {
     const url = new URL(value);
-    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
+    return ["localhost", "127.0.0.1", "::1", "[::1]", "host.docker.internal"].includes(url.hostname);
   } catch {
     return false;
   }
@@ -317,11 +317,12 @@ export async function sendWechatsyncDraft(input: WechatsyncSendDraftInput): Prom
     });
 
     if (!response.ok) {
+      const failure = (await response.json().catch(() => ({}))) as { message?: string; errorCode?: string; nextAction?: string };
       return {
         status: "failed",
         mode: "real",
         errorCode: response.status === 408 ? "timeout" : "sync_failed",
-        message: `平台草稿创建失败：${response.status}`
+        message: failure.message || `平台草稿创建失败：${response.status}`
       };
     }
 

@@ -128,7 +128,6 @@ export function verifyGeoResearchEvidence(
   }
 
   const claims = parseClaims(structured.claimAssessments);
-  if (!claims.length) missingCitationPaths.push("claimAssessments");
   claims.forEach((claim, index) => {
     if (!claim.sourceUrls.length) missingCitationPaths.push(`claimAssessments[${index}].sourceUrls`);
     claim.sourceUrls.forEach((url) => {

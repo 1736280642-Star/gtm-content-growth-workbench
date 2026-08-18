@@ -7,7 +7,7 @@ const actions = [
   { key: "upload", icon: <CloudUploadOutlined />, title: "管理产品资料", detail: "先选择产品或服务，再在对应页面上传文档或网页。", href: "/products", label: "选择产品", primary: true },
   { key: "strategy", icon: <BookOutlined />, title: "查看自动策略", detail: "查看系统生成的问题、内容类型、矩阵和生产进度。", href: "/monthly-plan", label: "进入内容中心" },
   { key: "exception", icon: <ExceptionOutlined />, title: "处理异常", detail: "只查看证据不足、连接缺失或发布失败等需人工判断事项。", href: "/monthly-plan?step=production", label: "查看异常" },
-  { key: "review", icon: <LineChartOutlined />, title: "查看复盘", detail: "汇总发布回传、官网监控和 GEO 数据表现。", href: "/geo-monitor?tab=review", label: "查看数据复盘" }
+  { key: "review", icon: <LineChartOutlined />, title: "内容监控塔", detail: "汇总发布回传、官网审计和 AI 可见性表现。", href: "/content-monitor", label: "进入内容监控塔" }
 ];
 
 export function WorkbenchQuickActions() {

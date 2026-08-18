@@ -1,12 +1,13 @@
 "use client";
 
 import {
+  DeleteOutlined,
   FileAddOutlined,
   GlobalOutlined,
   PlusOutlined,
   WarningOutlined
 } from "@ant-design/icons";
-import { Button, Card, Drawer, Space, Table, Tag, Typography } from "antd";
+import { Button, Card, Drawer, Popconfirm, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionEmpty } from "@/components/ActionEmpty";
@@ -157,6 +158,32 @@ export default function ProductsPage() {
   const [selectedSummary, setSelectedSummary] = useState<ProductWorkflowSummary>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [deletingProductId, setDeletingProductId] = useState<string>();
+
+  const deleteKnowledgeBase = useCallback(async (product: ProductRegistryItem) => {
+    setDeletingProductId(product.productId);
+    try {
+      const result = await callJsonApi<{ ok: true; message: string; cleanupWarning?: string }>(
+        `/api/v5/products/${encodeURIComponent(product.productId)}`,
+        {
+          method: "DELETE",
+          body: JSON.stringify({
+            expectedVersion: product.rowVersion,
+            idempotencyKey: `delete-product-knowledge-base:${product.productId}:${product.rowVersion}`
+          })
+        }
+      );
+      setProducts((current) => current.filter((item) => item.productId !== product.productId));
+      setSummaries((current) => current.filter((item) => item.productId !== product.productId));
+      setSelectedSummary((current) => current?.productId === product.productId ? undefined : current);
+      if (result.cleanupWarning) message.warning(result.message);
+      else message.success(result.message);
+    } catch (requestError) {
+      message.error(requestError instanceof Error ? requestError.message : "产品知识库删除失败");
+    } finally {
+      setDeletingProductId(undefined);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -282,6 +309,25 @@ export default function ProductsPage() {
                         <Button icon={<FileAddOutlined />} size="small" aria-label={`为 ${record.displayName} 补充资料`}>补充资料</Button>
                       </Link>
                     ) : null}
+                    <Popconfirm
+                      title={`删除“${record.displayName}”的产品知识库？`}
+                      description="已上传文件、网页正文、解析资料和检索内容都会清除，且无法恢复。"
+                      okText="确认删除"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => deleteKnowledgeBase(record)}
+                    >
+                      <Button
+                        danger
+                        type="text"
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        loading={deletingProductId === record.productId}
+                        aria-label={`删除 ${record.displayName} 的产品知识库`}
+                      >
+                        删除
+                      </Button>
+                    </Popconfirm>
                   </Space>
                 );
               }

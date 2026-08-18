@@ -13,6 +13,7 @@ import {
   confirmGeoResearchQuestionFindingsRecord,
   createGeoResearchProjectRecord,
   createGeoResearchRunRecord,
+  readActiveGeoResearchGovernanceBinding,
   readGeoResearchRunWorkspace,
   readGeoResearchWorkspace,
   readLatestGeoSourceSnapshot,
@@ -25,6 +26,9 @@ import { ingestV5QuestionSignals } from "./question-service";
 import { hashV5GovernancePayload, type V5GovernanceActor } from "./knowledge-governance-repository";
 import { V5GovernanceServiceError } from "./knowledge-governance-service";
 import { readProductKnowledgeProfile } from "./product-knowledge-profile";
+import { readProductWebsiteCoverageProfile } from "./website-coverage-repository";
+import { buildGeoResearchDownstreamCandidates } from "./geo-research-downstream";
+import type { ProbeSetSnapshot } from "./geo-probe-contracts";
 
 function assertText(value: string | undefined, field: string, maxLength = 255) {
   if (!value?.trim()) {
@@ -167,10 +171,11 @@ function suggestedArticleTypesForQuestion(question: string) {
 export async function getGeoResearchWorkspace(productId: string) {
   assertText(productId, "productId", 64);
   const product = await getActiveProduct(productId);
-  const [workspace, latestSourceSnapshot, productProfile] = await Promise.all([
+  const [workspace, latestSourceSnapshot, productProfile, websiteCoverageProfile] = await Promise.all([
     readGeoResearchWorkspace(productId),
     readLatestGeoSourceSnapshot(productId),
-    readProductKnowledgeProfile(productId, product.displayName)
+    readProductKnowledgeProfile(productId, product.displayName),
+    readProductWebsiteCoverageProfile(productId)
   ]);
   const provider = getGeoResearchProviderReadiness();
   const sourceSnapshotReady = latestSourceSnapshot?.quality.status === "ready";
@@ -202,6 +207,18 @@ export async function getGeoResearchWorkspace(productId: string) {
       actionHref: sourceSnapshotReady ? undefined : `/products/${encodeURIComponent(productId)}?tab=materials`
     },
     {
+      key: "website_coverage",
+      label: "官网覆盖基线",
+      status: websiteCoverageProfile && websiteCoverageProfile.publicGeoReadiness !== "pending_audit" ? "ready" : "blocked",
+      detail: !websiteCoverageProfile
+        ? "尚未从产品知识库中的正式官网 URL 形成覆盖画像。"
+        : websiteCoverageProfile.publicGeoReadiness === "pending_audit"
+          ? "正式官网 URL 已登记，正在等待自动基线审计完成。"
+          : `官网知识准备度为 ${websiteCoverageProfile.knowledgeReadiness}，公开 GEO 准备度为 ${websiteCoverageProfile.publicGeoReadiness}；该结果将直接约束内容类型组合。`,
+      actionLabel: websiteCoverageProfile ? undefined : "添加正式官网 URL",
+      actionHref: websiteCoverageProfile ? undefined : `/products/${encodeURIComponent(productId)}?tab=materials`
+    },
+    {
       key: "live_search_provider",
       label: "联网研究 Provider",
       status: provider.status,
@@ -221,7 +238,7 @@ export async function getGeoResearchWorkspace(productId: string) {
     latestSourceSnapshot,
     checks
   };
-  return { product, productProfile, workspace, readiness };
+  return { product, productProfile, websiteCoverageProfile, workspace, readiness };
 }
 
 export async function getGeoResearchRunDetails(input: { productId: string; runId: string }) {
@@ -235,6 +252,17 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
   if (!runWorkspace) {
     throw new V5GovernanceServiceError("research_run_not_found", "GEO 调研运行不存在。", 404);
   }
+  const probeSetSnapshot = runWorkspace.run.plan.probeSetSnapshot && typeof runWorkspace.run.plan.probeSetSnapshot === "object"
+    ? runWorkspace.run.plan.probeSetSnapshot as ProbeSetSnapshot
+    : undefined;
+  const downstreamCandidates = runWorkspace.resultPack && probeSetSnapshot
+    ? buildGeoResearchDownstreamCandidates({
+        snapshot: probeSetSnapshot,
+        resultPack: runWorkspace.resultPack,
+        findings: runWorkspace.findings,
+        sourceArtifactId: runWorkspace.resultPackArtifactId
+      })
+    : undefined;
   return {
     product,
     runWorkspace: {
@@ -243,7 +271,8 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
         product,
         ...runWorkspace,
         latestSourceSnapshotHash: latestSourceSnapshot?.snapshotHash
-      })
+      }),
+      downstreamCandidates
     }
   };
 }
@@ -452,6 +481,15 @@ export async function startGeoResearchRun(input: {
     );
   }
   await getActiveProduct(input.productId);
+  const websiteCoverageProfile = await readProductWebsiteCoverageProfile(input.productId);
+  if (!websiteCoverageProfile || websiteCoverageProfile.publicGeoReadiness === "pending_audit") {
+    throw new V5GovernanceServiceError(
+      "website_coverage_baseline_pending",
+      "产品正式官网尚未完成前置 GEO 基线审计，不能启动调研。",
+      409,
+      "在产品知识库添加正式官网 URL，并等待自动官网审计完成后重试。"
+    );
+  }
   const write = await createGeoResearchRunRecord({
     productId: input.productId,
     triggerType: input.triggerType || "product_onboarding",
@@ -530,7 +568,17 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
       state = await getGeoResearchWorkspace(product.productId);
     }
     const blueprint = state.workspace?.currentBlueprint;
-    if (blueprint?.status === "pending_review") {
+    const governanceBinding = await readActiveGeoResearchGovernanceBinding(product.productId);
+    const runBinding = state.workspace?.latestRun?.plan.governanceBinding as {
+      sourceSnapshotId?: string;
+      rulePackageVersionId?: string;
+      indexSnapshotId?: string;
+    } | undefined;
+    const bindingIsCurrent = Boolean(governanceBinding && runBinding
+      && governanceBinding.sourceSnapshotId === runBinding.sourceSnapshotId
+      && governanceBinding.rulePackageVersionId === runBinding.rulePackageVersionId
+      && governanceBinding.indexSnapshotId === runBinding.indexSnapshotId);
+    if (blueprint?.status === "pending_review" && bindingIsCurrent) {
       results.push({
         productId: product.productId,
         status: "research_synthesis_ready",
@@ -540,12 +588,14 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
     }
     const openRun = state.workspace?.latestRun && !["completed", "failed", "cancelled"].includes(state.workspace.latestRun.status);
     const latestSnapshotHash = state.readiness.latestSourceSnapshot?.snapshotHash;
-    if (openRun && latestSnapshotHash
-      && state.workspace!.latestRun!.inputSourceSnapshotHash !== latestSnapshotHash) {
+    if (openRun && (!bindingIsCurrent || (latestSnapshotHash
+      && state.workspace!.latestRun!.inputSourceSnapshotHash !== latestSnapshotHash))) {
       await cancelStaleGeoResearchRunRecord({
         runId: state.workspace!.latestRun!.runId,
         productId: product.productId,
-        replacementSourceSnapshotHash: latestSnapshotHash,
+        replacementSourceSnapshotHash: governanceBinding?.sourceSnapshotHash || latestSnapshotHash || "governance_bundle_changed",
+        replacementRulePackageVersionId: governanceBinding?.rulePackageVersionId,
+        replacementIndexSnapshotId: governanceBinding?.indexSnapshotId,
         actor: input.actor
       });
       state = await getGeoResearchWorkspace(product.productId);
@@ -570,7 +620,7 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
       });
       continue;
     }
-    if (recent && blueprint && ["pending_review", "approved"].includes(blueprint.status)) {
+    if (recent && bindingIsCurrent && blueprint && ["pending_review", "approved"].includes(blueprint.status)) {
       results.push({ productId: product.productId, status: "monitoring", detail: "本轮调研在 30 天监控周期内" });
       continue;
     }
@@ -578,7 +628,7 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
       productId: product.productId,
       triggerType: latestRun ? "manual_refresh" : "product_onboarding",
       expectedProjectVersion: state.workspace.project.rowVersion,
-      idempotencyKey: `auto-geo-run:${product.productId}:${state.readiness.latestSourceSnapshot!.snapshotHash}`,
+      idempotencyKey: `auto-geo-run:${product.productId}:${hashV5GovernancePayload(governanceBinding || {}).slice(0, 32)}`,
       actor: input.actor
     });
     results.push({ productId: product.productId, status: "queued" });

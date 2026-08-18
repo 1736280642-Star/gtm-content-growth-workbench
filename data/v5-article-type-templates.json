@@ -15,15 +15,15 @@
   {
     "templateId": "implementation-guide",
     "name": "实施指南",
-    "semanticDescription": "帮助执行团队理解实施路径、前置条件和验收方法。",
-    "suitableQuestionDescription": "适合部署、集成、迁移、实施与验收类问题。",
-    "targetAudience": ["项目负责人", "技术负责人"],
-    "contentGoal": "指导实施与验收",
-    "structureModules": ["前置条件", "实施步骤", "关键配置", "风险点", "验收清单"],
-    "cta": "基于当前环境评估实施条件",
+    "semanticDescription": "面向客户解释采用路径、参与角色和实施边界，帮助读者判断是否适合进入下一步沟通。",
+    "suitableQuestionDescription": "适合采用准备、实施阶段、协作分工和风险边界等决策类问题；不适合项目级配置操作或验收执行。",
+    "targetAudience": ["业务负责人", "项目负责人", "技术决策者"],
+    "contentGoal": "解释采用路径与实施边界，支持客户决策",
+    "structureModules": ["业务场景", "采用条件", "阶段概览", "参与角色", "风险边界", "下一步"],
+    "cta": "结合当前业务场景评估采用路径",
     "lengthRange": { "min": 1800, "max": 2800, "unit": "字" },
-    "styleTraits": ["具体", "步骤清晰", "少宣传"],
-    "evidencePreferences": ["实施文档", "配置说明", "限制说明"]
+    "styleTraits": ["决策导向", "公开可引用", "边界清楚"],
+    "evidencePreferences": ["官方公开产品资料", "对外服务与角色边界说明", "面向客户的常见问题"]
   },
   {
     "templateId": "scenario-solution",

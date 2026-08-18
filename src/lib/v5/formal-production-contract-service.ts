@@ -15,19 +15,15 @@ import type {
   ProductionContractSnapshot
 } from "./content-production-contracts";
 
-export const JOTO_OFFICIAL_POSITIONING = "JOTO 作为腾讯CSP授权合作伙伴";
-
 export function resolveJotoOfficialFixedExpression(
   text: string,
   channels: string[],
   taskChannel: string
 ) {
   const normalizedText = text.trim();
-  const isJotoOfficialPositioning = /JOTO/i.test(normalizedText)
-    && /(?:CSP|伙伴|服务商|专项服务)/i.test(normalizedText);
   return {
-    text: isJotoOfficialPositioning ? JOTO_OFFICIAL_POSITIONING : normalizedText,
-    appliesToChannel: isJotoOfficialPositioning || channels.includes(taskChannel)
+    text: normalizedText,
+    appliesToChannel: Boolean(normalizedText) && (!channels.length || channels.includes(taskChannel))
   };
 }
 import type { SingleArticleActor } from "./single-article-contracts";
@@ -37,6 +33,12 @@ const compilerVersion = "production-contract-compiler.v2" as const;
 
 interface StrategyRow extends RowDataPacket {
   product_id: string;
+  canonical_name: string;
+  display_name: string;
+  brand_name: string | null;
+  official_entity: string | null;
+  entity_relationship: string | null;
+  aliases: unknown;
   strategy_pack_id: string | null;
   strategy_version: number | null;
   strategy_status: string | null;
@@ -47,7 +49,26 @@ interface StrategyRow extends RowDataPacket {
   article_type_definition_json: unknown;
   calibration_version_id: string | null;
   calibration_directives: unknown;
+  calibration_sample_markdown: string | null;
   sample_revision_feedback: unknown;
+}
+
+export function selectRequiredCoreClaimIds(pack: RagFinalEvidencePack) {
+  const evidenceById = new Map(pack.evidenceItems.map((item) => [item.evidenceItemId, item]));
+  const slotClaimIds = pack.claimPlan.slots
+    .filter((slot) => slot.required && slot.status === "satisfied")
+    .flatMap((slot) => slot.selectedEvidenceItemIds.slice(0, 1))
+    .flatMap((evidenceItemId) => {
+      const item = evidenceById.get(evidenceItemId);
+      return item?.primaryClaimId ? [item.primaryClaimId] : [];
+    });
+  if (slotClaimIds.length) return Array.from(new Set(slotClaimIds));
+
+  const availableClaimIds = new Set(pack.evidenceItems.flatMap((item) => item.claimIds));
+  const plannedCoreClaim = pack.claimPlan.requiredClaimIds.find((claimId) => availableClaimIds.has(claimId));
+  if (plannedCoreClaim) return [plannedCoreClaim];
+  const firstEvidenceClaim = pack.evidenceItems.find((item) => item.primaryClaimId)?.primaryClaimId;
+  return firstEvidenceClaim ? [firstEvidenceClaim] : [];
 }
 
 function artifactsFrom(values: string[]): ProductionArtifact[] {
@@ -71,8 +92,12 @@ function expressionStrings(value: unknown) {
 
 export function compileSampleRevisionDirectives(value: unknown) {
   const feedback = parseV5Json<Record<string, unknown>>(value, {});
+  const directInstruction = typeof feedback.revisionInstruction === "string"
+    ? feedback.revisionInstruction.trim()
+    : "";
   const issues = Array.isArray(feedback.issues) ? feedback.issues : [];
   return Array.from(new Set([
+    ...(directInstruction ? [`用户对上一版样文的修改要求：${directInstruction}`] : []),
     ...expressionStrings(feedback.expressionDirectives),
     ...issues.flatMap((issue) => {
       if (!issue || typeof issue !== "object") return [];
@@ -153,11 +178,13 @@ function contentTypeRule(row: StrategyRow, context: FormalGenerationContext): Co
 
 async function readStrategyRow(taskId: string) {
   const [rows] = await getV5GovernancePool().query<StrategyRow[]>(
-    `SELECT i.product_id, p.strategy_pack_id, sp.strategy_version, sp.status AS strategy_status,
+    `SELECT i.product_id, p.canonical_name, p.display_name, p.brand_name, p.official_entity,
+       p.entity_relationship, p.aliases, p.strategy_pack_id, sp.strategy_version, sp.status AS strategy_status,
        sp.content_plan_hash, sp.content_plan_json,
        atv.article_type_version_id, atv.definition_hash AS article_type_definition_hash,
        atv.definition_json AS article_type_definition_json,
        ec.id AS calibration_version_id, ec.directives_json AS calibration_directives,
+       calibration_draft.markdown AS calibration_sample_markdown,
        sf.feedback_json AS sample_revision_feedback
      FROM (
        SELECT id, product_id, content_type FROM content_matrix_item WHERE id = ?
@@ -171,10 +198,13 @@ async function readStrategyRow(taskId: string) {
        ON atv.strategy_pack_id = sp.id AND atv.status IN ('active', 'frozen')
        AND (atv.article_type_version_id = i.content_type OR atv.article_type_id = i.content_type OR atv.name = i.content_type)
      LEFT JOIN expression_calibration_version ec
-       ON ec.product_id = i.product_id AND ec.status = 'active'
+       ON ec.product_id = i.product_id AND ec.product_strategy_pack_id = sp.id
+      AND ec.article_type_version_id = atv.article_type_version_id AND ec.status = 'active'
+     LEFT JOIN draft_version calibration_draft ON calibration_draft.id = ec.source_sample_draft_id
      LEFT JOIN sample_article_feedback sf ON sf.id = (
        SELECT sf2.id FROM sample_article_feedback sf2
        WHERE sf2.product_id = i.product_id AND sf2.product_strategy_pack_id = sp.id
+         AND sf2.draft_version_id IN (SELECT d.id FROM draft_version d WHERE d.task_id = i.id)
          AND sf2.decision = 'changes_requested'
        ORDER BY sf2.decided_at DESC LIMIT 1
      )
@@ -221,6 +251,12 @@ export async function compileFormalProductionContract(input: {
   const requiredFormat = expressionStrings(input.context.channelRequiredFormat);
   const prohibitedPatterns = expressionStrings(input.context.channelProhibitedPatterns);
   const calibrationDirectives = expressionStrings(row.calibration_directives);
+  const acceptedSampleReference = input.mode === "batch" && row.calibration_sample_markdown
+    ? [
+        "以下正文是用户为当前文章类型确认的表达样本。只参考它的叙事节奏、段落密度、信息组织和语气，不照抄题目、句子或具体事实：",
+        String(row.calibration_sample_markdown).slice(0, 8000)
+      ]
+    : [];
   const sampleRevisionDirectives = input.mode === "sample"
     ? compileSampleRevisionDirectives(row.sample_revision_feedback)
     : [];
@@ -236,6 +272,19 @@ export async function compileFormalProductionContract(input: {
     fixedExpressionChannels,
     taskChannel
   );
+  const compiledContentTypeRule = contentTypeRule(row, input.context);
+  const sampleContentTypeRule = input.mode === "sample"
+    ? {
+        ...compiledContentTypeRule,
+        requiredSections: [],
+        requiredArtifacts: [],
+        promptDirectives: [
+          ...compiledContentTypeRule.promptDirectives,
+          "文章类型定义用于确定叙事方向，不要求按模块名称逐节填充。围绕读者问题形成一条自然主线。",
+          "没有正式案例或效果数据证据时，不要用泛化案例、虚构指标或空洞管理建议补足篇幅。"
+        ]
+      }
+    : compiledContentTypeRule;
   return compileProductionContract({
     governance: {
       productId: String(row.product_id),
@@ -272,7 +321,7 @@ export async function compileFormalProductionContract(input: {
       blockedExpressions: expressionStrings(input.context.blockedExpressions),
       requiredEvidenceRoles: []
     },
-    contentTypeRule: contentTypeRule(row, input.context),
+    contentTypeRule: sampleContentTypeRule,
     channelRule: {
       channelRuleVersionId: input.context.channelRuleVersionId,
       channel: String(task.channel || "").trim(),
@@ -291,14 +340,22 @@ export async function compileFormalProductionContract(input: {
       prohibitedTerms: prohibitedPatterns,
       humanizerDirectives: expressionStrings(task.platformExpressionSnapshot),
       calibrationVersionId: row.calibration_version_id ? String(row.calibration_version_id) : undefined,
-      calibrationDirectives: [...calibrationDirectives, ...sampleRevisionDirectives]
+      calibrationDirectives: [...calibrationDirectives, ...acceptedSampleReference, ...sampleRevisionDirectives]
     },
     promotionProfiles: [],
     fixedExpressions: fixedExpression.text && fixedExpression.appliesToChannel
       ? [{ text: fixedExpression.text, positions: fixedExpressionPositions, channel: taskChannel }]
       : [],
-    minTraceableFactCount: Math.min(8, input.pack.evidenceItems.length),
-    requireHumanBoundary: true
+    requiredCoreClaimIds: selectRequiredCoreClaimIds(input.pack),
+    entityIdentity: {
+      productId: String(row.product_id),
+      canonicalName: String(row.canonical_name),
+      displayName: String(row.display_name),
+      aliases: parseV5Json<string[]>(row.aliases, []),
+      brandName: row.brand_name ? String(row.brand_name) : undefined,
+      officialEntity: row.official_entity ? String(row.official_entity) : undefined,
+      entityRelationship: row.entity_relationship ? String(row.entity_relationship) : undefined
+    }
   });
 }
 

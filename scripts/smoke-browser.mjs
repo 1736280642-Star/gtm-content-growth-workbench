@@ -20,7 +20,7 @@ const pageGroups = {
     ["article_types", "/monthly-matrix/content-types", "内容类型库"],
     ["batch_generation", "/monthly-matrix/batch-generation", "批量生成中心"],
     ["daily_execution", "/daily-execution", "当日执行"],
-    ["monthly_review", "/monthly-review", "月度复盘"],
+    ["content_monitor", "/content-monitor", "内容监控塔"],
     ["questions", "/questions-keywords", "GEO 问题监控"],
     ["knowledge", "/knowledge", "知识库"],
     ["configuration", "/configuration", "配置管理"],
@@ -36,7 +36,7 @@ const pageGroups = {
   responsive: [
     ["batch_generation_mobile", "/monthly-matrix/batch-generation", "批量生成中心"],
     ["daily_execution_mobile", "/daily-execution", "当日执行"],
-    ["monthly_review_mobile", "/monthly-review", "月度复盘"],
+    ["content_monitor_mobile", "/content-monitor", "内容监控塔"],
     ["questions_mobile", "/questions-keywords", "GEO 问题监控"],
     ["knowledge_mobile", "/knowledge", "知识库"],
     ["configuration_mobile", "/configuration", "配置管理"]
@@ -44,7 +44,7 @@ const pageGroups = {
   publish: [
     ["daily_execution", "/daily-execution", "当日执行"],
     ["data_return", "/publish", "数据回传"],
-    ["monthly_review", "/monthly-review", "月度复盘"]
+    ["content_monitor", "/content-monitor", "内容监控塔"]
   ],
   "geo-pilot": [
     ["products", "/products", "WorkBuddy"],
@@ -91,7 +91,7 @@ async function runRoleChecks() {
   const previousRole = initial.data?.workspaceSetting?.currentRole;
   const roles = [
     ["content_publisher", "/daily-execution", "当日执行"],
-    ["content_growth", "/monthly-review", "月度复盘"],
+    ["content_growth", "/content-monitor", "内容监控塔"],
     ["workbench_operator", "/monthly-matrix", "月度内容矩阵"],
     ["knowledge_manager", "/knowledge", "知识库"],
     ["developer_admin", "/configuration", "配置管理"]

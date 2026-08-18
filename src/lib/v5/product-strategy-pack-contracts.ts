@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { GeoBlueprintVersion, GeoResearchProject } from "./geo-research-contracts";
 import type { ProductKnowledgeProfile } from "./product-knowledge-profile";
+import type { ProductWebsiteCoverageProfile, WebsiteCoverageTopic } from "./website-coverage-contracts";
 
 export const productGeoStrategyContractVersion = "product-geo-strategy.v2" as const;
 
@@ -58,6 +59,8 @@ export interface ProductGeoArticleTypePortfolioItem {
   recommendationReason: string;
   confidence: number;
   evidenceReadiness: "ready" | "partial" | "blocked";
+  websiteCoverageDisposition?: "new_content" | "refresh_existing" | "hold";
+  coveredWebsiteTopic?: WebsiteCoverageTopic;
   proposedMonthlyShare: number;
   baseArticleTypeId?: string;
   baseArticleTypeVersionId?: string;
@@ -70,6 +73,12 @@ export interface ProductGeoStrategyContentPlanV2 {
   sourceSnapshotId: string;
   researchEvidencePackId: string;
   researchSnapshotHash: string;
+  governanceBinding: {
+    sourceSnapshotId: string;
+    rulePackageVersionId: string;
+    indexSnapshotId: string;
+    researchRunId: string;
+  };
   productPositioning: {
     positioning: string[];
     promotionPurpose: string;
@@ -113,6 +122,15 @@ export interface ProductGeoStrategyContentPlanV2 {
     questionStrategy: Record<string, unknown>;
     competitorLandscape: Record<string, unknown>;
     contentTypeStrategy: Record<string, unknown>;
+  };
+  websiteCoverage: {
+    profileVersion?: number;
+    profileHash?: string;
+    knowledgeReadiness: "ready" | "partial" | "blocked" | "unknown";
+    publicGeoReadiness: "pending_audit" | "ready" | "partial" | "blocked" | "unknown";
+    latestSiteAuditRunId?: string;
+    sufficientTopics: WebsiteCoverageTopic[];
+    partialOrMissingTopics: WebsiteCoverageTopic[];
   };
 }
 
@@ -188,7 +206,12 @@ function subjectText(value: string, productName?: string) {
 
 function serviceProviderFromRelationship(value?: string) {
   if (!value) return "";
-  return value.match(/([A-Za-z][A-Za-z0-9._-]{1,30})\s*(?:提供|支持|负责)/)?.[1] || "";
+  for (const segment of value.split(/[；。]/).map((item) => item.trim()).filter(Boolean)) {
+    if (!/(?:服务商|合作伙伴|提供|支持|负责|实施|交付)/.test(segment)) continue;
+    const match = segment.match(/^([A-Za-z][A-Za-z0-9._-]{1,30})\s*(?:是|作为|可|为|向|提供|支持|负责)/);
+    if (match?.[1]) return match[1];
+  }
+  return "";
 }
 
 function serviceAwareQuestion(value: string, productName: string | undefined, provider: string) {
@@ -212,6 +235,105 @@ function serviceAwareArticleType(item: ProductGeoArticleTypePortfolioItem, produ
     return { ...item, name: `${provider} ${productName} 落地案例`, definition: `仅基于已核验案例，说明 ${productName} 的产品应用与 ${provider} 的实施服务分别承担什么。` };
   }
   return item;
+}
+
+function ensureServiceProviderSelectionType(input: {
+  portfolio: ProductGeoArticleTypePortfolioItem[];
+  productName?: string;
+  provider: string;
+  profile?: ProductKnowledgeProfile;
+  targetChannels: string[];
+  websiteCoverageProfile?: ProductWebsiteCoverageProfile;
+}) {
+  if (!input.productName || !input.provider) return input.portfolio;
+  const existingIndex = input.portfolio.findIndex((item) =>
+    item.portfolioItemId === "service-provider-selection"
+    || /服务商.*(?:选型|选择|推荐)|实施伙伴.*(?:选型|选择|推荐)/.test(`${item.name} ${item.definition}`)
+  );
+  const evidenceReadiness = input.profile?.factCount ? "ready" as const : "partial" as const;
+  const selectionType: ProductGeoArticleTypePortfolioItem = {
+    portfolioItemId: "service-provider-selection",
+    origin: "generated",
+    name: `${input.productName} 服务商选型与实施伙伴推荐`,
+    definition: `帮助企业根据可公开核验的服务能力、适用场景、角色边界与支持方式选择 ${input.productName} 服务商，并说明 ${input.provider} 可提供的对外服务范围及证据边界。`,
+    suitableQuestions: [
+      `企业选择 ${input.productName} 服务商时，应核对哪些公开服务能力、适用场景和职责边界？`,
+      `${input.provider} 能为 ${input.productName} 提供哪些落地支持，企业应如何判断是否适合？`
+    ],
+    unsuitableQuestions: [
+      `缺少双方可追溯资料时，对 ${input.productName} 服务商作排名或绝对优劣结论。`,
+      "把客户 Logo、场景示例或公开提及直接写成已验证成功案例。"
+    ],
+    targetAudience: ["企业决策者", "IT 负责人", "项目负责人", "采购与选型人员"],
+    contentGoal: `建立 ${input.provider} 作为 ${input.productName} 实施服务提供方的准确认知，并帮助用户完成服务商选型。`,
+    structureModules: [
+      { key: "selection_context", purpose: "说明哪些业务场景适合引入服务商", required: true },
+      { key: "public_capability_evidence", purpose: "核对可公开验证的服务能力及来源", required: true },
+      { key: "role_boundary", purpose: "区分产品能力、服务商职责与客户参与事项", required: true },
+      { key: "engagement_overview", purpose: "概述从需求沟通到持续支持的合作阶段", required: true },
+      { key: "support_and_evidence_boundary", purpose: "说明支持方式和案例证据边界", required: true }
+    ],
+    emphasisOrder: ["适用场景", "公开服务能力", "角色边界", "合作阶段", "支持方式", "案例边界"],
+    style: ["面向客户决策", "证据可追溯", "产品与服务商分开归因", "不展开内部项目操作"],
+    lengthRange: { min: 1600, max: 2600 },
+    evidencePreferences: ["产品知识库 Claim", "服务商对外服务说明", "产品方官方公开资料", "公开选型需求来源"],
+    ctaIntent: `引导用户基于自身场景评估 ${input.provider} 的 ${input.productName} 落地服务。`,
+    channelFit: input.targetChannels,
+    questionClusterIds: ["service-provider-selection"],
+    recommendationReason: `产品归属与 ${input.provider} 服务商关系已被单独建模，且用户存在实施伙伴选择、服务边界与落地支持判断需求。`,
+    confidence: evidenceReadiness === "ready" ? 0.9 : 0.65,
+    evidenceReadiness,
+    proposedMonthlyShare: 0.15,
+    definitionHash: "",
+    raw: { source: "authoritative_entity_relationship", requiredBy: "service_provider_relationship" }
+  };
+  const next = existingIndex >= 0
+    ? input.portfolio.map((item, index) => index === existingIndex ? selectionType : item)
+    : input.portfolio.length < 6
+      ? [...input.portfolio, selectionType]
+      : [...input.portfolio];
+  if (existingIndex < 0 && input.portfolio.length >= 6) {
+    const replaceIndex = input.portfolio.findIndex((item) => item.evidenceReadiness !== "ready");
+    next[replaceIndex >= 0 ? replaceIndex : next.length - 1] = selectionType;
+  }
+  const configuredShare = next.reduce((sum, item) => sum + Math.max(0, item.proposedMonthlyShare), 0);
+  return next.map((item) => ({
+    ...item,
+    proposedMonthlyShare: configuredShare > 0
+      ? Math.max(0, item.proposedMonthlyShare) / configuredShare
+      : 1 / next.length
+  }));
+}
+
+function ensureServiceProviderSelectionOpportunity(input: {
+  opportunities: ProductGeoStrategyOpportunity[];
+  productName?: string;
+  provider: string;
+  profile?: ProductKnowledgeProfile;
+}): ProductGeoStrategyOpportunity[] {
+  if (!input.productName || !input.provider) return input.opportunities;
+  if (input.opportunities.some((item) => /服务商.*(?:选型|选择|推荐)|实施伙伴.*(?:选型|选择|推荐)/.test(`${item.title} ${item.intent}`))) {
+    return input.opportunities;
+  }
+  const sourceIds = [...new Set([
+    ...(input.profile?.positioning || []).map((item) => item.sourceId),
+    ...(input.profile?.capabilities || []).map((item) => item.sourceId),
+    ...(input.profile?.boundaries || []).map((item) => item.sourceId)
+  ].filter(Boolean))];
+  return [{
+    opportunityId: "service-provider-selection",
+    title: `${input.productName} 服务商选型与实施伙伴推荐`,
+    intent: "service_provider_selection",
+    priority: "high",
+    productFit: `${input.provider} 是 ${input.productName} 的实施服务提供方，已有资料覆盖服务范围、实施和验收边界。`,
+    evidenceReadiness: input.profile?.factCount ? "ready" : "partial",
+    representativeQuestions: [
+      `企业应该如何选择 ${input.productName} 服务商？`,
+      `评估 ${input.provider} 的 ${input.productName} 服务时，应核对哪些资质、交付范围与验收能力？`
+    ],
+    sourceIds,
+    raw: { source: "authoritative_entity_relationship", requiredBy: "service_provider_relationship" }
+  }, ...input.opportunities];
 }
 
 function recordCandidates(value: Record<string, unknown>, keys: string[]) {
@@ -405,8 +527,10 @@ function applyEvidenceReadinessPolicy(
 
 function addGovernedCapabilityBoundaryType(
   portfolio: ProductGeoArticleTypePortfolioItem[],
-  profile: ProductKnowledgeProfile | undefined
+  profile: ProductKnowledgeProfile | undefined,
+  websiteCoverageProfile?: ProductWebsiteCoverageProfile
 ) {
+  if (websiteCoverageProfile?.topicCoverage.some((item) => item.topic === "capability_boundary" && item.status === "sufficient")) return portfolio;
   if (portfolio.some((item) => item.evidenceReadiness === "ready")) return portfolio;
   if (!profile || profile.status !== "ready" || !profile.positioning.length || !profile.capabilities.length || !profile.boundaries.length) {
     return portfolio;
@@ -471,6 +595,61 @@ function addGovernedCapabilityBoundaryType(
   return [...scaledPortfolio, safeItem];
 }
 
+function articleCoverageTopic(item: ProductGeoArticleTypePortfolioItem): WebsiteCoverageTopic | undefined {
+  const text = [item.name, item.definition, item.contentGoal, ...item.questionClusterIds, ...item.suitableQuestions].join(" ");
+  if (/服务商|实施伙伴|合作伙伴|资质|选型/.test(text)) return "provider_selection";
+  if (/案例|客户|实践|项目复盘/.test(text)) return "case_practice";
+  if (/FAQ|常见问题|问答/.test(text)) return "faq";
+  if (/能力.*边界|适用边界|不适用|限制条件|职责分工/.test(text)) return "capability_boundary";
+  if (/实施|部署|接入|集成|交付|验收|培训/.test(text)) return "implementation_delivery";
+  if (/产品|服务|解决方案|能力|场景/.test(text)) return "core_service";
+  return undefined;
+}
+
+export function applyWebsiteCoverageToArticlePortfolio(
+  portfolio: ProductGeoArticleTypePortfolioItem[],
+  profile?: ProductWebsiteCoverageProfile
+) {
+  // A caller without a coverage profile is outside the normal research gate,
+  // but direct compilation still fails closed for evidence-incomplete types.
+  const coverage = new Map((profile?.topicCoverage || []).map((item) => [item.topic, item]));
+  const classified = portfolio.map((item) => {
+    const topic = articleCoverageTopic(item);
+    const topicCoverage = topic ? coverage.get(topic) : undefined;
+    const evidenceReadiness = topic === "case_practice" && topicCoverage && topicCoverage.status !== "sufficient" && !topicCoverage.claimIds.length
+      ? (item.evidenceReadiness === "ready" ? "partial" as const : item.evidenceReadiness)
+      : item.evidenceReadiness;
+    // A missing or partial website topic is only a content opportunity when the
+    // governed evidence pack can actually support the article's claims. Keep
+    // evidence-blocked items visible in the single strategy pack, but prevent
+    // them from looking like production-ready candidates.
+    const disposition = topicCoverage?.status === "sufficient"
+      ? "refresh_existing" as const
+      : evidenceReadiness === "ready"
+        ? "new_content" as const
+        : "hold" as const;
+    return {
+      ...item,
+      evidenceReadiness,
+      websiteCoverageDisposition: disposition,
+      coveredWebsiteTopic: topic,
+      recommendationReason: disposition === "refresh_existing"
+        ? `${item.recommendationReason}；官网覆盖画像显示该主题已有充分页面，不重复新建文章，转入存量页刷新、结构化与分发优化。`
+        : `${item.recommendationReason}${topicCoverage ? `；官网该主题当前为 ${topicCoverage.status}，允许围绕未回答问题补充内容。` : "；官网尚无充分的同主题覆盖证据。"}`,
+      raw: { ...item.raw, websiteCoverageDisposition: disposition, websiteCoverageTopic: topic, websiteCoverageProfileHash: profile?.profileHash }
+    };
+  });
+  const generatable = classified.filter((item) => item.websiteCoverageDisposition === "new_content");
+  const configuredShare = generatable.reduce((sum, item) => sum + Math.max(0, item.proposedMonthlyShare), 0);
+  if (!generatable.length) return classified;
+  return classified.map((item) => ({
+    ...item,
+    proposedMonthlyShare: item.websiteCoverageDisposition === "new_content"
+      ? configuredShare > 0 ? Math.max(0, item.proposedMonthlyShare) / configuredShare : 1 / generatable.length
+      : 0
+  }));
+}
+
 function addGovernedCapabilityBoundaryOpportunity(
   opportunities: ProductGeoStrategyOpportunity[],
   portfolio: ProductGeoArticleTypePortfolioItem[]
@@ -503,6 +682,9 @@ export function compileProductGeoStrategyContentPlan(input: {
   productKnowledgeProfile?: ProductKnowledgeProfile;
   productName?: string;
   entityRelationship?: string;
+  governanceBinding: ProductGeoStrategyContentPlanV2["governanceBinding"];
+  fixedExpression?: ProductFixedExpressionRule;
+  websiteCoverageProfile?: ProductWebsiteCoverageProfile;
 }): ProductGeoStrategyContentPlanV2 {
   const { project, blueprint } = input;
   const monthly = recordValue(blueprint.monthlyStrategyInput);
@@ -511,6 +693,7 @@ export function compileProductGeoStrategyContentPlan(input: {
   const safeCompetitorLandscape = sanitizeCompetitorLandscape(competitorLandscape);
   const safeEvidenceRequirements = sanitizeEvidenceRequirements(evidence);
   const expression = recordValue(monthly.expressionDirection);
+  const provider = serviceProviderFromRelationship(input.entityRelationship);
   const initialPortfolio = normalizeArticleTypePortfolio(recordValue(blueprint.contentTypeStrategy));
   const monthlyObjectives = stringArray(monthly.objectives);
   const evidenceGaps = stringArray(evidence.knowledgeGaps).length
@@ -519,14 +702,27 @@ export function compileProductGeoStrategyContentPlan(input: {
   const requiredRoles = stringArray(evidence.requiredRoles).length
     ? stringArray(evidence.requiredRoles)
     : (stringArray(safeEvidenceRequirements.claimsRequiringEvidence).length ? ["product_fact", "public_source"] : []);
-  const portfolio = addGovernedCapabilityBoundaryType(
-    applyEvidenceReadinessPolicy(initialPortfolio, stringArray(safeEvidenceRequirements.claimsRequiringEvidence)),
-    input.productKnowledgeProfile
-  );
-  const opportunities = addGovernedCapabilityBoundaryOpportunity(
-    normalizeOpportunities(recordValue(blueprint.questionStrategy)),
-    portfolio
-  ).map((item) => ({
+  const portfolio = ensureServiceProviderSelectionType({
+    portfolio: addGovernedCapabilityBoundaryType(
+      applyEvidenceReadinessPolicy(initialPortfolio, stringArray(safeEvidenceRequirements.claimsRequiringEvidence)),
+      input.productKnowledgeProfile,
+      input.websiteCoverageProfile
+    ),
+    productName: input.productName,
+    provider,
+    profile: input.productKnowledgeProfile,
+    targetChannels: project.targetChannels,
+    websiteCoverageProfile: input.websiteCoverageProfile
+  });
+  const opportunities = ensureServiceProviderSelectionOpportunity({
+    opportunities: addGovernedCapabilityBoundaryOpportunity(
+      normalizeOpportunities(recordValue(blueprint.questionStrategy)),
+      portfolio
+    ),
+    productName: input.productName,
+    provider,
+    profile: input.productKnowledgeProfile
+  }).map((item) => ({
     ...item,
     title: subjectText(item.title, input.productName),
     productFit: subjectText(item.productFit, input.productName),
@@ -557,7 +753,6 @@ export function compileProductGeoStrategyContentPlan(input: {
       articleTypeVersionId: `strategy-article-type-version-${definitionHash.slice(0, 32)}`
     };
   });
-  const provider = serviceProviderFromRelationship(input.entityRelationship);
   const relationshipAwareOpportunities = opportunities.map((item) => ({
     ...item,
     title: provider && input.productName && item.title.includes("企业AI服务 选型依据")
@@ -586,6 +781,7 @@ export function compileProductGeoStrategyContentPlan(input: {
       articleTypeVersionId: `strategy-article-type-version-${definitionHash.slice(0, 32)}`
     };
   });
+  const coverageAwarePortfolio = applyWebsiteCoverageToArticlePortfolio(relationshipAwarePortfolio, input.websiteCoverageProfile);
   const promotionPurpose = input.productName && provider
     ? `围绕 ${input.productName} 的真实用户问题、适用场景与采用条件，建立 ${provider} 在 ${input.productName} 专项落地服务方面的 GEO 可见性。`
     : subjectText(project.expressionFocus, input.productName);
@@ -595,6 +791,9 @@ export function compileProductGeoStrategyContentPlan(input: {
     sourceSnapshotId: input.sourceSnapshotId,
     researchEvidencePackId: `research-evidence-${blueprint.researchSnapshotHash}`,
     researchSnapshotHash: blueprint.researchSnapshotHash,
+    governanceBinding: input.governanceBinding || (blueprint as GeoBlueprintVersion & {
+      governanceBinding?: ProductGeoStrategyContentPlanV2["governanceBinding"];
+    }).governanceBinding!,
     productPositioning: {
       positioning: (input.productKnowledgeProfile?.positioning || []).map((fact) => fact.text),
       promotionPurpose,
@@ -610,13 +809,13 @@ export function compileProductGeoStrategyContentPlan(input: {
       targetMarkets: [...project.researchMarkets],
       languages: [...project.languages]
     },
-    fixedExpression: undefined,
+    fixedExpression: input.fixedExpression,
     geoOpportunities: relationshipAwareOpportunities,
-    articleTypePortfolio: relationshipAwarePortfolio,
+    articleTypePortfolio: coverageAwarePortfolio,
     evidencePolicy: {
       requiredRoles,
       conflictSummaries: stringArray(evidence.conflictSummaries).length ? stringArray(evidence.conflictSummaries) : stringArray(evidence.conflicts),
-      knowledgeGaps: evidenceGaps,
+      knowledgeGaps: [...new Set([...evidenceGaps, ...(input.websiteCoverageProfile?.evidenceGaps || [])])],
       citationStrategy: governedCitationStrategy(recordValue(blueprint.citationStrategy)),
       evidenceRequirements: safeEvidenceRequirements
     },
@@ -635,10 +834,10 @@ export function compileProductGeoStrategyContentPlan(input: {
     channelPriorities: project.targetChannels.map((channel) => ({
       channel,
       role: stringValue(recordValue(monthly.channelRoles)[channel]) || "产品 GEO 内容分发",
-      suitableArticleTypeIds: relationshipAwarePortfolio.filter((item) => !item.channelFit.length || item.channelFit.includes(channel))
+      suitableArticleTypeIds: coverageAwarePortfolio.filter((item) => item.websiteCoverageDisposition === "new_content" && (!item.channelFit.length || item.channelFit.includes(channel)))
         .map((item) => item.articleTypeId || item.articleTypeVersionId as string)
     })),
-    recommendedMonthlyMix: relationshipAwarePortfolio.map((item) => ({
+    recommendedMonthlyMix: coverageAwarePortfolio.filter((item) => item.websiteCoverageDisposition === "new_content").map((item) => ({
       articleTypeId: item.articleTypeId || item.articleTypeVersionId as string,
       questionClusterIds: item.questionClusterIds,
       targetShare: item.proposedMonthlyShare
@@ -655,6 +854,15 @@ export function compileProductGeoStrategyContentPlan(input: {
       questionStrategy: recordValue(blueprint.questionStrategy),
       competitorLandscape: safeCompetitorLandscape,
       contentTypeStrategy: recordValue(blueprint.contentTypeStrategy)
+    },
+    websiteCoverage: {
+      profileVersion: input.websiteCoverageProfile?.profileVersion,
+      profileHash: input.websiteCoverageProfile?.profileHash,
+      knowledgeReadiness: input.websiteCoverageProfile?.knowledgeReadiness || "unknown",
+      publicGeoReadiness: input.websiteCoverageProfile?.publicGeoReadiness || "unknown",
+      latestSiteAuditRunId: input.websiteCoverageProfile?.latestSiteAuditRunId,
+      sufficientTopics: input.websiteCoverageProfile?.topicCoverage.filter((item) => item.status === "sufficient").map((item) => item.topic) || [],
+      partialOrMissingTopics: input.websiteCoverageProfile?.topicCoverage.filter((item) => item.status !== "sufficient").map((item) => item.topic) || []
     }
   };
 }
@@ -671,6 +879,14 @@ export function assertHumanProductStrategyDecision(actor: { actorType: string; a
 export function assertProductGeoStrategyContentPlanV2(plan: ProductGeoStrategyContentPlanV2) {
   if (plan.contractVersion !== productGeoStrategyContractVersion) throw new Error("product_strategy_contract_version_invalid");
   if (!plan.geoOpportunities.length) throw new Error("product_strategy_geo_opportunities_missing");
+  if (!plan.governanceBinding?.sourceSnapshotId || !plan.governanceBinding.rulePackageVersionId
+    || !plan.governanceBinding.indexSnapshotId || !plan.governanceBinding.researchRunId) {
+    throw new Error("product_strategy_governance_binding_incomplete");
+  }
+  if (plan.sourceSnapshotId !== plan.governanceBinding.sourceSnapshotId
+    || plan.synthesis.runId !== plan.governanceBinding.researchRunId) {
+    throw new Error("product_strategy_governance_binding_mismatch");
+  }
   if (!plan.expressionDirection.keyMessages.length || !plan.expressionDirection.emphasisOrder.length || !plan.expressionDirection.tone.length) {
     throw new Error("product_strategy_expression_direction_incomplete");
   }
@@ -714,8 +930,8 @@ export function deriveProductStrategyMonthlyTypeQuotas(
   if (!Number.isInteger(totalArticleCount) || totalArticleCount < 1 || totalArticleCount > 500) {
     throw new Error("monthly_article_count_invalid");
   }
-  const eligible = plan.articleTypePortfolio.filter((item) => item.evidenceReadiness === "ready");
-  if (!eligible.length) throw new Error("monthly_article_type_evidence_blocked");
+  const eligible = plan.articleTypePortfolio.filter((item) => item.evidenceReadiness === "ready" && item.websiteCoverageDisposition !== "refresh_existing" && item.websiteCoverageDisposition !== "hold");
+  if (!eligible.length) return [];
   const configuredWeight = eligible.reduce((sum, item) => sum + Math.max(0, item.proposedMonthlyShare), 0);
   const allocations = eligible.map((item) => {
     const weight = configuredWeight > 0 ? Math.max(0, item.proposedMonthlyShare) / configuredWeight : 1 / eligible.length;

@@ -53,6 +53,26 @@ export function parseList(value) {
     .filter(Boolean);
 }
 
+export function boundedInteger(value, fallback, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+}
+
+export async function mapWithConcurrency(items, concurrency, handler) {
+  const limit = boundedInteger(concurrency, 1, 1, Math.max(1, items.length));
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function run() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await handler(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
+  return results;
+}
+
 export async function readStdinText() {
   if (process.stdin.isTTY) {
     return "";

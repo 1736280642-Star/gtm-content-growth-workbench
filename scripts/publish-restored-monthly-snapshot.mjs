@@ -17,6 +17,10 @@ const args = parseArgs(process.argv.slice(2));
 const baseUrl = String(args["base-url"] || "http://127.0.0.1:3027").replace(/\/$/, "");
 const month = String(args.month || new Date().toISOString().slice(0, 7));
 const execute = args.execute === true;
+const requestedTaskIds = new Set(String(args["task-ids"] || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean));
 const platformByChannel = new Map([
   ["csdn", "csdn"],
   ["juejin", "juejin"],
@@ -28,7 +32,7 @@ const workspaceBody = await workspaceResponse.json();
 if (!workspaceResponse.ok || !workspaceBody.ok) throw new Error(workspaceBody.error?.message || "Monthly workspace read failed.");
 
 const tasks = workspaceBody.data.productionTasks
-  .filter((task) => platformByChannel.has(task.channel))
+  .filter((task) => platformByChannel.has(task.channel) && (!requestedTaskIds.size || requestedTaskIds.has(task.taskId)))
   .map((task) => ({ task, draft: task.lastUsableDraft || task.currentDraft, platform: platformByChannel.get(task.channel) }));
 const invalid = tasks.filter(({ task, draft }) => task.status !== "scheduled" || !draft?.draftId || draft.status !== "available" || !draft.markdown?.trim());
 const planned = {

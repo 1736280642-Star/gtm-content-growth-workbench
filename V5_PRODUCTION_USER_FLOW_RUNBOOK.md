@@ -31,7 +31,7 @@ npm.cmd run check:v5-flow -- 2026-07
 | 策略审批与矩阵 | `/monthly-matrix` | 策略已批准并产生正式矩阵项 |
 | 生成与排程 | `/monthly-matrix/batch-generation` | 正式 EvidencePack 与正文可用，随后人工排程 |
 | 当日执行 | `/daily-execution` | 只显示正式排程和实际发布状态 |
-| 月度复盘 | `/monthly-review` | 能关联问题、MonthlyPlan、发布 URL、指标和 AI 测试 |
+| 内容监控塔 | `/content-monitor` | 汇总渠道指标、官网审计、AI 可见性和失败告警；其中月度数据进入 MonthlyReview |
 
 ## 本机配置路径
 
@@ -53,7 +53,7 @@ RAG_EMBEDDING_PROVIDER
 
 当 `RAG_EMBEDDING_PROVIDER=qwen_embedding` 时，还需要 `DASHSCOPE_API_KEY` 和 `QWEN_EMBEDDING_MODEL`；选择 `doubao_embedding` 时，需要 `DOUBAO_API_KEY` 和 `DOUBAO_EMBEDDING_MODEL`。
 
-月度复盘默认直接聚合正式问题、MonthlyPlan、发布结果与指标。`V5_OBSERVATION_REFERENCE_PATH` 仅作为显式外部只读适配器覆盖项；使用时必须指向受控正式导出，不能指向 `scripts/fixtures/`。
+MonthlyReview 默认直接聚合正式问题、MonthlyPlan、发布结果与指标，并在内容监控塔中展示相关结果。`V5_OBSERVATION_REFERENCE_PATH` 仅作为显式外部只读适配器覆盖项；使用时必须指向受控正式导出，不能指向 `scripts/fixtures/`。
 
 ## 正式治理 API 路径
 

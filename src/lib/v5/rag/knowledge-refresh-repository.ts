@@ -33,6 +33,46 @@ function iso(value: unknown) {
   return value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
 }
 
+export function isAutomaticNoiseRejectedClaim(reviewStatus: unknown, limitations: unknown) {
+  if (String(reviewStatus || "") !== "rejected") return false;
+  return parseV5Json<string[]>(limitations, [])
+    .some((item) => typeof item === "string" && item.startsWith("automatic_noise_filter:"));
+}
+
+function normalizeProtectedExpression(value: unknown) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+}
+
+export function buildProtectedProductExpressions(input: {
+  canonicalName?: unknown;
+  displayName?: unknown;
+  brandName?: unknown;
+  aliases?: unknown;
+  fixedExpressionText?: unknown;
+}) {
+  const fixedText = String(input.fixedExpressionText || "").trim();
+  const fixedSegments = fixedText.split(/[，。；;、]/).map((item) => item.trim()).filter(Boolean);
+  const fixedIdentifiers = fixedText.match(/[A-Za-z][A-Za-z0-9._-]*/g) || [];
+  return [...new Set([
+    input.canonicalName,
+    input.displayName,
+    input.brandName,
+    ...parseV5Json<string[]>(input.aliases, []),
+    fixedText,
+    ...fixedSegments,
+    ...fixedIdentifiers
+  ].map(normalizeProtectedExpression).filter((item) => item.length >= 2))];
+}
+
+export function filterAutomaticKnowledgeBlockedClaims<T>(rows: T[], protectedExpressions: string[] = []) {
+  const protectedSet = new Set(protectedExpressions.map(normalizeProtectedExpression));
+  return rows.filter((row) => {
+    const candidate = row as { review_status?: unknown; limitations?: unknown; normalized_claim?: unknown };
+    return !isAutomaticNoiseRejectedClaim(candidate.review_status, candidate.limitations)
+      && !protectedSet.has(normalizeProtectedExpression(candidate.normalized_claim));
+  });
+}
+
 function hasUnqualifiedMetric(row: RowDataPacket) {
   const text = `${String(row.normalized_claim || "")}\n${String(row.original_quote || "")}`;
   const conditions = parseV5Json<string[]>(row.conditions, []);
@@ -62,7 +102,10 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
 ): Promise<AutomaticKnowledgeRefreshContext> {
   return withV5GovernanceTransaction(async (connection) => {
     const [productRows] = await connection.query<RowDataPacket[]>(
-      "SELECT id, display_name, canonical_name FROM product_entity WHERE id = ? AND status = 'active' LIMIT 1 FOR UPDATE",
+      `SELECT p.id, p.display_name, p.canonical_name, p.brand_name, p.aliases, sp.content_plan_json
+       FROM product_entity p
+       LEFT JOIN product_strategy_packs sp ON sp.id = p.strategy_pack_id
+       WHERE p.id = ? AND p.status = 'active' LIMIT 1 FOR UPDATE`,
       [productId]
     );
     if (!productRows[0]) throw new V5GovernanceRepositoryError("product_not_found", "Automatic knowledge product is not active.", 404);
@@ -147,7 +190,7 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
     }
 
     const [blockedRows] = await connection.query<RowDataPacket[]>(
-      `SELECT id, normalized_claim, review_status, conflict_group_id
+      `SELECT id, normalized_claim, review_status, conflict_group_id, limitations
        FROM product_claim
        WHERE product_id = ? AND (
          review_status IN ('disputed','rejected','expired')
@@ -171,7 +214,19 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
     const sourceIds = [...new Set(claimRows.map((row) => String(row.source_id)))].sort();
     const knowledgeBaseIds = [...new Set(claimRows.map((row) => String(row.primary_knowledge_base_id)))].sort();
     const sourceBatchIds = [...new Set(claimRows.map((row) => String(row.batch_id)))].sort();
-    const blockedClaimIds = blockedRows.map((row) => String(row.id));
+    const currentPlan = parseV5Json<Record<string, unknown>>(productRows[0].content_plan_json, {});
+    const fixedExpression = currentPlan.fixedExpression && typeof currentPlan.fixedExpression === "object"
+      ? currentPlan.fixedExpression as Record<string, unknown>
+      : {};
+    const protectedExpressions = buildProtectedProductExpressions({
+      canonicalName: productRows[0].canonical_name,
+      displayName: productRows[0].display_name,
+      brandName: productRows[0].brand_name,
+      aliases: productRows[0].aliases,
+      fixedExpressionText: fixedExpression.text
+    });
+    const effectiveBlockedRows = filterAutomaticKnowledgeBlockedClaims(blockedRows, protectedExpressions);
+    const blockedClaimIds = effectiveBlockedRows.map((row) => String(row.id));
     const conflictIds = conflictRows.map((row) => String(row.id));
     const sourceSnapshotHash = hashSorted(claimRows.map((row) => `${row.source_id}:${row.source_revision_id}:${row.content_hash}`));
     const claimSetHash = hashSorted(approvedClaimIds);
@@ -222,12 +277,13 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
         conditions: parseV5Json<string[]>(row.conditions, []),
         limitations: parseV5Json<string[]>(row.limitations, [])
       }));
-    const blockedExpressions = blockedRows.map((row) => ({
+    const blockedExpressions = effectiveBlockedRows.map((row) => ({
       claimId: String(row.id),
       text: String(row.normalized_claim),
       reason: String(row.review_status),
       conflictGroupId: row.conflict_group_id ? String(row.conflict_group_id) : undefined
     }));
+    const blockedSetHash = hashSorted(blockedExpressions.map((item) => `${item.claimId}:${item.text}`));
     const maxMonthlyQuota = Math.max(31, Math.min(100, claimRows.length));
     const matrixScope = {
       allowedContentTypes: AUTOMATIC_CONTENT_TYPES,
@@ -239,9 +295,10 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
     };
     const rulePackageVersionId = stableId(
       "rule-version-auto-",
-      `${productId}:${sourceSnapshotHash}:${claimSetHash}:${AUTOMATIC_KNOWLEDGE_POLICY_VERSION}:${hashSorted([JSON.stringify(matrixScope)])}`,
+      `${productId}:${sourceSnapshotHash}:${claimSetHash}:${blockedSetHash}:${AUTOMATIC_KNOWLEDGE_POLICY_VERSION}:${hashSorted([JSON.stringify(matrixScope)])}`,
       36
     );
+    const rulePackageVersionLabel = `auto-${sourceSnapshotHash.slice(0, 12)}-${claimSetHash.slice(0, 8)}-${hashSorted([AUTOMATIC_KNOWLEDGE_POLICY_VERSION]).slice(0, 8)}`;
     const [versionRows] = await connection.query<RowDataPacket[]>(
       "SELECT id, status FROM rule_package_version WHERE id = ? LIMIT 1 FOR UPDATE",
       [rulePackageVersionId]
@@ -266,7 +323,7 @@ export async function prepareAutomaticKnowledgeRefreshRecord(
           rulePackageVersionId,
           storedRulePackageId,
           productId,
-          `auto-${sourceSnapshotHash.slice(0, 12)}-${claimSetHash.slice(0, 8)}`,
+          rulePackageVersionLabel,
           stringifyV5Json([]),
           previousRuleVersionId || null,
           stringifyV5Json(sourceBatchIds),

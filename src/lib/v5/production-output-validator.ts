@@ -7,6 +7,7 @@ import type {
   ProductionValidationResult
 } from "./content-production-contracts";
 import { findHumanWritingWechatIssues, isWechatContentChannel } from "./human-writing-wechat";
+import { entityRelationshipBlockers, missingRequiredCoreClaimIds } from "./production-fact-gates";
 
 export interface ValidateProductionOutputInput {
   contract: ProductionContractSnapshot;
@@ -163,16 +164,13 @@ export function validateProductionOutput(input: ValidateProductionOutputInput): 
     issues.push(issue("fact_trace_invalid", "factTraces 包含无法匹配正文或 EvidencePack 的记录。", true));
   }
   const uniqueFactSentences = new Set(validTraces.map((trace) => trace.sentence));
-  if (uniqueFactSentences.size < policy.minTraceableFactCount) {
-    issues.push(issue("traceable_fact_count_low", `可追溯事实句不足 ${policy.minTraceableFactCount} 条。`, true));
+  const missingCoreClaims = missingRequiredCoreClaimIds(policy.requiredCoreClaimIds, validTraces.map((trace) => trace.claimId));
+  if (missingCoreClaims.length) {
+    issues.push(issue("core_claim_missing", "当前选题的核心 Claim 未覆盖。", true, missingCoreClaims));
   }
-  if (policy.requireHumanBoundary) {
-    const boundaryEvidenceIds = new Set(contract.evidencePack.evidenceItems
-      .filter((item) => item.conditions.length || item.limitations.length || item.allowedUsage.includes("human_boundary"))
-      .map((item) => item.evidenceItemId));
-    if (!boundaryEvidenceIds.size || !validTraces.some((trace) => boundaryEvidenceIds.has(trace.evidenceItemId))) {
-      issues.push(issue("human_boundary_missing", "正文缺少可追溯的适用条件、限制或人工边界。", true));
-    }
+  const relationshipBlockers = entityRelationshipBlockers(markdown, policy.entityIdentity);
+  if (relationshipBlockers.length) {
+    issues.push(issue("entity_relationship_invalid", "产品身份或实体关系不正确。", true, relationshipBlockers));
   }
 
   const selectedCtas = contract.ctaPlan.selectedVariants;

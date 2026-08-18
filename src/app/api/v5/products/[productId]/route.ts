@@ -1,6 +1,6 @@
 import { readTrustedServerActor, v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
 import { V5GovernanceServiceError } from "@/lib/v5/knowledge-governance-service";
-import { getActiveProduct, getProductWorkflowSummary, updateProduct } from "@/lib/v5/product-registry-service";
+import { deleteProductKnowledgeBase, getActiveProduct, getProductWorkflowSummary, updateProduct } from "@/lib/v5/product-registry-service";
 import { readProductMaterialSummary } from "@/lib/v5/product-material-summary";
 import { readProductKnowledgeProfile } from "@/lib/v5/product-knowledge-profile";
 import { NextResponse } from "next/server";
@@ -78,6 +78,47 @@ export async function PATCH(
       actor
     });
     return NextResponse.json({ ok: true, product: result.product, replayed: result.replayed, message: "产品信息已保存。" });
+  } catch (error) {
+    return v5GovernanceErrorResponse(error);
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ productId: string }> }
+) {
+  const routeParams = await params;
+  try {
+    const body = await request.json().catch(() => ({}));
+    const trustedActor = readTrustedServerActor("product_owner");
+    if (process.env.NODE_ENV === "production" && !trustedActor) {
+      throw new V5GovernanceServiceError(
+        "authorization_not_configured",
+        "当前生产环境未配置可信产品负责人身份，系统已阻止删除。",
+        503,
+        "配置工作台可信服务端身份后重试。"
+      );
+    }
+    const actor = trustedActor || {
+      actorId: request.headers.get("x-workbench-actor-id")?.trim() || "local-workbench-user",
+      actorRole: "product_owner",
+      actorType: "human" as const,
+      auditReason: "用户在产品知识库页删除对应产品知识库及已保存资料"
+    };
+    const result = await deleteProductKnowledgeBase({
+      productId: routeParams.productId,
+      expectedVersion: Number(body.expectedVersion),
+      idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : "",
+      actor
+    });
+    const cleanupWarning = "cleanupWarning" in result ? result.cleanupWarning : undefined;
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      message: cleanupWarning || (result.deletedMaterialCount
+        ? `产品知识库已删除，已清除 ${result.deletedMaterialCount} 份资料。`
+        : "产品知识库已删除。")
+    });
   } catch (error) {
     return v5GovernanceErrorResponse(error);
   }

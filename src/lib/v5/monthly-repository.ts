@@ -24,6 +24,7 @@ export interface V5MonthlyAuditEvent {
     | "production_tasks_removed"
     | "generation_batch_created"
     | "generation_batch_status_changed"
+    | "publish_intercepted"
     | "publish_result_saved";
   month: string;
   actor: string;

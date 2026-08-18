@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { combineMultiSearchEvidencePacks, runMultiProviderWebSearch } from "../src/lib/v5/geo-search-adapters.ts";
-import { enforceTaskEntityRules, parseStructuredOutput } from "../src/lib/v5/geo-research-provider.ts";
+import { combineMultiSearchEvidencePacks, runMultiProviderWebSearch, runMultiProviderProbeAnswers } from "../src/lib/v5/geo-search-adapters.ts";
+import {
+  buildDegradedFrontendBaseline,
+  buildGeoEntityResolutionBatches,
+  enforceTaskEntityRules,
+  mergeQuestionDiscoveryShardOutputs,
+  parseStructuredOutput,
+  selectGeoEntityResolutionCandidates
+} from "../src/lib/v5/geo-research-provider.ts";
 import { pruneGeoResearchCitations } from "../src/lib/v5/geo-evidence-verifier.ts";
 import { verifyGeoResearchEvidence } from "../src/lib/v5/geo-evidence-verifier.ts";
 import {
   applyGeoEntityResolution,
+  buildGeoProductIdentityCard,
   compileIdentityAnchoredQueries
 } from "../src/lib/v5/geo-product-identity.ts";
 
@@ -27,7 +35,8 @@ const envNames = [
   "QWEN_MODEL",
   "QWEN_BASE_URL",
   "GEO_SEARCH_PROVIDER_MAX_RETRIES",
-  "GEO_SEARCH_PROVIDER_RETRY_BASE_MS"
+  "GEO_SEARCH_PROVIDER_RETRY_BASE_MS",
+  "GEO_SEARCH_PROVIDER_TIMEOUT_MS"
 ];
 
 function withTestConfig() {
@@ -41,6 +50,7 @@ function withTestConfig() {
   process.env.GEO_RESEARCH_QWEN_MODEL = "test-qwen-model";
   process.env.GEO_RESEARCH_QWEN_BASE_URL = "https://qwen.test/v1";
   process.env.GEO_SEARCH_PROVIDER_MAX_RETRIES = "0";
+  process.env.GEO_SEARCH_PROVIDER_TIMEOUT_MS = "5000";
 }
 
 function jsonResponse(body, status = 200, headers = {}) {
@@ -70,6 +80,68 @@ test("semantic output parsing accepts only strictly valid object wrappers", () =
   assert.throws(() => parseStructuredOutput("not JSON"), /research_provider_invalid_output|Provider/);
 });
 
+test("entity resolution candidates are split deterministically without loss or duplication", () => {
+  const candidates = Array.from({ length: 31 }, (_, index) => ({ candidateId: `candidate-${index}` }));
+  const batches = buildGeoEntityResolutionBatches(candidates, 12);
+  assert.deepEqual(batches.map((batch) => batch.length), [12, 12, 7]);
+  assert.deepEqual(batches.flat().map((candidate) => candidate.candidateId), candidates.map((candidate) => candidate.candidateId));
+});
+
+test("entity resolution evidence budget preserves query and provider coverage before filling by rank", () => {
+  const candidates = Array.from({ length: 20 }, (_, index) => ({
+    candidateId: `candidate-${index}`,
+    queryIds: [index === 18 ? "query-b" : index === 19 ? "query-c" : "query-a"],
+    providerKeys: [index === 17 ? "qwen" : index === 16 ? "doubao" : "zhipu"]
+  }));
+  const selected = selectGeoEntityResolutionCandidates(candidates, 8);
+  assert.equal(selected.length, 8);
+  assert.deepEqual([...new Set(selected.flatMap((candidate) => candidate.queryIds))].sort(), ["query-a", "query-b", "query-c"]);
+  assert.deepEqual([...new Set(selected.flatMap((candidate) => candidate.providerKeys))].sort(), ["doubao", "qwen", "zhipu"]);
+  assert.equal(new Set(selected.map((candidate) => candidate.candidateId)).size, selected.length);
+});
+
+test("question discovery shards merge deterministically and enforce catalog limits", () => {
+  const payload = (questions, clusters = [], gaps = []) => ({
+    choices: [{ message: { content: JSON.stringify({ questions, queryClusters: clusters, contentGaps: gaps, claimAssessments: [] }) } }]
+  });
+  const merged = mergeQuestionDiscoveryShardOutputs([
+    payload([{ text: "WorkBuddy 如何部署？" }, { text: "WorkBuddy如何部署" }], ["部署"], ["案例"]),
+    payload([{ text: "WorkBuddy 支持哪些集成？" }], ["集成"], ["证据"])
+  ]);
+  assert.deepEqual(merged.questions.map((item) => item.text), ["WorkBuddy 如何部署？", "WorkBuddy 支持哪些集成？"]);
+  assert.deepEqual(merged.queryClusters, ["部署", "集成"]);
+  assert.deepEqual(merged.contentGaps, ["案例", "证据"]);
+});
+
+test("frontend baseline falls back to entity-safe Doubao and Qwen evidence when Zhipu JSON is invalid", () => {
+  const result = buildDegradedFrontendBaseline({
+    queries: [{ ...query[0], queryId: "query-1", query: "腾讯云 ADP 服务商怎么选？" }],
+    candidates: [
+      {
+        candidateId: "candidate-safe",
+        canonicalUrl: "https://example.com/adp",
+        queryIds: ["query-1"],
+        providerKeys: ["qwen", "doubao"],
+        entityClassification: "target_match",
+        matchedIdentityAnchors: ["owner", "category"]
+      },
+      {
+        candidateId: "candidate-zhipu-only",
+        canonicalUrl: "https://example.com/zhipu-only",
+        queryIds: ["query-1"],
+        providerKeys: ["zhipu"],
+        entityClassification: "target_match",
+        matchedIdentityAnchors: ["owner", "category"]
+      }
+    ]
+  });
+  assert.equal(result.degraded, true);
+  assert.deepEqual(result.fallbackProviders, ["doubao", "qwen"]);
+  assert.equal(result.tests[0].targetMentioned, true);
+  assert.deepEqual(result.tests[0].citedUrls, ["https://example.com/adp"]);
+  assert.equal(result.aggregate.targetMentionRate, 1);
+});
+
 test("citation pruning removes out-of-run URLs and drops items left without evidence", () => {
   const evidencePack = {
     candidates: [{ canonicalUrl: "https://allowed.test/source" }]
@@ -87,6 +159,18 @@ test("citation pruning removes out-of-run URLs and drops items left without evid
   assert.deepEqual(result.structured.questions, [{ text: "grounded", sourceUrls: ["https://allowed.test/source"] }]);
   assert.equal(result.removedInvalidUrls, 3);
   assert.equal(result.removedUncitedItems, 2);
+});
+
+test("source-cited research objects do not require a redundant claim assessment", () => {
+  const evidencePack = {
+    candidates: [{ canonicalUrl: "https://allowed.test/competitor" }]
+  };
+  const verification = verifyGeoResearchEvidence({
+    competitors: [{ name: "可核验竞品", sourceUrls: ["https://allowed.test/competitor"] }],
+    claimAssessments: []
+  }, evidencePack);
+  assert.equal(verification.decision, "passed");
+  assert.deepEqual(verification.missingCitationPaths, []);
 });
 
 test.afterEach(() => {
@@ -187,6 +271,48 @@ test("identity compiler forbids name-only GEO queries", () => {
   assert.equal(queries.length, 3);
   assert.equal(queries.every((item) => item.identityAnchors.length >= 2), true);
   assert.equal(queries.some((item) => /^Noteflow\s+(?:竞品|功能特点|用户评价)/i.test(item.query)), false);
+});
+
+test("WorkBuddy and Tencent Cloud ADP service-provider relationships become mandatory web-search intents", () => {
+  const fact = (claimId, text) => ({ claimId, text, sourceId: "official-source", sourceRevisionId: "official-revision" });
+  const profile = {
+    status: "ready",
+    factCount: 4,
+    positioning: [fact("positioning", "产品用于企业 AI 工作场景。")],
+    audiences: [fact("audience", "面向企业项目团队。")],
+    capabilities: [fact("delivery", "JOTO 提供场景评估、系统接入、交付培训与验收复盘。")],
+    scenarios: [fact("scenario", "适用于企业系统接入与实施交付。")],
+    boundaries: [fact("boundary", "客户 Logo 不能自动推断为已验证的 JOTO 成功案例。")],
+    source: "parsed"
+  };
+  const cases = [
+    {
+      product: {
+        productId: "joto-workbuddy", canonicalName: "WorkBuddy", displayName: "WorkBuddy", aliases: ["WorkBuddy"],
+        brandName: "腾讯", officialEntity: "腾讯", productCategory: "企业 AI 工作台",
+        entityRelationship: "WorkBuddy 是腾讯旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。"
+      },
+      expectedProduct: "WorkBuddy"
+    },
+    {
+      product: {
+        productId: "tencent-adp-joto", canonicalName: "腾讯云 ADP", displayName: "腾讯云 ADP", aliases: ["Tencent Cloud ADP"],
+        brandName: "腾讯", officialEntity: "腾讯云", productCategory: "企业智能体开发平台",
+        entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可在约定项目范围内提供腾讯云 ADP 项目实施、交付培训与后续支持。"
+      },
+      expectedProduct: "腾讯云 ADP"
+    }
+  ];
+  for (const item of cases) {
+    const identity = buildGeoProductIdentityCard({ product: item.product, knowledgeProfile: profile });
+    assert.equal(identity.serviceProvider?.name, "JOTO");
+    assert.match(identity.serviceProvider?.deliveryCapabilities.join(" ") || "", /交付培训|验收复盘/);
+    const queries = compileIdentityAnchoredQueries({ taskType: "live_question_discovery", identity, maxQueries: 3 });
+    assert.equal(queries[0].expectedEvidenceRole, "service_provider_selection");
+    assert.match(queries[0].query, new RegExp(item.expectedProduct.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    assert.match(queries[0].query, /JOTO.*服务商.*选型.*资质.*交付.*验收/);
+    assert.ok(queries[0].identityAnchors.includes("JOTO"));
+  }
 });
 
 test("same-name entities are discarded before evidence persistence even if classified as competitors", () => {
@@ -305,7 +431,34 @@ test("one failed provider degrades safely when two providers and two sources rem
   const pack = await runMultiProviderWebSearch({ queries: query, signal: new AbortController().signal });
   assert.equal(pack.gate.decision, "passed");
   assert.deepEqual(pack.gate.successfulProviders.sort(), ["qwen", "zhipu"]);
+  assert.equal(pack.gate.degraded, true);
+  assert.deepEqual(pack.gate.failedProviders, ["doubao"]);
   assert.equal(pack.providerRuns.find((item) => item.provider === "doubao")?.status, "failed");
+});
+
+test("a timed out Zhipu factual search does not cancel Doubao and Qwen evidence", { concurrency: false }, async () => {
+  withTestConfig();
+  process.env.GEO_SEARCH_PROVIDER_TIMEOUT_MS = "5000";
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.includes("zhipu.test")) {
+      return await new Promise((resolve, reject) => {
+        const onAbort = () => reject(options.signal?.reason || new DOMException("Aborted", "AbortError"));
+        options.signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    }
+    return jsonResponse({ sources: [
+      { url: `https://example.com/${href.includes("doubao") ? "doubao-a" : "qwen-a"}`, snippet: "fact A" },
+      { url: `https://example.com/${href.includes("doubao") ? "doubao-b" : "qwen-b"}`, snippet: "fact B" }
+    ] });
+  };
+
+  const pack = await runMultiProviderWebSearch({ queries: query, signal: new AbortController().signal });
+  assert.equal(pack.gate.decision, "passed");
+  assert.equal(pack.gate.degraded, true);
+  assert.deepEqual(pack.gate.successfulProviders.sort(), ["doubao", "qwen"]);
+  assert.deepEqual(pack.gate.failedProviders, ["zhipu"]);
+  assert.equal(pack.providerRuns.find((item) => item.provider === "zhipu")?.status, "failed");
 });
 
 test("rate limits use bounded Retry-After retries and recover without duplicating provider runs", { concurrency: false }, async () => {
@@ -395,4 +548,23 @@ test("supplementary rounds keep one URL as one source and preserve all provider-
   assert.equal(combined.candidates[0].providerRunIds.length, 6);
   assert.equal(combined.supplementaryRounds, 1);
   assert.equal(combined.gate.decision, "blocked");
+});
+
+
+test("probe answer observations preserve one raw answer per provider and probe", { concurrency: false }, async () => {
+  withTestConfig();
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("zhipu.test")) return jsonResponse({ choices: [{ message: { content: "Zhipu answer https://example.com/z" } }] });
+    return jsonResponse({ output_text: "Provider answer https://example.com/p", output: [{ content: [{ text: "Provider answer https://example.com/p" }] }] });
+  };
+  const snapshot = {
+    probeSetId: "probe-set-test", productId: "product-1", researchRunId: "run-1", entityGraphVersion: 1, roleScenarioMatrixVersion: 1, probeContractVersion: "geo-probe.v1", websiteCoverageProfileHash: "coverage", sourceSnapshotId: "source", targetProviders: ["zhipu", "doubao", "qwen"], locale: "zh-CN", region: "CN", compiledAt: new Date().toISOString(), snapshotHash: "hash",
+    probes: [{ probeId: "geo-probe-001", objective: "public_cognition", roleId: "role", scenarioId: "scenario", journeyStage: "selection", decision: "判断适用性", observationMode: "blind", questionText: "企业如何选择内部知识助手？", promptVisibleEntityIds: [], scoringOnlyEntityIds: ["product-1"], expectedRelations: [], evidenceExpectation: "ai_observation_only", scoringDimensions: ["target_mentioned"], priority: "P0" }]
+  };
+  const pack = await runMultiProviderProbeAnswers({ snapshot, signal: new AbortController().signal, entityNames: ["Acme Assist"] });
+  assert.equal(pack.observations.length, 3);
+  assert.equal(pack.observations.filter((item) => item.status === "success").length, 3);
+  assert.equal(pack.observations.every((item) => item.probeId === "geo-probe-001"), true);
+  assert.equal(Object.keys(pack.rawResponses).length, 3);
+  assert.ok(pack.observations.every((item) => item.visibleCitations.length === 1));
 });

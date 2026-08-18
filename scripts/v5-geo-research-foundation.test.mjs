@@ -30,7 +30,7 @@ test("GEO research schema persists the auditable agent chain", async () => {
 test("research run cannot start without a governed source snapshot", async () => {
   const repository = await read("src/lib/v5/geo-research-repository.ts");
   assert.match(repository, /FROM source_snapshot/);
-  assert.match(repository, /research_source_snapshot_missing/);
+  assert.match(repository, /research_governance_bundle_missing/);
   assert.match(repository, /readV5Idempotency/);
   assert.match(repository, /writeV5GovernanceAudit/);
   assert.match(repository, /expectedProjectVersion/);
@@ -125,6 +125,8 @@ test("research synthesis cannot approve business strategy and hands off to the h
   assert.doesNotMatch(orchestration, /approveGeoBlueprint/);
   assert.match(automation, /compileProductStrategyPack/);
   assert.match(automation, /compileProductGeoStrategyContentPlan/);
+  assert.match(automation, /readLatestProductFixedExpression/);
+  assert.match(strategyRepository, /readLatestProductFixedExpression/);
   assert.match(strategyRepository, /pending_strategy_review/);
   assert.match(strategyService, /human_strategy_approval_required/);
 });
@@ -142,6 +144,18 @@ test("question keyword extraction and article templates are product agnostic", a
   const templates = await read("data/v5-article-type-templates.json");
   assert.doesNotMatch(questionService, /WorkBuddy|腾讯云\\s\*ADP|ADP\\s\*实施/);
   assert.doesNotMatch(templates, /联系 JOTO/);
+  const implementationGuide = JSON.parse(templates).find((item) => item.templateId === "implementation-guide");
+  assert.match(implementationGuide.contentGoal, /客户决策/);
+  assert.doesNotMatch(JSON.stringify(implementationGuide), /实施文档|配置说明|验收清单/);
+});
+
+test("GEO strategy evidence policy keeps internal project artifacts out of promotional content", async () => {
+  const provider = await read("src/lib/v5/geo-research-provider.ts");
+  const panel = await read("src/components/ProductGeoStrategyPanel.tsx");
+  assert.match(provider, /Missing internal delivery artifacts alone must never make a promotional article type partial or blocked/);
+  assert.match(provider, /public-facing promotional content/);
+  assert.match(panel, /内部部署参数、配置操作文档、项目交付与验收清单不是推广内容的默认前置资料/);
+  assert.doesNotMatch(panel, /suggestions:\s*\["正式部署前提与环境要求"/);
 });
 
 test("the UI exposes product onboarding and research execution routes", async () => {
@@ -216,4 +230,28 @@ test("only the human-confirmed product GEO strategy is visible in the monthly st
   assert.match(handoff, /strategyPackId/);
   assert.match(handoff, /不是已批准的 MonthlyPlan/);
   assert.match(strategyPage, /GeoMonthlyStrategyHandoff/);
+});
+
+
+test("probe set is version-bound, persisted immutably, and reused by the worker", async () => {
+  const contracts = await read("src/lib/v5/geo-probe-contracts.ts");
+  const compiler = await read("src/lib/v5/geo-probe-compiler.ts");
+  const repository = await read("src/lib/v5/geo-research-repository.ts");
+  const worker = await read("workers/geo-research-worker.mjs");
+  const migration = await read("database/migrations/20260817_036_v5_geo_probe_snapshot.sql");
+  const probeTest = await read("scripts/v5-geo-probe-compiler.test.mjs");
+  const resultContracts = await read("src/lib/v5/geo-research-result-contracts.ts");
+  assert.match(contracts, /ProductEntityGraph/);
+  assert.match(contracts, /RoleScenarioMatrix/);
+  assert.match(contracts, /ProbeSetSnapshot/);
+  assert.match(compiler, /relationship_verification/);
+  assert.match(compiler, /scoringOnlyEntityIds/);
+  assert.match(repository, /geo_research_probe_set_snapshot/);
+  assert.match(repository, /probeSetSnapshot/);
+  assert.match(worker, /probeSetSnapshot: context\.probeSetSnapshot/);
+  assert.match(migration, /UNIQUE KEY uq_geo_probe_snapshot_run/);
+  assert.match(migration, /snapshot_json JSON NOT NULL/);
+  assert.match(probeTest, /blind probes do not expose target/);
+  assert.match(resultContracts, /ModelAnswerObservation/);
+  assert.match(resultContracts, /GeoResearchResultPack/);
 });

@@ -1,129 +1,90 @@
 "use client";
 
-import { EyeOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Descriptions, Drawer, Empty, Segmented, Space, Statistic, Table, Tag, Typography } from "antd";
+import { ArrowDownOutlined, ArrowUpOutlined, CheckCircleFilled, EyeOutlined, FileDoneOutlined, HeartOutlined, LinkOutlined, ReloadOutlined, StarOutlined, SyncOutlined, WarningFilled } from "@ant-design/icons";
+import { Alert, Button, Empty, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import type { ProductGeoOverview } from "@/lib/v5/geo-research-contracts";
-import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
+import type { ContentMonitorFailureAlert, ContentMonitorMetricKey, ContentMonitorOverview, ContentMonitorPlatform, ContentMonitorPublishedItem, ContentMonitorTrendPoint } from "@/lib/v5/content-monitor-contracts";
 import type { MonthlyReview } from "@/lib/v5/monthly-review-contracts";
-import type { ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
+import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
 import { useMonthlyWorkspace } from "@/lib/v5/use-monthly-workspace";
+import { SiteAuditPanel } from "@/components/SiteAuditPanel";
+import { GeoQuestionMonitoringPanel } from "@/components/GeoQuestionMonitoringPanel";
+import { ContentMonitorAiVisibility } from "@/components/ContentMonitorAiVisibility";
+import styles from "./page.module.css";
 
-type MonitorTab = "overview" | "content" | "ai" | "history";
-interface AttentionItem { id: string; whatHappened: string; impact: string; nextAction: string; nextCheckAt: string; attemptCount: number; impactCount: number }
-
+type MonitorTab = "overview" | "website" | "content" | "ai" | "alerts" | "history";
+type TrendMode = "daily" | "cumulative";
+type RankMetric = "views" | "likes";
+const platformOrder: ContentMonitorPlatform[] = ["csdn", "wechat", "juejin", "zhihu"];
+const platformMeta: Record<ContentMonitorPlatform, { label: string; short: string; color: string }> = {
+  wechat: { label: "公众号", short: "微", color: "#16a36a" }, csdn: { label: "CSDN", short: "C", color: "#ef5b35" },
+  juejin: { label: "掘金", short: "掘", color: "#1677ff" }, zhihu: { label: "知乎", short: "知", color: "#2f54c6" }
+};
+const metricMeta: Record<ContentMonitorMetricKey, { label: string; unit: string; icon: React.ReactNode }> = {
+  publications: { label: "发布数", unit: "篇", icon: <FileDoneOutlined /> }, views: { label: "浏览量", unit: "次", icon: <EyeOutlined /> },
+  likes: { label: "点赞数", unit: "次", icon: <HeartOutlined /> }, favorites: { label: "收藏数", unit: "次", icon: <StarOutlined /> }
+};
 function currentMonth() { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit" }).format(new Date()); }
-function livenessLabel(value?: "pending" | "passed" | "failed") { return value === "passed" ? "通过" : value === "failed" ? "失败" : "待观察"; }
-
-function GeoMonitorWorkspace() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const requested = searchParams.get("tab") || "overview";
-  const tab = ({ publishing: "content", ledger: "content", site: "content", review: "content" }[requested] || requested) as MonitorTab;
-  const month = currentMonth();
-  const { workspace, loading, error, refresh } = useMonthlyWorkspace(month);
-  const [products, setProducts] = useState<ProductRegistryItem[]>([]);
-  const [overviews, setOverviews] = useState<ProductGeoOverview[]>([]);
-  const [review, setReview] = useState<MonthlyReview>();
-  const [attention, setAttention] = useState<AttentionItem[]>([]);
-  const [selectedTask, setSelectedTask] = useState<ProductionMatrixTask>();
-
-  const refreshResults = useCallback(async () => {
-    const [productResponse, reviewResponse, attentionResponse] = await Promise.all([
-      fetch("/api/v5/products", { cache: "no-store" }),
-      fetch(`/api/v5/monthly-reviews/${month}`, { cache: "no-store" }),
-      fetch(`/api/v5/tasks/attention?month=${month}`, { cache: "no-store" })
-    ]);
-    const productBody = await productResponse.json();
-    const reviewBody = await reviewResponse.json();
-    const attentionBody = await attentionResponse.json();
-    if (productResponse.ok) { setProducts(productBody.products || []); setOverviews(productBody.overviews || []); }
-    if (reviewResponse.ok) setReview(reviewBody.data);
-    if (attentionResponse.ok) setAttention(attentionBody.data?.items || []);
-  }, [month]);
-  useEffect(() => { void refreshResults(); }, [refreshResults]);
-
-  const tasks = useMemo(() => workspace?.productionTasks || [], [workspace?.productionTasks]);
-  const monitoredQuestions = useMemo(() => review?.questions.filter((item) => item.geoMonitoringApproved) || [], [review?.questions]);
-  const published = tasks.filter((item) => item.status === "published");
-  const scheduled = tasks.filter((item) => Boolean(item.scheduledAt) && item.status !== "published");
-  const selectedPublishedContent = selectedTask
-    ? review?.questions.flatMap((item) => item.publishedContent).find((item) => item.contentId === selectedTask.taskId)
-    : undefined;
-  const productRows = overviews.filter((item) => item.isPromoting).map((overview) => ({
-    ...overview,
-    name: products.find((item) => item.productId === overview.productId)?.displayName || overview.productId,
-    taskCount: tasks.filter((task) => workspace?.rulePackages.find((pack) => pack.id === task.rulePackageVersionId)?.productId === overview.productId).length
-  }));
-  const options = [{ label: "总览", value: "overview" }, { label: "内容表现", value: "content" }, { label: "AI 可见性", value: "ai" }, { label: "系统记录", value: "history" }];
-
-  return <>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 16 }}>
-      <div><Typography.Title level={2} style={{ margin: 0 }}>GEO 监控塔</Typography.Title><Typography.Text type="secondary">只展示结果、系统自愈和真正需要你处理的事项。</Typography.Text></div>
-      <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void Promise.all([refresh(month), refreshResults()])}>刷新</Button>
-    </div>
-    <Segmented block value={tab} options={options} onChange={(value) => router.push(`/geo-monitor?tab=${value}`)} style={{ marginBottom: 16 }} />
-    {error ? <Alert showIcon type="error" message="监控数据读取失败" description={error} /> : null}
-
-    {tab === "overview" ? <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Alert showIcon type={attention.length ? "warning" : "success"} message={attention.length ? `${attention.length} 项需要你处理，其余异常由系统自动恢复` : "系统正常运行，当前无需介入"} description={`${productRows.length} 个产品正在推广，已发布 ${published.length} 篇，${scheduled.length} 篇等待发布。`} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
-        <Card><Statistic title="推广产品" value={productRows.length} /></Card><Card><Statistic title="已发布" value={published.length} /></Card><Card><Statistic title="有效指标回传" value={review?.metrics.effectiveMetricReturns || 0} /></Card><Card><Statistic title="待确认缺口" value={review?.metrics.pendingGaps || 0} /></Card>
-      </div>
-      <Card title="产品表现"><Table rowKey="productId" pagination={false} dataSource={productRows} locale={{ emptyText: <Empty description="暂无推广产品" /> }} columns={[
-        { title: "产品", dataIndex: "name" },
-        { title: "GEO 状态", render: (_, row) => <Tag color={row.blueprintStatus === "approved" ? "green" : "gold"}>{row.blueprintStatus === "approved" ? "蓝图已批准" : "持续调研中"}</Tag> },
-        { title: "问题覆盖", render: (_, row) => new Set(tasks.filter((task) => workspace?.rulePackages.find((pack) => pack.id === task.rulePackageVersionId)?.productId === row.productId).map((task) => task.questionVersionId)).size },
-        { title: "内容投入", dataIndex: "taskCount" },
-        { title: "自动优化", render: (_, row) => row.strategyPackId ? <Tag color="blue">策略已同步</Tag> : <Tag>等待策略</Tag> }
-      ]} /></Card>
-      <Card title="需你处理"><Table rowKey="id" pagination={false} dataSource={attention} locale={{ emptyText: <Empty description="当前无需介入" /> }} columns={[
-        { title: "发生了什么", dataIndex: "whatHappened" }, { title: "影响", dataIndex: "impact" }, { title: "下一步", dataIndex: "nextAction" }, { title: "再次检查", dataIndex: "nextCheckAt" }
-      ]} /></Card>
-    </Space> : null}
-
-    {tab === "content" ? <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
-        <Card><Statistic title="正式发布" value={review?.metrics.publishedContent || 0} /></Card>
-        <Card><Statistic title="有效指标回传" value={review?.metrics.effectiveMetricReturns || 0} /></Card>
-        <Card><Statistic title="24h 存活" value={`${review?.metrics.survival24hPassed || 0}/${review?.metrics.survival24hEligible || 0}`} suffix="已到观察窗" /></Card>
-        <Card><Statistic title="72h 存活" value={`${review?.metrics.survival72hPassed || 0}/${review?.metrics.survival72hEligible || 0}`} suffix="已到观察窗" /></Card>
-      </div>
-      <Card title="内容表现与发布结果" extra={<Tag>点击文章查看 URL 与存活状态</Tag>}><Table rowKey="taskId" dataSource={tasks} pagination={{ pageSize: 15 }} columns={[
-        { title: "文章", dataIndex: "title", ellipsis: true }, { title: "渠道", dataIndex: "channel" },
-        { title: "状态", render: (_, row) => <Tag color={row.status === "published" ? "green" : row.scheduledAt ? "blue" : "default"}>{row.status === "published" ? "已发布" : row.scheduledAt ? "已排程" : "生产中"}</Tag> },
-        { title: "发布时间", dataIndex: "scheduledAt", render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "-" },
-        { title: "", render: (_, row) => <Button type="link" icon={<EyeOutlined />} onClick={() => setSelectedTask(row)}>查看详情</Button> }
-      ]} /></Card>
-      <Card title="MonthlyReview 下月调整依据" extra={<Tag>重大策略变化仍需人工确认</Tag>}><Table rowKey="id" dataSource={review?.questions || []} pagination={false} locale={{ emptyText: <Empty description="真实发布与观察数据积累后生成建议" /> }} columns={[
-        { title: "目标问题", dataIndex: "questionText" },
-        { title: "正式发布", render: (_, row) => row.publishedContent.length },
-        { title: "24h / 72h", render: (_, row) => row.publishedContent.length ? row.publishedContent.map((item) => `${livenessLabel(item.liveness24h)} / ${livenessLabel(item.liveness72h)}`).join("；") : "无数据" },
-        { title: "下月建议", dataIndex: "recommendation" },
-        { title: "证据状态", dataIndex: "dataStatus", render: (value) => <Tag color={value === "complete" ? "green" : "gold"}>{value}</Tag> }
-      ]} /></Card>
-    </Space> : null}
-
-    {tab === "ai" ? <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}><Card><Statistic title="自动复测任务" value={monitoredQuestions.reduce((sum, item) => sum + item.captureTaskIds.length, 0)} /></Card><Card><Statistic title="待确认缺口" value={review?.metrics.pendingGaps || 0} /></Card></div>
-      <Card title="AI 可见性与引用证据"><Table rowKey="id" dataSource={monitoredQuestions} pagination={false} locale={{ emptyText: <Empty description="请先在 GEO 调研结果中人工确认问题；内容发布后系统会自动复测" /> }} columns={[
-        { title: "问题", dataIndex: "questionText" },
-        { title: "最近复测时间", dataIndex: "lastRetestedAt", render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未复测" },
-        { title: "AI 回答与引用", dataIndex: "captureSummary" }, { title: "已发布内容", render: (_, row) => row.publishedContent.length }, { title: "数据状态", dataIndex: "dataStatus", render: (value) => <Tag>{value}</Tag> }
-      ]} /></Card>
-    </Space> : null}
-
-    {tab === "history" ? <Card title="系统自动化记录"><Table rowKey="taskId" dataSource={[...tasks].reverse()} pagination={{ pageSize: 15 }} columns={[
-      { title: "对象", dataIndex: "title" }, { title: "动作", render: (_, row) => row.status === "published" ? "完成发布并进入复测" : row.scheduledAt ? "生成发布排程" : row.status === "available" ? "正文通过校验" : "系统持续处理" }, { title: "结果", dataIndex: "status", render: (value) => <Tag>{value}</Tag> }, { title: "归因", render: (_, row) => `问题 ${row.questionVersionId} → 内容 → ${row.channel}` }
-    ]} /></Card> : null}
-
-    <Drawer title="文章发布与证据明细" open={Boolean(selectedTask)} onClose={() => setSelectedTask(undefined)} width={720}>
-      {selectedTask ? <Descriptions bordered column={1}>
-        <Descriptions.Item label="文章">{selectedTask.title}</Descriptions.Item><Descriptions.Item label="渠道">{selectedTask.channel}</Descriptions.Item><Descriptions.Item label="生产状态">{selectedTask.status}</Descriptions.Item><Descriptions.Item label="排程">{selectedTask.scheduledAt ? new Date(selectedTask.scheduledAt).toLocaleString("zh-CN") : "尚未排程"}</Descriptions.Item><Descriptions.Item label="发布账号">{selectedTask.platformAccount || "系统等待账号配置"}</Descriptions.Item><Descriptions.Item label="公开 URL">{selectedPublishedContent?.publicUrl ? <Typography.Link href={selectedPublishedContent.publicUrl} target="_blank" rel="noreferrer">{selectedPublishedContent.publicUrl}</Typography.Link> : selectedTask.publicUrl || "等待正式发布回传"}</Descriptions.Item><Descriptions.Item label="24h / 72h 存活">{`${livenessLabel(selectedPublishedContent?.liveness24h)} / ${livenessLabel(selectedPublishedContent?.liveness72h)}`}</Descriptions.Item><Descriptions.Item label="资料快照">{selectedTask.sourceSnapshotHash || "-"}</Descriptions.Item><Descriptions.Item label="规则包">{selectedTask.rulePackageVersionId}</Descriptions.Item><Descriptions.Item label="Ledger">任务、正文、排程、公共 URL 和存活验证通过 taskId 与 publishScheduleId 保持关联。</Descriptions.Item>
-      </Descriptions> : null}
-    </Drawer>
+function fullNumber(value: number) { return new Intl.NumberFormat("zh-CN").format(value); }
+function compactNumber(value: number) { return new Intl.NumberFormat("zh-CN", { notation: value >= 10000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value); }
+function formatDateTime(value?: string) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "尚未更新"; }
+function syncStatus(sync: ContentMonitorOverview["platforms"][number]["sync"]) {
+  if (sync.status === "ready") return { label: "已更新", tone: "ready" }; if (sync.status === "syncing") return { label: "更新中", tone: "syncing" };
+  if (sync.status === "auth_required") return { label: "登录失效", tone: "risk" }; if (sync.status === "failed") return { label: "更新失败", tone: "risk" };
+  if (sync.status === "stale") return { label: "数据过期", tone: "warning" }; return { label: "待回传", tone: "muted" };
+}
+function trendSeries(points: ContentMonitorTrendPoint[], metric: ContentMonitorMetricKey, mode: TrendMode, platform: ContentMonitorPlatform) { let running = 0; return points.map((point) => { const value = point.platforms[platform][metric]; running += value; return mode === "cumulative" ? running : value; }); }
+function TrendChart({ points, metric, mode, visiblePlatforms }: { points: ContentMonitorTrendPoint[]; metric: ContentMonitorMetricKey; mode: TrendMode; visiblePlatforms: ContentMonitorPlatform[] }) {
+  const width = 760, height = 220, left = 48, right = 16, top = 16, bottom = 35, plotWidth = width - left - right, plotHeight = height - top - bottom;
+  const series = visiblePlatforms.map((platform) => ({ platform, values: trendSeries(points, metric, mode, platform) })); const max = Math.max(1, ...series.flatMap((item) => item.values));
+  const x = (i: number) => left + (points.length <= 1 ? 0 : i / (points.length - 1)) * plotWidth; const y = (v: number) => top + plotHeight - v / max * plotHeight;
+  if (!points.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无趋势数据" />;
+  return <div className={styles.chartViewport} role="img" aria-label={`${metricMeta[metric].label}近30天趋势`}><svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={styles.chartSvg}>{[0, 1, 2, 3].map((line) => { const lineY = top + plotHeight * line / 3; return <g key={line}><line x1={left} x2={width - right} y1={lineY} y2={lineY} stroke="#e3e8eb" strokeDasharray="4 6" /><text x={left - 8} y={lineY + 4} textAnchor="end" className={styles.axisText}>{compactNumber(Math.round(max * (3 - line) / 3))}</text></g>; })}{[0, Math.floor((points.length - 1) / 2), points.length - 1].map((index) => <text key={index} x={x(index)} y={height - 10} textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} className={styles.axisText}>{points[index]?.date.slice(5).replace("-", "/")}</text>)}{series.map(({ platform, values }) => <path key={platform} d={values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ")} fill="none" stroke={platformMeta[platform].color} strokeWidth="3" strokeLinecap="round" vectorEffect="non-scaling-stroke" />)}</svg></div>;
+}
+function ChannelFilter({ selected, onChange, readonly = false }: { selected: ContentMonitorPlatform[]; onChange: (value: ContentMonitorPlatform[]) => void; readonly?: boolean }) {
+  const all = selected.length === platformOrder.length;
+  return <div className={styles.channelFilter} aria-label="内容渠道全局筛选"><button className={all ? styles.channelFilterActive : ""} disabled={readonly} onClick={() => onChange(platformOrder)}>全部</button>{platformOrder.map((platform) => <button key={platform} disabled={readonly} className={selected.includes(platform) && !all ? styles.channelFilterActive : ""} onClick={() => { if (all) { onChange([platform]); return; } const next = selected.includes(platform) ? selected.filter((item) => item !== platform) : [...selected, platform]; onChange(next.length ? platformOrder.filter((item) => next.includes(item)) : [platform]); }}>{platformMeta[platform].label}</button>)}</div>;
+}
+function MetricCard({ metricKey, overview, active, onClick }: { metricKey: ContentMonitorMetricKey; overview: ContentMonitorOverview; active: boolean; onClick: () => void }) {
+  const metric = overview.metrics[metricKey], change = metric.changeRate, coverage = metric.totalContent ? Math.round(metric.coveredContent / metric.totalContent * 100) : 0;
+  return <button className={`${styles.metricCard} ${active ? styles.metricCardActive : ""}`} onClick={onClick} aria-pressed={active}><span className={styles.metricCardHead}><i>{metricMeta[metricKey].icon}</i>{metricMeta[metricKey].label}</span><span className={styles.metricValue}>{fullNumber(metric.value)}<small>{metricMeta[metricKey].unit}</small></span><span className={styles.metricFoot}><span className={change === undefined || change === 0 ? styles.changeNeutral : change > 0 ? styles.changeUp : styles.changeDown}>{change === undefined ? "新增" : change === 0 ? "持平" : change > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}{change === undefined ? fullNumber(metric.value) : change === 0 ? "" : `${Math.abs(change * 100).toFixed(1)}%`}<em>较前30天</em></span><span>{metricKey === "publications" ? `${metric.totalContent} 篇` : `覆盖 ${metric.coveredContent}/${metric.totalContent}`}</span></span>{metricKey !== "publications" ? <span className={styles.coverageTrack}><b style={{ width: `${coverage}%` }} /></span> : null}</button>;
+}
+function ChannelPerformance({ overview }: { overview: ContentMonitorOverview }) {
+  const rows = overview.platforms.filter((row) => row.publications > 0 || row.coveredContent > 0);
+  return <div className={styles.channelCompact}><div className={styles.subheading}><div><h3>渠道表现</h3><p>所选渠道 30 天正式发布汇总</p></div></div>{rows.map((row) => { const status = syncStatus(row.sync); return <div key={row.platform} className={styles.channelCompactRow}><span className={styles.channelIdentity}><i style={{ background: platformMeta[row.platform].color }}>{platformMeta[row.platform].short}</i><b>{platformMeta[row.platform].label}</b></span><span><small>发布</small>{row.publications}</span><span><small>浏览</small>{fullNumber(row.views || 0)}</span><span><small>点赞</small>{fullNumber(row.likes || 0)}</span><Tooltip title={row.sync.message}><em className={`${styles.syncState} ${styles[`sync_${status.tone}`]}`}>{status.label}</em></Tooltip></div>; })}{!rows.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="所选渠道暂无正式发布数据" /> : null}</div>;
+}
+function ContentPerformance({ overview, loading, syncing, selected, onSelected, onSync }: { overview?: ContentMonitorOverview; loading: boolean; syncing: boolean; selected: ContentMonitorPlatform[]; onSelected: (value: ContentMonitorPlatform[]) => void; onSync: () => void }) {
+  const [metric, setMetric] = useState<ContentMonitorMetricKey>("views"), [mode, setMode] = useState<TrendMode>("daily");
+  if (loading && !overview) return <section className={styles.performancePanel}><div className={styles.loadingState}><Spin />正在读取内容表现</div></section>; if (!overview) return <Alert type="error" showIcon message="内容表现读取失败" />;
+  return <section className={styles.performancePanel}><header className={styles.sectionHeading}><div><span className={styles.eyebrow}>CONTENT SIGNAL / 30D</span><h2>近30天内容表现</h2><p>{overview.rangeStart} 至 {overview.rangeEnd} · 数据截至 {formatDateTime(overview.dataAsOf)}</p></div><div className={styles.headingActions}><span className={`${styles.sourceBadge} ${styles.sourceLive}`}><i />正式发布链</span><Button icon={<SyncOutlined spin={syncing} />} loading={syncing} onClick={onSync}>立即更新</Button></div></header><ChannelFilter selected={selected} onChange={onSelected} />{overview.message ? <Alert className={styles.dataNotice} type="info" showIcon message={overview.message} /> : null}<div className={styles.metricGrid}>{(Object.keys(metricMeta) as ContentMonitorMetricKey[]).map((key) => <MetricCard key={key} metricKey={key} overview={overview} active={metric === key} onClick={() => setMetric(key)} />)}</div><div className={styles.performanceSplit}><div className={styles.trendBlock}><div className={styles.trendToolbar}><div><strong>{metricMeta[metric].label}趋势</strong><span>{mode === "daily" ? "每日新增" : "周期累计"}</span></div><Segmented size="small" value={mode} onChange={(value) => setMode(value as TrendMode)} options={[{ label: "每日", value: "daily" }, { label: "累计", value: "cumulative" }]} /></div><TrendChart points={overview.trend} metric={metric} mode={mode} visiblePlatforms={selected} /><div className={styles.chartLegend}>{selected.map((platform) => <span key={platform}><i style={{ background: platformMeta[platform].color }} />{platformMeta[platform].label}</span>)}</div></div><ChannelPerformance overview={overview} /></div></section>;
+}
+function TopContent({ content }: { content: ContentMonitorPublishedItem[] }) {
+  const [metric, setMetric] = useState<RankMetric>("views"); const rows = useMemo(() => [...content].sort((a, b) => (b.latestMetrics[metric] || 0) - (a.latestMetrics[metric] || 0)).slice(0, 5), [content, metric]); const max = Math.max(1, ...rows.map((row) => row.latestMetrics[metric] || 0));
+  return <section className={styles.quietPanel}><div className={styles.subheading}><div><h3>Top 5 内容</h3><p>30 天内正式发布内容</p></div><Segmented size="small" value={metric} onChange={(value) => setMetric(value as RankMetric)} options={[{ label: "浏览量", value: "views" }, { label: "点赞量", value: "likes" }]} /></div><div className={styles.rankList}>{rows.map((row, index) => <div key={row.publishResultId}><b>{index + 1}</b><span><strong>{row.title}</strong><i><em style={{ width: `${(row.latestMetrics[metric] || 0) / max * 100}%` }} /></i></span><small>{fullNumber(row.latestMetrics[metric] || 0)}</small></div>)}{!rows.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已发布内容" /> : null}</div></section>;
+}
+function FailureAlerts({ alerts, compact = false }: { alerts: ContentMonitorFailureAlert[]; compact?: boolean }) {
+  const rows = compact ? alerts.slice(0, 5) : alerts;
+  return <section className={styles.quietPanel}><div className={styles.subheading}><div><h3>失败告警</h3><p>只显示等待自动重试，或 24h/72h 回测后被删、不可见的文章</p></div><Tag color={alerts.length ? "error" : "success"}>{alerts.length ? `${alerts.length} 项` : "已清空"}</Tag></div>{rows.length ? <div className={styles.attentionList}>{rows.map((item) => <div key={item.id}><WarningFilled /><span><strong>{item.title}</strong><small>{platformMeta[item.platform].label} · {item.reason}</small></span><em>{item.kind === "publish_retry" ? `等待第 ${(item.retryCount || 0) + 1} 次重试` : "需人工判断"}</em></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有失败告警" />}</section>;
+}
+function PublishedDetail({ overview, selected, onSelected }: { overview?: ContentMonitorOverview; selected: ContentMonitorPlatform[]; onSelected: (value: ContentMonitorPlatform[]) => void }) {
+  const [sort, setSort] = useState<RankMetric>("views"); const rows = useMemo(() => [...(overview?.content || [])].filter((item) => selected.includes(item.platform)).sort((a, b) => (b.latestMetrics[sort] || 0) - (a.latestMetrics[sort] || 0)), [overview?.content, selected, sort]);
+  return <section className={styles.quietPanel}><div className={styles.subheading}><div><h3>内容表现明细</h3><p>仅展示近 30 天已正式发布内容；时间为真实发布时间</p></div><Segmented value={sort} onChange={(value) => setSort(value as RankMetric)} options={[{ label: "浏览量从高到低", value: "views" }, { label: "点赞量从高到低", value: "likes" }]} /></div><Table rowKey="publishResultId" dataSource={rows} pagination={{ pageSize: 15 }} locale={{ emptyText: <Empty description="所选渠道近 30 天暂无已发布内容" /> }} columns={[{ title: "文章", dataIndex: "title", ellipsis: true, render: (value, row) => row.publicUrl ? <Typography.Link href={row.publicUrl} target="_blank" rel="noreferrer">{value} <LinkOutlined /></Typography.Link> : value }, { title: "渠道", dataIndex: "platform", width: 100, render: (value: ContentMonitorPlatform) => <Tag>{platformMeta[value].label}</Tag> }, { title: "发布时间", dataIndex: "publishedAt", width: 180, render: formatDateTime }, { title: "浏览量", render: (_, row) => fullNumber(row.latestMetrics.views || 0), sorter: (a, b) => (a.latestMetrics.views || 0) - (b.latestMetrics.views || 0) }, { title: "点赞数", render: (_, row) => fullNumber(row.latestMetrics.likes || 0), sorter: (a, b) => (a.latestMetrics.likes || 0) - (b.latestMetrics.likes || 0) }, { title: "收藏数", render: (_, row) => fullNumber(row.latestMetrics.favorites || 0) }]} /></section>;
+}
+function MonitorWorkspace() {
+  const router = useRouter(), searchParams = useSearchParams(), requested = searchParams.get("tab") || "overview"; const tab = ({ publishing: "content", ledger: "content", site: "website", questions: "ai", review: "ai" }[requested] || requested) as MonitorTab;
+  const month = currentMonth(), { workspace, loading, error, refresh } = useMonthlyWorkspace(month); const [products, setProducts] = useState<ProductRegistryItem[]>([]), [review, setReview] = useState<MonthlyReview>(), [alerts, setAlerts] = useState<ContentMonitorFailureAlert[]>([]), [monitor, setMonitor] = useState<ContentMonitorOverview>(), [monitorLoading, setMonitorLoading] = useState(true), [syncing, setSyncing] = useState(false), [selected, setSelected] = useState<ContentMonitorPlatform[]>(platformOrder); const [messageApi, context] = message.useMessage();
+  const refreshMonitor = useCallback(async () => { setMonitorLoading(true); try { const response = await fetch(`/api/v5/content-monitor/overview?rangeDays=30&platforms=${selected.join(",")}`, { cache: "no-store" }); const body = await response.json(); if (!response.ok || !body.ok) throw new Error(body.error?.message || "内容表现读取失败。"); setMonitor(body.data); } catch (cause) { messageApi.error(cause instanceof Error ? cause.message : "内容表现读取失败。"); } finally { setMonitorLoading(false); } }, [messageApi, selected]);
+  const refreshSupporting = useCallback(async () => { const [productResponse, reviewResponse, alertResponse] = await Promise.all([fetch("/api/v5/products", { cache: "no-store" }), fetch(`/api/v5/monthly-reviews/${month}`, { cache: "no-store" }), fetch("/api/v5/content-monitor/alerts", { cache: "no-store" })]); const [productBody, reviewBody, alertBody] = await Promise.all([productResponse.json(), reviewResponse.json(), alertResponse.json()]); if (productResponse.ok) setProducts(productBody.products || productBody.data?.products || []); if (reviewResponse.ok) setReview(reviewBody.data); if (alertResponse.ok) setAlerts(alertBody.data?.items || []); }, [month]);
+  useEffect(() => { void Promise.all([refreshMonitor(), refreshSupporting()]); }, [refreshMonitor, refreshSupporting]);
+  const handleSync = useCallback(async () => { setSyncing(true); try { const response = await fetch("/api/v5/content-monitor/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ platforms: selected }) }); const body = await response.json(); messageApi[response.ok && body.data?.status !== "failed" ? "success" : "error"](body.data?.message || body.error?.message || "平台数据更新请求已完成。"); await refreshMonitor(); } finally { setSyncing(false); } }, [messageApi, refreshMonitor, selected]);
+  const options = [{ label: "总览", value: "overview" }, { label: "内容表现", value: "content" }, { label: "AI 可见性 / 问题监控", value: "ai" }, { label: "官网监控", value: "website" }, { label: "失败告警", value: "alerts" }, { label: "系统记录", value: "history" }];
+  return <>{context}<header className={styles.pageHeader}><div><span className={styles.pageKicker}>CONTENT MONITOR TOWER</span><Typography.Title level={2}>内容监控塔</Typography.Title><Typography.Text>统一观测正式发布、渠道反馈、官网审计与 AI 可见性，并为 MonthlyReview 和下月方案提供判断依据。</Typography.Text></div><Button icon={<ReloadOutlined />} loading={loading || monitorLoading} onClick={() => void Promise.all([refresh(month), refreshMonitor(), refreshSupporting()])}>刷新页面</Button></header><Segmented block value={tab} options={options} onChange={(value) => router.push(`/content-monitor?tab=${value}`)} className={styles.pageTabs} />{error ? <Alert showIcon type="error" message="监控数据读取失败" description={error} className={styles.pageAlert} /> : null}
+    {tab === "overview" ? <Space direction="vertical" size={18} className={styles.fullWidth}><div className={`${styles.operationStrip} ${alerts.length ? styles.operationStripWarning : ""}`}><span className={styles.operationIcon}>{alerts.length ? <WarningFilled /> : <CheckCircleFilled />}</span><div><strong>{alerts.length ? `${alerts.length} 项失败告警` : "发布与监测链路正常"}</strong><p>近 30 天已发布 {monitor?.metrics.publications.value || 0} 篇 · AI 有效样本 {review?.questions.reduce((sum, row) => sum + (row.geoMetric?.successfulRuns || 0), 0) || 0} 次</p></div><span>内容、官网与 AI 证据统一进入内容监控塔</span></div><ContentPerformance overview={monitor} loading={monitorLoading} syncing={syncing} selected={selected} onSelected={setSelected} onSync={handleSync} /><ContentMonitorAiVisibility month={month} review={review} compact /><section className={styles.secondaryGrid}><TopContent content={monitor?.content || []} /><FailureAlerts alerts={alerts} compact /></section></Space> : null}
+    {tab === "content" ? <Space direction="vertical" size={18} className={styles.fullWidth}><section className={styles.filterPanel}><div><strong>内容渠道</strong><span>筛选会联动 KPI、趋势、渠道表现与内容明细</span></div><ChannelFilter selected={selected} onChange={setSelected} /></section><PublishedDetail overview={monitor} selected={selected} onSelected={setSelected} /></Space> : null}
+    {tab === "ai" ? <Space direction="vertical" size={18} className={styles.fullWidth}><ContentMonitorAiVisibility month={month} review={review} /><GeoQuestionMonitoringPanel month={month} products={products} /></Space> : null}
+    {tab === "website" ? <SiteAuditPanel products={products} /> : null}{tab === "alerts" ? <FailureAlerts alerts={alerts} /> : null}
+    {tab === "history" ? <section className={styles.quietPanel}><div className={styles.subheading}><div><h3>系统自动化记录</h3><p>生产、发布、验证和复测动作按时间归档</p></div></div><Table rowKey="taskId" dataSource={[...(workspace?.productionTasks || [])].reverse()} pagination={{ pageSize: 15 }} columns={[{ title: "对象", dataIndex: "title" }, { title: "渠道", dataIndex: "channel" }, { title: "结果", dataIndex: "status", render: (value) => <Tag>{value}</Tag> }, { title: "自动化动作", render: (_, row) => row.status === "published" ? "完成正式发布并进入指标采集" : row.scheduledAt ? "等待发布排程" : "内容生产链继续处理" }]} /></section> : null}
   </>;
 }
-
-export default function GeoMonitorPage() { return <Suspense fallback={null}><GeoMonitorWorkspace /></Suspense>; }
+export default function GeoMonitorPage() { return <Suspense fallback={<Spin fullscreen tip="正在打开内容监控塔" />}><MonitorWorkspace /></Suspense>; }

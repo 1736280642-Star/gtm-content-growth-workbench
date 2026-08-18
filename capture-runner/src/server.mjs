@@ -8,13 +8,22 @@ const HOST = "127.0.0.1";
 const PORT = Number(process.env.V5_CAPTURE_RUNNER_PORT || 17321);
 const WORKBENCH_URL = (process.env.V5_WORKBENCH_BASE_URL || "http://127.0.0.1:3027").replace(/\/$/, "");
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
-const activeTaskIds = new Set();
+const ACTIVE_TASK_TIMEOUT_MS = 6 * 60 * 1000;
+const CAPTURE_PLATFORM_ORDER = ["doubao", "deepseek", "qwen", "chatgpt"];
+const activeTasks = new Map();
 const DEVICE_ID = process.env.V5_CAPTURE_DEVICE_ID || "local-chrome-companion";
 const WORKSPACE_ID = process.env.V5_CAPTURE_WORKSPACE_ID || "local-workbench";
 const USER_ID = process.env.V5_CAPTURE_USER_ID || "local-user";
 let extensionHeartbeat;
 let lastTaskFailure;
 let lastNextTaskPoll;
+let lastLeasedPlatform;
+
+function releaseStaleActiveTasks(now = Date.now()) {
+  for (const [taskId, startedAt] of activeTasks) {
+    if (now - startedAt > ACTIVE_TASK_TIMEOUT_MS) activeTasks.delete(taskId);
+  }
+}
 
 function send(response, status, body, origin) {
   response.writeHead(status, {
@@ -74,19 +83,36 @@ function runnerContext(task, reason, scope) {
 }
 
 async function nextTask() {
-  const response = await workbench("/api/v5/capture-tasks");
   const supported = new Set((extensionHeartbeat?.adapters || []).filter((item) => item.status === "ready").map((item) => item.platform));
   if (!supported.size) return undefined;
-  const task = response.tasks.find((item) =>
-    (item.status === "pending" || (item.status === "leased" && item.deviceId === DEVICE_ID))
-    && !activeTaskIds.has(item.taskId)
-    && (!supported.size || supported.has(item.platform))
-  );
+  const now = Date.now();
+  releaseStaleActiveTasks(now);
+  if (activeTasks.size) return undefined;
+  const response = await workbench("/api/v5/capture-tasks");
+  const candidates = response.tasks.filter((item) => {
+    const expiredOwnLease = item.status === "leased"
+      && item.deviceId === DEVICE_ID
+      && item.leaseExpiresAt
+      && Date.parse(item.leaseExpiresAt) <= now;
+    return (item.status === "pending" || expiredOwnLease)
+      && !activeTasks.has(item.taskId)
+      && supported.has(item.platform);
+  });
+  const lastPlatformIndex = CAPTURE_PLATFORM_ORDER.indexOf(lastLeasedPlatform);
+  const platformOrder = [
+    ...CAPTURE_PLATFORM_ORDER.slice(lastPlatformIndex + 1),
+    ...CAPTURE_PLATFORM_ORDER.slice(0, lastPlatformIndex + 1)
+  ];
+  const task = platformOrder
+    .filter((platform) => supported.has(platform))
+    .map((platform) => candidates.find((item) => item.platform === platform))
+    .find(Boolean) || candidates[0];
   if (!task) return undefined;
   await workbench(`/api/v5/capture-tasks/${encodeURIComponent(task.taskId)}/lease`, {
     method: "POST", body: JSON.stringify({ deviceId: DEVICE_ID, durationMs: 10 * 60 * 1000 })
   });
-  activeTaskIds.add(task.taskId);
+  activeTasks.set(task.taskId, now);
+  lastLeasedPlatform = task.platform;
   return { ...task, id: task.taskId, questionText: task.question, version: task.attemptCount + 1, condition: task.captureCondition };
 }
 
@@ -94,7 +120,7 @@ async function forwardStatus(taskId, payload) {
   if (!payload.task || payload.task.id !== taskId) throw Object.assign(new Error("Task identity mismatch."), { status: 422 });
   const data = { taskId, status: payload.status, note: payload.note || "Runner 更新采集任务状态" };
   if (["waiting_for_browser", "needs_login", "adapter_mismatch", "interrupted", "timed_out", "capture_failed", "cancelled"].includes(payload.status)) {
-    activeTaskIds.delete(taskId);
+    activeTasks.delete(taskId);
     lastTaskFailure = {
       taskId,
       platform: payload.task.platform,
@@ -143,7 +169,7 @@ async function forwardResult(taskId, payload) {
       body: JSON.stringify({ taskId, artifactHash, deviceId: DEVICE_ID, collectedBy: "local-chrome-companion", payload: evidence })
     });
   } finally {
-    activeTaskIds.delete(taskId);
+    activeTasks.delete(taskId);
   }
 }
 
@@ -167,7 +193,7 @@ const server = http.createServer(async (request, response) => {
         checkedAt: new Date().toISOString(),
         source: "local_runner",
         extension: { status: connected ? "connected" : "disconnected", version: extensionHeartbeat?.extensionVersion, lastHeartbeatAt: extensionHeartbeat?.receivedAt, privacy: { cookieUpload: false, passwordUpload: false, tokenUpload: false, taskPageOnly: true } },
-        runner: { status: "ready", endpoint: `http://${HOST}:${PORT}`, queueDepth: activeTaskIds.size, recoveryAction: "无需处理", lastTaskFailure, lastNextTaskPoll },
+        runner: { status: "ready", endpoint: `http://${HOST}:${PORT}`, queueDepth: activeTasks.size, recoveryAction: "无需处理", lastTaskFailure, lastNextTaskPoll },
         adapters: connected ? extensionHeartbeat.adapters : [
           { platform: "doubao", status: "pending_config", message: "等待豆包适配器心跳。", recoveryAction: "加载扩展并打开豆包页面。" },
           { platform: "deepseek", status: "pending_config", message: "等待 DeepSeek 适配器心跳。", recoveryAction: "加载扩展并打开 DeepSeek 页面。" },
