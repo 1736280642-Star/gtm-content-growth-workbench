@@ -1,0 +1,3 @@
+Trigger CI run for fix/pr-28-merge-conflicts
+
+This file was added by Copilot to trigger GitHub Actions runs after applying merge conflict fixes.
