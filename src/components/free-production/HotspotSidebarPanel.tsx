@@ -40,9 +40,18 @@ export function HotspotSidebarPanel({ plan, hasPreviousVersion, integrating, res
           </Button>
         ) : null}
       </Space.Compact>
-      {noSuitableHotspot ? <p className={styles.empty}>最近没有与当前正文自然相关的热点。</p> : null}
-      {error && !noSuitableHotspot ? <Alert showIcon type="error" message="热点未能融入正文" description={error} /> : null}
-      {plan ? <HotspotIntegrationSummary plan={plan} /> : !error ? <p className={styles.empty}>模型会结合当前内容类型、完整写作规则和最新热点，判断是否适合融入以及应该改写哪些位置。</p> : null}
+      {error ? (
+        <Alert showIcon type="error" message="热点未能融入正文" description={error} />
+      ) : null}
+      {plan ? (
+        <HotspotIntegrationSummary plan={plan} />
+      ) : (
+        noSuitableHotspot ? (
+          <p className={styles.empty}>最近没有与当前正文自然相关的热点。</p>
+        ) : (
+          <p className={styles.empty}>模型会结合当前内容类型、完整写作规则和最新热点，判断是否适合融入以及应该改写哪些位置。</p>
+        )
+      )}
     </section>
   );
 }
