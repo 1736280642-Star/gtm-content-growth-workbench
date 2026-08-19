@@ -4,6 +4,20 @@ import type { GeoResearchResultPack, ModelAnswerObservation } from './geo-resear
 function unique(values: string[]) { return [...new Set(values.filter(Boolean))]; }
 function records(value: unknown): Array<Record<string, unknown>> { return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))) : []; }
 
+/** frontend_baseline aggregate.channelCitationStats → KPI 归因数据（被 AI 引用 URL 的渠道分布） */
+function channelCitationStats(value: unknown): Array<Record<string, unknown>> {
+  return records(value).flatMap((item) => {
+    const channelKey = typeof item.channelKey === 'string' && item.channelKey.trim() ? item.channelKey.trim() : '';
+    if (!channelKey) return [];
+    const citedUrlCount = typeof item.citedUrlCount === 'number' && Number.isFinite(item.citedUrlCount) ? Math.max(0, Math.round(item.citedUrlCount)) : 0;
+    const citedUrlShare = typeof item.citedUrlShare === 'number' && Number.isFinite(item.citedUrlShare) ? Math.max(0, Math.min(1, item.citedUrlShare)) : 0;
+    const dominantContentTypes = Array.isArray(item.dominantContentTypes)
+      ? item.dominantContentTypes.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim())).slice(0, 8)
+      : [];
+    return [{ channelKey, citedUrlCount, citedUrlShare, dominantContentTypes }];
+  });
+}
+
 export function buildGeoResearchResultPack(input: { productId: string; researchRunId: string; sourceSnapshotId: string; snapshot: ProbeSetSnapshot; observations: ModelAnswerObservation[]; structured?: Record<string, unknown>; generatedAt?: string }): GeoResearchResultPack {
   const observations = input.observations;
   const successful = observations.filter((item) => item.status === 'success');
@@ -33,7 +47,7 @@ export function buildGeoResearchResultPack(input: { productId: string; researchR
     roleScenarioInsights,
     entityRelationshipFindings: relationshipFindings,
     competitorLandscape: records((structuredRecord.competitorLandscape as Record<string, unknown> | undefined)?.competitors),
-    citationLandscape: { citedDomains: unique(observations.flatMap((item) => item.visibleCitations.map((url) => { try { return new URL(url).hostname; } catch { return ''; } }))), ownedDomainCitationRate: 0, officialEvidenceCoverage: 0, unsupportedClaims: [], sourceGaps: [] },
+    citationLandscape: { citedDomains: unique(observations.flatMap((item) => item.visibleCitations.map((url) => { try { return new URL(url).hostname; } catch { return ''; } }))), channelCitationStats: channelCitationStats((structuredRecord.aggregate as Record<string, unknown> | undefined)?.channelCitationStats), ownedDomainCitationRate: 0, officialEvidenceCoverage: 0, unsupportedClaims: [], sourceGaps: [] },
     contentOpportunities: contentGaps.map((gap) => ({ ...gap, recommendedAction: 'monitor_only', evidenceReadiness: 'blocked', priority: 'low', reason: 'AI 观测缺口尚未经过真实需求和产品证据门禁' })),
     monitoringBaseline: { recommendedProbeIds: input.snapshot.probes.filter((probe) => probe.priority === 'P0').map((probe) => probe.probeId), targetEntities: [], expectedRelationships: relationshipFindings.map((item) => item.expectedRelationship), platforms: providers },
     decisionQueue: contentGaps.map((gap, index) => ({ decisionType: 'collect_missing_evidence', targetId: String(gap.id || gap.title || 'gap-' + index), reason: '结果包只生成候选，需人工确认后进入问题池或策略包' }))

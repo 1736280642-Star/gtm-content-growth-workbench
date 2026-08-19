@@ -11,6 +11,8 @@ export interface GeoSearchQuery {
   identityAnchors: string[];
   candidateAcceptanceRule: string;
   candidateRejectionRule: string;
+  /** 平台感知查询绑定的渠道（来自渠道规则包，无规则包时为空） */
+  channelKey?: string;
 }
 
 export interface GeoSearchQueryPlan {
@@ -69,6 +71,15 @@ export interface GeoSearchEvidenceCandidate {
   rawResponseRefs: string[];
   entityClassification?: Exclude<GeoSearchEntityClassification, "homonym" | "unrelated" | "insufficient_evidence">;
   matchedIdentityAnchors?: string[];
+  /** 候选 URL 命中的目标渠道（来自渠道规则包域名匹配；非目标平台来源为空） */
+  channelKey?: string;
+}
+
+export interface GeoSearchChannelStats {
+  /** 该渠道命中的候选来源总数 */
+  candidateCount: number;
+  /** 其中通过实体校验（保留在 pack.candidates 中）的数量 */
+  verifiedCount: number;
 }
 
 export interface MultiSearchEvidencePack {
@@ -76,6 +87,8 @@ export interface MultiSearchEvidencePack {
   queries: GeoSearchQuery[];
   providerRuns: GeoSearchProviderRun[];
   candidates: GeoSearchEvidenceCandidate[];
+  /** 各目标渠道的证据分布（配置渠道规则包后才有值）——"该平台在收录什么"的原始答案 */
+  channelStats?: Record<string, GeoSearchChannelStats>;
   gate: {
     decision: "passed" | "blocked";
     degraded?: boolean;

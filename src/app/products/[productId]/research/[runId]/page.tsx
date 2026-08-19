@@ -13,6 +13,7 @@ import { callJsonApi } from "@/lib/client-api";
 import { useWorkbenchSnapshot } from "@/lib/client-state";
 import { createV5WritePayload } from "@/lib/v5-client";
 import type {
+  GeoMentionBaseline,
   GeoResearchEvidence,
   GeoResearchFinding,
   GeoResearchFindingType,
@@ -29,6 +30,20 @@ interface RunResponse {
   ok: true;
   product: ProductRegistryItem;
   runWorkspace: GeoResearchRunWorkspace;
+  mentionKpi?: {
+    triggerType: string;
+    mentionBaseline?: GeoMentionBaseline;
+    mentionDelta?: {
+      baselineMentionRate: number;
+      retestMentionRate: number;
+      mentionRateDelta: number;
+      newlyMentionedQuestions: string[];
+      lostMentionQuestions: string[];
+      baselineCapturedAt: string;
+      retestCapturedAt: string;
+    };
+    previousBaselineRun?: { runId: string; runVersion: number; capturedAt: string };
+  };
 }
 
 function DownstreamCandidatePanel({ candidates }: { candidates: GeoResearchDownstreamCandidates }) {
@@ -36,11 +51,12 @@ function DownstreamCandidatePanel({ candidates }: { candidates: GeoResearchDowns
     { key: "questionPool", label: "GEO 问题池候选", count: candidates.questionPool.length, detail: "需人工确认真实需求后导入" },
     { key: "strategyPack", label: "策略包机会候选", count: candidates.strategyPack.length, detail: "需人工确认机会、证据和文章组合" },
     { key: "websiteRemediation", label: "官网整改候选", count: candidates.websiteRemediation.length, detail: "需结合官网覆盖审计后处理" },
+    { key: "contentCluster", label: "内链集群候选", count: candidates.contentCluster.length, detail: "蓝图内链集群需随策略包人工批准" },
     { key: "monitoring", label: "监控问题候选", count: candidates.monitoring.length, detail: "需人工确认平台、采样量和关系" }
   ];
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Alert showIcon type="info" message="研究结果已投影到四个下游入口" description="这些记录全部保持候选状态，不会自动写入问题池、策略包、官网整改或月度监控。" />
+      <Alert showIcon type="info" message="研究结果已投影到五个下游入口" description="这些记录全部保持候选状态，不会自动写入问题池、策略包、官网整改、内链集群或月度监控。" />
       <Table
         rowKey="key"
         size="small"
@@ -128,6 +144,7 @@ export default function GeoResearchRunPage() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const workspace = data?.runWorkspace;
+  const mentionKpi = data?.mentionKpi;
   const completedCount = workspace?.tasks.filter((task) => task.status === "completed").length || 0;
   const progress = workspace?.tasks.length ? Math.round(completedCount / workspace.tasks.length * 100) : 0;
   const publicSources = useMemo(
@@ -201,9 +218,44 @@ export default function GeoResearchRunPage() {
               <div><span>可见公开来源</span><strong>{publicSources.length}</strong><small>网页 URL 可直接复核</small></div>
               <div><span>结构化发现</span><strong>{workspace.findings.length}</strong><small>问题、竞品、引用和缺口</small></div>
               <div><span>联网搜索门禁</span><strong>{workspace.run.liveSearchVerified ? "通过" : "待通过"}</strong><small>未通过不能生成蓝图</small></div>
+              {mentionKpi?.mentionBaseline ? (
+                <div>
+                  <span>目标提及率基线</span>
+                  <strong>{(mentionKpi.mentionBaseline.targetMentionRate * 100).toFixed(1)}%</strong>
+                  <small>{mentionKpi.mentionBaseline.targetMentionedCount}/{mentionKpi.mentionBaseline.questionCount} 个问题被 AI 提及</small>
+                </div>
+              ) : null}
             </div>
             <GeoResearchRail tasks={workspace.tasks} />
           </Card>
+
+          {mentionKpi?.mentionDelta ? (
+            <Card bordered={false} title="提及率复测归因（发布后 KPI 闭环）">
+              <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                <div className="geo-run-summary">
+                  <div><span>前次基线提及率</span><strong>{(mentionKpi.mentionDelta.baselineMentionRate * 100).toFixed(1)}%</strong><small>{new Date(mentionKpi.mentionDelta.baselineCapturedAt).toLocaleString("zh-CN")}</small></div>
+                  <div><span>本次复测提及率</span><strong>{(mentionKpi.mentionDelta.retestMentionRate * 100).toFixed(1)}%</strong><small>{new Date(mentionKpi.mentionDelta.retestCapturedAt).toLocaleString("zh-CN")}</small></div>
+                  <div><span>提及率变化</span><strong style={{ color: mentionKpi.mentionDelta.mentionRateDelta >= 0 ? "#389e0d" : "#cf1322" }}>{mentionKpi.mentionDelta.mentionRateDelta >= 0 ? "+" : ""}{(mentionKpi.mentionDelta.mentionRateDelta * 100).toFixed(1)}%</strong><small>发布后内容带来的提及率增量</small></div>
+                </div>
+                <Alert
+                  showIcon
+                  type={mentionKpi.mentionDelta.mentionRateDelta >= 0 ? "success" : "warning"}
+                  message={`新增被提及问题 ${mentionKpi.mentionDelta.newlyMentionedQuestions.length} 个；失去提及 ${mentionKpi.mentionDelta.lostMentionQuestions.length} 个`}
+                  description={
+                    <Space direction="vertical" size={4}>
+                      {mentionKpi.mentionDelta.newlyMentionedQuestions.length ? (
+                        <Typography.Text>新增提及：{mentionKpi.mentionDelta.newlyMentionedQuestions.slice(0, 5).join("；")}</Typography.Text>
+                      ) : null}
+                      {mentionKpi.mentionDelta.lostMentionQuestions.length ? (
+                        <Typography.Text type="warning">失去提及：{mentionKpi.mentionDelta.lostMentionQuestions.slice(0, 5).join("；")}</Typography.Text>
+                      ) : null}
+                      <Typography.Text type="secondary">差值由两次运行的结构化基线确定性计算，不经 LLM。</Typography.Text>
+                    </Space>
+                  }
+                />
+              </Space>
+            </Card>
+          ) : null}
 
           <Card bordered={false}>
             <Tabs

@@ -61,6 +61,103 @@ export function pruneGeoResearchCitations(
   pruneCollection("questions", "sourceUrls");
   pruneCollection("competitors", "sourceUrls");
   pruneCollection("tests", "citedUrls");
+  // 选型替代格局（顶层：live_competitor_discovery）：无合法引用即删除，与竞品同规则
+  if (Array.isArray(output.selectionAlternatives)) {
+    output.selectionAlternatives = output.selectionAlternatives.flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        removedUncitedItems += 1;
+        return [];
+      }
+      const record = { ...(item as Record<string, unknown>) };
+      const before = readUrlArray(record.sourceUrls);
+      const after = [...new Set(before.filter((url) => allowedUrls.has(url)))];
+      removedInvalidUrls += before.length - after.length;
+      if (!after.length) {
+        removedUncitedItems += 1;
+        return [];
+      }
+      record.sourceUrls = after;
+      return [record];
+    });
+  }
+  // 选型对比维度证据（顶层）：修剪 URL；available 但无合法引用降级为 missing（软修正，不删条目）
+  if (Array.isArray(output.comparisonDimensionEvidence)) {
+    output.comparisonDimensionEvidence = output.comparisonDimensionEvidence.flatMap((item) => {
+      const record = item && typeof item === "object" && !Array.isArray(item)
+        ? { ...(item as Record<string, unknown>) }
+        : undefined;
+      if (!record) return [];
+      const before = readUrlArray(record.sourceUrls);
+      const after = [...new Set(before.filter((url) => allowedUrls.has(url)))];
+      removedInvalidUrls += before.length - after.length;
+      record.sourceUrls = after;
+      if (!after.length && record.evidenceStatus === "available") record.evidenceStatus = "missing";
+      return [record];
+    });
+  }
+  // 蓝图 competitorLandscape 内嵌集合：selectionAlternatives 修剪、comparisonDimensionEvidence 修剪
+  if (output.competitorLandscape && typeof output.competitorLandscape === "object" && !Array.isArray(output.competitorLandscape)) {
+    const landscape = { ...(output.competitorLandscape as Record<string, unknown>) };
+    if (Array.isArray(landscape.selectionAlternatives)) {
+      landscape.selectionAlternatives = landscape.selectionAlternatives.flatMap((item) => {
+        const record = item && typeof item === "object" && !Array.isArray(item)
+          ? { ...(item as Record<string, unknown>) }
+          : undefined;
+        if (!record) {
+          removedUncitedItems += 1;
+          return [];
+        }
+        const before = readUrlArray(record.sourceUrls);
+        const after = [...new Set(before.filter((url) => allowedUrls.has(url)))];
+        removedInvalidUrls += before.length - after.length;
+        if (!after.length) {
+          removedUncitedItems += 1;
+          return [];
+        }
+        record.sourceUrls = after;
+        return [record];
+      });
+    }
+    if (Array.isArray(landscape.comparisonDimensionEvidence)) {
+      landscape.comparisonDimensionEvidence = landscape.comparisonDimensionEvidence.flatMap((item) => {
+        const record = item && typeof item === "object" && !Array.isArray(item)
+          ? { ...(item as Record<string, unknown>) }
+          : undefined;
+        if (!record) return [];
+        const before = readUrlArray(record.sourceUrls);
+        const after = [...new Set(before.filter((url) => allowedUrls.has(url)))];
+        removedInvalidUrls += before.length - after.length;
+        record.sourceUrls = after;
+        if (!after.length && record.evidenceStatus === "available") record.evidenceStatus = "missing";
+        return [record];
+      });
+    }
+    output.competitorLandscape = landscape;
+  }
+  // platformStrategy[].evidenceBasis.sourceUrls：修剪；清空后无 candidateIds 支撑则标 hypothesis（软降级）
+  if (Array.isArray(output.platformStrategy)) {
+    output.platformStrategy = output.platformStrategy.flatMap((item) => {
+      const record = item && typeof item === "object" && !Array.isArray(item)
+        ? { ...(item as Record<string, unknown>) }
+        : undefined;
+      if (!record) return [];
+      const basis = record.evidenceBasis && typeof record.evidenceBasis === "object" && !Array.isArray(record.evidenceBasis)
+        ? { ...(record.evidenceBasis as Record<string, unknown>) }
+        : undefined;
+      if (!basis) {
+        record.hypothesis = true;
+        return [record];
+      }
+      const before = readUrlArray(basis.sourceUrls);
+      const after = [...new Set(before.filter((url) => allowedUrls.has(url)))];
+      removedInvalidUrls += before.length - after.length;
+      basis.sourceUrls = after;
+      record.evidenceBasis = basis;
+      const hasCandidateIds = Array.isArray(basis.candidateIds) && basis.candidateIds.length > 0;
+      if (!after.length && !hasCandidateIds) record.hypothesis = true;
+      return [record];
+    });
+  }
   if (Array.isArray(output.claimAssessments)) {
     output.claimAssessments = output.claimAssessments.flatMap((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) {

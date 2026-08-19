@@ -96,3 +96,38 @@ export function compileGeoProbeSet(input: GeoProbeCompilerInput): ProbeSetSnapsh
   if (snapshot.probes.length < input.contract.minProbes) throw new Error(`Compiled ${snapshot.probes.length} probes; minimum is ${input.contract.minProbes}`);
   return snapshot;
 }
+
+/** 复测探针集：post_publish_retest run 用批准蓝图 retestBaseline.questions 覆盖探针集（全部 P0 提及率复测）。 */
+export function overrideGeoProbeSetQuestions(input: {
+  snapshot: ProbeSetSnapshot;
+  questions: string[];
+}): ProbeSetSnapshot {
+  const questions = input.questions.map((question) => question.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  if (!questions.length) throw new Error('Retest question set is empty');
+  const template = input.snapshot.probes[0];
+  const probes: GeoProbe[] = questions.map((question, index) => ({
+    probeId: `geo-probe-${String(index + 1).padStart(3, '0')}`,
+    objective: 'public_cognition',
+    roleId: template?.roleId || 'retest-role',
+    scenarioId: template?.scenarioId || 'retest-scenario',
+    journeyStage: template?.journeyStage || 'selection',
+    decision: template?.decision || 'mention_retest',
+    observationMode: 'scenario_anchored',
+    questionText: question,
+    promptVisibleEntityIds: [],
+    scoringOnlyEntityIds: template?.scoringOnlyEntityIds || [],
+    expectedRelations: [],
+    evidenceExpectation: 'ai_observation_only',
+    scoringDimensions: ['target_mentioned'],
+    priority: 'P0'
+  }));
+  const { probeSetId: _probeSetId, compiledAt: _compiledAt, snapshotHash: _snapshotHash, ...snapshotCore } = input.snapshot;
+  const nextCore = { ...snapshotCore, probes };
+  const nextHash = hash(nextCore);
+  return {
+    ...nextCore,
+    probeSetId: `geo-probe-set-${nextHash.slice(0, 16)}`,
+    compiledAt: new Date().toISOString(),
+    snapshotHash: nextHash
+  };
+}

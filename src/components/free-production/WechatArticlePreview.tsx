@@ -90,7 +90,9 @@ export function WechatArticlePreview({
             <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>
           </Space>
         </div>
-        <WechatCoverBindingPanel batchId={batchId} batchVersion={batchVersion} coverRisk={coverRisk} saving={savingCover} locked={locked} onSave={onSaveCover} />
+        {batchId && batchVersion !== undefined && onSaveCover
+          ? <WechatCoverBindingPanel batchId={batchId} batchVersion={batchVersion} coverRisk={coverRisk} saving={savingCover} locked={locked} onSave={onSaveCover} />
+          : null}
         <VisualAssetBindingPanel suggestions={artifact.visualSuggestions} productId={productId} onBind={onBindVisual} />
         <iframe
           className="wechat-official-preview-frame"

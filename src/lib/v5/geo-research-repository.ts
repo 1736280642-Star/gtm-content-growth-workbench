@@ -3,6 +3,7 @@ import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import type {
   CreateGeoResearchProjectInput,
   GeoBlueprintVersion,
+  GeoMentionBaseline,
   GeoResearchEvidence,
   GeoResearchFinding,
   GeoResearchProject,
@@ -17,7 +18,7 @@ import type {
 import type { GeoResearchResultPack } from "./geo-research-result-contracts";
 import type { GeoResearchProviderResult } from "./geo-research-provider";
 import type { ProbeSetSnapshot } from "./geo-probe-contracts";
-import { compileGeoProbeSet, defaultGeoProbeContract } from "./geo-probe-compiler";
+import { compileGeoProbeSet, defaultGeoProbeContract, overrideGeoProbeSetQuestions } from "./geo-probe-compiler";
 import { evaluateGeoSourceSnapshotQuality, type GeoSnapshotSourceMetadata } from "./geo-source-quality";
 import {
   getV5GovernancePool,
@@ -167,6 +168,7 @@ function mapRun(row: RowDataPacket): GeoResearchRun {
     status: String(row.status) as GeoResearchRun["status"],
     liveSearchRequired: true,
     liveSearchVerified: Boolean(row.live_search_verified),
+    mentionBaseline: parseV5Json<GeoMentionBaseline | null>(row.mention_baseline, null) || undefined,
     rowVersion: Number(row.row_version),
     startedAt: optionalIso(row.started_at),
     completedAt: optionalIso(row.completed_at),
@@ -175,6 +177,53 @@ function mapRun(row: RowDataPacket): GeoResearchRun {
     createdBy: String(row.created_by),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at)
+  };
+}
+
+/** frontend_baseline 结构化输出 → 提及率 KPI 基线（确定性推导，不经 LLM）。 */
+function buildMentionBaselineFromStructured(structured: Record<string, unknown>): GeoMentionBaseline | null {
+  const tests = Array.isArray(structured.tests)
+    ? structured.tests.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
+  if (!tests.length) return null;
+  const aggregate = structured.aggregate && typeof structured.aggregate === "object" && !Array.isArray(structured.aggregate)
+    ? structured.aggregate as Record<string, unknown>
+    : {};
+  const mentionedQuestions: string[] = [];
+  const unmentionedQuestions: string[] = [];
+  for (const test of tests) {
+    const question = typeof test.question === "string" && test.question.trim() ? test.question.trim() : "";
+    if (!question) continue;
+    if (test.targetMentioned === true) mentionedQuestions.push(question);
+    else unmentionedQuestions.push(question);
+  }
+  const channelCitationStats = (Array.isArray(aggregate.channelCitationStats) ? aggregate.channelCitationStats : [])
+    .flatMap((raw) => {
+      const item = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+      const channelKey = typeof item.channelKey === "string" && item.channelKey.trim() ? item.channelKey.trim() : "";
+      if (!channelKey) return [];
+      return [{
+        channelKey,
+        citedUrlCount: typeof item.citedUrlCount === "number" && Number.isFinite(item.citedUrlCount)
+          ? Math.max(0, Math.round(item.citedUrlCount)) : 0,
+        citedUrlShare: typeof item.citedUrlShare === "number" && Number.isFinite(item.citedUrlShare)
+          ? Math.max(0, Math.min(1, item.citedUrlShare)) : 0
+      }];
+    });
+  return {
+    capturedAt: new Date().toISOString(),
+    questionCount: tests.length,
+    targetMentionedCount: mentionedQuestions.length,
+    targetMentionRate: aggregate.targetMentionRate !== undefined && typeof aggregate.targetMentionRate === "number"
+      && Number.isFinite(aggregate.targetMentionRate)
+      ? Math.max(0, Math.min(1, aggregate.targetMentionRate))
+      : mentionedQuestions.length / tests.length,
+    mentionedQuestions,
+    unmentionedQuestions,
+    competitors: Array.isArray(aggregate.competitors)
+      ? aggregate.competitors.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).slice(0, 50)
+      : [],
+    channelCitationStats
   };
 }
 
@@ -598,9 +647,28 @@ export async function readGeoResearchRunWorkspace(input: {
   };
 }
 
+/** 读取指定 run 之前最近一次带提及率基线的 run（供 post_publish_retest 做差值归因）。 */
+export async function readPreviousGeoMentionBaseline(input: { productId: string; beforeRunVersion: number }) {
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT id, run_version, mention_baseline FROM geo_research_run
+     WHERE product_id = ? AND run_version < ? AND mention_baseline IS NOT NULL
+     ORDER BY run_version DESC LIMIT 1`,
+    [input.productId, input.beforeRunVersion]
+  );
+  const row = rows[0];
+  if (!row) return undefined;
+  const baseline = parseV5Json<GeoMentionBaseline | null>(row.mention_baseline, null);
+  if (!baseline) return undefined;
+  return {
+    runId: String(row.id),
+    runVersion: Number(row.run_version),
+    baseline
+  };
+}
+
 export async function readGeoResearchTaskExecutionContext(taskId: string) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
-    `SELECT t.*, r.product_id, r.project_id, r.input_source_snapshot_hash,
+    `SELECT t.*, r.product_id, r.project_id, r.input_source_snapshot_hash, r.trigger_type, r.plan_json,
             p.canonical_name, p.display_name, p.brand_name, p.official_entity, p.official_url, p.entity_relationship,
             p.product_category, p.aliases,
             rp.expression_focus, rp.forbidden_focus, rp.research_markets, rp.languages, rp.target_channels
@@ -625,7 +693,14 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
   );
   const { readProductWebsiteCoverageProfile } = await import("./website-coverage-repository");
   const websiteCoverageProfile = await readProductWebsiteCoverageProfile(String(row.product_id));
+  // 探针集快照从 run plan 中读取：post_publish_retest run 的探针集已被复测基线问题覆盖
+  const runPlan = parseV5Json<Record<string, unknown>>(row.plan_json, {});
+  const probeSetSnapshot = runPlan.probeSetSnapshot && typeof runPlan.probeSetSnapshot === "object"
+    && !Array.isArray(runPlan.probeSetSnapshot)
+    ? runPlan.probeSetSnapshot as ProbeSetSnapshot
+    : undefined;
   return {
+    triggerType: String(row.trigger_type) as GeoResearchRun["triggerType"],
     task: mapTask(row),
     product: {
       productId: String(row.product_id),
@@ -648,6 +723,7 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
       targetChannels: parseV5Json<string[]>(row.target_channels, [])
     },
     sourceSnapshotHash: String(row.input_source_snapshot_hash),
+    probeSetSnapshot,
     previousOutputs: previousRows.map((previous) => ({
       taskType: String(previous.task_type) as GeoResearchTaskType,
       outputSummary: parseV5Json<Record<string, unknown>>(previous.output_summary, {})
@@ -785,7 +861,7 @@ export async function createGeoResearchRunRecord(input: {
       [input.productId]
     );
     const latestStrategyPack = strategyPackRows[0];
-    const probeSetSnapshot = compileGeoProbeSet({
+    let probeSetSnapshot = compileGeoProbeSet({
       productId: input.productId,
       researchRunId: runId,
       entityGraph: probeAssets.graph,
@@ -794,6 +870,37 @@ export async function createGeoResearchRunRecord(input: {
       websiteCoverageProfileHash: hashV5GovernancePayload({ productId: input.productId, coverage: 'bound-at-run-start' }),
       sourceSnapshotId: String(snapshot.id)
     });
+    // post_publish_retest 激活：探针集改为批准蓝图 retestBaseline.questions（fail-closed）
+    if (input.triggerType === "post_publish_retest") {
+      const [blueprintRows] = await connection.query<RowDataPacket[]>(
+        `SELECT id, status, retest_baseline FROM geo_blueprint_version
+         WHERE project_id = ? AND status = 'approved'
+         ORDER BY version_number DESC LIMIT 1`,
+        [String(projectRow.id)]
+      );
+      const approvedBlueprint = blueprintRows[0];
+      if (!approvedBlueprint) {
+        throw new V5GovernanceRepositoryError(
+          "retest_blueprint_missing",
+          "发布后复测必须基于已批准的 GEO 蓝图，当前没有已批准蓝图。",
+          409,
+          "先完成一轮调研并人工批准蓝图后，再发起发布后复测。"
+        );
+      }
+      const retestBaseline = parseV5Json<Record<string, unknown>>(approvedBlueprint.retest_baseline, {});
+      const retestQuestions = Array.isArray(retestBaseline.questions)
+        ? retestBaseline.questions.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+        : [];
+      if (!retestQuestions.length) {
+        throw new V5GovernanceRepositoryError(
+          "retest_baseline_questions_missing",
+          "已批准蓝图没有复测基线问题，不能发起发布后复测。",
+          409,
+          "重新运行调研生成包含复测基线的蓝图，或手动刷新调研。"
+        );
+      }
+      probeSetSnapshot = overrideGeoProbeSetQuestions({ snapshot: probeSetSnapshot, questions: retestQuestions });
+    }
 
     const [versionRows] = await connection.query<RowDataPacket[]>(
       "SELECT run_version FROM geo_research_run WHERE project_id = ? ORDER BY run_version DESC LIMIT 1 FOR UPDATE",
@@ -1269,6 +1376,15 @@ export async function persistGeoResearchProviderResult(input: {
         "UPDATE geo_research_run SET live_search_verified = TRUE, row_version = row_version + 1 WHERE id = ?",
         [runId]
       );
+    }
+    if (taskType === "frontend_baseline") {
+      const mentionBaseline = buildMentionBaselineFromStructured(input.result.structured);
+      if (mentionBaseline) {
+        await connection.query(
+          "UPDATE geo_research_run SET mention_baseline = ?, row_version = row_version + 1 WHERE id = ?",
+          [stringifyV5Json(mentionBaseline), runId]
+        );
+      }
     }
     await unlockSatisfiedTasks(connection, runId);
 

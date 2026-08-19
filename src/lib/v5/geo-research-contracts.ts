@@ -87,6 +87,22 @@ export interface CreateGeoResearchProjectInput {
   forbiddenFocus?: string[];
 }
 
+/** 提及率 KPI 基线：frontend_baseline 任务完成后固化到 run，供 post_publish_retest 做提及率差值归因。 */
+export interface GeoMentionBaseline {
+  capturedAt: string;
+  questionCount: number;
+  targetMentionedCount: number;
+  targetMentionRate: number;
+  mentionedQuestions: string[];
+  unmentionedQuestions: string[];
+  competitors: string[];
+  channelCitationStats: Array<{
+    channelKey: string;
+    citedUrlCount: number;
+    citedUrlShare: number;
+  }>;
+}
+
 export interface GeoResearchRun {
   runId: string;
   projectId: string;
@@ -99,6 +115,7 @@ export interface GeoResearchRun {
   status: GeoResearchRunStatus;
   liveSearchRequired: true;
   liveSearchVerified: boolean;
+  mentionBaseline?: GeoMentionBaseline;
   rowVersion: number;
   startedAt?: string;
   completedAt?: string;

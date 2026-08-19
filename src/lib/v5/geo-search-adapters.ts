@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
+  GeoSearchChannelStats,
   GeoSearchEvidenceCandidate,
   GeoSearchProviderKey,
   GeoSearchProviderRun,
@@ -8,6 +9,7 @@ import type {
 } from "./geo-search-contracts";
 import type { ModelAnswerObservation } from "./geo-research-result-contracts";
 import type { ProbeSetSnapshot } from "./geo-probe-contracts";
+import { getActiveGeoChannelRulePack, matchChannelForHost } from "./geo-channel-rule-pack";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 
 interface ProviderConfig {
@@ -289,6 +291,7 @@ function toEvidenceCandidate(input: {
   if (!url) return undefined;
   const excerpt = input.raw.excerpt?.replace(/\s+/g, " ").trim();
   const classification = sourceClassification(url, input.officialUrl);
+  const channel = matchChannelForHost(new URL(url).hostname, getActiveGeoChannelRulePack());
   return {
     candidateId: `geo-search-candidate-${createHash("sha256").update(url).digest("hex").slice(0, 32)}`,
     canonicalUrl: url,
@@ -306,8 +309,26 @@ function toEvidenceCandidate(input: {
     queryIds: [input.query.queryId],
     queries: [input.query.query],
     providerRunIds: [input.providerRunId],
-    rawResponseRefs: [input.providerRunId]
+    rawResponseRefs: [input.providerRunId],
+    channelKey: channel?.channelKey
   };
+}
+
+/** 基于当前候选集重算各目标渠道的证据分布（解析前 verifiedCount=0，解析后随存活候选更新） */
+export function recomputeChannelStats(
+  candidates: GeoSearchEvidenceCandidate[]
+): Record<string, GeoSearchChannelStats> | undefined {
+  const stats: Record<string, GeoSearchChannelStats> = {};
+  let hasChannelCandidate = false;
+  for (const candidate of candidates) {
+    if (!candidate.channelKey) continue;
+    hasChannelCandidate = true;
+    const entry = stats[candidate.channelKey]
+      || (stats[candidate.channelKey] = { candidateCount: 0, verifiedCount: 0 });
+    entry.candidateCount += 1;
+    if (candidate.entityClassification) entry.verifiedCount += 1;
+  }
+  return hasChannelCandidate ? stats : undefined;
 }
 
 function mergeCandidates(values: GeoSearchEvidenceCandidate[]) {
@@ -335,6 +356,7 @@ function mergeCandidates(values: GeoSearchEvidenceCandidate[]) {
       existing.authority = item.authority;
       existing.sourceType = item.sourceType;
     }
+    if (!existing.channelKey && item.channelKey) existing.channelKey = item.channelKey;
   }
   return [...byUrl.values()].sort((left, right) => {
     const score = { high: 3, medium: 2, low: 1 };
@@ -494,6 +516,7 @@ export async function runMultiProviderWebSearch(input: {
     queries: input.queries,
     providerRuns: providerRuns.sort((left, right) => left.provider.localeCompare(right.provider) || left.queryId.localeCompare(right.queryId)),
     candidates: merged,
+    channelStats: recomputeChannelStats(merged),
     gate: {
       decision: gaps.length ? "blocked" : "passed",
       degraded: gaps.length === 0 && failedProviders.length > 0,
@@ -533,6 +556,7 @@ export function combineMultiSearchEvidencePacks(packs: MultiSearchEvidencePack[]
     queries: packs.flatMap((pack) => pack.queries),
     providerRuns: providerRuns.sort((left, right) => left.provider.localeCompare(right.provider) || left.queryId.localeCompare(right.queryId)),
     candidates,
+    channelStats: recomputeChannelStats(candidates),
     gate: {
       decision: gaps.length ? "blocked" : "passed",
       degraded: gaps.length === 0 && failedProviders.length > 0,

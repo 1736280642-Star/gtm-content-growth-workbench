@@ -5,6 +5,8 @@ import type {
   GeoSearchQuery,
   MultiSearchEvidencePack
 } from "./geo-search-contracts";
+import { recomputeChannelStats } from "./geo-search-adapters";
+import type { GeoChannelRule } from "./geo-channel-rule-pack";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 
 export interface GeoProductIdentityCard {
@@ -160,11 +162,69 @@ function clipQuery(value: string) {
   return Array.from(value.replace(/\s+/g, " ").trim()).slice(0, 70).join("");
 }
 
+/** 实体命名表：由身份卡确定性派生，LLM 只能引用不能发明 */
+export interface GeoEntityNamingStandard {
+  /** 允许出现的全部规范实体表述（产品名/别名 + 品牌与角色名） */
+  canonicalNames: string[];
+  /** 禁止出现的生造拼接变体（角色名+产品名组合且不属于别名集合） */
+  forbiddenPatterns: string[];
+}
+
+export function deriveEntityNamingStandard(identity: GeoProductIdentityCard): GeoEntityNamingStandard {
+  const productNames = compact([identity.canonicalName, identity.displayName, ...identity.aliases]);
+  const roleNames = compact([identity.brandName, identity.officialEntity, identity.serviceProvider?.name]);
+  const aliasSet = new Set(productNames.map((item) => item.toLowerCase()));
+  const forbiddenPatterns: string[] = [];
+  for (const role of roleNames) {
+    for (const product of productNames) {
+      for (const combo of [`${role}${product}`, `${role} ${product}`, `${product}${role}`, `${product} ${role}`]) {
+        if (aliasSet.has(combo.toLowerCase())) continue;
+        forbiddenPatterns.push(combo);
+      }
+    }
+  }
+  return {
+    canonicalNames: [...productNames, ...roleNames],
+    forbiddenPatterns: [...new Set(forbiddenPatterns)].slice(0, 24)
+  };
+}
+
+/** 校验实体名称类字段未混入生造复合实体（返回违规名称；空数组=通过） */
+export function findEntityNamingViolations(
+  names: string[],
+  namingStandard: GeoEntityNamingStandard
+): string[] {
+  const violations: string[] = [];
+  for (const name of names) {
+    const normalized = name.replace(/\s+/g, "").toLowerCase();
+    if (!normalized) continue;
+    for (const pattern of namingStandard.forbiddenPatterns) {
+      const normalizedPattern = pattern.replace(/\s+/g, "").toLowerCase();
+      if (normalized === normalizedPattern) {
+        violations.push(name);
+        break;
+      }
+    }
+  }
+  return violations;
+}
+
+/** 补充轮定向缺口：按证据缺口选择补搜方向，替代原固定后缀 */
+export type GeoSupplementaryGap =
+  | "platform_evidence"
+  | "independent_sources"
+  | "metric_evidence"
+  | "misconception_evidence";
+
 export function compileIdentityAnchoredQueries(input: {
   taskType: string;
   identity: GeoProductIdentityCard;
   maxQueries: number;
   round?: number;
+  /** 渠道规则包中的渠道（配置后启用平台感知查询） */
+  channelRules?: GeoChannelRule[];
+  /** 补充轮定向缺口（round>0 时生效；缺省保持旧版固定后缀，向后兼容） */
+  evidenceGap?: GeoSupplementaryGap;
 }): GeoSearchQuery[] {
   assertGeoProductIdentityReady(input.identity);
   const product = input.identity.displayName;
@@ -182,8 +242,35 @@ export function compileIdentityAnchoredQueries(input: {
   const round = input.round || 0;
   const provider = input.identity.serviceProvider?.name;
   const relationship = queryPart(input.identity.serviceProvider?.relationship, 24);
-  const suffix = round === 1 ? "官方 文档 条件 限制" : round === 2 ? "用户 争议 反例 评价" : "";
-  type QuerySpec = [string, string[], string];
+  const channelRules = input.channelRules || [];
+
+  const gapSuffix: Record<GeoSupplementaryGap, string> = {
+    platform_evidence: "收录 干货 原创实践",
+    independent_sources: round === 2 ? "用户 争议 反例 评价" : "官方 文档 条件 限制",
+    metric_evidence: "案例 成效 数据 量化",
+    misconception_evidence: "踩坑 避坑 误区 失败"
+  };
+  const suffix = round
+    ? (input.evidenceGap ? gapSuffix[input.evidenceGap] : round === 1 ? "官方 文档 条件 限制" : "用户 争议 反例 评价")
+    : "";
+  // 平台感知补充轮：对配置渠道做定向收录格局补搜
+  const platformGapQueries: GeoSearchQuery[] = round && input.evidenceGap === "platform_evidence"
+    ? channelRules.map((channel, index): GeoSearchQuery => ({
+        queryId: `geo-query-${input.taskType}-supplement-${round}-platform-${index + 1}`,
+        query: clipQuery(`site:${channel.domains[0]} "${product}" ${suffix}`.trim()),
+        intent: "evidence_gap_resolution",
+        expectedEvidenceRole: "platform_inclusion_landscape",
+        freshnessRequirement: "year",
+        stopCondition: `该平台返回至少一条通过产品实体校验的收录样本`,
+        round,
+        identityAnchors: compact([product, owner, channel.channelKey]),
+        candidateAcceptanceRule: "来源域名必须命中该渠道规则包域名，且与产品身份卡一致或支持同一用户任务。",
+        candidateRejectionRule: "非该平台域名、名称相同但身份不一致的来源必须丢弃。",
+        channelKey: channel.channelKey
+      }))
+    : [];
+
+  type QuerySpec = [string, string[], string, string?];
   const providerSelectionQuery: QuerySpec | undefined = provider
     ? [
         `"${product}" "${provider}" 实施服务商 选型 推荐 资质 交付 验收 案例`,
@@ -191,12 +278,23 @@ export function compileIdentityAnchoredQueries(input: {
         "service_provider_selection"
       ]
     : undefined;
+  /** 平台收录格局查询：每个配置渠道一条 site: 约束查询 */
+  const platformQueries: QuerySpec[] = channelRules.map((channel) => [
+    `site:${channel.domains[0]} "${product}" 实操 经验`,
+    compact([product, owner, channel.channelKey]),
+    "platform_inclusion_landscape",
+    channel.channelKey
+  ]);
   const querySets: QuerySpec[] = input.taskType === "live_question_discovery"
     ? [
         ...(providerSelectionQuery ? [providerSelectionQuery] : []),
         [`"${product}" "${owner}" ${category} 用户问题 社区 评价`, [product, owner, category], "user_demand"],
+        [`"${product}" ${capability} 使用 故障 实施 支持`, [product, capability, category], "user_demand"],
+        [`"${product}" 误区 常见错误 使用率 采购`, [product, owner, category], "misconception"],
+        [`${category} ${capability} 落地 效率 提升 数据 案例`, [category, capability, owner], "metric_benchmark"],
+        [`"${product}" 踩坑 失败 教训 权限 集成`, [product, capability, category], "pitfall_evidence"],
         [`${category} ${capability} 选型 部署 集成 安全 常见问题`, [category, capability, owner], "user_demand"],
-        [`"${product}" ${capability} 使用 故障 实施 支持`, [product, capability, category], "user_demand"]
+        ...platformQueries
       ]
     : input.taskType === "live_competitor_discovery"
       ? [
@@ -206,6 +304,8 @@ export function compileIdentityAnchoredQueries(input: {
             "service_provider_landscape"
           ] as QuerySpec] : []),
           [`"${product}" "${owner}" ${category} 竞品 对比 替代方案`, [product, owner, category], "competitive_relationship"],
+          [`${category} ${capability} 开源自建 对比 推荐`, [category, capability, owner], "selection_alternative"],
+          ...platformQueries,
           [`${category} ${capability} 产品推荐 品牌比较`, [category, capability, owner], "competitive_relationship"],
           [`"${product}" ${capability} 市场评价 内容渠道`, [product, capability, category], "competitive_relationship"]
         ]
@@ -216,21 +316,26 @@ export function compileIdentityAnchoredQueries(input: {
             "service_provider_answer_baseline"
           ] as QuerySpec] : []),
           [`"${product}" "${owner}" ${category} 用户评价 常见问题`, [product, owner, category], "answer_engine_baseline"],
+          ...platformQueries,
           [`${category} ${capability} 对比 推荐`, [category, capability, owner], "answer_engine_baseline"],
           [`"${product}" ${capability} 选型 真实体验`, [product, capability, category], "answer_engine_baseline"]
         ];
-  return querySets.slice(0, input.maxQueries).map(([queryValue, anchors, evidenceRole], index) => ({
+  const compiled = querySets.slice(0, input.maxQueries).map(([queryValue, anchors, evidenceRole, channelKey], index): GeoSearchQuery => ({
     queryId: `geo-query-${input.taskType}-${round ? `supplement-${round}-` : ""}${index + 1}`,
     query: clipQuery(`${queryValue} ${suffix}`),
     intent: round ? "evidence_gap_resolution" : input.taskType,
     expectedEvidenceRole: evidenceRole,
     freshnessRequirement: "year",
-    stopCondition: "至少两家 Provider 返回两个通过产品实体校验的独立 URL",
+    stopCondition: channelKey
+      ? `该平台返回至少一条通过产品实体校验的收录样本，且至少两家 Provider 返回两个独立 URL`
+      : "至少两家 Provider 返回两个通过产品实体校验的独立 URL",
     round,
     identityAnchors: compact(anchors as string[]),
     candidateAcceptanceRule: "来源必须与产品身份卡一致，或明确支持同一用户任务、品类需求或竞争关系。",
-    candidateRejectionRule: "名称相同但品牌归属、品类、能力或场景不一致，以及身份不足的来源必须丢弃且不得留存。"
+    candidateRejectionRule: "名称相同但品牌归属、品类、能力或场景不一致，以及身份不足的来源必须丢弃且不得留存。",
+    channelKey
   }));
+  return round && platformGapQueries.length ? [...platformGapQueries, ...compiled] : compiled;
 }
 
 function acceptedClassification(taskType: string, classification: GeoSearchEntityClassification) {
@@ -285,6 +390,7 @@ function recalculatePack(pack: MultiSearchEvidencePack, candidates: GeoSearchEvi
     ...pack,
     providerRuns,
     candidates,
+    channelStats: recomputeChannelStats(candidates),
     gate: {
       decision: gaps.length ? "blocked" : "passed",
       degraded: gaps.length === 0 && failedProviders.length > 0,

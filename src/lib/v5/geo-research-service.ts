@@ -1,4 +1,5 @@
 import type {
+  GeoMentionBaseline,
   GeoResearchEvidence,
   GeoResearchFinding,
   GeoResearchQuestionCatalog,
@@ -7,6 +8,7 @@ import type {
   GeoResearchTask
 } from "./geo-research-contracts";
 import { getGeoResearchProviderReadiness } from "./geo-research-provider";
+import { evaluateTargetChannelRuleCoverage, getActiveGeoChannelRulePack } from "./geo-channel-rule-pack";
 import {
   approveGeoBlueprintRecord,
   cancelStaleGeoResearchRunRecord,
@@ -17,6 +19,7 @@ import {
   readGeoResearchRunWorkspace,
   readGeoResearchWorkspace,
   readLatestGeoSourceSnapshot,
+  readPreviousGeoMentionBaseline,
   requestGeoBlueprintChangesRecord,
   updateGeoResearchProjectRecord
 } from "./geo-research-repository";
@@ -179,6 +182,18 @@ export async function getGeoResearchWorkspace(productId: string) {
   ]);
   const provider = getGeoResearchProviderReadiness();
   const sourceSnapshotReady = latestSourceSnapshot?.quality.status === "ready";
+  // M9 渠道规则包校验：targetChannels 中的第三方平台渠道必须有已激活的规则包且覆盖（fail-closed）；
+  // 自有渠道（公众号/官网/AI 前台）不依赖平台收录规则包，不参与校验。
+  const targetChannels = workspace?.project.targetChannels || [];
+  let channelRuleBlockedReason: string | undefined;
+  try {
+    channelRuleBlockedReason = evaluateTargetChannelRuleCoverage({
+      targetChannels,
+      pack: getActiveGeoChannelRulePack()
+    });
+  } catch (packError) {
+    channelRuleBlockedReason = evaluateTargetChannelRuleCoverage({ targetChannels, pack: undefined, packError });
+  }
   const checks: GeoResearchReadiness["checks"] = [
     {
       key: "product_identity",
@@ -189,8 +204,10 @@ export async function getGeoResearchWorkspace(productId: string) {
     {
       key: "research_boundary",
       label: "研究边界",
-      status: workspace ? "ready" : "blocked",
-      detail: workspace ? "表达重点、市场、语言和渠道已保存。" : "还没有创建 GEO 调研项目。",
+      status: !workspace || channelRuleBlockedReason ? "blocked" : "ready",
+      detail: !workspace
+        ? "还没有创建 GEO 调研项目。"
+        : channelRuleBlockedReason || "表达重点、市场、语言和渠道已保存。",
       actionLabel: workspace ? undefined : "补充研究边界",
       actionHref: workspace ? undefined : `/products/${encodeURIComponent(productId)}/research`
     },
@@ -241,6 +258,22 @@ export async function getGeoResearchWorkspace(productId: string) {
   return { product, productProfile, websiteCoverageProfile, workspace, readiness };
 }
 
+/** post_publish_retest 差值归因：对比复测基线与前次基线的提及率变化（确定性计算，不经 LLM）。 */
+function buildMentionDeltaAttribution(current: GeoMentionBaseline, previous: GeoMentionBaseline) {
+  const normalize = (value: string) => value.trim().replace(/[？?。.!！\s]+$/g, "").toLowerCase();
+  const previousMentioned = new Set(previous.mentionedQuestions.map(normalize));
+  const currentMentioned = new Set(current.mentionedQuestions.map(normalize));
+  return {
+    baselineMentionRate: previous.targetMentionRate,
+    retestMentionRate: current.targetMentionRate,
+    mentionRateDelta: Number((current.targetMentionRate - previous.targetMentionRate).toFixed(4)),
+    newlyMentionedQuestions: current.mentionedQuestions.filter((question) => !previousMentioned.has(normalize(question))),
+    lostMentionQuestions: previous.mentionedQuestions.filter((question) => !currentMentioned.has(normalize(question))),
+    baselineCapturedAt: previous.capturedAt,
+    retestCapturedAt: current.capturedAt
+  };
+}
+
 export async function getGeoResearchRunDetails(input: { productId: string; runId: string }) {
   assertText(input.productId, "productId", 64);
   assertText(input.runId, "runId", 64);
@@ -255,13 +288,58 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
   const probeSetSnapshot = runWorkspace.run.plan.probeSetSnapshot && typeof runWorkspace.run.plan.probeSetSnapshot === "object"
     ? runWorkspace.run.plan.probeSetSnapshot as ProbeSetSnapshot
     : undefined;
+  // 下游候选扩展：问题板块映射（live_question_discovery）与蓝图内链集群/复测基线（blueprint_synthesis）
+  const faqBoardByQuestion = new Map<string, string>();
+  const discoveryTask = runWorkspace.tasks.find((task) => task.taskType === "live_question_discovery");
+  if (Array.isArray(discoveryTask?.outputSummary.questions)) {
+    for (const raw of discoveryTask.outputSummary.questions) {
+      const item = asRecord(raw);
+      if (typeof item.text !== "string" || !item.text.trim()) continue;
+      if (typeof item.faqBoard !== "string" || !item.faqBoard.trim()) continue;
+      faqBoardByQuestion.set(normalizedQuestion(item.text), item.faqBoard.trim());
+    }
+  }
+  const blueprintTask = runWorkspace.tasks.find((task) => task.taskType === "blueprint_synthesis");
+  const blueprintSummary = blueprintTask?.outputSummary || {};
+  const retestBaseline = asRecord(blueprintSummary.retestBaseline);
   const downstreamCandidates = runWorkspace.resultPack && probeSetSnapshot
     ? buildGeoResearchDownstreamCandidates({
         snapshot: probeSetSnapshot,
         resultPack: runWorkspace.resultPack,
         findings: runWorkspace.findings,
-        sourceArtifactId: runWorkspace.resultPackArtifactId
+        sourceArtifactId: runWorkspace.resultPackArtifactId,
+        faqBoardByQuestion,
+        contentClusterPlan: blueprintSummary.contentClusterPlan,
+        retestBaselineQuestions: Array.isArray(retestBaseline.questions)
+          ? retestBaseline.questions.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+          : []
       })
+    : undefined;
+  // 提及率 KPI：普通 run 暴露基线；post_publish_retest run 额外暴露差值归因
+  const mentionBaseline = runWorkspace.run.mentionBaseline;
+  let mentionDelta: ReturnType<typeof buildMentionDeltaAttribution> | undefined;
+  let previousBaselineRun: { runId: string; runVersion: number; capturedAt: string } | undefined;
+  if (runWorkspace.run.triggerType === "post_publish_retest" && mentionBaseline) {
+    const previous = await readPreviousGeoMentionBaseline({
+      productId: input.productId,
+      beforeRunVersion: runWorkspace.run.runVersion
+    });
+    if (previous) {
+      previousBaselineRun = {
+        runId: previous.runId,
+        runVersion: previous.runVersion,
+        capturedAt: previous.baseline.capturedAt
+      };
+      mentionDelta = buildMentionDeltaAttribution(mentionBaseline, previous.baseline);
+    }
+  }
+  const mentionKpi = mentionBaseline || mentionDelta
+    ? {
+        triggerType: runWorkspace.run.triggerType,
+        mentionBaseline,
+        mentionDelta,
+        previousBaselineRun
+      }
     : undefined;
   return {
     product,
@@ -273,7 +351,8 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
         latestSourceSnapshotHash: latestSourceSnapshot?.snapshotHash
       }),
       downstreamCandidates
-    }
+    },
+    mentionKpi
   };
 }
 
@@ -621,6 +700,65 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
       continue;
     }
     if (recent && bindingIsCurrent && blueprint && ["pending_review", "approved"].includes(blueprint.status)) {
+      // M8 提及率 KPI 闭环：批准蓝图在 30 天周期内时，按复测状态决定是否触发下一轮
+      if (blueprint.status === "approved" && latestRun) {
+        const retestBaseline = blueprint.retestBaseline || {};
+        const retestQuestions = Array.isArray(retestBaseline.questions)
+          ? retestBaseline.questions.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+          : [];
+        const targetMentionRate = typeof retestBaseline.targetMentionRate === "number"
+          && Number.isFinite(retestBaseline.targetMentionRate)
+          ? retestBaseline.targetMentionRate
+          : undefined;
+        const approvedAtMs = Date.parse(blueprint.approvedAt || latestRun.updatedAt);
+        const retestIntervalMs = Math.max(1, Number(process.env.GEO_RETEST_INTERVAL_DAYS || 7)) * 24 * 60 * 60 * 1000;
+        const latestRetestRun = state.workspace.runs.find((run) =>
+          run.triggerType === "post_publish_retest"
+          && run.status === "completed"
+          && run.mentionBaseline
+          && Date.parse(run.createdAt) >= approvedAtMs);
+        if (!latestRetestRun && retestQuestions.length && Date.now() - approvedAtMs >= retestIntervalMs) {
+          await startGeoResearchRun({
+            productId: product.productId,
+            triggerType: "post_publish_retest",
+            expectedProjectVersion: state.workspace.project.rowVersion,
+            idempotencyKey: `auto-geo-retest:${product.productId}:${blueprint.blueprintVersionId}`,
+            actor: input.actor
+          });
+          results.push({
+            productId: product.productId,
+            status: "queued_retest",
+            detail: "批准蓝图已过复测间隔，排队发布后提及率复测"
+          });
+          continue;
+        }
+        if (latestRetestRun && targetMentionRate !== undefined) {
+          const retestMentionRate = latestRetestRun.mentionBaseline?.targetMentionRate || 0;
+          if (retestMentionRate < targetMentionRate) {
+            if (Date.now() - Date.parse(latestRetestRun.updatedAt) >= retestIntervalMs) {
+              await startGeoResearchRun({
+                productId: product.productId,
+                triggerType: "manual_refresh",
+                expectedProjectVersion: state.workspace.project.rowVersion,
+                idempotencyKey: `auto-geo-refresh:${product.productId}:${latestRetestRun.runId}`,
+                actor: input.actor
+              });
+              results.push({
+                productId: product.productId,
+                status: "queued",
+                detail: `复测提及率 ${(retestMentionRate * 100).toFixed(1)}% 低于目标 ${(targetMentionRate * 100).toFixed(1)}%，触发新一轮调研`
+              });
+              continue;
+            }
+            results.push({
+              productId: product.productId,
+              status: "monitoring",
+              detail: `复测提及率 ${(retestMentionRate * 100).toFixed(1)}% 未达标 ${(targetMentionRate * 100).toFixed(1)}%，等待复测间隔后触发下一轮`
+            });
+            continue;
+          }
+        }
+      }
       results.push({ productId: product.productId, status: "monitoring", detail: "本轮调研在 30 天监控周期内" });
       continue;
     }
