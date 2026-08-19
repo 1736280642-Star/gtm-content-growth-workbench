@@ -22,7 +22,35 @@ function bodyWithoutTitle(artifact: ContentDraftArtifact) {
   return artifact.articleBody.replace(/\r\n?/g, "\n").trim().replace(/^#\s+[^\n]+\n+/, "");
 }
 
-export function WechatArticlePreview({ artifact, productId, batchId, batchVersion, coverRisk, changingLayout, savingContent, savingCover, locked, onChangeLayout, onEditContent, onBindVisual, onSaveCover }: { artifact: ContentDraftArtifact; productId: string; batchId: string; batchVersion: number; coverRisk?: import("@/lib/v5/free-production-contracts").RiskAndGapItem; changingLayout?: boolean; savingContent?: boolean; savingCover?: boolean; locked?: boolean; onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>; onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>; onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void>; onSaveCover: (file: WechatCoverFile) => Promise<void> }) {
+export function WechatArticlePreview({
+  artifact,
+  productId,
+  batchId,
+  batchVersion,
+  coverRisk,
+  changingLayout,
+  savingContent,
+  savingCover,
+  locked,
+  onChangeLayout,
+  onEditContent,
+  onBindVisual,
+  onSaveCover
+}: {
+  artifact: ContentDraftArtifact;
+  productId: string;
+  batchId?: string;
+  batchVersion?: number;
+  coverRisk?: import("@/lib/v5/free-production-contracts").RiskAndGapItem;
+  changingLayout?: boolean;
+  savingContent?: boolean;
+  savingCover?: boolean;
+  locked?: boolean;
+  onChangeLayout: (templateId: WechatRenderableTemplateId) => Promise<void>;
+  onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>;
+  onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void>;
+  onSaveCover?: (file: WechatCoverFile) => Promise<void>;
+}) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(artifact.selectedTitle);
   const [summary, setSummary] = useState(artifact.summary);
