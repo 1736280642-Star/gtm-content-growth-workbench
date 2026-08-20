@@ -20,6 +20,7 @@ import {
 import { Button, Input } from "antd";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { HostedAiFrontendTestPanel } from "@/components/HostedAiFrontendTestPanel";
 import styles from "./hosted-mode.module.css";
 
 // 高级运营控制台继续承载 productProduction、生产产品、自动化运行中、查看任务、处理异常等能力。
@@ -350,6 +351,16 @@ export default function HostedTaskPage() {
             <div className={styles.sectionHeader}>
               <div className={styles.sectionTitle}>
                 <span className={styles.sectionNumber}>02</span>
+                <div><h2>验证 AI 前台表现</h2><p>点击已绑定账号，系统会自动打开原登录会话并发送测试问题。</p></div>
+              </div>
+            </div>
+            <HostedAiFrontendTestPanel productId={isAddingNew ? undefined : selectedProductId || undefined} />
+          </section>
+
+          <section className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div className={styles.sectionTitle}>
+                <span className={styles.sectionNumber}>03</span>
                 <div><h2>结果发到哪里</h2><p>登录阿里邮箱后，所有公开 URL 和测试结论都会发到这里。</p></div>
               </div>
             </div>
@@ -372,7 +383,7 @@ export default function HostedTaskPage() {
           <section className={styles.section}>
             <div className={styles.sectionHeader}>
               <div className={styles.sectionTitle}>
-                <span className={styles.sectionNumber}>03</span>
+                <span className={styles.sectionNumber}>04</span>
                 <div><h2>选择发布渠道</h2><p>只显示适合当前产品且已经可以使用的渠道。</p></div>
               </div>
             </div>
@@ -394,7 +405,7 @@ export default function HostedTaskPage() {
           <section className={styles.section}>
             <div className={styles.sectionHeader}>
               <div className={styles.sectionTitle}>
-                <span className={styles.sectionNumber}>04</span>
+                <span className={styles.sectionNumber}>05</span>
                 <div><h2>选择文章表达</h2><p>你可以指定倾向，也可以让系统按问题自动组合。</p></div>
               </div>
             </div>

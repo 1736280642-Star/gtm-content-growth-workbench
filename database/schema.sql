@@ -241,6 +241,27 @@ CREATE TABLE IF NOT EXISTS capture_pairing_codes (
   INDEX idx_capture_pairing_expiry (expires_at, used_at)
 );
 
+CREATE TABLE IF NOT EXISTS ai_frontend_connections (
+  connection_id VARCHAR(64) PRIMARY KEY,
+  workspace_id VARCHAR(64) NOT NULL,
+  user_id VARCHAR(64) NOT NULL,
+  device_id VARCHAR(64) NOT NULL,
+  platform VARCHAR(32) NOT NULL,
+  account_alias VARCHAR(120) NOT NULL,
+  browser_profile_slot VARCHAR(120) NOT NULL DEFAULT 'default',
+  status VARCHAR(32) NOT NULL DEFAULT 'isolation_unverified',
+  isolation_policy JSON NOT NULL,
+  last_verified_at DATETIME NULL,
+  last_error VARCHAR(500) NULL,
+  revoked_at DATETIME NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ai_frontend_connection_slot (device_id, platform, browser_profile_slot),
+  INDEX idx_ai_frontend_connection_user (workspace_id, user_id, status),
+  INDEX idx_ai_frontend_connection_device (device_id, status),
+  INDEX idx_ai_frontend_connection_platform (platform, status)
+);
+
 CREATE TABLE IF NOT EXISTS capture_tasks (
   task_id VARCHAR(64) PRIMARY KEY,
   product_id VARCHAR(64) NOT NULL,
@@ -248,6 +269,7 @@ CREATE TABLE IF NOT EXISTS capture_tasks (
   question_version_id VARCHAR(64) NULL,
   published_content_id VARCHAR(64) NULL,
   source_publish_result_id VARCHAR(64) NULL,
+  connection_id VARCHAR(64) NULL,
   trigger_type VARCHAR(32) NOT NULL DEFAULT 'manual_once',
   capture_condition JSON NULL,
   platform VARCHAR(32) NOT NULL,
@@ -264,6 +286,7 @@ CREATE TABLE IF NOT EXISTS capture_tasks (
   UNIQUE INDEX idx_capture_task_idempotency (idempotency_key),
   INDEX idx_capture_task_status (status),
   INDEX idx_capture_task_device (device_id),
+  INDEX idx_capture_task_connection (connection_id, status, created_at),
   INDEX idx_capture_task_product (product_id),
   INDEX idx_capture_task_question (question_version_id),
   INDEX idx_capture_task_published_content (published_content_id),

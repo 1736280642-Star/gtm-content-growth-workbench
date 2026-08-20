@@ -18,14 +18,16 @@ test("AI frontend connections bind tasks to a concrete device and platform", asy
 });
 
 test("hosted mode creates a real connected capture task and wakes the extension", async () => {
-  const [page, route, manifest, worker] = await Promise.all([
+  const [page, panel, route, manifest, worker] = await Promise.all([
     read("src/app/page.tsx"),
+    read("src/components/HostedAiFrontendTestPanel.tsx"),
     read("src/app/api/v5/hosted/ai-front-test/route.ts"),
     read("browser-extension/manifest.json"),
     read("browser-extension/src/service-worker.js")
   ]);
-  assert.match(page, /\/api\/v5\/hosted\/ai-front-test/);
-  assert.match(page, /NEXT_PUBLIC_V5_CAPTURE_EXTENSION_ID/);
+  assert.match(page, /HostedAiFrontendTestPanel/);
+  assert.match(panel, /\/api\/v5\/hosted\/ai-front-test/);
+  assert.match(panel, /NEXT_PUBLIC_V5_CAPTURE_EXTENSION_ID/);
   assert.match(route, /createConnectedManualCaptureTask/);
   assert.match(manifest, /externally_connectable/);
   assert.match(worker, /onMessageExternal/);

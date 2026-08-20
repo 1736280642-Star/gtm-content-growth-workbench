@@ -114,6 +114,45 @@
 
 .accountEditor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 
+.inlineLoading { display: flex; align-items: center; gap: 8px; min-height: 64px; color: #63716b; font-size: 12px; }
+.connectionToolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; color: #63716b; font-size: 11px; }
+.connectionToolbar button { flex: 0 0 auto; color: #2967a3; }
+.aiConnectionGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.aiConnectionCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px 12px;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  color: #63716b;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+.aiConnectionCard:hover { border-color: #9cb9aa; background: #fbfdfb; }
+.aiConnectionCard:disabled { cursor: wait; opacity: .68; }
+.aiConnectionCard.needsAttention { border-color: #e6c4bb; background: #fffaf8; }
+.aiConnectionCard:focus-visible { outline: 3px solid rgba(41, 103, 163, .2); outline-offset: 2px; }
+.aiConnectionIcon { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border-radius: 7px; color: #176b52; background: #e3f0e9; font-size: 16px; }
+.aiConnectionCopy { min-width: 0; }
+.aiConnectionCopy strong, .aiConnectionCopy span, .aiConnectionCopy small { display: block; }
+.aiConnectionCopy strong { overflow: hidden; color: #18201d; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.aiConnectionCopy span { margin-top: 3px; color: #63716b; font-size: 10px; }
+.aiConnectionCopy small { margin-top: 3px; color: #84908a; font-size: 10px; line-height: 1.35; }
+.aiConnectionAction { flex: 0 0 auto; margin-left: auto; color: #2967a3; font-size: 10px; font-weight: 700; }
+.connectionEmpty { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 14px; border: 1px dashed #b8cdc2; border-radius: 8px; color: #63716b; background: #fbfdfb; font-size: 11px; line-height: 1.5; }
+.connectionEmpty a, .connectionSuccess a { flex: 0 0 auto; color: #2967a3; font-size: 11px; font-weight: 650; text-decoration: none; }
+.connectionHint, .connectionError { margin-top: 9px; padding: 8px 10px; border-radius: 6px; font-size: 11px; line-height: 1.45; }
+.connectionHint { color: #6c5a2d; background: #fbf6e8; }
+.connectionError { color: #923f31; background: #fff0ec; }
+.connectionSuccess { display: flex; align-items: center; gap: 9px; margin-top: 9px; padding: 10px 11px; border-radius: 7px; color: #176b52; background: #eaf3ee; font-size: 12px; }
+.connectionSuccess > span { min-width: 0; color: #63716b; }
+.connectionSuccess strong { display: block; margin-bottom: 2px; color: #176b52; }
+.connectionSuccess a { margin-left: auto; }
+
 .dropzone {
   display: grid;
   min-height: 150px;
@@ -368,6 +407,10 @@
   .submitBar { align-items: stretch; flex-direction: column; }
   .submitButton { width: 100%; }
   .accountEditor { grid-template-columns: 1fr; }
+  .aiConnectionGrid { grid-template-columns: 1fr; }
+  .connectionToolbar, .connectionEmpty, .connectionSuccess { align-items: flex-start; flex-direction: column; }
+  .aiConnectionAction { display: none; }
+  .connectionSuccess a { margin-left: 25px; }
   .mailBody { padding: 22px 17px 28px; }
   .mailMeta h2 { font-size: 20px; }
   .resultRow { grid-template-columns: minmax(0, 1fr) auto; }

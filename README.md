@@ -20,6 +20,7 @@
 - 由用户限定一段逐字固定文案、出现位置和适用渠道，生成时禁止改写、遗漏或擅自扩展；
 - 为单篇或自然月矩阵任务生成不可变生产合同、检索证据、正文、风险项和审计记录；
 - 在人工确认样文后编排批量生成、排程、发布任务、失败重试、结果回填和月度复盘；
+- 绑定用户已登录的 ChatGPT、豆包、DeepSeek 或千问账号，在托管页点击账号后自动打开新对话、发送测试问题并回传脱敏证据；
 - 在 Docker `full` Profile 中运行 Web、MySQL、OpenSearch 和职能 Worker，并提供健康检查与结构化故障状态。
 
 ### 当前不能承诺
@@ -39,12 +40,13 @@
 
 ### 托管模式（默认）
 
-根路径 `/` 是托管任务单，用户只需四步即可完成推广委托：
+根路径 `/` 是托管任务单，用户只需五步即可完成推广委托：
 
 1. **选择推广产品**：从已有产品（腾讯云 ADP、WorkBuddy、NoteFlow）中选择，或新增产品（填写名称 + 官方网址 + 上传资料文件）；
-2. **确认结果邮箱**：阿里邮箱已连接，可更换；
-3. **选择发布渠道**：微信公众号、知乎、CSDN、掘金；
-4. **选择文章表达**：系统推荐、专业解答、场景故事、对比选型。
+2. **验证 AI 前台表现**：点击已绑定 AI 账号，系统自动打开原登录会话的新对话并发送测试问题；
+3. **确认结果邮箱**：阿里邮箱已连接，可更换；
+4. **选择发布渠道**：微信公众号、知乎、CSDN、掘金；
+5. **选择文章表达**：系统推荐、专业解答、场景故事、对比选型。
 
 提交后进入托管成功页，告知用户可以关闭页面；结果邮件预览页展示发布 URL、渠道反馈和测试效果。托管模式使用独立的绿色主题和轻量顶栏，不显示侧栏和运营状态轮询。
 
@@ -68,7 +70,10 @@
 ### 托管模式（默认）
 
 ```text
-选择推广产品 + 确认邮箱 + 选渠道 + 选表达
+选择推广产品 → 点击已绑定 AI 账号自动测试
+          │
+          ▼
+确认邮箱 + 选渠道 + 选表达
           │
           ▼
 提交托管任务单 → 关闭页面
@@ -188,6 +193,30 @@ GEO 调研是内容生成前的前置搜索链路，围绕唯一推广目的—�
 
 外部平台是否发布成功，以平台公开结果、URL 回填和持续存活验证为准。草稿箱写入、HTTP 200 或本地模拟结果不等于正式发布。
 
+## AI 前台自动测试
+
+托管页不再要求用户先手动打开 AI 网站。首次安装浏览器伴侣并用配对码绑定账号后，日常流程是“选择产品 → 点击账号”：工作台生成正式测试问题，唤醒扩展，并在同一 Chrome Profile 中创建不抢焦点的新对话窗口。后台轮询只承担掉线恢复，不是主要交互入口。
+
+Windows 本地伴侣负责保持 Capture Runner 在线，并可随用户登录自动启动：
+
+```powershell
+npm.cmd run capture-companion:start
+npm.cmd run capture-companion:autostart
+```
+
+生产使用前需在本机环境配置 `V5_CAPTURE_EXTENSION_ID` 与 `NEXT_PUBLIC_V5_CAPTURE_EXTENSION_ID`；浏览器 Profile 可通过 `V5_CAPTURE_CHROME_PROFILE_DIRECTORY` 指定。扩展目录、受支持平台和首次配对步骤见 [`browser-extension/README.md`](./browser-extension/README.md)，Runner 说明见 [`capture-runner/README.md`](./capture-runner/README.md)。
+
+### 记忆隔离与样本边界
+
+“打开新对话”只能隔离当前聊天上下文，不能消除平台服务端记忆、历史引用或自定义指令。为避免账号过去查询或研究 JOTO 污染真实测试，系统将证据分为两个 cohort：
+
+- **中立基线 `neutral_benchmark`**：使用没有 JOTO 历史的专用 AI 账号，并关闭平台记忆、历史引用和自定义指令；扩展在发送前验证隔离策略，验证缺失时 fail-closed，不生成中立基线证据；
+- **个性化样本 `personalized_user_sample`**：允许保留用户真实记忆，用于观察老用户体验，但结果与中立基线分开统计，不能替代真实 JOTO 可见性测试。
+
+专用 Chrome Profile 只能隔离本地登录态，不能隔离平台服务端记忆。因此可重复的正式基准优先使用专用中立账号；临时对话、关闭记忆和仅新对话是补充控制，不应被单独视为充分隔离。
+
+扩展不会读取或上传 Cookie、密码、浏览器存储、自动填充内容、私有请求头或平台账号标识；截图前会遮蔽账号区和历史区。验证码、登录失效、授权确认与平台风控仍由用户处理，系统不绕过访问控制。
+
 ## 代码仓库与真实资料边界
 
 GitHub 仓库只承载应用代码、公开配置模板、数据库结构/迁移、自动化测试和不含业务事实的说明文档。真实产品知识、导入正文、生成文章、EvidencePack、向量、发布凭证和运行状态只存在于本地或部署环境，不随代码提交。
@@ -208,6 +237,8 @@ GitHub 仓库只承载应用代码、公开配置模板、数据库结构/迁移
 src/app/                  Next.js App Router 页面与 API Routes
 src/components/           工作台通用 UI 与月度流程组件
 src/lib/v5/               月度策略、自动化、GEO 调研、知识治理与 RAG 领域服务
+browser-extension/        AI 前台浏览器伴侣、平台适配器与记忆隔离验证
+capture-runner/           本机任务桥接、脱敏采集包转发与失败回写
 workers/                  知识刷新、GEO 调研、内容生产、排程与发布 Worker
 data/                     本地运行状态与脱敏测试数据；真实资料不提交
 database/                 MySQL schema 与迁移
@@ -224,7 +255,8 @@ Next.js Web/API
   ├─ OpenSearch：RAG 关键词和向量检索
   ├─ knowledge/geo workers：知识刷新、站点采集和 GEO 调研
   ├─ monthly/content workers：策略、任务、正文和排程
-  └─ publish workers：渠道发布、重试、回传和存活验证
+  ├─ publish workers：渠道发布、重试、回传和存活验证
+  └─ browser companion + capture runner：复用用户登录态执行 AI 前台测试并回传脱敏证据
 ```
 
 页面只负责配置、修改、查看结果和处理异常；可重复执行的采集、检索、生成、排程和回传都放在 Service/Worker 中。
@@ -334,6 +366,7 @@ npm.cmd run build
 
 ```powershell
 npm.cmd run test:v5-rag
+npm.cmd run test:v5-ai-frontend-connections
 npm.cmd run test:publish-frontend
 npm.cmd run test:markdown-article
 npm.cmd run smoke:pages
