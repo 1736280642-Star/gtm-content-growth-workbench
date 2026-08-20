@@ -8,8 +8,11 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const taskId = new URL(request.url).searchParams.get("taskId")?.trim();
-    return observationOk({ tasks: await listCaptureTasks(taskId) });
+    const url = new URL(request.url);
+    const taskId = url.searchParams.get("taskId")?.trim();
+    const deviceId = url.searchParams.get("deviceId")?.trim();
+    const connectionId = url.searchParams.get("connectionId")?.trim();
+    return observationOk({ tasks: await listCaptureTasks(taskId, { deviceId, connectionId }) });
   } catch (error) {
     return v5GovernanceErrorResponse(error);
   }
@@ -22,6 +25,7 @@ export async function POST(request: Request) {
     const productId = String(payload.productId || "").trim();
     const question = String(payload.question || "").trim();
     const platform = String(payload.platform || "").trim();
+    const connectionId = String(payload.connectionId || "").trim() || undefined;
     const idempotencyKey = String(payload.idempotencyKey || request.headers.get("x-idempotency-key") || "").trim();
 
     if (!productId || !question || !platform || !idempotencyKey) {
@@ -31,6 +35,7 @@ export async function POST(request: Request) {
       productId,
       question,
       platform,
+      connectionId,
       idempotencyKey,
       priority: Number.isFinite(Number(payload.priority)) ? Number(payload.priority) : 0
     }), 201);

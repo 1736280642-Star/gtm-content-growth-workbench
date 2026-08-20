@@ -14,6 +14,7 @@ const statusLabels: Record<FrontendCaptureTaskStatus, string> = {
   capturing: "保存中",
   completed: "已完成",
   needs_login: "登录失效",
+  isolation_unverified: "隔离未验证",
   adapter_mismatch: "适配器失配",
   interrupted: "已中断",
   timed_out: "已超时",
@@ -24,7 +25,7 @@ const platformLabels = { doubao: "豆包", deepseek: "DeepSeek", qwen: "千问",
 
 function statusColor(status: FrontendCaptureTaskStatus) {
   if (status === "completed") return "green";
-  if (["needs_login", "adapter_mismatch", "interrupted", "timed_out", "capture_failed"].includes(status)) return "red";
+  if (["needs_login", "isolation_unverified", "adapter_mismatch", "interrupted", "timed_out", "capture_failed"].includes(status)) return "red";
   if (status === "waiting_for_browser") return "orange";
   return "blue";
 }
@@ -64,7 +65,7 @@ export function FrontendCaptureTaskTable({
             <div className="capture-task-expanded">
               <Descriptions size="small" column={{ xs: 1, md: 3 }}>
                 <Descriptions.Item label="采集环境">Chrome {task.browserVersion || "待上报"} / 适配器 {task.adapterVersion || "待上报"}</Descriptions.Item>
-                <Descriptions.Item label="条件">{task.condition.region} · {task.condition.locale} · 新会话 · 未个性化</Descriptions.Item>
+                <Descriptions.Item label="条件">{task.condition.region} · {task.condition.locale} · 新会话 · 隔离状态以采集证明为准</Descriptions.Item>
                 <Descriptions.Item label="SHA-256">{task.artifactId ? task.artifactId.replace("capture-artifact-", "").slice(0, 18) : "待生成"}</Descriptions.Item>
               </Descriptions>
               {task.failure ? (

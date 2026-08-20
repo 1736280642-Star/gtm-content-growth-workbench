@@ -1,7 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import type {
+  AiFrontendConnection,
+  AiFrontendConnectionStatus,
+  AiFrontendIsolationPolicy,
   AiFrontendPlatform,
+  CaptureIsolationAttestation,
   CapturedAnswer,
   CapturedCitation,
   FrontendCaptureArtifact,
@@ -58,6 +62,7 @@ export interface FormalCaptureEvidencePayload {
   targetEntityMentioned?: boolean;
   adapterVersion?: string;
   browserVersion?: string;
+  isolationAttestation?: CaptureIsolationAttestation;
   manifest?: Record<string, unknown>;
 }
 
@@ -84,6 +89,138 @@ function mapDevice(row: RowDataPacket) {
     pairedAt: iso(row.paired_at),
     revokedAt: iso(row.revoked_at)
   };
+}
+
+const DEFAULT_ISOLATION_POLICY_BY_PLATFORM: Record<AiFrontendPlatform, AiFrontendIsolationPolicy> = {
+  chatgpt: { mode: "dedicated_account", benchmarkCohort: "neutral_benchmark", requiredChecks: ["new_conversation", "dedicated_account", "memory_off", "custom_instructions_off"] },
+  doubao: { mode: "dedicated_account", benchmarkCohort: "neutral_benchmark", requiredChecks: ["new_conversation", "dedicated_account", "memory_off", "custom_instructions_off"] },
+  deepseek: { mode: "dedicated_account", benchmarkCohort: "neutral_benchmark", requiredChecks: ["new_conversation", "dedicated_account", "memory_off", "custom_instructions_off"] },
+  qwen: { mode: "dedicated_account", benchmarkCohort: "neutral_benchmark", requiredChecks: ["new_conversation", "dedicated_account", "memory_off", "custom_instructions_off"] }
+};
+
+function normalizeIsolationPolicy(platform: AiFrontendPlatform, value?: Partial<AiFrontendIsolationPolicy>): AiFrontendIsolationPolicy {
+  const fallback = DEFAULT_ISOLATION_POLICY_BY_PLATFORM[platform];
+  const requestedMode = ["dedicated_account", "dedicated_profile", "temporary_chat", "memory_off", "new_conversation_only"].includes(String(value?.mode))
+    ? value!.mode as AiFrontendIsolationPolicy["mode"]
+    : fallback.mode;
+  const benchmarkCohort = value?.benchmarkCohort === "personalized_user_sample" ? "personalized_user_sample" : "neutral_benchmark";
+  const legacyUnsafeProfile = benchmarkCohort === "neutral_benchmark" && requestedMode === "dedicated_profile";
+  const mode = legacyUnsafeProfile ? "dedicated_account" : requestedMode;
+  const allowedChecks = new Set(["new_conversation", "temporary_chat", "memory_off", "custom_instructions_off", "dedicated_account", "dedicated_profile"]);
+  const requiredChecks = Array.from(new Set((legacyUnsafeProfile ? fallback.requiredChecks : value?.requiredChecks || fallback.requiredChecks).filter((item) => allowedChecks.has(item))));
+  const accountHistoryAttestedAt = value?.accountHistoryAttestedAt && !Number.isNaN(Date.parse(value.accountHistoryAttestedAt))
+    ? new Date(value.accountHistoryAttestedAt).toISOString()
+    : undefined;
+  const memorySettingsAttestedAt = value?.memorySettingsAttestedAt && !Number.isNaN(Date.parse(value.memorySettingsAttestedAt))
+    ? new Date(value.memorySettingsAttestedAt).toISOString()
+    : undefined;
+  return { mode, benchmarkCohort, requiredChecks, accountHistoryAttestedAt, memorySettingsAttestedAt };
+}
+
+function mapAiFrontendConnection(row: RowDataPacket): AiFrontendConnection {
+  const platform = String(row.platform) as AiFrontendPlatform;
+  return {
+    connectionId: String(row.connection_id), workspaceId: String(row.workspace_id), userId: String(row.user_id),
+    deviceId: String(row.device_id), platform, accountAlias: String(row.account_alias),
+    browserProfileSlot: String(row.browser_profile_slot || "default"),
+    status: (row.revoked_at ? "revoked" : String(row.status || "offline")) as AiFrontendConnectionStatus,
+    isolationPolicy: normalizeIsolationPolicy(platform, parseV5Json<Partial<AiFrontendIsolationPolicy>>(row.isolation_policy, {})),
+    lastVerifiedAt: iso(row.last_verified_at), lastError: row.last_error ? String(row.last_error) : undefined,
+    createdAt: iso(row.created_at) || new Date().toISOString(), updatedAt: iso(row.updated_at) || new Date().toISOString(),
+    revokedAt: iso(row.revoked_at)
+  };
+}
+
+export async function listAiFrontendConnections(input: { deviceId?: string; includeRevoked?: boolean } = {}) {
+  const conditions: string[] = [];
+  const params: string[] = [];
+  if (input.deviceId) { conditions.push("c.device_id = ?"); params.push(input.deviceId); }
+  if (!input.includeRevoked) conditions.push("c.revoked_at IS NULL");
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT c.* FROM ai_frontend_connections c ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+     ORDER BY c.revoked_at IS NOT NULL, c.platform, c.account_alias`,
+    params
+  );
+  return rows.map(mapAiFrontendConnection);
+}
+
+export async function registerAiFrontendConnection(input: {
+  deviceId: string;
+  platform: AiFrontendPlatform;
+  accountAlias: string;
+  browserProfileSlot?: string;
+  isolationPolicy?: Partial<AiFrontendIsolationPolicy>;
+}) {
+  if (!FORMAL_CAPTURE_PLATFORMS.has(input.platform)) throw new V5GovernanceRepositoryError("capture_platform_unsupported", "不支持该 AI 前台平台。", 422);
+  const alias = input.accountAlias.trim().slice(0, 120);
+  const browserProfileSlot = (input.browserProfileSlot || "default").trim().slice(0, 120);
+  if (!alias) throw new V5GovernanceRepositoryError("ai_frontend_connection_alias_required", "请为 AI 账号连接填写可识别的名称。", 422);
+  return withV5GovernanceTransaction(async (connection) => {
+    const [devices] = await connection.query<RowDataPacket[]>("SELECT * FROM capture_devices WHERE device_id = ? FOR UPDATE", [input.deviceId]);
+    const device = devices[0];
+    if (!device || device.revoked_at) throw new V5GovernanceRepositoryError("capture_device_unavailable", "采集设备不存在或已撤销。", 403);
+    const [existing] = await connection.query<RowDataPacket[]>(
+      "SELECT * FROM ai_frontend_connections WHERE device_id = ? AND platform = ? AND browser_profile_slot = ? FOR UPDATE",
+      [input.deviceId, input.platform, browserProfileSlot]
+    );
+    const policy = normalizeIsolationPolicy(input.platform, input.isolationPolicy);
+    if (policy.mode === "dedicated_account" && policy.benchmarkCohort === "neutral_benchmark") {
+      policy.accountHistoryAttestedAt = new Date().toISOString();
+      policy.memorySettingsAttestedAt = policy.accountHistoryAttestedAt;
+    }
+    const connectionId = existing[0]?.connection_id ? String(existing[0].connection_id) : `ai-connection-${randomUUID()}`;
+    if (existing[0]) {
+      await connection.query(
+        "UPDATE ai_frontend_connections SET account_alias = ?, status = 'isolation_unverified', isolation_policy = ?, last_error = NULL, revoked_at = NULL WHERE connection_id = ?",
+        [alias, stringifyV5Json(policy), connectionId]
+      );
+    } else {
+      await connection.query(
+        `INSERT INTO ai_frontend_connections
+         (connection_id, workspace_id, user_id, device_id, platform, account_alias, browser_profile_slot, status, isolation_policy)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'isolation_unverified', ?)`,
+        [connectionId, String(device.workspace_id), String(device.user_id), input.deviceId, input.platform, alias, browserProfileSlot, stringifyV5Json(policy)]
+      );
+    }
+    const [saved] = await connection.query<RowDataPacket[]>("SELECT * FROM ai_frontend_connections WHERE connection_id = ?", [connectionId]);
+    return mapAiFrontendConnection(saved[0]);
+  });
+}
+
+export async function updateAiFrontendConnectionStatus(input: {
+  connectionId: string;
+  deviceId: string;
+  status: Exclude<AiFrontendConnectionStatus, "revoked">;
+  lastError?: string;
+  verified?: boolean;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>("SELECT * FROM ai_frontend_connections WHERE connection_id = ? FOR UPDATE", [input.connectionId]);
+    if (!rows[0] || rows[0].revoked_at) throw new V5GovernanceRepositoryError("ai_frontend_connection_not_found", "AI 账号连接不存在或已撤销。", 404);
+    if (String(rows[0].device_id) !== input.deviceId) throw new V5GovernanceRepositoryError("ai_frontend_connection_device_mismatch", "当前设备不能更新该 AI 账号连接。", 403);
+    await connection.query(
+      `UPDATE ai_frontend_connections SET status = ?, last_error = ?, last_verified_at = CASE WHEN ? THEN NOW() ELSE last_verified_at END
+       WHERE connection_id = ?`,
+      [input.status, input.lastError?.slice(0, 500) || null, input.verified === true, input.connectionId]
+    );
+    const [saved] = await connection.query<RowDataPacket[]>("SELECT * FROM ai_frontend_connections WHERE connection_id = ?", [input.connectionId]);
+    return mapAiFrontendConnection(saved[0]);
+  });
+}
+
+export async function revokeAiFrontendConnection(connectionId: string) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [result] = await connection.query(
+      "UPDATE ai_frontend_connections SET status = 'revoked', revoked_at = COALESCE(revoked_at, NOW()) WHERE connection_id = ?",
+      [connectionId]
+    );
+    if (!(result as { affectedRows?: number }).affectedRows) throw new V5GovernanceRepositoryError("ai_frontend_connection_not_found", "AI 账号连接不存在。", 404);
+    await connection.query(
+      "UPDATE capture_tasks SET status = 'cancelled', lease_expires_at = NULL WHERE connection_id = ? AND status IN ('pending', 'leased')",
+      [connectionId]
+    );
+    return { connectionId, status: "revoked" as const, revokedAt: new Date().toISOString() };
+  });
 }
 
 export async function listCaptureDevices() {
@@ -211,12 +348,30 @@ export async function createCaptureTask(input: {
   sourcePublishResultId?: string;
   triggerType?: "manual_once" | "published_content_retest" | "monitoring_question";
   captureCondition?: FrontendCaptureCondition;
+  connectionId?: string;
   platform: string;
   idempotencyKey: string;
   priority: number;
   scheduledFor?: string;
 }) {
   return withV5GovernanceTransaction(async (connection) => {
+    let resolvedConnectionId = input.connectionId;
+    if (resolvedConnectionId) {
+      const [connections] = await connection.query<RowDataPacket[]>(
+        "SELECT * FROM ai_frontend_connections WHERE connection_id = ? AND revoked_at IS NULL FOR UPDATE",
+        [resolvedConnectionId]
+      );
+      if (!connections[0]) throw new V5GovernanceRepositoryError("ai_frontend_connection_not_found", "所选 AI 账号连接不存在或已撤销。", 404);
+      if (String(connections[0].platform) !== input.platform) throw new V5GovernanceRepositoryError("ai_frontend_connection_platform_mismatch", "AI 账号连接与测试平台不一致。", 422);
+    } else {
+      const [connections] = await connection.query<RowDataPacket[]>(
+        `SELECT connection_id FROM ai_frontend_connections
+         WHERE platform = ? AND revoked_at IS NULL
+         ORDER BY status = 'ready' DESC, last_verified_at DESC, created_at ASC LIMIT 1`,
+        [input.platform]
+      );
+      resolvedConnectionId = connections[0]?.connection_id ? String(connections[0].connection_id) : undefined;
+    }
     const [existing] = await connection.query<RowDataPacket[]>(
       "SELECT * FROM capture_tasks WHERE idempotency_key = ? FOR UPDATE",
       [input.idempotencyKey]
@@ -230,14 +385,14 @@ export async function createCaptureTask(input: {
     const taskId = `capture-task-${randomUUID()}`;
     await connection.query(
       `INSERT INTO capture_tasks
-       (task_id, product_id, target_entity_name, question, question_version_id, monitoring_question_id, published_content_id, source_publish_result_id,
+       (task_id, product_id, target_entity_name, question, question_version_id, monitoring_question_id, published_content_id, source_publish_result_id, connection_id,
         trigger_type, capture_condition, platform, status, attempt_count, idempotency_key, priority, scheduled_for, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NOW())`,
       [taskId, input.productId, input.targetEntityName || null, input.question, input.questionVersionId || null, input.monitoringQuestionId || null, input.publishedContentId || null,
-        input.sourcePublishResultId || null, input.triggerType || "manual_once",
+        input.sourcePublishResultId || null, resolvedConnectionId || null, input.triggerType || "manual_once",
         stringifyV5Json(input.captureCondition || DEFAULT_CAPTURE_CONDITION), input.platform, input.idempotencyKey, input.priority, input.scheduledFor ? new Date(input.scheduledFor) : null]
     );
-    return { taskId, status: "pending", replayed: false };
+    return { taskId, status: "pending", connectionId: resolvedConnectionId, replayed: false };
   });
 }
 
@@ -265,14 +420,24 @@ export async function createManualFormalCaptureTasks(input: {
   })));
 }
 
-export async function listCaptureTasks(taskId?: string) {
+export async function listCaptureTasks(taskId?: string, input: { deviceId?: string; connectionId?: string } = {}) {
+  const conditions = taskId ? ["t.task_id = ?"] : ["(t.scheduled_for IS NULL OR t.scheduled_for <= NOW())"];
+  const params: string[] = taskId ? [taskId] : [];
+  if (input.deviceId) {
+    conditions.push("c.device_id = ? AND c.revoked_at IS NULL");
+    params.push(input.deviceId);
+  }
+  if (input.connectionId) { conditions.push("t.connection_id = ?"); params.push(input.connectionId); }
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT t.task_id, t.product_id, t.question, t.question_version_id, t.monitoring_question_id, t.published_content_id, t.source_publish_result_id,
-            t.trigger_type, t.capture_condition, t.platform, t.device_id, t.lease_expires_at, t.status,
-            t.attempt_count, t.idempotency_key, t.priority, t.scheduled_for, t.created_at, t.completed_at, COALESCE(t.target_entity_name, p.display_name) AS target_entity
-     FROM capture_tasks t LEFT JOIN product_entity p ON p.id = t.product_id ${taskId ? "WHERE t.task_id = ?" : "WHERE (t.scheduled_for IS NULL OR t.scheduled_for <= NOW())"}
+            t.trigger_type, t.capture_condition, t.connection_id, t.platform, t.device_id, t.lease_expires_at, t.status,
+            t.attempt_count, t.idempotency_key, t.priority, t.scheduled_for, t.created_at, t.completed_at, COALESCE(t.target_entity_name, p.display_name) AS target_entity,
+            c.isolation_policy, c.status AS connection_status
+     FROM capture_tasks t LEFT JOIN product_entity p ON p.id = t.product_id
+     LEFT JOIN ai_frontend_connections c ON c.connection_id = t.connection_id
+     WHERE ${conditions.join(" AND ")}
      ORDER BY t.priority DESC, t.created_at ASC`,
-    taskId ? [taskId] : []
+    params
   );
   return rows.map((row) => ({
     taskId: String(row.task_id),
@@ -284,6 +449,11 @@ export async function listCaptureTasks(taskId?: string) {
     sourcePublishResultId: row.source_publish_result_id ? String(row.source_publish_result_id) : undefined,
     triggerType: String(row.trigger_type || "manual_once"),
     captureCondition: parseV5Json<FrontendCaptureCondition>(row.capture_condition, DEFAULT_CAPTURE_CONDITION),
+    connectionId: row.connection_id ? String(row.connection_id) : undefined,
+    isolationPolicy: row.connection_id
+      ? normalizeIsolationPolicy(String(row.platform) as AiFrontendPlatform, parseV5Json<Partial<AiFrontendIsolationPolicy>>(row.isolation_policy, {}))
+      : undefined,
+    connectionStatus: row.connection_status ? String(row.connection_status) : undefined,
     platform: String(row.platform),
     targetEntity: row.target_entity ? String(row.target_entity) : undefined,
     deviceId: row.device_id ? String(row.device_id) : undefined,
@@ -316,6 +486,16 @@ export async function leaseCaptureTask(input: { taskId: string; deviceId: string
     if (!task) throw new V5GovernanceRepositoryError("capture_task_not_found", "采集任务不存在。", 404);
     if (task.scheduled_for && new Date(task.scheduled_for).getTime() > Date.now()) throw new V5GovernanceRepositoryError("capture_task_not_due", "采集任务尚未到计划执行时间。", 409);
     if (String(task.status) === "completed") throw new V5GovernanceRepositoryError("capture_task_completed", "采集任务已完成。", 409);
+    if (task.connection_id) {
+      const [connections] = await connection.query<RowDataPacket[]>(
+        "SELECT * FROM ai_frontend_connections WHERE connection_id = ? FOR UPDATE",
+        [task.connection_id]
+      );
+      const assignedConnection = connections[0];
+      if (!assignedConnection || assignedConnection.revoked_at) throw new V5GovernanceRepositoryError("ai_frontend_connection_unavailable", "任务绑定的 AI 账号连接不可用。", 409);
+      if (String(assignedConnection.device_id) !== input.deviceId) throw new V5GovernanceRepositoryError("capture_task_connection_device_mismatch", "任务只能由绑定该 AI 账号的设备执行。", 403);
+      if (String(assignedConnection.platform) !== String(task.platform)) throw new V5GovernanceRepositoryError("capture_task_connection_platform_mismatch", "任务平台与账号连接不一致。", 409);
+    }
     const leaseActive = task.lease_expires_at && new Date(task.lease_expires_at).getTime() > Date.now();
     if (leaseActive && task.device_id && String(task.device_id) !== input.deviceId) {
       throw new V5GovernanceRepositoryError("capture_task_lease_conflict", "任务已由其他设备领取。", 409);
@@ -327,6 +507,45 @@ export async function leaseCaptureTask(input: { taskId: string; deviceId: string
       [input.deviceId, leaseExpiresAt, leaseActive ? 0 : 1, input.taskId]
     );
     return { taskId: input.taskId, deviceId: input.deviceId, status: "leased", leaseExpiresAt: leaseExpiresAt.toISOString() };
+  });
+}
+
+const CAPTURE_TERMINAL_FAILURES = new Set([
+  "needs_login", "isolation_unverified", "adapter_mismatch", "interrupted", "timed_out", "capture_failed", "cancelled"
+]);
+
+export async function recordCaptureTaskFailure(input: {
+  taskId: string;
+  deviceId: string;
+  status: string;
+  note?: string;
+}) {
+  if (!CAPTURE_TERMINAL_FAILURES.has(input.status)) {
+    throw new V5GovernanceRepositoryError("capture_failure_status_invalid", "采集失败状态无效。", 422);
+  }
+  return withV5GovernanceTransaction(async (connection) => {
+    const [rows] = await connection.query<RowDataPacket[]>("SELECT * FROM capture_tasks WHERE task_id = ? FOR UPDATE", [input.taskId]);
+    const task = rows[0];
+    if (!task) throw new V5GovernanceRepositoryError("capture_task_not_found", "采集任务不存在。", 404);
+    if (!input.deviceId || String(task.device_id || "") !== input.deviceId) {
+      throw new V5GovernanceRepositoryError("capture_task_device_mismatch", "当前设备不能更新该采集任务。", 403);
+    }
+    if (String(task.status) === "completed") {
+      throw new V5GovernanceRepositoryError("capture_task_completed", "已完成任务不能改写为失败。", 409);
+    }
+    await connection.query("UPDATE capture_tasks SET status = ?, lease_expires_at = NULL WHERE task_id = ?", [input.status, input.taskId]);
+    if (task.connection_id && input.status === "isolation_unverified") {
+      await connection.query(
+        "UPDATE ai_frontend_connections SET status = 'isolation_unverified', last_error = ? WHERE connection_id = ?",
+        [(input.note || "账号记忆隔离未通过。").slice(0, 500), task.connection_id]
+      );
+    } else if (task.connection_id && input.status === "needs_login") {
+      await connection.query(
+        "UPDATE ai_frontend_connections SET status = 'needs_login', last_error = ? WHERE connection_id = ?",
+        [(input.note || "AI 前台登录状态已失效。").slice(0, 500), task.connection_id]
+      );
+    }
+    return { taskId: input.taskId, status: input.status, deviceId: input.deviceId };
   });
 }
 
@@ -348,6 +567,33 @@ export async function uploadCaptureEvidence(input: {
     if (!task) throw new V5GovernanceRepositoryError("capture_task_not_found", "采集任务不存在。", 404);
     if (!input.deviceId || String(task.device_id || "") !== input.deviceId || !task.lease_expires_at || new Date(task.lease_expires_at).getTime() <= Date.now()) {
       throw new V5GovernanceRepositoryError("capture_task_lease_required", "上传证据需要当前设备持有有效租约。", 409);
+    }
+    if (task.connection_id) {
+      const [connections] = await connection.query<RowDataPacket[]>(
+        "SELECT * FROM ai_frontend_connections WHERE connection_id = ? FOR UPDATE",
+        [task.connection_id]
+      );
+      const assignedConnection = connections[0];
+      if (!assignedConnection || assignedConnection.revoked_at || String(assignedConnection.device_id) !== input.deviceId) {
+        throw new V5GovernanceRepositoryError("capture_evidence_connection_mismatch", "采集证据与任务绑定的 AI 账号连接不一致。", 403);
+      }
+      const policy = normalizeIsolationPolicy(String(assignedConnection.platform) as AiFrontendPlatform, parseV5Json<Partial<AiFrontendIsolationPolicy>>(assignedConnection.isolation_policy, {}));
+      const attestation = payload.isolationAttestation;
+      const missingChecks = policy.requiredChecks.filter((check) => {
+        const result = attestation?.checks[check];
+        return result !== "verified" && !(["dedicated_account", "memory_off", "custom_instructions_off"].includes(check) && result === "user_attested");
+      });
+      if (policy.benchmarkCohort === "neutral_benchmark" && (!attestation || attestation.status !== "verified_clean" || missingChecks.length)) {
+        await connection.query(
+          "UPDATE ai_frontend_connections SET status = 'isolation_unverified', last_error = ? WHERE connection_id = ?",
+          [`未通过中立基线隔离检查：${missingChecks.join("、") || "attestation_missing"}`.slice(0, 500), task.connection_id]
+        );
+        return { isolationRejected: true as const, missingChecks };
+      }
+      await connection.query(
+        "UPDATE ai_frontend_connections SET status = 'ready', last_verified_at = NOW(), last_error = NULL WHERE connection_id = ?",
+        [task.connection_id]
+      );
     }
     const [existing] = await connection.query<RowDataPacket[]>(
       "SELECT * FROM capture_evidence WHERE task_id = ? AND artifact_hash = ? LIMIT 1 FOR UPDATE",
@@ -377,6 +623,14 @@ export async function uploadCaptureEvidence(input: {
     );
     return { id, taskId: input.taskId, artifactHash: input.artifactHash, version, replayed: false, productId: String(task.product_id), triggerType: String(task.trigger_type || "manual_once") };
   });
+  if ("isolationRejected" in saved) {
+    const failedChecks = Array.isArray(saved.missingChecks) ? saved.missingChecks : [];
+    throw new V5GovernanceRepositoryError(
+      "capture_isolation_unverified",
+      `账号记忆隔离未通过，不能写入中立基线证据：${failedChecks.join("、") || "缺少隔离证明"}。`,
+      422
+    );
+  }
   if (saved.triggerType === "published_content_retest") {
     const { reconcileProductGeoOptimizations } = await import("./product-geo-optimization-repository");
     await reconcileProductGeoOptimizations([saved.productId]);
@@ -428,6 +682,32 @@ function normalizeCaptureEvidencePayload(value: Record<string, unknown>): Formal
   if (!citations.length && !gaps.some((item) => item.code === "citation_gap")) {
     gaps.push({ code: "citation_gap", title: "回答未发现可见引用", explanation: "真实前台回答中没有采集到可访问引用。", evidenceLocation: "answer", confidence: 0.9, status: "candidate" });
   }
+  const rawAttestation = value.isolationAttestation && typeof value.isolationAttestation === "object" && !Array.isArray(value.isolationAttestation)
+    ? value.isolationAttestation as Record<string, unknown>
+    : undefined;
+  const rawPolicy = rawAttestation?.policy && typeof rawAttestation.policy === "object" && !Array.isArray(rawAttestation.policy)
+    ? rawAttestation.policy as Partial<AiFrontendIsolationPolicy>
+    : undefined;
+  const attestationPlatform = FORMAL_CAPTURE_PLATFORMS.has(String(rawAttestation?.platform))
+    ? String(rawAttestation?.platform) as AiFrontendPlatform
+    : "chatgpt";
+  const policy = rawPolicy ? normalizeIsolationPolicy(attestationPlatform, rawPolicy) : undefined;
+  const rawChecks = rawAttestation?.checks && typeof rawAttestation.checks === "object" && !Array.isArray(rawAttestation.checks)
+    ? rawAttestation.checks as Record<string, unknown>
+    : {};
+  const checkNames = ["new_conversation", "temporary_chat", "memory_off", "custom_instructions_off", "dedicated_account", "dedicated_profile"] as const;
+  const isolationAttestation: CaptureIsolationAttestation | undefined = policy ? {
+    policy,
+    checks: Object.fromEntries(checkNames.map((name) => [name, ["verified", "user_attested", "not_supported", "failed", "not_required"].includes(String(rawChecks[name]))
+      ? String(rawChecks[name])
+      : "not_required"])) as CaptureIsolationAttestation["checks"],
+    status: ["verified_clean", "unverified", "contaminated"].includes(String(rawAttestation?.status))
+      ? rawAttestation!.status as CaptureIsolationAttestation["status"]
+      : "unverified",
+    checkedAt: String(rawAttestation?.checkedAt || new Date().toISOString()),
+    adapterVersion: String(rawAttestation?.adapterVersion || value.adapterVersion || "unknown"),
+    notes: Array.isArray(rawAttestation?.notes) ? rawAttestation.notes.map(String).slice(0, 20) : []
+  } : undefined;
   return {
     contractVersion: "frontend-capture-evidence.v1",
     answerText,
@@ -438,8 +718,38 @@ function normalizeCaptureEvidencePayload(value: Record<string, unknown>): Formal
     targetEntityMentioned: value.targetEntityMentioned === true,
     adapterVersion: typeof value.adapterVersion === "string" ? value.adapterVersion : undefined,
     browserVersion: typeof value.browserVersion === "string" ? value.browserVersion : undefined,
+    isolationAttestation,
     manifest: value.manifest && typeof value.manifest === "object" && !Array.isArray(value.manifest) ? value.manifest as Record<string, unknown> : undefined
   };
+}
+
+export async function createConnectedManualCaptureTask(input: {
+  productId: string;
+  questionVersionId: string;
+  question: string;
+  connectionId: string;
+  idempotencyKey: string;
+}) {
+  const connections = await listAiFrontendConnections({ includeRevoked: false });
+  const selected = connections.find((item) => item.connectionId === input.connectionId);
+  if (!selected) throw new V5GovernanceRepositoryError("ai_frontend_connection_not_found", "所选 AI 账号连接不存在或已撤销。", 404);
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT product_id FROM content_matrix_item
+     WHERE product_id = ? AND question_version_id = ? ORDER BY created_at DESC LIMIT 1`,
+    [input.productId, input.questionVersionId]
+  );
+  if (!rows[0]) throw new V5GovernanceRepositoryError("capture_question_product_mismatch", "该正式问题没有绑定当前产品，不能发起前台测试。", 422);
+  return createCaptureTask({
+    productId: input.productId,
+    question: input.question,
+    questionVersionId: input.questionVersionId,
+    connectionId: input.connectionId,
+    platform: selected.platform,
+    priority: 100,
+    triggerType: "manual_once",
+    captureCondition: DEFAULT_CAPTURE_CONDITION,
+    idempotencyKey: input.idempotencyKey.slice(0, 128)
+  });
 }
 
 function sensitivePaths(value: unknown, trail: string[] = []): string[] {
@@ -565,6 +875,7 @@ export async function listFormalCaptureObservations(input: { month?: string; ans
     } : undefined;
     const task: FrontendCaptureTask = {
       id: String(row.task_id), captureSessionId: String(row.task_id), version: Number(row.attempt_count || 0),
+      connectionId: row.connection_id ? String(row.connection_id) : undefined,
       questionKey: row.question_version_id ? String(row.question_version_id) : String(row.question),
       questionVersionId: row.question_version_id ? String(row.question_version_id) : undefined,
       sourcePublishedContentIds: row.published_content_id ? [String(row.published_content_id)] : [], questionText: String(row.question), temporaryQuestion: !row.question_version_id,

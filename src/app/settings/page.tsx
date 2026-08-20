@@ -552,15 +552,30 @@ function CaptureDevicesSettings() {
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [pairing, setPairing] = useState<{ pairingCode: string; expiresAt: string }>();
+  const [connections, setConnections] = useState<Array<{
+    connectionId: string;
+    deviceId: string;
+    platform: string;
+    accountAlias: string;
+    browserProfileSlot: string;
+    status: string;
+    isolationPolicy: { mode: string; benchmarkCohort: string };
+    lastVerifiedAt?: string;
+  }>>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await callJsonApi<{ ok: boolean; data?: { devices?: Array<{ deviceId: string; userId: string; status: string; platforms: string[]; lastHeartbeatAt?: string; adapterVersion?: string; currentTaskId?: string; lastSuccessfulCaptureAt?: string }> } }>("/api/v5/capture-devices", { cache: "no-store" });
+      const [result, connectionResult] = await Promise.all([
+        callJsonApi<{ ok: boolean; data?: { devices?: Array<{ deviceId: string; userId: string; status: string; platforms: string[]; lastHeartbeatAt?: string; adapterVersion?: string; currentTaskId?: string; lastSuccessfulCaptureAt?: string }> } }>("/api/v5/capture-devices", { cache: "no-store" }),
+        callJsonApi<{ ok: boolean; data?: { connections?: Array<{ connectionId: string; deviceId: string; platform: string; accountAlias: string; browserProfileSlot: string; status: string; isolationPolicy: { mode: string; benchmarkCohort: string }; lastVerifiedAt?: string }> } }>("/api/v5/ai-frontend-connections", { cache: "no-store" })
+      ]);
       if (result.ok) setDevices(result.data?.devices || []);
+      if (connectionResult.ok) setConnections(connectionResult.data?.connections || []);
     } catch {
       // 采集设备 API 尚未部署时显示空状态
       setDevices([]);
+      setConnections([]);
     } finally {
       setLoading(false);
     }
@@ -587,6 +602,16 @@ function CaptureDevicesSettings() {
       setPairing(result.data);
     } catch (requestError) {
       messageApi.error(requestError instanceof Error ? requestError.message : "配对码生成失败");
+    }
+  }
+
+  async function revokeConnection(connectionId: string) {
+    try {
+      await callJsonApi(`/api/v5/ai-frontend-connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" });
+      messageApi.success("AI 账号连接已撤销");
+      await refresh();
+    } catch (requestError) {
+      messageApi.error(requestError instanceof Error ? requestError.message : "撤销连接失败");
     }
   }
 
@@ -651,6 +676,22 @@ function CaptureDevicesSettings() {
                 </Button>
               )
             }
+          ]}
+        />
+      </Card>
+      <Card className="foundation-panel" bordered={false} title="已绑定 AI 账号" style={{ marginTop: 16 }}>
+        <Table
+          rowKey="connectionId"
+          loading={loading}
+          dataSource={connections}
+          locale={{ emptyText: "尚未绑定 AI 账号；在浏览器扩展中完成设备配对后即可绑定。" }}
+          columns={[
+            { title: "账号连接", dataIndex: "accountAlias", render: (value: string, record) => <Space direction="vertical" size={0}><strong>{value}</strong><Typography.Text type="secondary">{record.platform} · {record.browserProfileSlot}</Typography.Text></Space> },
+            { title: "测试样本", render: (_, record) => <Tag color={record.isolationPolicy.benchmarkCohort === "neutral_benchmark" ? "green" : "blue"}>{record.isolationPolicy.benchmarkCohort === "neutral_benchmark" ? "中立基线" : "真实个性化样本"}</Tag> },
+            { title: "隔离方式", render: (_, record) => record.isolationPolicy.mode === "dedicated_account" ? "专用中立 AI 账号" : record.isolationPolicy.mode === "dedicated_profile" ? "旧版专用 Chrome Profile（需重绑）" : record.isolationPolicy.mode },
+            { title: "状态", dataIndex: "status", render: (value: string) => <Tag color={value === "ready" ? "green" : value === "needs_login" ? "orange" : "gold"}>{value === "ready" ? "可用" : value === "needs_login" ? "需登录" : "执行前校验"}</Tag> },
+            { title: "最近验证", dataIndex: "lastVerifiedAt", render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "尚未完成首轮" },
+            { title: "操作", render: (_, record) => <Button size="small" danger onClick={() => void revokeConnection(record.connectionId)}>撤销</Button> }
           ]}
         />
       </Card>

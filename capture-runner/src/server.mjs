@@ -12,8 +12,7 @@ const ACTIVE_TASK_TIMEOUT_MS = 6 * 60 * 1000;
 const CAPTURE_PLATFORM_ORDER = ["doubao", "deepseek", "qwen", "chatgpt"];
 const activeTasks = new Map();
 const DEVICE_ID = process.env.V5_CAPTURE_DEVICE_ID || "local-chrome-companion";
-const WORKSPACE_ID = process.env.V5_CAPTURE_WORKSPACE_ID || "local-workbench";
-const USER_ID = process.env.V5_CAPTURE_USER_ID || "local-user";
+const EXTENSION_ID = String(process.env.V5_CAPTURE_EXTENSION_ID || "").trim();
 let extensionHeartbeat;
 let lastTaskFailure;
 let lastNextTaskPoll;
@@ -36,7 +35,13 @@ function send(response, status, body, origin) {
 
 function assertExtensionOrigin(request) {
   const origin = request.headers.origin || "";
-  if (!origin.startsWith("chrome-extension://")) throw Object.assign(new Error("Only the Chrome companion may call this endpoint."), { status: 403 });
+  const expectedOrigin = EXTENSION_ID ? `chrome-extension://${EXTENSION_ID}` : undefined;
+  if (expectedOrigin ? origin !== expectedOrigin : !origin.startsWith("chrome-extension://")) {
+    throw Object.assign(new Error("Only the paired Chrome companion may call this endpoint."), { status: 403 });
+  }
+  if (!expectedOrigin && process.env.NODE_ENV === "production") {
+    throw Object.assign(new Error("V5_CAPTURE_EXTENSION_ID is required in production."), { status: 503 });
+  }
   return origin;
 }
 
@@ -88,7 +93,7 @@ async function nextTask() {
   const now = Date.now();
   releaseStaleActiveTasks(now);
   if (activeTasks.size) return undefined;
-  const response = await workbench("/api/v5/capture-tasks");
+  const response = await workbench(`/api/v5/capture-tasks?deviceId=${encodeURIComponent(DEVICE_ID)}`);
   const candidates = response.tasks.filter((item) => {
     const expiredOwnLease = item.status === "leased"
       && item.deviceId === DEVICE_ID
@@ -119,7 +124,7 @@ async function nextTask() {
 async function forwardStatus(taskId, payload) {
   if (!payload.task || payload.task.id !== taskId) throw Object.assign(new Error("Task identity mismatch."), { status: 422 });
   const data = { taskId, status: payload.status, note: payload.note || "Runner 更新采集任务状态" };
-  if (["waiting_for_browser", "needs_login", "adapter_mismatch", "interrupted", "timed_out", "capture_failed", "cancelled"].includes(payload.status)) {
+  if (["waiting_for_browser", "needs_login", "isolation_unverified", "adapter_mismatch", "interrupted", "timed_out", "capture_failed", "cancelled"].includes(payload.status)) {
     activeTasks.delete(taskId);
     lastTaskFailure = {
       taskId,
@@ -129,6 +134,12 @@ async function forwardStatus(taskId, payload) {
       failure: payload.failure,
       receivedAt: new Date().toISOString()
     };
+    if (payload.status !== "waiting_for_browser") {
+      await workbench(`/api/v5/capture-tasks/${encodeURIComponent(taskId)}/status`, {
+        method: "POST",
+        body: JSON.stringify({ deviceId: DEVICE_ID, status: payload.status, note: payload.note })
+      });
+    }
   }
   return data;
 }
@@ -148,6 +159,7 @@ async function forwardResult(taskId, payload) {
     targetEntityMentioned: manifest.targetEntityMentioned,
     adapterVersion: manifest.adapterVersion,
     browserVersion: manifest.browserVersion,
+    isolationAttestation: manifest.isolationAttestation,
     manifest: {
       captureSessionId: manifest.captureSessionId,
       startedAt: manifest.startedAt,
@@ -210,16 +222,44 @@ const server = http.createServer(async (request, response) => {
       const forbidden = sensitivePaths(payload);
       if (forbidden.length) throw Object.assign(new Error(`Heartbeat contains forbidden fields: ${forbidden.join(", ")}`), { status: 422 });
       extensionHeartbeat = { extensionVersion: String(payload.extensionVersion || "unknown"), adapters: Array.isArray(payload.adapters) ? payload.adapters : [], receivedAt: new Date().toISOString() };
-      const platforms = extensionHeartbeat.adapters.map((item) => item.platform).filter(Boolean);
       try {
-        await workbench("/api/v5/capture-devices", { method: "POST", body: JSON.stringify({ deviceId: DEVICE_ID, workspaceId: WORKSPACE_ID, userId: USER_ID, platforms }) });
+        await workbench(`/api/v5/capture-devices/${encodeURIComponent(DEVICE_ID)}/heartbeat`, {
+          method: "PUT", body: JSON.stringify({ status: "online", adapterVersion: extensionHeartbeat.extensionVersion })
+        });
       } catch (error) {
-        if (error.status !== 409) throw error;
+        if (error.status === 404 || error.status === 403) {
+          send(response, 200, { ok: true, paired: false, nextAction: "Enter a one-time pairing code in the extension popup." }, origin);
+          return;
+        }
+        throw error;
       }
-      await workbench(`/api/v5/capture-devices/${encodeURIComponent(DEVICE_ID)}/heartbeat`, {
-        method: "PUT", body: JSON.stringify({ status: "online", adapterVersion: extensionHeartbeat.extensionVersion })
+      send(response, 200, { ok: true, paired: true }, origin);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/extension/pair") {
+      const payload = await readJson(request);
+      const pairingCode = String(payload.pairingCode || "").trim();
+      if (!pairingCode) throw Object.assign(new Error("Pairing code is required."), { status: 400 });
+      const device = await workbench("/api/v5/capture-devices", {
+        method: "POST",
+        body: JSON.stringify({ deviceId: DEVICE_ID, pairingCode, platforms: CAPTURE_PLATFORM_ORDER })
       });
-      send(response, 200, { ok: true }, origin);
+      send(response, 201, { ok: true, device: { deviceId: device.deviceId, status: device.status, platforms: device.platforms } }, origin);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/extension/connections") {
+      const payload = await readJson(request);
+      const connection = await workbench("/api/v5/ai-frontend-connections", {
+        method: "POST",
+        body: JSON.stringify({
+          deviceId: DEVICE_ID,
+          platform: payload.platform,
+          accountAlias: payload.accountAlias,
+          browserProfileSlot: payload.browserProfileSlot || "default",
+          isolationPolicy: payload.isolationPolicy
+        })
+      });
+      send(response, 201, { ok: true, connection }, origin);
       return;
     }
     if (request.method === "POST" && url.pathname === "/tasks/next") {

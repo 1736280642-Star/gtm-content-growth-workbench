@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JOTO AI Front Test Companion",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "description": "Runs user-initiated, single AI frontend captures through a local Runner.",
-  "permissions": ["activeTab", "alarms", "tabs", "scripting"],
+  "permissions": ["activeTab", "alarms", "tabs", "scripting", "storage"],
   "host_permissions": [
     "http://127.0.0.1:17321/*",
     "https://www.doubao.com/*",
@@ -18,7 +18,15 @@
     "service_worker": "src/service-worker.js"
   },
   "action": {
-    "default_title": "JOTO AI Front Test Companion"
+    "default_title": "JOTO AI Front Test Companion",
+    "default_popup": "src/popup/popup.html"
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://127.0.0.1:3027/*",
+      "http://localhost:3027/*",
+      "https://*.jotoai.com/*"
+    ]
   },
   "content_scripts": [
     {

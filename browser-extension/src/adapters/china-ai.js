@@ -36,6 +36,10 @@
   const first = (selectors) => selectors.map((selector) => document.querySelector(selector)).find(Boolean) || null;
   const all = (selectors) => selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
   const visibleText = (node) => (node?.innerText || "").replace(/\s+/g, " ").trim();
+  const visibleButtons = () => Array.from(document.querySelectorAll("button, [role='button']")).filter((node) => {
+    const style = getComputedStyle(node);
+    return style.display !== "none" && style.visibility !== "hidden";
+  });
 
   function buildAdapter(platform, config) {
     const selectors = { ...shared, ...config };
@@ -54,6 +58,83 @@
         health = assertSupportedPage();
       }
       return health;
+    }
+    async function verifyIsolation(policy) {
+      const normalizedPolicy = policy || { mode: "new_conversation_only", benchmarkCohort: "personalized_user_sample", requiredChecks: ["new_conversation"] };
+      const checks = {
+        new_conversation: latestAnswer() ? "failed" : "verified",
+        temporary_chat: "not_required",
+        memory_off: "not_required",
+        custom_instructions_off: "not_required",
+        dedicated_account: "not_required",
+        dedicated_profile: "not_required"
+      };
+      const notes = [];
+
+      if (normalizedPolicy.mode === "dedicated_account") {
+        checks.dedicated_account = normalizedPolicy.accountHistoryAttestedAt ? "user_attested" : "failed";
+        checks.memory_off = normalizedPolicy.memorySettingsAttestedAt ? "user_attested" : "failed";
+        checks.custom_instructions_off = normalizedPolicy.memorySettingsAttestedAt ? "user_attested" : "failed";
+        notes.push(normalizedPolicy.accountHistoryAttestedAt
+          ? `用户于 ${normalizedPolicy.accountHistoryAttestedAt} 确认该 AI 账号仅用于中立测试，且没有 JOTO 研究或问答历史。`
+          : "缺少专用中立 AI 账号的历史清洁确认。"
+        );
+        notes.push(normalizedPolicy.memorySettingsAttestedAt
+          ? `用户于 ${normalizedPolicy.memorySettingsAttestedAt} 确认平台记忆或历史引用已关闭，且未配置自定义指令。`
+          : "缺少平台记忆关闭与自定义指令清空确认。"
+        );
+      }
+
+      if (normalizedPolicy.mode === "dedicated_profile") {
+        checks.dedicated_profile = "verified";
+        notes.push("该连接由用户绑定为专用中立测试 Profile；平台登录态只在当前浏览器 Profile 内使用。");
+      }
+
+      if (normalizedPolicy.mode === "temporary_chat") {
+        const temporaryControl = visibleButtons().find((node) => /临时|temporary/i.test(visibleText(node)));
+        if (!temporaryControl) {
+          checks.temporary_chat = "not_supported";
+          notes.push("当前页面没有找到可验证的临时会话入口。");
+        } else {
+          const active = temporaryControl.getAttribute("aria-pressed") === "true"
+            || temporaryControl.getAttribute("data-state") === "on"
+            || /已开启|active|enabled/i.test((temporaryControl.getAttribute("aria-label") || "") + " " + (temporaryControl.className || ""));
+          if (!active) {
+            temporaryControl.click();
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+          const nowActive = temporaryControl.getAttribute("aria-pressed") === "true"
+            || temporaryControl.getAttribute("data-state") === "on"
+            || /已开启|active|enabled/i.test((temporaryControl.getAttribute("aria-label") || "") + " " + (temporaryControl.className || ""));
+          checks.temporary_chat = nowActive ? "verified" : "failed";
+        }
+      }
+
+      if (normalizedPolicy.mode === "memory_off") {
+        const pageText = visibleText(document.body);
+        checks.memory_off = /(?:记忆|memory).{0,16}(?:已关闭|关闭中|off|disabled)/i.test(pageText) ? "verified" : "not_supported";
+        if (checks.memory_off !== "verified") notes.push("无法从当前任务页验证账号级记忆开关；系统不会自动修改用户账号设置。");
+      }
+
+      if (normalizedPolicy.requiredChecks?.includes("custom_instructions_off") && checks.custom_instructions_off !== "user_attested") {
+        const pageText = visibleText(document.body);
+        checks.custom_instructions_off = /(?:自定义指令|custom instructions).{0,16}(?:已关闭|off|disabled)/i.test(pageText) ? "verified" : "not_supported";
+        if (checks.custom_instructions_off !== "verified") notes.push("无法从当前任务页验证自定义指令已关闭。");
+      }
+
+      const missing = (normalizedPolicy.requiredChecks || []).filter((check) => {
+        const result = checks[check];
+        return result !== "verified" && !(["dedicated_account", "memory_off", "custom_instructions_off"].includes(check) && result === "user_attested");
+      });
+      return {
+        platform,
+        policy: normalizedPolicy,
+        checks,
+        status: missing.length ? "unverified" : "verified_clean",
+        checkedAt: new Date().toISOString(),
+        adapterVersion: config.version,
+        notes: notes.concat(missing.length ? ["未通过检查：" + missing.join("、")] : [])
+      };
     }
     async function submitQuestion(question) {
       const composer = first(selectors.composer);
@@ -138,7 +219,7 @@
       try { return await capture(); }
       finally { nodes.forEach((node, index) => previous[index] === null ? node.removeAttribute("style") : node.setAttribute("style", previous[index])); }
     }
-    return { platform, version: config.version, assertSupportedPage, waitUntilReady, submitQuestion, observeCompletion, extractCitations, sanitizedHtml, visibleText, withPrivacyMask };
+    return { platform, version: config.version, assertSupportedPage, waitUntilReady, verifyIsolation, submitQuestion, observeCompletion, extractCitations, sanitizedHtml, visibleText, withPrivacyMask };
   }
 
   globalThis.JotoCaptureAdapters = Object.fromEntries(Object.entries(configs).map(([platform, config]) => [platform, buildAdapter(platform, config)]));
