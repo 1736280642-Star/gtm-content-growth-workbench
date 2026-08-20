@@ -1187,7 +1187,7 @@ export async function editFreeProductionArticle(batchId: string, input: { expect
 interface FileSupplement { fileName: string; mimeType: string; dataBase64: string; }
 const supplementFileExtensions: Record<string, string> = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
 const supplementFileMimeTypes = new Map(Object.entries(supplementFileExtensions).map(([mimeType, extension]) => [extension, mimeType]));
-const freeProductionAssetDirectory = () => path.resolve(process.cwd(), "data/free-production-assets");
+const freeProductionAssetDirectory = () => path.resolve(process.cwd(), process.env.V5_FREE_PRODUCTION_ASSET_PATH?.trim() || "data/free-production-assets");
 
 async function storeSupplementFile(value: FileSupplement, accepted: string[]) {
   if (!accepted.includes(value.mimeType)) throw new FreeProductionServiceError(422, "SUPPLEMENT_FILE_TYPE_INVALID", "文件类型不符合该缺失项要求。", "选择 JPG、PNG 或 WebP 图片后重试。");

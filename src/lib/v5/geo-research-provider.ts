@@ -122,12 +122,18 @@ interface TaskInstructionChannelContext {
   channelKeys: string[];
 }
 
-function taskInstructionChannelContext(): TaskInstructionChannelContext {
+function targetChannelRules(targetChannels: string[]) {
   const pack = getActiveGeoChannelRulePack();
+  const targetKeys = new Set(targetChannels);
+  return pack?.channels.filter((channel) => targetKeys.has(channel.channelKey)) || [];
+}
+
+function taskInstructionChannelContext(targetChannels: string[]): TaskInstructionChannelContext {
+  const channels = targetChannelRules(targetChannels);
   return {
-    faqBoards: pack ? [...new Set(pack.channels.flatMap((channel) => channel.faqBoards || []))] : [],
-    comparisonDimensions: pack ? [...new Set(pack.channels.flatMap((channel) => channel.comparisonDimensions || []))] : [],
-    channelKeys: pack ? pack.channels.map((channel) => channel.channelKey) : []
+    faqBoards: [...new Set(channels.flatMap((channel) => channel.faqBoards || []))],
+    comparisonDimensions: [...new Set(channels.flatMap((channel) => channel.comparisonDimensions || []))],
+    channelKeys: channels.map((channel) => channel.channelKey)
   };
 }
 
@@ -281,21 +287,21 @@ function assertProviderConfig() {
   } satisfies ZhipuProviderConfig;
 }
 
-function buildSearchQueries(identity: GeoProductIdentityCard, taskType: GeoResearchTaskType, maxQueries: number) {
+function buildSearchQueries(identity: GeoProductIdentityCard, taskType: GeoResearchTaskType, maxQueries: number, targetChannels: string[]) {
   return compileIdentityAnchoredQueries({
     taskType,
     identity,
     maxQueries,
-    channelRules: getActiveGeoChannelRulePack()?.channels
+    channelRules: targetChannelRules(targetChannels)
   });
 }
 
 /** 按证据缺口推断补充轮方向：目标平台全部无样本时优先补平台格局，否则补独立来源 */
-function inferSupplementaryGap(pack: MultiSearchEvidencePack, round: 1 | 2): GeoSupplementaryGap {
+export function inferSupplementaryGap(pack: MultiSearchEvidencePack, targetChannelKeys: string[], round: 1 | 2): GeoSupplementaryGap {
   const stats = pack.channelStats || {};
-  const channelKeys = Object.keys(stats);
+  const channelKeys = [...new Set(targetChannelKeys.filter(Boolean))];
   const platformEmpty = channelKeys.length > 0
-    && Object.values(stats).every((item) => item.candidateCount === 0);
+    && channelKeys.every((channelKey) => (stats[channelKey]?.candidateCount || 0) === 0);
   if (platformEmpty && round === 1) return "platform_evidence";
   return "independent_sources";
 }
@@ -304,14 +310,15 @@ function buildSupplementaryQueries(
   identity: GeoProductIdentityCard,
   taskType: GeoResearchTaskType,
   round: 1 | 2,
-  evidenceGap: GeoSupplementaryGap
+  evidenceGap: GeoSupplementaryGap,
+  targetChannels: string[]
 ) {
   return compileIdentityAnchoredQueries({
     taskType,
     identity,
     maxQueries: 1,
     round,
-    channelRules: getActiveGeoChannelRulePack()?.channels,
+    channelRules: targetChannelRules(targetChannels),
     evidenceGap
   });
 }
@@ -674,7 +681,8 @@ async function resolveSearchEvidencePackWithTimeout(
 export function enforceTaskEntityRules(
   taskType: GeoResearchTaskType,
   structured: Record<string, unknown>,
-  identity: GeoProductIdentityCard
+  identity: GeoProductIdentityCard,
+  targetChannels: string[] = []
 ) {
   const output = structuredClone(structured);
   const isVerifiedCompetitor = (item: unknown) => {
@@ -733,7 +741,7 @@ export function enforceTaskEntityRules(
 
   // 软门禁（质量，标注不拦截）：platformStrategy 渠道合法性 + 证据挂靠降级
   if (taskType === "blueprint_synthesis" && Array.isArray(output.platformStrategy)) {
-    const governedChannelKeys = new Set((getActiveGeoChannelRulePack()?.channels || []).map((channel) => channel.channelKey));
+    const governedChannelKeys = new Set(targetChannelRules(targetChannels).map((channel) => channel.channelKey));
     output.platformStrategy = output.platformStrategy.flatMap((item) => {
       const record = asRecord(item);
       if (!record) return [];
@@ -801,7 +809,7 @@ export function enforceTaskEntityRules(
         taskType: researchTask,
         identity,
         maxQueries: 6,
-        channelRules: getActiveGeoChannelRulePack()?.channels
+        channelRules: targetChannelRules(targetChannels)
       }));
   }
   if (taskType === "live_competitor_discovery" && Array.isArray(output.competitors)) {
@@ -870,7 +878,9 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
   };
   const requiresLiveSearch = LIVE_SEARCH_TASKS.has(context.taskType);
   const searchController = new AbortController();
-  const searchQueries = requiresLiveSearch ? buildSearchQueries(productIdentity, context.taskType, config.maxQueries) : [];
+  const searchQueries = requiresLiveSearch
+    ? buildSearchQueries(productIdentity, context.taskType, config.maxQueries, context.project.targetChannels)
+    : [];
   const queryPlan: GeoSearchQueryPlan | undefined = requiresLiveSearch ? {
     contractVersion: "geo-search-query-plan.v2",
     productId: context.product.productId,
@@ -917,9 +927,13 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
     if (evidencePack && evidencePack.gate.configuredProviders.length >= 2) {
       for (const round of [1, 2] as const) {
         if (evidencePack.gate.decision === "passed") break;
-        const evidenceGap = inferSupplementaryGap(evidencePack, round);
+        const evidenceGap = inferSupplementaryGap(
+          evidencePack,
+          targetChannelRules(context.project.targetChannels).map((channel) => channel.channelKey),
+          round
+        );
         const supplementarySearchPack = await runMultiProviderWebSearch({
-          queries: buildSupplementaryQueries(productIdentity, context.taskType, round, evidenceGap),
+          queries: buildSupplementaryQueries(productIdentity, context.taskType, round, evidenceGap, context.project.targetChannels),
           officialUrl: context.product.officialUrl,
           signal: searchController.signal
         });
@@ -1042,7 +1056,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
               {
                 role: "user",
                 content: JSON.stringify({
-                  instruction: `${taskInstruction(context.taskType, taskInstructionChannelContext())} This is evidence shard ${shardIndex + 1} of ${evidenceShards.length}. Return 8-14 high-confidence questions grounded only in this shard; do not attempt the full 30-40 question catalog in one shard.`,
+                  instruction: `${taskInstruction(context.taskType, taskInstructionChannelContext(context.project.targetChannels))} This is evidence shard ${shardIndex + 1} of ${evidenceShards.length}. Return 8-14 high-confidence questions grounded only in this shard; do not attempt the full 30-40 question catalog in one shard.`,
                   productIdentity,
                   researchBoundary,
                   websiteCoverageProfile: context.websiteCoverageProfile,
@@ -1083,7 +1097,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
             {
               role: "user",
               content: JSON.stringify({
-                instruction: taskInstruction(context.taskType, taskInstructionChannelContext()),
+                instruction: taskInstruction(context.taskType, taskInstructionChannelContext(context.project.targetChannels)),
                 productIdentity,
                 researchBoundary,
                 websiteCoverageProfile: context.websiteCoverageProfile,
@@ -1145,7 +1159,12 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       );
       }
     }
-    const entitySafeSemanticOutput = enforceTaskEntityRules(context.taskType, semanticOutput, productIdentity);
+    const entitySafeSemanticOutput = enforceTaskEntityRules(
+      context.taskType,
+      semanticOutput,
+      productIdentity,
+      context.project.targetChannels
+    );
     const citationPruning = evidencePack
       ? pruneGeoResearchCitations(entitySafeSemanticOutput, evidencePack)
       : undefined;

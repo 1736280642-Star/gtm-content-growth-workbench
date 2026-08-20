@@ -7,6 +7,7 @@ import type {
   GeoResearchEvidence,
   GeoResearchFinding,
   GeoResearchProject,
+  GeoResearchRetestBinding,
   GeoResearchRun,
   GeoResearchRunWorkspace,
   GeoResearchResultPackArtifact,
@@ -15,11 +16,14 @@ import type {
   GeoResearchTaskType,
   GeoResearchWorkspace
 } from "./geo-research-contracts";
+import { geoResearchTaskGraphForTrigger } from "./geo-research-contracts";
 import type { GeoResearchResultPack } from "./geo-research-result-contracts";
 import type { GeoResearchProviderResult } from "./geo-research-provider";
 import type { ProbeSetSnapshot } from "./geo-probe-contracts";
 import { compileGeoProbeSet, defaultGeoProbeContract, overrideGeoProbeSetQuestions } from "./geo-probe-compiler";
+import { buildGeoMentionBaselineFromObservations } from "./geo-research-result-pack";
 import { evaluateGeoSourceSnapshotQuality, type GeoSnapshotSourceMetadata } from "./geo-source-quality";
+import { evaluateTargetChannelRuleCoverage, getActiveGeoChannelRulePack } from "./geo-channel-rule-pack";
 import {
   getV5GovernancePool,
   hashV5GovernancePayload,
@@ -33,21 +37,6 @@ import {
   type V5GovernanceActor
 } from "./knowledge-governance-repository";
 
-const RESEARCH_TASK_GRAPH: Array<{
-  type: GeoResearchTaskType;
-  dependencies: GeoResearchTaskType[];
-}> = [
-  { type: "context_validation", dependencies: [] },
-  { type: "research_planning", dependencies: ["context_validation"] },
-  { type: "live_question_discovery", dependencies: ["research_planning"] },
-  { type: "live_competitor_discovery", dependencies: ["research_planning"] },
-  { type: "frontend_baseline", dependencies: ["live_question_discovery"] },
-  {
-    type: "evidence_alignment",
-    dependencies: ["live_question_discovery", "live_competitor_discovery", "frontend_baseline"]
-  },
-  { type: "blueprint_synthesis", dependencies: ["evidence_alignment"] }
-];
 
 function iso(value: unknown) {
   if (value instanceof Date) return value.toISOString();
@@ -212,6 +201,7 @@ function buildMentionBaselineFromStructured(structured: Record<string, unknown>)
     });
   return {
     capturedAt: new Date().toISOString(),
+    measurementSource: "legacy_semantic_output",
     questionCount: tests.length,
     targetMentionedCount: mentionedQuestions.length,
     targetMentionRate: aggregate.targetMentionRate !== undefined && typeof aggregate.targetMentionRate === "number"
@@ -666,6 +656,18 @@ export async function readPreviousGeoMentionBaseline(input: { productId: string;
   };
 }
 
+export async function readGeoMentionBaselineByRunId(input: { productId: string; runId: string }) {
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT id, run_version, mention_baseline FROM geo_research_run
+     WHERE product_id = ? AND id = ? AND mention_baseline IS NOT NULL LIMIT 1`,
+    [input.productId, input.runId]
+  );
+  const row = rows[0];
+  if (!row) return undefined;
+  const baseline = parseV5Json<GeoMentionBaseline | null>(row.mention_baseline, null);
+  return baseline ? { runId: String(row.id), runVersion: Number(row.run_version), baseline } : undefined;
+}
+
 export async function readGeoResearchTaskExecutionContext(taskId: string) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT t.*, r.product_id, r.project_id, r.input_source_snapshot_hash, r.trigger_type, r.plan_json,
@@ -766,6 +768,7 @@ function buildDefaultGeoProbeAssets(productId: string, productRow: RowDataPacket
 export async function createGeoResearchRunRecord(input: {
   productId: string;
   triggerType: GeoResearchRun["triggerType"];
+  retestBinding?: GeoResearchRetestBinding;
   expectedProjectVersion: number;
   idempotencyKey: string;
   actor: V5GovernanceActor;
@@ -773,6 +776,7 @@ export async function createGeoResearchRunRecord(input: {
   const requestHash = hashV5GovernancePayload({
     productId: input.productId,
     triggerType: input.triggerType,
+    retestBinding: input.retestBinding,
     expectedProjectVersion: input.expectedProjectVersion
   });
   return withV5GovernanceTransaction(async (connection) => {
@@ -801,6 +805,28 @@ export async function createGeoResearchRunRecord(input: {
         `调研项目当前版本为 ${currentProjectVersion}。`,
         409,
         "刷新页面读取最新版本后重试。"
+      );
+    }
+
+    const targetChannels = parseV5Json<string[]>(projectRow.target_channels, []);
+    let channelPack: ReturnType<typeof getActiveGeoChannelRulePack>;
+    let channelPackError: unknown;
+    try {
+      channelPack = getActiveGeoChannelRulePack();
+    } catch (error) {
+      channelPackError = error;
+    }
+    const channelRuleBlockedReason = evaluateTargetChannelRuleCoverage({
+      targetChannels,
+      pack: channelPack,
+      packError: channelPackError
+    });
+    if (channelRuleBlockedReason) {
+      throw new V5GovernanceRepositoryError(
+        "geo_channel_rule_pack_not_ready",
+        channelRuleBlockedReason,
+        409,
+        "激活覆盖全部目标第三方平台的渠道规则包，或从研究边界移除未治理渠道。"
       );
     }
 
@@ -873,7 +899,7 @@ export async function createGeoResearchRunRecord(input: {
     // post_publish_retest 激活：探针集改为批准蓝图 retestBaseline.questions（fail-closed）
     if (input.triggerType === "post_publish_retest") {
       const [blueprintRows] = await connection.query<RowDataPacket[]>(
-        `SELECT id, status, retest_baseline FROM geo_blueprint_version
+        `SELECT id, run_id, status, approved_at, retest_baseline FROM geo_blueprint_version
          WHERE project_id = ? AND status = 'approved'
          ORDER BY version_number DESC LIMIT 1`,
         [String(projectRow.id)]
@@ -885,6 +911,50 @@ export async function createGeoResearchRunRecord(input: {
           "发布后复测必须基于已批准的 GEO 蓝图，当前没有已批准蓝图。",
           409,
           "先完成一轮调研并人工批准蓝图后，再发起发布后复测。"
+        );
+      }
+      if (!input.retestBinding
+        || input.retestBinding.blueprintVersionId !== String(approvedBlueprint.id)
+        || input.retestBinding.baselineRunId !== String(approvedBlueprint.run_id)
+        || Date.parse(input.retestBinding.blueprintApprovedAt) !== Date.parse(iso(approvedBlueprint.approved_at))) {
+        throw new V5GovernanceRepositoryError(
+          "retest_binding_mismatch",
+          "发布后复测没有绑定当前已批准蓝图及其原始基线 run。",
+          409,
+          "刷新产品调研状态，并在发布批次闭环后重新发起复测。"
+        );
+      }
+      const [optimizationRows] = await connection.query<RowDataPacket[]>(
+        `SELECT opt.id, opt.batch_key, opt.matrix_version_id, opt.strategy_pack_id,
+                opt.input_evidence_hash, opt.optimization_json, opt.generated_at,
+                sp.geo_blueprint_id
+         FROM product_geo_optimization_snapshot opt
+         LEFT JOIN product_strategy_packs sp ON sp.id = opt.strategy_pack_id
+         WHERE opt.id = ? AND opt.product_id = ? LIMIT 1 FOR UPDATE`,
+        [input.retestBinding.optimizationSnapshotId, input.productId]
+      );
+      const optimizationRow = optimizationRows[0];
+      const optimizationSnapshot = parseV5Json<{
+        batchClosed?: boolean;
+        batchKey?: string;
+        matrixVersionId?: string;
+        strategyPackId?: string;
+        generatedAt?: string;
+      } | null>(optimizationRow?.optimization_json, null);
+      if (!optimizationRow
+        || optimizationSnapshot?.batchClosed !== true
+        || String(optimizationRow.batch_key) !== input.retestBinding.batchKey
+        || String(optimizationRow.geo_blueprint_id || "") !== input.retestBinding.blueprintVersionId
+        || String(optimizationRow.matrix_version_id || "") !== String(input.retestBinding.matrixVersionId || "")
+        || String(optimizationRow.strategy_pack_id || "") !== String(input.retestBinding.strategyPackId || "")
+        || String(optimizationRow.input_evidence_hash) !== input.retestBinding.inputEvidenceHash
+        || Date.parse(String(optimizationSnapshot.generatedAt || "")) !== Date.parse(input.retestBinding.batchClosedAt)
+        || Date.parse(iso(optimizationRow.generated_at)) < Date.parse(iso(approvedBlueprint.approved_at))) {
+        throw new V5GovernanceRepositoryError(
+          "retest_published_batch_missing",
+          "发布后复测必须绑定蓝图批准后已经完成发布存活与 AI 采集的关闭批次。",
+          409,
+          "等待 Content Monitor 完成批次闭环后重试。"
         );
       }
       const retestBaseline = parseV5Json<Record<string, unknown>>(approvedBlueprint.retest_baseline, {});
@@ -902,6 +972,7 @@ export async function createGeoResearchRunRecord(input: {
       probeSetSnapshot = overrideGeoProbeSetQuestions({ snapshot: probeSetSnapshot, questions: retestQuestions });
     }
 
+    const taskGraph = geoResearchTaskGraphForTrigger(input.triggerType);
     const [versionRows] = await connection.query<RowDataPacket[]>(
       "SELECT run_version FROM geo_research_run WHERE project_id = ? ORDER BY run_version DESC LIMIT 1 FOR UPDATE",
       [String(projectRow.id)]
@@ -911,16 +982,19 @@ export async function createGeoResearchRunRecord(input: {
       objective: "produce_auditable_geo_blueprint",
       sourceSnapshotId: String(snapshot.id),
       governanceBinding,
+      targetChannels,
       probeSetSnapshot,
       entityGraphVersion: probeAssets.graph.version,
       roleScenarioMatrixVersion: probeAssets.matrix.version,
       probeContractVersion: defaultGeoProbeContract.contractVersion,
       strategyPackBinding: latestStrategyPack ? { id: String(latestStrategyPack.id), strategyVersion: Number(latestStrategyPack.strategy_version || 0), status: String(latestStrategyPack.status || '') } : undefined,
-      requiredStages: RESEARCH_TASK_GRAPH.map((item) => item.type),
+      retestBinding: input.retestBinding,
+      geoChannelRulePackVersionId: channelPack?.rulePackVersionId,
+      requiredStages: taskGraph.map((item) => item.type),
       gates: {
         liveSearchEvidenceRequired: true,
         frontendBaselineRequired: true,
-        humanApprovalRequired: true
+        humanApprovalRequired: input.triggerType !== "post_publish_retest"
       }
     };
     await connection.query(
@@ -961,8 +1035,8 @@ export async function createGeoResearchRunRecord(input: {
     );
 
     const taskIds = new Map<GeoResearchTaskType, string>();
-    for (const node of RESEARCH_TASK_GRAPH) taskIds.set(node.type, `geo-task-${randomUUID()}`);
-    for (const node of RESEARCH_TASK_GRAPH) {
+    for (const node of taskGraph) taskIds.set(node.type, `geo-task-${randomUUID()}`);
+    for (const node of taskGraph) {
       const dependencyIds = node.dependencies.map((dependency) => taskIds.get(dependency) as string);
       await connection.query(
         `INSERT INTO geo_research_task
@@ -992,9 +1066,9 @@ export async function createGeoResearchRunRecord(input: {
 
     const [updateResult] = await connection.query(
       `UPDATE geo_research_project
-       SET status = 'researching', row_version = row_version + 1
-       WHERE id = ? AND row_version = ?`,
-      [String(projectRow.id), input.expectedProjectVersion]
+        SET status = ?, row_version = row_version + 1
+        WHERE id = ? AND row_version = ?`,
+      [input.triggerType === "post_publish_retest" ? String(projectRow.status) : "researching", String(projectRow.id), input.expectedProjectVersion]
     );
     const affectedRows = Number((updateResult as { affectedRows?: number }).affectedRows || 0);
     if (affectedRows !== 1) {
@@ -1010,7 +1084,7 @@ export async function createGeoResearchRunRecord(input: {
         productId: input.productId,
         projectId: String(projectRow.id),
         runVersion,
-        taskCount: RESEARCH_TASK_GRAPH.length,
+        taskCount: taskGraph.length,
         liveSearchRequired: true,
         sourceSnapshotHash: String(snapshot.snapshot_hash),
         rulePackageVersionId: governanceBinding.rulePackageVersionId,
@@ -1199,7 +1273,7 @@ export async function persistGeoResearchProviderResult(input: {
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [rows] = await connection.query<RowDataPacket[]>(
-      `SELECT t.*, r.project_id, r.product_id, r.input_source_snapshot_hash
+      `SELECT t.*, r.project_id, r.product_id, r.input_source_snapshot_hash, r.trigger_type, r.plan_json
        FROM geo_research_task t
        JOIN geo_research_run r ON r.id = t.run_id
        WHERE t.id = ? LIMIT 1 FOR UPDATE`,
@@ -1378,11 +1452,43 @@ export async function persistGeoResearchProviderResult(input: {
       );
     }
     if (taskType === "frontend_baseline") {
-      const mentionBaseline = buildMentionBaselineFromStructured(input.result.structured);
+      const runPlan = parseV5Json<Record<string, unknown>>(row.plan_json, {});
+      const probeSetSnapshot = runPlan.probeSetSnapshot && typeof runPlan.probeSetSnapshot === "object"
+        && !Array.isArray(runPlan.probeSetSnapshot)
+        ? runPlan.probeSetSnapshot as ProbeSetSnapshot
+        : undefined;
+      const targetChannels = Array.isArray(runPlan.targetChannels)
+        ? runPlan.targetChannels.filter((item): item is string => typeof item === "string")
+        : [];
+      const activeChannelRules = (getActiveGeoChannelRulePack()?.channels || [])
+        .filter((channel) => targetChannels.includes(channel.channelKey));
+      const mentionBaseline = probeSetSnapshot && input.result.answerObservations?.length
+        ? buildGeoMentionBaselineFromObservations({
+            snapshot: probeSetSnapshot,
+            observations: input.result.answerObservations,
+            channelRules: activeChannelRules
+          })
+        : buildMentionBaselineFromStructured(input.result.structured);
+      if (String(row.trigger_type) === "post_publish_retest" && mentionBaseline?.measurementSource !== "model_answer_observations") {
+        throw new V5GovernanceRepositoryError(
+          "retest_observations_missing",
+          "发布后复测没有形成真实 Provider 回答观测，不能写入提及率 delta。",
+          502,
+          "检查探针回答 Provider 配置与原始回答采集后重试当前复测任务。"
+        );
+      }
       if (mentionBaseline) {
         await connection.query(
           "UPDATE geo_research_run SET mention_baseline = ?, row_version = row_version + 1 WHERE id = ?",
           [stringifyV5Json(mentionBaseline), runId]
+        );
+      }
+      if (String(row.trigger_type) === "post_publish_retest") {
+        await connection.query(
+          `UPDATE geo_research_run
+           SET status = 'completed', completed_at = NOW(), row_version = row_version + 1
+           WHERE id = ?`,
+          [runId]
         );
       }
     }

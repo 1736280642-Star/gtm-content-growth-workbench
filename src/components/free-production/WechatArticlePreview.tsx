@@ -3,12 +3,13 @@
 import { EditOutlined } from "@ant-design/icons";
 import { Button, Input, Modal, Select, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
-import type { ContentDraftArtifact } from "@/lib/v5/free-production-contracts";
+import type { ContentDraftArtifact, FreeProductionBatch } from "@/lib/v5/free-production-contracts";
 import { WECHAT_LAYOUT_TEMPLATES } from "@/lib/v5/wechat-layout-selector";
 import type { WechatRenderableTemplateId } from "@/lib/v5/wechat-presentation-contracts";
 import { VisualSuggestionPlaceholder } from "./VisualSuggestionPlaceholder";
 import { VisualAssetBindingPanel } from "./VisualAssetBindingPanel";
 import { WechatCoverBindingPanel, type WechatCoverFile } from "./WechatCoverBindingPanel";
+import { WechatCoverStudio } from "./WechatCoverStudio";
 
 const layoutOptions = [
   { label: "品牌排版", options: [{ value: "joto-official-v1", label: "JOTO 官方排版" }] },
@@ -35,7 +36,8 @@ export function WechatArticlePreview({
   onChangeLayout,
   onEditContent,
   onBindVisual,
-  onSaveCover
+  onSaveCover,
+  onBatchChange
 }: {
   artifact: ContentDraftArtifact;
   productId: string;
@@ -50,6 +52,7 @@ export function WechatArticlePreview({
   onEditContent: (input: { title: string; summary: string; articleBody: string }) => Promise<void>;
   onBindVisual: (suggestionId: string, mediaAssetId?: string) => Promise<void>;
   onSaveCover?: (file: WechatCoverFile) => Promise<void>;
+  onBatchChange?: (batch: FreeProductionBatch) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(artifact.selectedTitle);
@@ -90,9 +93,15 @@ export function WechatArticlePreview({
             <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑正文</Button>
           </Space>
         </div>
-        {batchId && batchVersion !== undefined && onSaveCover
-          ? <WechatCoverBindingPanel batchId={batchId} batchVersion={batchVersion} coverRisk={coverRisk} saving={savingCover} locked={locked} onSave={onSaveCover} />
+        {batchId && batchVersion !== undefined && onBatchChange
+          ? <WechatCoverStudio batchId={batchId} batchVersion={batchVersion} artifactId={artifact.id} artifactVersion={artifact.version} locked={locked} onBatchChange={onBatchChange} />
           : null}
+        {batchId && batchVersion !== undefined && onSaveCover ? (
+          <div className="wechat-cover-manual-fallback">
+            <span>也可以继续使用手动封面</span>
+            <WechatCoverBindingPanel batchId={batchId} batchVersion={batchVersion} coverRisk={coverRisk} saving={savingCover} locked={locked} onSave={onSaveCover} />
+          </div>
+        ) : null}
         <VisualAssetBindingPanel suggestions={artifact.visualSuggestions} productId={productId} onBind={onBindVisual} />
         <iframe
           className="wechat-official-preview-frame"

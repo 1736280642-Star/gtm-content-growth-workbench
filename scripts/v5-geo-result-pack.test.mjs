@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildGeoResearchResultPack } from '../src/lib/v5/geo-research-result-pack.ts';
+import { buildGeoMentionBaselineFromObservations, buildGeoResearchResultPack } from '../src/lib/v5/geo-research-result-pack.ts';
 import { buildGeoResearchDownstreamCandidates } from '../src/lib/v5/geo-research-downstream.ts';
 import { overrideGeoProbeSetQuestions } from '../src/lib/v5/geo-probe-compiler.ts';
 import { evaluateTargetChannelRuleCoverage } from '../src/lib/v5/geo-channel-rule-pack.ts';
+import { geoResearchTaskGraphForTrigger } from '../src/lib/v5/geo-research-contracts.ts';
 
 const snapshot = {
   probeSetId: 'probe-set', productId: 'product-1', researchRunId: 'run-1', entityGraphVersion: 2, roleScenarioMatrixVersion: 3, probeContractVersion: 'geo-probe.v1', websiteCoverageProfileHash: 'coverage', sourceSnapshotId: 'source', targetProviders: ['zhipu', 'doubao'], locale: 'zh-CN', region: 'CN', compiledAt: new Date().toISOString(), snapshotHash: 'hash',
@@ -113,6 +114,8 @@ test('retest probe set override rebuilds snapshot with P0 mention probes', () =>
 test('target channel rule coverage blocks platform channels without an activated rule pack', () => {
   const pack = {
     rulePackVersionId: 'pack-v1',
+    activatedBy: 'human-reviewer',
+    activatedAt: '2026-08-20T00:00:00.000Z',
     channels: [
       { channelKey: 'csdn', displayName: 'CSDN', domains: ['csdn.net'], inclusionPatterns: [], structureRequirements: [] },
       { channelKey: 'zhihu', displayName: '知乎', domains: ['zhihu.com'], inclusionPatterns: [], structureRequirements: [] }
@@ -123,6 +126,10 @@ test('target channel rule coverage blocks platform channels without an activated
   assert.equal(evaluateTargetChannelRuleCoverage({ targetChannels: [], pack: undefined }), undefined);
   // 平台渠道被规则包覆盖：通过
   assert.equal(evaluateTargetChannelRuleCoverage({ targetChannels: ['wechat', 'csdn', 'zhihu'], pack }), undefined);
+  assert.match(
+    evaluateTargetChannelRuleCoverage({ targetChannels: ['csdn'], pack: { ...pack, activatedBy: undefined, activatedAt: undefined } }),
+    /人工激活记录/
+  );
   // 平台渠道存在但规则包未激活：blocked（fail-closed）
   assert.match(
     evaluateTargetChannelRuleCoverage({ targetChannels: ['wechat', 'csdn'], pack: undefined }),
@@ -137,4 +144,40 @@ test('target channel rule coverage blocks platform channels without an activated
     evaluateTargetChannelRuleCoverage({ targetChannels: ['csdn'], pack: undefined, packError: new Error('坏 JSON') }),
     /渠道规则包配置非法/
   );
+});
+
+test('mention baseline is compiled from real provider observations instead of semantic aggregate', () => {
+  const snapshotWithUnavailableProbe = {
+    ...snapshot,
+    probes: [
+      ...snapshot.probes,
+      { ...snapshot.probes[1], probeId: 'probe-3', questionText: '失败 Provider 不应算作未提及？' }
+    ]
+  };
+  const baseline = buildGeoMentionBaselineFromObservations({
+    snapshot: snapshotWithUnavailableProbe,
+    observations: [
+      { observationId: 'o1', probeId: 'probe-1', provider: 'zhipu', model: 'm1', rawAnswer: '提到 Acme', visibleCitations: ['https://blog.csdn.net/a'], mentionedEntities: ['Acme'], searchedAt: '2026-08-20T00:00:00.000Z', status: 'success' },
+      { observationId: 'o2', probeId: 'probe-1', provider: 'doubao', model: 'm2', rawAnswer: '未提到', visibleCitations: [], mentionedEntities: [], searchedAt: '2026-08-20T00:00:00.000Z', status: 'success' },
+      { observationId: 'o3', probeId: 'probe-2', provider: 'zhipu', model: 'm1', rawAnswer: '未提到', visibleCitations: [], mentionedEntities: [], searchedAt: '2026-08-20T00:00:00.000Z', status: 'success' },
+      { observationId: 'o4', probeId: 'probe-3', provider: 'zhipu', model: 'm1', rawAnswer: '', visibleCitations: [], mentionedEntities: [], searchedAt: '2026-08-20T00:00:00.000Z', status: 'failed' }
+    ],
+    channelRules: [{ channelKey: 'csdn', displayName: 'CSDN', domains: ['csdn.net'], inclusionPatterns: [], structureRequirements: [] }],
+    capturedAt: '2026-08-20T00:00:00.000Z'
+  });
+  assert.equal(baseline.measurementSource, 'model_answer_observations');
+  assert.equal(baseline.questionCount, 2);
+  assert.equal(baseline.targetMentionedCount, 1);
+  assert.equal(baseline.targetMentionRate, 0.5);
+  assert.deepEqual(baseline.mentionedQuestions, ['企业如何选择知识助手？']);
+  assert.deepEqual(baseline.unevaluableQuestions, ['失败 Provider 不应算作未提及？']);
+  assert.deepEqual(baseline.channelCitationStats, [{ channelKey: 'csdn', citedUrlCount: 1, citedUrlShare: 1 }]);
+  assert.equal(baseline.providerBreakdown.find((item) => item.provider === 'zhipu').targetMentionRate, 0.5);
+});
+
+test('post publish retest uses a measurement-only task graph without blueprint synthesis', () => {
+  assert.deepEqual(geoResearchTaskGraphForTrigger('post_publish_retest'), [
+    { type: 'frontend_baseline', dependencies: [] }
+  ]);
+  assert.equal(geoResearchTaskGraphForTrigger('manual_refresh').some((item) => item.type === 'blueprint_synthesis'), true);
 });

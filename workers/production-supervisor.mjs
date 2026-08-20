@@ -27,6 +27,7 @@ const definitions = {
   ],
   "content-worker": [
     oneShot("monthly-automation", "workers/monthly-automation-worker.mjs", "MONTHLY_AUTOMATION_INTERVAL_SECONDS", 60),
+    oneShot("hosted-managed", "workers/hosted-managed-worker.mjs", "HOSTED_MANAGED_INTERVAL_SECONDS", 60),
     oneShot("content-production", "workers/content-production-worker.mjs", "CONTENT_WORKER_INTERVAL_SECONDS", 15)
   ],
   "monitor-worker": [{

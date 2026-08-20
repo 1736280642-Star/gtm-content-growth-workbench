@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { combineMultiSearchEvidencePacks, runMultiProviderWebSearch, runMultiProviderProbeAnswers } from "../src/lib/v5/geo-search-adapters.ts";
+import { combineMultiSearchEvidencePacks, recomputeChannelStats, runMultiProviderWebSearch, runMultiProviderProbeAnswers } from "../src/lib/v5/geo-search-adapters.ts";
 import {
   buildDegradedFrontendBaseline,
   buildGeoEntityResolutionBatches,
   enforceTaskEntityRules,
+  inferSupplementaryGap,
   mergeQuestionDiscoveryShardOutputs,
   parseStructuredOutput,
   selectGeoEntityResolutionCandidates
@@ -567,4 +568,63 @@ test("probe answer observations preserve one raw answer per provider and probe",
   assert.equal(pack.observations.every((item) => item.probeId === "geo-probe-001"), true);
   assert.equal(Object.keys(pack.rawResponses).length, 3);
   assert.ok(pack.observations.every((item) => item.visibleCitations.length === 1));
+});
+
+test("platform queries use a separate budget and zero-sample stats trigger directed supplementation", () => {
+  const identity = {
+    productId: "product-platform", canonicalName: "Acme Assist", displayName: "Acme Assist", aliases: [],
+    brandName: "Acme", officialEntity: "Acme", officialUrl: "https://acme.example.com", officialDomain: "acme.example.com",
+    productCategory: "企业知识助手", positioning: ["企业知识助手"], capabilities: ["知识检索"], scenarios: ["客服"], audiences: ["企业"],
+    boundaries: [], profileSource: "parsed", profileFactCount: 4
+  };
+  const channelRules = [
+    { channelKey: "csdn", displayName: "CSDN", domains: ["csdn.net"], inclusionPatterns: [], structureRequirements: [] },
+    { channelKey: "zhihu", displayName: "知乎", domains: ["zhihu.com"], inclusionPatterns: [], structureRequirements: [] }
+  ];
+  const queries = compileIdentityAnchoredQueries({ taskType: "live_question_discovery", identity, maxQueries: 6, channelRules });
+  assert.equal(queries.filter((item) => item.expectedEvidenceRole === "platform_inclusion_landscape").length, 2);
+  assert.deepEqual(queries.filter((item) => item.channelKey).map((item) => item.channelKey), ["csdn", "zhihu"]);
+  assert.equal(queries.length, 8);
+
+  const stats = recomputeChannelStats([], ["csdn", "zhihu"]);
+  assert.deepEqual(stats, {
+    csdn: { candidateCount: 0, verifiedCount: 0 },
+    zhihu: { candidateCount: 0, verifiedCount: 0 }
+  });
+  const pack = {
+    contractVersion: "geo-multi-search-evidence.v2",
+    queries,
+    providerRuns: [],
+    candidates: [],
+    channelStats: stats,
+    gate: { decision: "blocked", failedProviders: [], successfulProviders: [], configuredProviders: ["zhipu", "doubao"], independentSourceCount: 0, requiredSuccessfulProviders: 2, requiredIndependentSources: 2, gaps: ["empty"] },
+    compiledAt: new Date(0).toISOString(), supplementaryRounds: 0
+  };
+  assert.equal(inferSupplementaryGap(pack, ["csdn", "zhihu"], 1), "platform_evidence");
+});
+
+test("platform strategy evidence must belong to the same governed channel", () => {
+  const evidencePack = {
+    contractVersion: "geo-multi-search-evidence.v2",
+    queries: [], providerRuns: [],
+    candidates: [
+      { candidateId: "candidate-csdn", canonicalUrl: "https://blog.csdn.net/a", sourceType: "community", authority: "medium", providerKeys: ["zhipu"], queryIds: ["q1"], queries: ["q"], channelKey: "csdn" },
+      { candidateId: "candidate-zhihu", canonicalUrl: "https://zhihu.com/question/1", sourceType: "community", authority: "medium", providerKeys: ["doubao"], queryIds: ["q2"], queries: ["q"], channelKey: "zhihu" }
+    ],
+    gate: { decision: "passed", failedProviders: [], successfulProviders: ["zhipu", "doubao"], configuredProviders: ["zhipu", "doubao"], independentSourceCount: 2, requiredSuccessfulProviders: 2, requiredIndependentSources: 2, gaps: [] },
+    compiledAt: new Date(0).toISOString(), supplementaryRounds: 0
+  };
+  const result = pruneGeoResearchCitations({
+    platformStrategy: [{
+      channelKey: "csdn",
+      hypothesis: false,
+      evidenceBasis: {
+        candidateIds: ["invented", "candidate-zhihu"],
+        sourceUrls: ["https://zhihu.com/question/1"]
+      }
+    }]
+  }, evidencePack);
+  assert.deepEqual(result.structured.platformStrategy[0].evidenceBasis.candidateIds, []);
+  assert.deepEqual(result.structured.platformStrategy[0].evidenceBasis.sourceUrls, []);
+  assert.equal(result.structured.platformStrategy[0].hypothesis, true);
 });

@@ -6,6 +6,7 @@ import { getPublishingChannelReadiness } from "./free-production-service";
 import {
   getV5GovernancePool,
   hashV5GovernancePayload,
+  parseV5Json,
   readV5ReadinessContext,
   readV5Idempotency,
   V5GovernanceRepositoryError,
@@ -27,6 +28,12 @@ const platformReadinessChannel: Partial<Record<DirectPublishPlatformKey, string>
   zhihu: "zhihu"
 };
 
+const managedProfileAccount: Partial<Record<DirectPublishPlatformKey, { id: string; label: string }>> = {
+  zhihu: { id: "zhihu:managed-profile", label: "知乎专用浏览器账号" },
+  csdn: { id: "csdn:managed-profile", label: "CSDN 专用浏览器账号" },
+  juejin: { id: "juejin:managed-profile", label: "掘金专用浏览器账号" }
+};
+
 /**
  * Prefer the operator's explicit default account. When a platform exposes
  * exactly one connected account, offer that connector identity directly so
@@ -37,6 +44,8 @@ export function resolvePublishAccountCandidate(platform: DirectPublishPlatformKe
   const channel = platformChannel[platform];
   const explicit = getWorkspaceSetting().publishAccountByChannel?.[channel]?.trim();
   if (explicit) return explicit;
+  const managed = managedProfileAccount[platform];
+  if (managed) return managed.id;
   const readinessChannel = platformReadinessChannel[platform];
   if (!readinessChannel) return undefined;
   const readiness = getPublishingChannelReadiness().find((item) => item.channel === readinessChannel);
@@ -46,6 +55,8 @@ export function resolvePublishAccountCandidate(platform: DirectPublishPlatformKe
 
 function resolvePublishAccountCandidateLabel(platform: DirectPublishPlatformKey, candidateId?: string) {
   if (!candidateId) return undefined;
+  const managed = managedProfileAccount[platform];
+  if (managed?.id === candidateId) return managed.label;
   const readinessChannel = platformReadinessChannel[platform];
   const account = readinessChannel
     ? getPublishingChannelReadiness()
@@ -71,6 +82,7 @@ export interface ProductRolloutReadiness {
   configuredAccountCandidateLabel?: string;
   confirmedAccount?: string;
   accountBindingVersion?: number;
+  authorizationRuntimeStatus?: "ready" | "auth_required" | "pending_config" | "failed" | "manual_takeover_required";
   productionInputSummary?: {
     rulePackageReady: boolean;
     knowledgeBaseReadyCount: number;
@@ -101,7 +113,7 @@ export function evaluateProductRolloutReadiness(input: {
   };
   accountCandidateAvailable?: boolean;
   accountConfigured: boolean;
-  auth: { ok: boolean; message: string; nextAction?: string };
+  auth: { ok: boolean; status?: "ready" | "auth_required" | "pending_config" | "failed" | "manual_takeover_required"; message: string; nextAction?: string };
 }): ProductRolloutReadiness {
   const strategyReady = input.strategyStatus === "production_ready";
   const calibrationReady = Boolean(input.calibrationVersionId);
@@ -152,6 +164,7 @@ export function evaluateProductRolloutReadiness(input: {
     platform: input.platform,
     strategyPackId: input.strategyPackId,
     calibrationVersionId: input.calibrationVersionId,
+    authorizationRuntimeStatus: input.auth.status,
     canEnterBatchGeneration,
     canScheduleRealPublish: canEnterBatchGeneration && input.accountConfigured && input.auth.ok,
     gates
@@ -257,6 +270,15 @@ export async function confirmProductPublishAccountBinding(input: {
       "刷新页面重新确认；如平台连接了多个账号，请先在设置页指定默认账号。系统不会绑定历史账号或未知账号。"
     );
   }
+  const auth = await checkFormalPublishAuth(input.platform);
+  if (!auth.ok) {
+    throw new V5GovernanceRepositoryError(
+      "publish_account_auth_required",
+      auth.message || "平台账号尚未完成登录。",
+      409,
+      auth.nextAction || "先在专用浏览器中完成登录，再确认该账号用于当前产品。"
+    );
+  }
   if (!input.idempotencyKey.trim()) {
     throw new V5GovernanceRepositoryError("idempotency_key_required", "确认发布账号需要 idempotencyKey。", 400, "刷新页面后重试。");
   }
@@ -349,6 +371,7 @@ export async function assertFormalDraftRolloutReady(productionContractId: string
   if (!contract.expression_calibration_version_id || String(contract.calibration_status) !== "active") {
     throw new ProductRolloutReadinessError("contract_calibration_not_active", "正文合同未绑定有效的样稿校准版本。", "使用当前 active 校准版本重新生成批量正文。" );
   }
+  await assertHostedManagedPublishAllowed(String(contract.product_id), platform);
   const readiness = await getProductRolloutReadiness(String(contract.product_id), platform);
   if (!readiness.canScheduleRealPublish) {
     const blockers = readiness.gates.filter((gate) => gate.status === "blocked");
@@ -359,4 +382,39 @@ export async function assertFormalDraftRolloutReady(productionContractId: string
     );
   }
   return readiness;
+}
+
+export async function assertHostedManagedPublishAllowed(productId: string, platform: DirectPublishPlatformKey) {
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT id, status, channel_preferences_json
+     FROM hosted_promotion_order
+     WHERE product_id = ? AND status <> 'completed'
+     ORDER BY created_at DESC LIMIT 1`,
+    [productId]
+  );
+  if (!rows[0]) return;
+  const status = String(rows[0].status);
+  if (status === "paused") {
+    throw new ProductRolloutReadinessError(
+      "hosted_managed_order_paused",
+      "该产品的托管发布已由用户暂停。",
+      "回到托管状态页恢复后再发布。"
+    );
+  }
+  if (status !== "running") {
+    throw new ProductRolloutReadinessError(
+      "hosted_managed_gate_pending",
+      "该产品尚未完成当前托管任务的必要确认。",
+      "完成策略、样文或异常处理后，系统会自动继续。"
+    );
+  }
+  const preferences = parseV5Json<Array<{ channel?: string }>>(rows[0].channel_preferences_json, []);
+  const selectedChannels = new Set(preferences.map((item) => item.channel === "zhihu_toutiao_general" ? "zhihu" : item.channel));
+  if (!selectedChannels.has(platform)) {
+    throw new ProductRolloutReadinessError(
+      "hosted_managed_channel_disabled",
+      "该渠道已在托管设置中关闭。",
+      "如需继续发布，请先在托管设置中重新启用该渠道。"
+    );
+  }
 }

@@ -1,6 +1,6 @@
 # GEO 调研链路修改方案
 
-> 状态：已完成（P0 → P3 全部落地，阶段总结见 `GEO调研链路改造-P{N}-总结.md`）
+> 状态：已完成并于 2026-08-20 完成一致性整改（P0 → P3 全部落地，阶段总结见 `GEO调研链路改造-P{N}-总结.md`，整改结论见 `GEO调研链路改造-2026-08-20-整改总结.md`）
 > 范围：`src/lib/v5/geo-*`、`workers/geo-research-worker.mjs` 及相关契约
 > 制定日期：2026-08-19
 
@@ -59,7 +59,7 @@
    - `selection_alternative` — 开源自建/其他厂商替代（对比类原料）
    - `metric_benchmark` — 量化成效基准（复盘/场景类原料）
    - `misconception` — 采购/落地误区（FAQ 类原料）
-3. `live_question_discovery` 主查询 3→6 条（maxQueries 上限同步提到 6），每条绑定内容类型证据需求；
+3. 核心查询预算上限为 6 条；目标第三方渠道的 `site:` 查询使用独立预算，每个目标渠道至少一条，避免被核心查询截断；
 4. 补充轮从固定后缀改为**按证据缺口定向**（缺平台证据补 `site:` 查询、缺独立来源补变体查询）；
 5. `stopCondition` 支持按 channelKey 表达平台级停止条件。
 
@@ -114,9 +114,9 @@
 
 文件：`geo-research-service.ts`、`geo-research-repository.ts`、worker。
 
-1. `geo_research_run` 新增 `mention_baseline`（JSON：targetMentionRate + channelCitationStats），DB 迁移；
-2. 激活已预留的 `post_publish_retest` 触发类型：复测 run 探针集从批准蓝图 `retestBaseline.questions` 编译，产出 `mention_delta` 归因；
-3. `runAutomaticGeoResearchOrchestration` 的 30 天周期判断升级为"有批准蓝图且复测 delta 未达标"或"超周期"触发下一轮；
+1. `geo_research_run` 新增 `mention_baseline`（JSON：真实逐 Provider 观测推导的 targetMentionRate + channelCitationStats + providerBreakdown + measurementSource），DB 迁移；
+2. 激活已预留的 `post_publish_retest` 触发类型：复测 run 探针集从批准蓝图 `retestBaseline.questions` 编译，且必须绑定已闭合发布批次；复测只执行 `frontend_baseline` 单任务并产出 `mention_delta` 归因；
+3. `runAutomaticGeoResearchOrchestration` 仅在发布批次闭合且达到复测间隔后触发复测；未达标时先服从批次优化快照中的 P0/阻断动作，无根因阻断才触发下一轮调研；
 4. 同一快照失败不自动重试的规则不变。
 
 ### M9. 就绪检查微调（P3）
@@ -124,7 +124,7 @@
 文件：`geo-research-service.ts`。
 
 - 五项检查结构不变；
-- `targetChannels` 非空时校验对应渠道规则包已激活，缺包 blocked（fail-closed）。
+- `targetChannels` 含第三方渠道时，在就绪检查与 run 创建写路径双重校验对应渠道规则包已激活且覆盖，缺包/激活元数据无效均 blocked（fail-closed）。
 
 ## 四、契约与数据库变更汇总
 
@@ -137,7 +137,7 @@
 
 ## 五、不动清单（明确保护）
 
-- `RESEARCH_TASK_GRAPH` 七步依赖；
+- 普通调研的 `RESEARCH_TASK_GRAPH` 七步依赖；复测使用独立单任务图，避免重复生成蓝图和递归复测；
 - 三家交叉验证门禁（≥2 Provider + ≥2 独立来源）、禁止模型记忆替代；
 - 实体消歧"名称≠身份"、≥2 非名称锚点；
 - `claimAssessment` 硬校验与引用白名单修剪；
@@ -170,7 +170,7 @@
   ↓
 人工闸门(批准/担责) → GEO 内容策略蓝图(文章类型×平台×结构+术语表+集群+复测探针)
   ↓
-内容生产·发布·30 天复测提及率 delta
+内容生产·发布·批次存活/AI 样本闭合·按间隔复测提及率 delta
   ↓ (紫色回流线)
 delta 达标→放大 | 未达→归因修正 | 差距→驱动下一轮调研
 ```

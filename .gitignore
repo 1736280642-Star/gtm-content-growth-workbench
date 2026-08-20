@@ -21,6 +21,8 @@ data/v5-free-production.json
 data/v5-free-content-expression-types.json
 data/v5-aihot-trend-cache.json
 data/free-production-assets/
+data/v5-wechat-visual-plans.json
+data/v5-wechat-visual-candidates/
 data/v5-media-library.json
 data/v5-media-library-assets/
 public/wechat/

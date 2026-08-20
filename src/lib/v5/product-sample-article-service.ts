@@ -159,6 +159,7 @@ export async function ensureProductSampleArticleTasks(input: {
   productId: string;
   strategyPackId: string;
   actor: SingleArticleActor;
+  maxTasks?: number;
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [strategyRows] = await connection.query<RowDataPacket[]>(
@@ -213,7 +214,10 @@ export async function ensureProductSampleArticleTasks(input: {
       actor: input.actor
     });
     const tasks: ProductSampleTaskDescriptor[] = [];
-    for (const strategy of strategyRows) {
+    const selectedStrategies = input.maxTasks && input.maxTasks > 0
+      ? strategyRows.slice(0, input.maxTasks)
+      : strategyRows;
+    for (const strategy of selectedStrategies) {
       const articleTypeVersionId = String(strategy.article_type_version_id);
       const [existingTaskRows] = await connection.query<RowDataPacket[]>(
         `SELECT id FROM product_sample_article_task
@@ -289,7 +293,7 @@ export async function ensureProductSampleArticleTask(input: {
   strategyPackId: string;
   actor: SingleArticleActor;
 }) {
-  const tasks = await ensureProductSampleArticleTasks(input);
+  const tasks = await ensureProductSampleArticleTasks({ ...input, maxTasks: 1 });
   if (!tasks[0]) throw new V5GovernanceRepositoryError("sample_ready_article_type_missing", "没有可生成的样文类型。", 409);
   return tasks[0];
 }
@@ -338,8 +342,13 @@ export async function enqueueProductSampleArticle(input: {
   idempotencyKey: string;
   actor: SingleArticleActor;
 }) {
-  const queued = await enqueueProductSampleArticles(input);
-  return queued[0];
+  const task = await ensureProductSampleArticleTask(input);
+  const operation = await queueSingleArticleOperation({
+    taskId: task.taskId,
+    idempotencyKey: `${input.idempotencyKey}:${task.articleTypeVersionId}`.slice(0, 128),
+    actor: { ...input.actor, auditReason: "用户确认 GEO 托管策略后提交一篇代表样文异步任务" }
+  });
+  return { ...task, operation: operation.operation, queued: operation.queued };
 }
 
 export async function enqueueProductSampleRevision(input: {

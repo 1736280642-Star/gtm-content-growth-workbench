@@ -54,6 +54,13 @@ class RunnerService:
             return 400, {"authenticated": False, "status": "failed", "message": "unsupported platform", "nextAction": "Use csdn, juejin, or zhihu."}
         return 200, self.publisher.check_auth(platform)
 
+    def open_auth(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        platform = str(payload.get("platform", ""))
+        if platform not in PLATFORM_CONFIG:
+            return 400, {"ok": False, "status": "failed", "message": "unsupported platform", "nextAction": "Use csdn, juejin, or zhihu."}
+        result = self.publisher.open_auth(platform)
+        return (200 if result.get("ok") else 503), result
+
     def publish(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         error = validate_publish_payload(payload)
         if error:
@@ -177,6 +184,8 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/auth/check":
                 status, result = self.service.check_auth(payload)
+            elif path == "/auth/connect":
+                status, result = self.service.open_auth(payload)
             elif path == "/publish":
                 status, result = self.service.publish(payload)
             elif path == "/verify":

@@ -80,6 +80,7 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
 CHALLENGE_MARKERS = ["验证码", "安全验证", "手机号验证", "手机确认", "captcha", "security challenge", "滑块"]
 PLATFORM_LOCKS = {platform: threading.Lock() for platform in PLATFORM_CONFIG}
 PLATFORM_BROWSERS: dict[str, Any] = {}
+PLATFORM_AUTH_TABS: dict[str, Any] = {}
 TRANSIENT_BROWSER_ERRORS = {"BrowserConnectError", "PageDisconnectedError", "ContextLostError"}
 
 
@@ -196,6 +197,7 @@ def _close_cached_browsers() -> None:
         except Exception:
             pass
     PLATFORM_BROWSERS.clear()
+    PLATFORM_AUTH_TABS.clear()
 
 
 atexit.register(_close_cached_browsers)
@@ -780,6 +782,48 @@ def _verify_juejin_draft_api(payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 class BrowserPublisher:
+    def open_auth(self, platform: str) -> dict[str, Any]:
+        """Open a dedicated, visible login window without reading or returning credentials."""
+        config = _config(platform)
+        with PLATFORM_LOCKS[platform]:
+            browser = _browser(platform)
+            existing = PLATFORM_AUTH_TABS.get(platform)
+            if existing is not None:
+                try:
+                    if existing.states.is_alive:
+                        return {
+                            "ok": True,
+                            "status": "waiting_for_user",
+                            "message": f"{platform} 专用登录窗口已经打开。",
+                            "nextAction": "请在该窗口完成登录或安全验证，然后回到工作台重新检查。",
+                        }
+                except Exception:
+                    PLATFORM_AUTH_TABS.pop(platform, None)
+            try:
+                tab = browser.new_tab()
+                tab.get(config["auth_url"])
+                PLATFORM_AUTH_TABS[platform] = tab
+                if has_security_challenge(_body_text(tab)):
+                    return {
+                        "ok": True,
+                        "status": "manual_takeover_required",
+                        "message": f"{platform} 登录窗口需要人工完成安全验证。",
+                        "nextAction": "请在专用窗口完成验证码、手机确认或安全挑战；系统不会代替你处理。",
+                    }
+                return {
+                    "ok": True,
+                    "status": "waiting_for_user",
+                    "message": f"{platform} 专用登录窗口已打开。",
+                    "nextAction": "请完成登录后回到工作台点击“我已完成登录”。",
+                }
+            except Exception as error:
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "message": f"{platform} 登录窗口启动失败：{type(error).__name__}。",
+                    "nextAction": "检查专用浏览器是否可启动、profile 是否被占用，然后重试。",
+                }
+
     def check_auth(self, platform: str) -> dict[str, Any]:
         config = _config(platform)
         with PLATFORM_LOCKS[platform]:

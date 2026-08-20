@@ -40,6 +40,29 @@ export type GeoResearchTaskType =
   | "evidence_alignment"
   | "blueprint_synthesis";
 
+export interface GeoResearchTaskGraphNode {
+  type: GeoResearchTaskType;
+  dependencies: GeoResearchTaskType[];
+}
+
+const FULL_GEO_RESEARCH_TASK_GRAPH: GeoResearchTaskGraphNode[] = [
+  { type: "context_validation", dependencies: [] },
+  { type: "research_planning", dependencies: ["context_validation"] },
+  { type: "live_question_discovery", dependencies: ["research_planning"] },
+  { type: "live_competitor_discovery", dependencies: ["research_planning"] },
+  { type: "frontend_baseline", dependencies: ["live_question_discovery"] },
+  { type: "evidence_alignment", dependencies: ["live_question_discovery", "live_competitor_discovery", "frontend_baseline"] },
+  { type: "blueprint_synthesis", dependencies: ["evidence_alignment"] }
+];
+
+const GEO_RETEST_TASK_GRAPH: GeoResearchTaskGraphNode[] = [
+  { type: "frontend_baseline", dependencies: [] }
+];
+
+export function geoResearchTaskGraphForTrigger(triggerType: GeoResearchRun["triggerType"]): GeoResearchTaskGraphNode[] {
+  return triggerType === "post_publish_retest" ? GEO_RETEST_TASK_GRAPH : FULL_GEO_RESEARCH_TASK_GRAPH;
+}
+
 export type GeoResearchEvidenceType =
   | "knowledge_source"
   | "search_result"
@@ -90,17 +113,40 @@ export interface CreateGeoResearchProjectInput {
 /** 提及率 KPI 基线：frontend_baseline 任务完成后固化到 run，供 post_publish_retest 做提及率差值归因。 */
 export interface GeoMentionBaseline {
   capturedAt: string;
+  measurementSource?: "model_answer_observations" | "legacy_semantic_output";
   questionCount: number;
   targetMentionedCount: number;
   targetMentionRate: number;
   mentionedQuestions: string[];
   unmentionedQuestions: string[];
+  unevaluableQuestions?: string[];
+  successfulObservationCount?: number;
+  failedObservationCount?: number;
+  providerBreakdown?: Array<{
+    provider: string;
+    observationCount: number;
+    successfulObservationCount: number;
+    targetMentionedCount: number;
+    targetMentionRate: number;
+  }>;
   competitors: string[];
   channelCitationStats: Array<{
     channelKey: string;
     citedUrlCount: number;
     citedUrlShare: number;
   }>;
+}
+
+export interface GeoResearchRetestBinding {
+  blueprintVersionId: string;
+  baselineRunId: string;
+  blueprintApprovedAt: string;
+  optimizationSnapshotId: string;
+  batchKey: string;
+  matrixVersionId?: string;
+  strategyPackId?: string;
+  inputEvidenceHash: string;
+  batchClosedAt: string;
 }
 
 export interface GeoResearchRun {

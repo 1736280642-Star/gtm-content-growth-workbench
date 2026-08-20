@@ -786,6 +786,33 @@ async function checkFormalPublishAuth(platform) {
   }
 }
 
+async function openFormalPublishAuthorization(platform) {
+  if (!['csdn', 'juejin', 'zhihu'].includes(platform)) {
+    return {
+      ok: false,
+      status: 'unsupported',
+      message: `平台 ${platform || 'unknown'} 不使用专用浏览器授权。`,
+      nextAction: '请返回工作台选择知乎、CSDN 或掘金。'
+    };
+  }
+  try {
+    const { response, payload } = await proxyArcs('/auth/connect', { platform });
+    return {
+      ok: response.ok && payload.ok === true,
+      status: String(payload.status || (response.ok ? 'waiting_for_user' : 'failed')),
+      message: String(payload.message || (response.ok ? '专用登录窗口已打开。' : '专用登录窗口启动失败。')),
+      nextAction: String(payload.nextAction || '完成登录后回到工作台重新检查。')
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'failed',
+      message: error instanceof Error ? error.message : '本机授权 Runner 不可达。',
+      nextAction: '请启动本机发布 Bridge 与 Arcs Runner 后重试。'
+    };
+  }
+}
+
 async function syncCsdnArticle(input) {
   const missingConfig = getCsdnMissingConfig();
   if (missingConfig.length) {
@@ -1651,6 +1678,13 @@ async function handleRequest(request, response) {
   if (request.method === "POST" && url.pathname === "/auth/check") {
     const body = await readJsonBody(request);
     sendJson(response, 200, body.purpose === "formal_publish" ? await checkFormalPublishAuth(body.platform) : await checkAuth(body.platform));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/auth/connect") {
+    const body = await readJsonBody(request);
+    const result = await openFormalPublishAuthorization(body.platform);
+    sendJson(response, result.ok ? 200 : 503, result);
     return;
   }
 

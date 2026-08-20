@@ -51,6 +51,12 @@ function parseChannelRulePack(raw: string): GeoChannelRulePack {
   if (typeof pack.rulePackVersionId !== "string" || !pack.rulePackVersionId.trim()) {
     throw new Error("GEO_CHANNEL_RULE_PACK_JSON 缺少 rulePackVersionId");
   }
+  if (typeof pack.activatedBy !== "string" || !pack.activatedBy.trim()) {
+    throw new Error("GEO_CHANNEL_RULE_PACK_JSON 缺少人工激活人 activatedBy");
+  }
+  if (typeof pack.activatedAt !== "string" || !pack.activatedAt.trim() || Number.isNaN(Date.parse(pack.activatedAt))) {
+    throw new Error("GEO_CHANNEL_RULE_PACK_JSON 缺少合法的人工激活时间 activatedAt");
+  }
   const seenKeys = new Set<string>();
   for (const channel of pack.channels) {
     if (!channel || typeof channel !== "object") throw new Error("渠道规则必须是对象");
@@ -140,6 +146,9 @@ export function evaluateTargetChannelRuleCoverage(input: {
   }
   if (!input.pack) {
     return `研究边界声明了第三方平台渠道（${platformChannels.join("、")}），但尚未激活渠道规则包（GEO_CHANNEL_RULE_PACK_JSON）。`;
+  }
+  if (!input.pack.activatedBy?.trim() || !input.pack.activatedAt || Number.isNaN(Date.parse(input.pack.activatedAt))) {
+    return `渠道规则包 ${input.pack.rulePackVersionId} 尚无有效人工激活记录（activatedBy/activatedAt）。`;
   }
   const packKeys = new Set(input.pack.channels.map((channel) => channel.channelKey));
   const missingChannels = platformChannels.filter((channelKey) => !packKeys.has(channelKey));

@@ -146,6 +146,50 @@ export async function checkFormalPublishAuth(platform: DirectPublishPlatformKey)
   }
 }
 
+export interface FormalPublishAuthorizationResult {
+  ok: boolean;
+  status: "waiting_for_user" | "manual_takeover_required" | "failed" | "unsupported";
+  message: string;
+  nextAction: string;
+}
+
+export async function openFormalPublishAuthorization(platform: DirectPublishPlatformKey): Promise<FormalPublishAuthorizationResult> {
+  if (!(["csdn", "juejin", "zhihu"] as DirectPublishPlatformKey[]).includes(platform)) {
+    return {
+      ok: false,
+      status: "unsupported",
+      message: "该渠道不使用专用浏览器授权。",
+      nextAction: "返回托管设置选择知乎、CSDN 或掘金。"
+    };
+  }
+  const configError = getBridgeConfigError();
+  if (configError) {
+    return {
+      ok: false,
+      status: "failed",
+      message: configError.message,
+      nextAction: configError.nextAction || "请先完成本机发布 Bridge 配置。"
+    };
+  }
+  try {
+    const response = await fetchBridge("/auth/connect", { platform: bridgePlatform(platform), purpose: "formal_publish" });
+    const payload = (await response.json().catch(() => ({}))) as Partial<FormalPublishAuthorizationResult>;
+    return {
+      ok: response.ok && payload.ok === true,
+      status: payload.status || (response.ok ? "waiting_for_user" : "failed"),
+      message: payload.message || (response.ok ? "专用登录窗口已打开。" : "专用登录窗口启动失败。"),
+      nextAction: payload.nextAction || "完成登录后回到工作台重新检查。"
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message: error instanceof Error ? error.message : "本机发布 Bridge 不可达。",
+      nextAction: "启动本机发布 Bridge 与 Arcs Runner 后重试。"
+    };
+  }
+}
+
 export async function submitFormalPublish(platform: DirectPublishPlatformKey, payload: PlatformPublishPayload): Promise<PublishResult> {
   try {
     const response = await fetchBridge("/publish", { platform: bridgePlatform(platform), ...payload });

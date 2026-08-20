@@ -182,6 +182,10 @@ const requiredFiles = [
   "src/app/api/v5/products/[productId]/rollout-readiness/route.ts",
   "src/components/ProductRolloutReadinessPanel.tsx",
   "scripts/v5-phase2f-rollout-readiness.test.mjs",
+  // Hosted third-party channel authorization handoff
+  "src/lib/v5/hosted-channel-authorization-service.ts",
+  "src/app/api/v5/hosted/orders/[orderId]/channels/[channel]/authorization/route.ts",
+  "src/app/hosted/connect/[channel]/page.tsx",
   // Phase 2G: evidence-backed MonthlyReview proposals
   "scripts/v5-phase2g-monthly-review-contract.test.mjs",
   "scripts/v5-phase2g-publish-lifecycle.integration.test.mjs",
@@ -329,12 +333,19 @@ addContentCheck("product-first content orchestration", "src/app/monthly-matrix/b
   "文章任务编排",
   "异常处理"
 ]);
-addContentCheck("product-first home content pipeline", "src/app/page.tsx", [
-  "productProduction",
-  "生产产品",
-  "自动化运行中",
-  "查看任务",
-  "处理异常"
+addContentCheck("product-first hosted handoff", "src/app/page.tsx", [
+  "MANAGED HANDOFF",
+  "提供产品资料",
+  "选择推广渠道",
+  "接收确认与结果",
+  "确认委托"
+]);
+addContentCheck("hosted channel authorization handoff", "src/app/hosted/connect/[channel]/page.tsx", [
+  "CHANNEL HANDOFF",
+  "打开 {label} 登录窗口",
+  "我已完成登录，重新检查",
+  "确认用于 {order.productName}",
+  "凭据留在本机"
 ]);
 addContentCheck("exception-first publishing monitor", "src/app/publishing/page.tsx", [
   "productGroups",

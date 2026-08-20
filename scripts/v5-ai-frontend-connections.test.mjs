@@ -17,15 +17,19 @@ test("AI frontend connections bind tasks to a concrete device and platform", asy
   assert.match(taskRoute, /connectionId/);
 });
 
-test("hosted mode creates a real connected capture task and wakes the extension", async () => {
-  const [page, panel, route, manifest, worker] = await Promise.all([
+test("hosted settings keeps AI frontend retest optional and wakes the extension", async () => {
+  const [page, settingsPage, panel, route, manifest, worker] = await Promise.all([
     read("src/app/page.tsx"),
+    read("src/app/hosted/settings/page.tsx"),
     read("src/components/HostedAiFrontendTestPanel.tsx"),
     read("src/app/api/v5/hosted/ai-front-test/route.ts"),
     read("browser-extension/manifest.json"),
     read("browser-extension/src/service-worker.js")
   ]);
-  assert.match(page, /HostedAiFrontendTestPanel/);
+  assert.doesNotMatch(page, /HostedAiFrontendTestPanel/);
+  assert.match(page, /确认委托，开始调研/);
+  assert.match(settingsPage, /HostedAiFrontendTestPanel/);
+  assert.match(settingsPage, /AI 前台验证（可选）/);
   assert.match(panel, /\/api\/v5\/hosted\/ai-front-test/);
   assert.match(panel, /NEXT_PUBLIC_V5_CAPTURE_EXTENSION_ID/);
   assert.match(route, /createConnectedManualCaptureTask/);

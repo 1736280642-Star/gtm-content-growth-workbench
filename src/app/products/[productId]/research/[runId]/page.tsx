@@ -222,7 +222,11 @@ export default function GeoResearchRunPage() {
                 <div>
                   <span>目标提及率基线</span>
                   <strong>{(mentionKpi.mentionBaseline.targetMentionRate * 100).toFixed(1)}%</strong>
-                  <small>{mentionKpi.mentionBaseline.targetMentionedCount}/{mentionKpi.mentionBaseline.questionCount} 个问题被 AI 提及</small>
+                  <small>
+                    {mentionKpi.mentionBaseline.targetMentionedCount}/{mentionKpi.mentionBaseline.questionCount} 个可评估问题被 AI 提及
+                    {mentionKpi.mentionBaseline.measurementSource === "model_answer_observations" ? " · 真实 Provider 观测" : " · 历史语义口径"}
+                    {mentionKpi.mentionBaseline.unevaluableQuestions?.length ? ` · ${mentionKpi.mentionBaseline.unevaluableQuestions.length} 个问题采集失败未计分` : ""}
+                  </small>
                 </div>
               ) : null}
             </div>
@@ -235,7 +239,7 @@ export default function GeoResearchRunPage() {
                 <div className="geo-run-summary">
                   <div><span>前次基线提及率</span><strong>{(mentionKpi.mentionDelta.baselineMentionRate * 100).toFixed(1)}%</strong><small>{new Date(mentionKpi.mentionDelta.baselineCapturedAt).toLocaleString("zh-CN")}</small></div>
                   <div><span>本次复测提及率</span><strong>{(mentionKpi.mentionDelta.retestMentionRate * 100).toFixed(1)}%</strong><small>{new Date(mentionKpi.mentionDelta.retestCapturedAt).toLocaleString("zh-CN")}</small></div>
-                  <div><span>提及率变化</span><strong style={{ color: mentionKpi.mentionDelta.mentionRateDelta >= 0 ? "#389e0d" : "#cf1322" }}>{mentionKpi.mentionDelta.mentionRateDelta >= 0 ? "+" : ""}{(mentionKpi.mentionDelta.mentionRateDelta * 100).toFixed(1)}%</strong><small>发布后内容带来的提及率增量</small></div>
+                  <div><span>提及率变化</span><strong style={{ color: mentionKpi.mentionDelta.mentionRateDelta >= 0 ? "#389e0d" : "#cf1322" }}>{mentionKpi.mentionDelta.mentionRateDelta >= 0 ? "+" : ""}{(mentionKpi.mentionDelta.mentionRateDelta * 100).toFixed(1)}%</strong><small>发布批次后的观测变化，非因果证明</small></div>
                 </div>
                 <Alert
                   showIcon
@@ -249,7 +253,7 @@ export default function GeoResearchRunPage() {
                       {mentionKpi.mentionDelta.lostMentionQuestions.length ? (
                         <Typography.Text type="warning">失去提及：{mentionKpi.mentionDelta.lostMentionQuestions.slice(0, 5).join("；")}</Typography.Text>
                       ) : null}
-                      <Typography.Text type="secondary">差值由两次运行的结构化基线确定性计算，不经 LLM。</Typography.Text>
+                      <Typography.Text type="secondary">差值由绑定基线与本次真实 Provider 观测确定性计算，不经 LLM；它反映前后变化，不单独证明变化由发布内容造成。</Typography.Text>
                     </Space>
                   }
                 />

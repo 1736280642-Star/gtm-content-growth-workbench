@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { channelLabels } from "@/lib/labels";
 import { getWorkspaceSetting } from "@/lib/workbench-store";
-import type { ChannelKey } from "@/lib/types";
+import type { ChannelKey, DirectPublishPlatformKey } from "@/lib/types";
 import type { RowDataPacket } from "mysql2/promise";
 import {
   confirmQuestionTypeMatch,
@@ -21,6 +21,7 @@ import {
   type ProductGeoStrategyContentPlanV2
 } from "./product-strategy-pack-contracts";
 import { getMonthlyWorkspaceReadModel } from "./monthly-workspace-read-model";
+import { resolvePublishAccountCandidate } from "./product-rollout-readiness-service";
 import type {
   ContentQuotaRule,
   KnowledgeBaseOption,
@@ -274,6 +275,13 @@ interface PublishPolicy {
   minIntervalMinutes: number;
 }
 
+const publishPlatformByChannel: Record<ChannelKey, DirectPublishPlatformKey> = {
+  wechat: "wechat",
+  csdn: "csdn",
+  juejin: "juejin",
+  zhihu_toutiao_general: "zhihu"
+};
+
 async function buildProductStrategyMonthlyQuotas(input: {
   month: string;
   rulePackages: RulePackageOption[];
@@ -313,7 +321,9 @@ async function buildProductStrategyMonthlyQuotas(input: {
   for (const row of bindingRows) {
     const productId = String(row.product_id);
     const channel = String(row.channel) as ChannelKey;
-    if (!configuredAccounts[channel]?.trim() || configuredAccounts[channel]?.trim() !== String(row.account_label)) continue;
+    const configuredAccount = configuredAccounts[channel]?.trim()
+      || resolvePublishAccountCandidate(publishPlatformByChannel[channel]);
+    if (!configuredAccount || configuredAccount !== String(row.account_label)) continue;
     const channels = boundChannelsByProduct.get(productId) || new Set<string>();
     channels.add(channel);
     boundChannelsByProduct.set(productId, channels);
@@ -485,6 +495,17 @@ export async function runAutomaticSchedule(month: string): Promise<MonthlyAutoma
   const setting = getWorkspaceSetting();
   const accounts = setting.publishAccountByChannel || {};
   const policies = setting.publishPolicyByChannel || {};
+  const [hostedRows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT product_id, daily_caps_json FROM hosted_promotion_order
+     WHERE status = 'running'`
+  );
+  const hostedDailyCaps = new Map<string, number>();
+  for (const row of hostedRows) {
+    const caps = parseV5Json<Record<string, number>>(row.daily_caps_json, {});
+    for (const [channel, cap] of Object.entries(caps)) {
+      if (Number.isInteger(cap) && cap > 0) hostedDailyCaps.set(`${String(row.product_id)}:${channel}`, cap);
+    }
+  }
   const occupiedByAccount = new Map<string, string[]>();
   for (const task of workspace.productionTasks) {
     if (!task.scheduledAt) continue;
@@ -503,6 +524,9 @@ export async function runAutomaticSchedule(month: string): Promise<MonthlyAutoma
       continue;
     }
     const policy = normalizedPublishPolicy(channelKey ? policies[channelKey] : undefined);
+    const hostedChannel = channelKey === "zhihu_toutiao_general" ? "zhihu" : channelKey;
+    const hostedCap = task.productId && hostedChannel ? hostedDailyCaps.get(`${task.productId}:${hostedChannel}`) : undefined;
+    if (hostedCap) policy.dailyLimit = Math.min(policy.dailyLimit, hostedCap);
     const occupancyKey = `${task.channel}:${platformAccount}`;
     const occupied = occupiedByAccount.get(occupancyKey) || [];
     const scheduledAt = nextAvailableSlot(month, occupied, policy);
