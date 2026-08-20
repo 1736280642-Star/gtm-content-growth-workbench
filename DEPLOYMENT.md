@@ -100,6 +100,25 @@ docker compose --profile full up -d --build
 
 `down` 不删除命名 Volume。不要运行 `docker compose down -v`，除非明确要永久删除数据库、索引和工作台状态。
 
+## GEO 托管邮件配置
+
+正式托管邮件依赖公网工作台地址、链接签名密钥、邮件投递接口和接口 Bearer Token。Docker 3027 部署把真实值保存在被 Git 忽略的 `.env`，公开模板只保留以下占位字段：
+
+```dotenv
+HOSTED_PUBLIC_BASE_URL=https://workbench.example.com
+HOSTED_REVIEW_LINK_SECRET=<本机生成>
+HOSTED_EMAIL_DELIVERY_URL=https://mail-relay.example.com/send
+HOSTED_EMAIL_DELIVERY_TOKEN=<邮件接口提供或本机生成>
+```
+
+补齐后运行：
+
+```powershell
+npm.cmd run docker:3027:deploy -- -NoOpen
+```
+
+上线验收不能只检查容器健康，还必须验证邮件接口真实接受请求、Outbox 进入 `sent`、确认链接可以从外部网络打开，以及相同幂等键不会重复发送。字段来源、生成命令、HTTP 契约、安全轮换和无泄密检查见 [`docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md`](./docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md)。
+
 ## 备份与恢复
 
 备份会生成 `backups/<timestamp>/mysql.sql`、OpenSearch filesystem snapshot 和不含密钥的 metadata：

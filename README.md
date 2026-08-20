@@ -357,6 +357,21 @@ npm.cmd run verify
 
 ## 配置与数据边界
 
+### GEO 托管邮件与安全链接
+
+正式向用户发送策略确认、代表样文确认、异常处理和每日公开 URL 汇总前，部署人员必须配置：
+
+```dotenv
+HOSTED_PUBLIC_BASE_URL=https://workbench.example.com
+HOSTED_REVIEW_LINK_SECRET=<本机随机生成，不提交 GitHub>
+HOSTED_EMAIL_DELIVERY_URL=https://mail-relay.example.com/send
+HOSTED_EMAIL_DELIVERY_TOKEN=<邮件接口提供或本机随机生成，不提交 GitHub>
+```
+
+其中 `HOSTED_REVIEW_LINK_SECRET` 由部署人员本机生成；邮件 URL 和 Token 来自符合项目请求契约的企业邮件 API，或自建邮件适配器。Docker 3027 生产部署把真实值写入被 Git 忽略的 `.env`，本地非 Docker 开发使用 `.env.local`。缺少邮件 URL 或 Token 时，通知保持 `pending_config`，系统不会伪造“已发送”。`HOSTED_PUBLIC_BASE_URL` 必须是用户可访问的公网 HTTPS 地址；默认的 `http://127.0.0.1:3027` 只能用于本机验收。
+
+完整的字段来源、随机值生成命令、邮件接口请求/响应格式、Docker 重启、无泄密验收和轮换要求见 [`docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md`](./docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md)。
+
 公众号订阅采集由管理员在部署环境或本地 `.env.local` 自行配置：
 
 ```text
@@ -405,6 +420,7 @@ npm.cmd run smoke:workflow
 | [`V5_PRODUCTION_USER_FLOW_RUNBOOK.md`](./V5_PRODUCTION_USER_FLOW_RUNBOOK.md) | 正式生产链路与人工边界 |
 | [`V5_BACKEND_INTEGRATION.md`](./V5_BACKEND_INTEGRATION.md) | MySQL、RAG、Provider 和运行时集成 |
 | [`docs/usage.md`](./docs/usage.md) | 本地启动、配置诊断与渠道接入 |
+| [`docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md`](./docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md) | GEO 托管邮件、安全行动链接、Docker 配置与投递接口契约 |
 | [`docs/dynamic-knowledge-collection-governance.md`](./docs/dynamic-knowledge-collection-governance.md) | 指定站点与公众号的持续采集治理 |
 | [`docs/方案与规划/2026-08-04-3027自动发布前台接入说明.md`](./docs/方案与规划/2026-08-04-3027自动发布前台接入说明.md) | 3027 发布结果账本、回传和旧内容迁移 |
 | [`docs/方案与规划/GEO调研链路修改方案.md`](./docs/方案与规划/GEO调研链路修改方案.md) | GEO 调研平台感知与提及率 KPI 闭环改造方案（含 P0–P3 阶段总结索引） |
