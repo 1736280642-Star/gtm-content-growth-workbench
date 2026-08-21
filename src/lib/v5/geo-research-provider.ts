@@ -166,6 +166,78 @@ export function compactGeoBlueprintPreviousOutputs(
   });
 }
 
+export function compactGeoBlueprintKnowledgeContext(
+  knowledgeContext: ContentStrategyKnowledgeContext | undefined
+) {
+  if (!knowledgeContext) return undefined;
+  return {
+    contractVersion: knowledgeContext.contractVersion,
+    productId: knowledgeContext.productId,
+    productName: knowledgeContext.productName,
+    sourceFactCount: knowledgeContext.sourceFactCount,
+    retrievedFactCount: knowledgeContext.retrievedFactCount,
+    profileSource: knowledgeContext.profileSource,
+    authoritativeProfileRef: "productKnowledgeProfile",
+    questionClusters: knowledgeContext.questionClusters.map((cluster) => ({
+      clusterId: cluster.clusterId,
+      label: cluster.label,
+      questions: cluster.questions,
+      writableAngles: cluster.writableAngles,
+      facts: cluster.facts.map((fact) => ({
+        claimId: fact.claimId,
+        text: fact.text,
+        claimType: fact.claimType,
+        authorityLevel: fact.authorityLevel,
+        reviewStatus: fact.reviewStatus,
+        conditions: fact.conditions,
+        limitations: fact.limitations,
+        relevanceScore: fact.relevanceScore
+      }))
+    }))
+  };
+}
+
+function compactGeoBlueprintProductKnowledgeProfile(profile: ProductKnowledgeProfile) {
+  const facts = (items: ProductKnowledgeProfile["positioning"]) => items.map((item) => ({
+    claimId: item.claimId,
+    text: item.text
+  }));
+  return {
+    ...profile,
+    positioning: facts(profile.positioning),
+    audiences: facts(profile.audiences),
+    capabilities: facts(profile.capabilities),
+    scenarios: facts(profile.scenarios),
+    boundaries: facts(profile.boundaries)
+  };
+}
+
+function compactGeoBlueprintProbeSet(probeSetSnapshot: ProbeSetSnapshot | undefined) {
+  if (!probeSetSnapshot) return undefined;
+  return {
+    probeSetId: probeSetSnapshot.probeSetId,
+    probes: probeSetSnapshot.probes.map((probe) => ({
+      probeId: probe.probeId,
+      questionText: probe.questionText,
+      priority: probe.priority,
+      objective: probe.objective,
+      scenarioId: probe.scenarioId,
+      journeyStage: probe.journeyStage
+    }))
+  };
+}
+
+function compactGeoBlueprintWebsiteCoverage(profile: ProductWebsiteCoverageProfile | undefined) {
+  if (!profile) return undefined;
+  return {
+    knowledgeReadiness: profile.knowledgeReadiness,
+    publicGeoReadiness: profile.publicGeoReadiness,
+    evidenceGaps: profile.evidenceGaps,
+    topicCoverage: profile.topicCoverage,
+    officialSources: profile.officialSources
+  };
+}
+
 const LIVE_SEARCH_TASKS = new Set<GeoResearchTaskType>([
   "live_question_discovery",
   "live_competitor_discovery",
@@ -269,6 +341,32 @@ The output is a draft only and must not claim approval or activation.`;
     default:
       return "Validate the supplied research context and return a concise JSON object.";
   }
+}
+
+function blueprintShardInstruction(shardId: string, channel: TaskInstructionChannelContext) {
+  const common = `Produce one shard of a draft GEO content strategy for human review. Return strict JSON only and only the requested top-level modules. Read inputs in this order: governed productKnowledgeProfile/contentStrategyKnowledgeContext decide what can be written; previousOutputs decide what users ask and where visibility gaps exist; existingArticleTypes decide reuse/adaptation/generation; websiteCoverageProfile prevents duplicate official-site content. External pages prove demand or visibility patterns but never replace product facts. Do not approve or activate anything. Preserve uncertainty. Pricing, ROI, compliance, architecture, customer cases and comparative superiority remain blocked or require evidence unless governed first-party claims support them. Public promotional content must stay decision-level and must not expose internal deployment parameters, runbooks, project scopes or acceptance checklists. The sole promotion objective is improving product/brand AI mention rate, so recommendations must connect to this run's question, citation or frontend-baseline evidence. Governed channels: ${channel.channelKeys.join(", ") || "none"}.`;
+  if (shardId === "research_and_retest") {
+    return `${common}
+Return exactly:
+{"questionStrategy":{"priorityClusters":[{"id":"","name":"","intent":"","priority":"high|medium|low","evidenceReadiness":"ready|partial|blocked","representativeQuestions":[],"sourceIds":[]}],"journeyCoverage":[],"recommendedQuestions":[]},"competitorLandscape":{"competitors":[{"name":"","entityClassification":"verified_competitor","reason":"","overlapDimensions":[],"relationshipEvidence":"","sourceUrls":[],"evidenceStrength":"strong|moderate|weak"}],"selectionAlternatives":[{"name":"","entityClassification":"category_related","alternativeKind":"open_source|other_vendor|internal_build","reason":"","sourceUrls":[]}],"differentiationAngles":[],"contentGaps":[]},"citationStrategy":{"productClaimPolicy":"official_and_governed_sources_first","comparativeClaimPolicy":"two_sided_traceable_evidence_required","preferredSourceTypes":[],"citationPatterns":[],"sourceRequirements":[]},"retestBaseline":{"questions":[],"targetMentionRate":0.0,"citationDomains":[]}}.
+Use non-overlapping representativeQuestions across clusters. Include competitors only when prior live evidence proves a distinct entity and purchase-task overlap; keep other alternatives separate. Retest questions must use exact probe questionText values when available.`;
+  }
+  if (shardId === "content_types_and_evidence") {
+    return `${common}
+Return exactly:
+{"writableContentAreas":[{"name":"","knowledgeClaimIds":[],"supportedAngles":[]}],"articleTypeSeeds":[{"portfolioItemId":"","origin":"matched|adapted|generated","articleTypeId":"","articleTypeVersionId":"","baseArticleTypeId":"","baseArticleTypeVersionId":"","name":"","contentGoal":"","questionClusterIds":[],"knowledgeClaimIds":[],"knowledgeSupportSummary":"","geoOpportunitySummary":"","existingTypeComparison":"","expectedMentionRationale":"","retestProbeRefs":[],"evidenceReadiness":"ready|partial|blocked"}],"evidenceRequirements":{"claimsRequiringEvidence":[],"blockedClaims":[],"sourceGaps":[]}}.
+Select exactly 3 semantically distinct seeds. Use matched only when an active existing version already covers intent, audience, goal, structure and evidence slots; copy exact articleTypeId/articleTypeVersionId. Use adapted only when an existing type has the right core intent but needs product/provider framing; copy exact base IDs and leave articleTypeVersionId empty. Use generated only when governed facts support the topic, GEO proves an opportunity, and no existing type fits; leave all IDs empty. Never copy a type merely because an external article uses that label. Each seed must already state governed knowledge support, GEO opportunity, existing-type comparison, expected mention mechanism and retest probe references. One seed must cover decision-level implementation-provider selection when a serviceProvider exists.`;
+  }
+  return `${common}
+Return exactly:
+{"platformStrategy":[{"channelKey":"","objective":"","suitableArticleTypes":[],"structureRequirements":[],"titlePatterns":[],"ctaVariantRef":"","authorAccountPolicy":"","hypothesis":false,"evidenceBasis":{"candidateIds":[],"sourceUrls":[]}}],"contentClusterPlan":[{"clusterTheme":"","memberArticleTypes":[],"internalLinkRationale":""}],"monthlyStrategyInput":{"objectives":[],"channelPriorities":[],"contentMix":[]}}.
+Use only governed channel keys. Ground platform claims in same-channel evidenceBasis; when evidence is insufficient, keep the recommendation as hypothesis=true instead of inventing a rule. Reference governed CTA variants rather than writing CTA copy. Put every selected article type in exactly one internal-link cluster. Monthly input must summarize the proposed content mix without claiming approval.`;
+}
+
+function blueprintArticleTypeExpansionInstruction() {
+  return `Expand exactly one approved portfolio seed into one public-facing article type. Return strict JSON only:
+{"articleType":{"portfolioItemId":"","origin":"matched|adapted|generated","articleTypeId":"","articleTypeVersionId":"","baseArticleTypeId":"","baseArticleTypeVersionId":"","name":"","definition":"","suitableQuestions":[],"unsuitableQuestions":[],"targetAudience":[],"contentGoal":"","structureModules":[{"key":"","purpose":"","required":true}],"emphasisOrder":[],"style":[],"lengthRange":{"min":1200,"max":2400},"evidencePreferences":[],"ctaIntent":"","channelFit":[],"questionClusterIds":[],"recommendationReason":"","knowledgeSupportSummary":"","knowledgeClaimIds":[],"geoOpportunitySummary":"","existingTypeComparison":"","expectedMentionRationale":"","retestProbeRefs":[],"confidence":0.0,"evidenceReadiness":"ready|partial|blocked","proposedMonthlyShare":0.0}}.
+Preserve every origin and ID from the seed. Matched uses exact active articleType IDs; adapted uses exact base IDs and an empty articleTypeVersionId; generated leaves all type IDs empty. Use only governed knowledgeClaimIds. Keep the article decision-level and public-facing. Missing internal delivery artifacts alone never make it partial or blocked. Evidence preferences must contain only the minimum public sources required. Pricing, ROI, compliance, architecture, customer cases and comparative superiority stay blocked or require evidence unless governed first-party claims support them. Do not approve or activate the type.`;
 }
 
 const ZHIPU_SEARCH_ENGINES = new Set(["search_std", "search_pro", "search_pro_sogou", "search_pro_quark"]);
@@ -442,6 +540,34 @@ async function requestZhipu(
     );
   }
   return payload;
+}
+
+async function requestZhipuBlueprintShard(
+  config: ZhipuProviderConfig,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+  shardId: string
+) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    try {
+      return await requestZhipu(config, "/chat/completions", body, signal);
+    } catch (error) {
+      lastError = error;
+      const retryable = error instanceof V5GovernanceRepositoryError
+        && error.code === "research_provider_unreachable"
+        && !signal.aborted;
+      if (!retryable || attempt === 8) throw error;
+      logGeoProviderStage("blueprint_synthesis_shard_retry", {
+        taskType: "blueprint_synthesis",
+        shardId,
+        attempt,
+        nextAttempt: attempt + 1
+      });
+      await new Promise((resolve) => setTimeout(resolve, Math.min(20_000, 2 ** attempt * 1_000)));
+    }
+  }
+  throw lastError;
 }
 
 function strings(value: unknown) {
@@ -1110,11 +1236,26 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       : [];
 
     const synthesisController = new AbortController();
-    const synthesisTimeout = setTimeout(() => synthesisController.abort(), providerTimeoutMs);
+    const synthesisTimeoutMs = context.taskType === "blueprint_synthesis"
+      ? Math.max(providerTimeoutMs, 900_000)
+      : providerTimeoutMs;
+    const synthesisTimeout = setTimeout(() => synthesisController.abort(), synthesisTimeoutMs);
     try {
       const synthesisPreviousOutputs = context.taskType === "blueprint_synthesis"
         ? compactGeoBlueprintPreviousOutputs(context.previousOutputs)
         : context.previousOutputs;
+      const synthesisProductKnowledgeProfile = context.taskType === "blueprint_synthesis"
+        ? compactGeoBlueprintProductKnowledgeProfile(context.productKnowledgeProfile)
+        : undefined;
+      const synthesisKnowledgeContext = context.taskType === "blueprint_synthesis"
+        ? compactGeoBlueprintKnowledgeContext(context.contentStrategyKnowledgeContext)
+        : undefined;
+      const synthesisWebsiteCoverage = context.taskType === "blueprint_synthesis"
+        ? compactGeoBlueprintWebsiteCoverage(context.websiteCoverageProfile)
+        : context.websiteCoverageProfile;
+      const synthesisProbeSet = context.taskType === "blueprint_synthesis"
+        ? compactGeoBlueprintProbeSet(context.probeSetSnapshot)
+        : context.probeSetSnapshot;
       logGeoProviderStage("semantic_synthesis_started", {
         taskType: context.taskType,
         evidenceCount: searchEvidence.length,
@@ -1146,12 +1287,12 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
                 content: JSON.stringify({
                   instruction: `${taskInstruction(context.taskType, taskInstructionChannelContext(context.project.targetChannels))} This is evidence shard ${shardIndex + 1} of ${evidenceShards.length}. Return 8-14 high-confidence questions grounded only in this shard; do not attempt the full 30-40 question catalog in one shard.`,
                   productIdentity,
-                  productKnowledgeProfile: context.taskType === "blueprint_synthesis" ? context.productKnowledgeProfile : undefined,
-                  contentStrategyKnowledgeContext: context.taskType === "blueprint_synthesis" ? context.contentStrategyKnowledgeContext : undefined,
+                  productKnowledgeProfile: synthesisProductKnowledgeProfile,
+                  contentStrategyKnowledgeContext: synthesisKnowledgeContext,
                   researchBoundary,
-                  websiteCoverageProfile: context.websiteCoverageProfile,
+                  websiteCoverageProfile: synthesisWebsiteCoverage,
                   sourceSnapshotHash: context.sourceSnapshotHash,
-                  probeSetSnapshot: context.probeSetSnapshot,
+                  probeSetSnapshot: synthesisProbeSet,
                   previousOutputs: synthesisPreviousOutputs,
                   searchEvidence: searchEvidenceShard,
                   channelStats: evidencePack?.channelStats,
@@ -1175,6 +1316,171 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
             message: { content: JSON.stringify(mergedQuestionCatalog) }
           }]
         };
+      } else if (context.taskType === "blueprint_synthesis") {
+        const blueprintShards: Array<{ shardId: string; modules: string[]; maxTokens: number }> = [
+          {
+            shardId: "research_and_retest",
+            modules: ["questionStrategy", "competitorLandscape", "citationStrategy", "retestBaseline"],
+            maxTokens: 4096
+          },
+          {
+            shardId: "content_types_and_evidence",
+            modules: ["contentTypeStrategy", "evidenceRequirements"],
+            maxTokens: 2048
+          },
+          {
+            shardId: "distribution_and_monthly",
+            modules: ["platformStrategy", "contentClusterPlan", "monthlyStrategyInput"],
+            maxTokens: 4096
+          }
+        ];
+        const shardPayloads = await mapWithConcurrency(blueprintShards, 1, async (shard) => {
+          const shardInput = {
+            instruction: blueprintShardInstruction(shard.shardId, taskInstructionChannelContext(context.project.targetChannels)),
+            productIdentity,
+            productKnowledgeProfile: synthesisProductKnowledgeProfile,
+            contentStrategyKnowledgeContext: synthesisKnowledgeContext,
+            researchBoundary,
+            websiteCoverageProfile: synthesisWebsiteCoverage,
+            sourceSnapshotHash: context.sourceSnapshotHash,
+            probeSetSnapshot: synthesisProbeSet,
+            previousOutputs: synthesisPreviousOutputs,
+            existingArticleTypes,
+            searchEvidence,
+            channelStats: evidencePack?.channelStats,
+            evidenceGate: evidencePack?.gate
+          };
+          logGeoProviderStage("blueprint_synthesis_shard_started", {
+            taskType: context.taskType,
+            shardId: shard.shardId,
+            requestCharacterCount: JSON.stringify(shardInput).length
+          });
+          const payload = await requestZhipuBlueprintShard(config, {
+            model: config.model,
+            stream: false,
+            temperature: 0.2,
+            max_tokens: shard.maxTokens,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: synthesisSystemPrompt },
+              { role: "user", content: JSON.stringify(shardInput) }
+            ]
+          }, synthesisController.signal, shard.shardId);
+          let structuredShard = parseStructuredOutput(extractOutputText(payload));
+          if (shard.shardId === "content_types_and_evidence") {
+            const writableContentAreas = Array.isArray(structuredShard.writableContentAreas)
+              ? structuredShard.writableContentAreas
+              : [];
+            const articleTypeSeeds = Array.isArray(structuredShard.articleTypeSeeds)
+              ? structuredShard.articleTypeSeeds.filter((item): item is Record<string, unknown> => Boolean(item)
+                && typeof item === "object" && !Array.isArray(item)).slice(0, 3)
+              : [];
+            if (articleTypeSeeds.length !== 3) {
+              throw new V5GovernanceRepositoryError(
+                "research_provider_invalid_output",
+                "内容类型组合未返回恰好 3 个可展开候选。",
+                502,
+                "重试内容类型分片；不得用空候选或重复类型补足。"
+              );
+            }
+            const articleTypes = await mapWithConcurrency(articleTypeSeeds, 1, async (seed, index) => {
+              const seedClaimIds = new Set(strings(seed.knowledgeClaimIds));
+              const seedClusterIds = new Set(strings(seed.questionClusterIds));
+              const allKnowledgeClusters = synthesisKnowledgeContext?.questionClusters || [];
+              const matchedKnowledgeClusters = seedClusterIds.size
+                ? allKnowledgeClusters.filter((cluster) => seedClusterIds.has(cluster.clusterId))
+                : allKnowledgeClusters;
+              const selectedKnowledgeClusters = matchedKnowledgeClusters.length
+                ? matchedKnowledgeClusters
+                : allKnowledgeClusters;
+              const relevantKnowledgeContext = synthesisKnowledgeContext
+                ? {
+                    ...synthesisKnowledgeContext,
+                    questionClusters: selectedKnowledgeClusters.map((cluster) => {
+                      const matchedFacts = seedClaimIds.size
+                        ? cluster.facts.filter((fact) => seedClaimIds.has(fact.claimId))
+                        : cluster.facts;
+                      return { ...cluster, facts: matchedFacts };
+                    }).filter((cluster) => !seedClaimIds.size || cluster.facts.length > 0)
+                  }
+                : undefined;
+              const seedTypeIds = new Set(strings([
+                seed.articleTypeId,
+                seed.articleTypeVersionId,
+                seed.baseArticleTypeId,
+                seed.baseArticleTypeVersionId
+              ]));
+              const matchedExistingTypes = existingArticleTypes.filter((articleType) => [
+                articleType.articleTypeId,
+                articleType.articleTypeVersionId
+              ].some((value) => typeof value === "string" && seedTypeIds.has(value)));
+              const relevantExistingTypes = matchedExistingTypes;
+              const expansionInput = {
+                instruction: blueprintArticleTypeExpansionInstruction(),
+                seed,
+                writableContentAreas,
+                productIdentity: {
+                  canonicalName: productIdentity.canonicalName,
+                  displayName: productIdentity.displayName,
+                  productCategory: productIdentity.productCategory,
+                  entityRelationship: productIdentity.entityRelationship,
+                  serviceProvider: productIdentity.serviceProvider
+                },
+                contentStrategyKnowledgeContext: relevantKnowledgeContext,
+                existingArticleTypes: relevantExistingTypes
+              };
+              logGeoProviderStage("blueprint_article_type_expansion_started", {
+                taskType: context.taskType,
+                index,
+                requestCharacterCount: JSON.stringify(expansionInput).length
+              });
+              const expansionPayload = await requestZhipuBlueprintShard(config, {
+                model: config.model,
+                stream: false,
+                temperature: 0.2,
+                max_tokens: 2048,
+                response_format: { type: "json_object" },
+                messages: [
+                  { role: "system", content: synthesisSystemPrompt },
+                  { role: "user", content: JSON.stringify(expansionInput) }
+                ]
+              }, synthesisController.signal, `article_type_${index + 1}`);
+              const expansion = parseStructuredOutput(extractOutputText(expansionPayload));
+              if (!expansion.articleType || typeof expansion.articleType !== "object" || Array.isArray(expansion.articleType)) {
+                throw new V5GovernanceRepositoryError(
+                  "research_provider_invalid_output",
+                  `第 ${index + 1} 个内容类型未返回有效 articleType。`,
+                  502
+                );
+              }
+              logGeoProviderStage("blueprint_article_type_expansion_completed", {
+                taskType: context.taskType,
+                index,
+                outputCharacterCount: JSON.stringify(expansion.articleType).length
+              });
+              return expansion.articleType;
+            });
+            structuredShard = {
+              contentTypeStrategy: { writableContentAreas, articleTypes },
+              evidenceRequirements: structuredShard.evidenceRequirements && typeof structuredShard.evidenceRequirements === "object"
+                ? structuredShard.evidenceRequirements
+                : { claimsRequiringEvidence: [], blockedClaims: [], sourceGaps: [] }
+            };
+          }
+          logGeoProviderStage("blueprint_synthesis_shard_completed", {
+            taskType: context.taskType,
+            shardId: shard.shardId,
+            outputCharacterCount: JSON.stringify(structuredShard).length
+          });
+          return structuredShard;
+        });
+        completionPayload = {
+          id: `zhipu-blueprint-shards-${blueprintShards.length}`,
+          choices: [{
+            finish_reason: "stop",
+            message: { content: JSON.stringify(Object.assign({}, ...shardPayloads)) }
+          }]
+        };
       } else {
         completionPayload = await requestZhipu(config, "/chat/completions", {
           model: config.model,
@@ -1189,12 +1495,12 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
               content: JSON.stringify({
                 instruction: taskInstruction(context.taskType, taskInstructionChannelContext(context.project.targetChannels)),
                 productIdentity,
-                productKnowledgeProfile: context.taskType === "blueprint_synthesis" ? context.productKnowledgeProfile : undefined,
-                contentStrategyKnowledgeContext: context.taskType === "blueprint_synthesis" ? context.contentStrategyKnowledgeContext : undefined,
+                productKnowledgeProfile: synthesisProductKnowledgeProfile,
+                contentStrategyKnowledgeContext: synthesisKnowledgeContext,
                 researchBoundary,
-                websiteCoverageProfile: context.websiteCoverageProfile,
+                websiteCoverageProfile: synthesisWebsiteCoverage,
                 sourceSnapshotHash: context.sourceSnapshotHash,
-                probeSetSnapshot: context.probeSetSnapshot,
+                probeSetSnapshot: synthesisProbeSet,
                 previousOutputs: synthesisPreviousOutputs,
                 existingArticleTypes,
                 searchEvidence,

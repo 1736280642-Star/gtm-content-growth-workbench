@@ -482,6 +482,7 @@ function governedCitationStrategy(strategy: Record<string, unknown>) {
 function normalizeArticleTypePortfolio(contentTypeStrategy: Record<string, unknown>) {
   const candidates = recordCandidates(contentTypeStrategy, ["articleTypes", "recommendations", "contentTypes", "types"]);
   const seen = new Set<string>();
+  const portfolioIds = new Set<string>();
   const portfolio = candidates.flatMap((item, index): ProductGeoArticleTypePortfolioItem[] => {
     const name = stringValue(item.name) || stringValue(item.title) || stringValue(item.type) || `文章类型 ${index + 1}`;
     const definition = stringValue(item.definition) || stringValue(item.description) || stringValue(item.semanticDescription);
@@ -497,8 +498,11 @@ function normalizeArticleTypePortfolio(contentTypeStrategy: Record<string, unkno
     const recommendationReason = stringValue(item.recommendationReason) || stringValue(item.reason) || "基于问题意图、证据准备度与渠道适配生成";
     const knowledgeClaimIds = stringArray(item.knowledgeClaimIds);
     const geoOpportunitySummary = stringValue(item.geoOpportunitySummary) || recommendationReason;
+    let portfolioItemId = stringValue(item.portfolioItemId) || stringValue(item.id) || `research-article-type-${index + 1}`;
+    if (portfolioIds.has(portfolioItemId)) portfolioItemId = `research-article-type-${definitionHash.slice(0, 24)}`;
+    portfolioIds.add(portfolioItemId);
     return [{
-      portfolioItemId: stringValue(item.portfolioItemId) || stringValue(item.id) || `research-article-type-${index + 1}`,
+      portfolioItemId,
       origin,
       articleTypeId,
       articleTypeVersionId,

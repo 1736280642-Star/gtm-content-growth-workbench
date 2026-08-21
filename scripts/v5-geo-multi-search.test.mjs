@@ -6,6 +6,7 @@ import { combineMultiSearchEvidencePacks, recomputeChannelStats, runMultiProvide
 import {
   buildDegradedFrontendBaseline,
   buildGeoEntityResolutionBatches,
+  compactGeoBlueprintKnowledgeContext,
   compactGeoBlueprintPreviousOutputs,
   enforceTaskEntityRules,
   inferSupplementaryGap,
@@ -87,6 +88,45 @@ test("blueprint synthesis compacts duplicated research evidence but keeps strate
   assert.ok(JSON.stringify(compacted).length < JSON.stringify(previousOutputs).length / 10);
 });
 
+test("blueprint knowledge context keeps governed claim semantics without duplicate quotes and source metadata", () => {
+  const compacted = compactGeoBlueprintKnowledgeContext({
+    contractVersion: "content-strategy-knowledge.v1",
+    productId: "product-1",
+    productName: "Product 1",
+    sourceFactCount: 1,
+    retrievedFactCount: 1,
+    profileSource: "parsed",
+    authoritativeProfile: { positioning: [], audiences: [], capabilities: [], scenarios: [], boundaries: [] },
+    questionClusters: [{
+      clusterId: "selection",
+      label: "选型",
+      questions: ["如何选型？"],
+      writableAngles: ["能力边界"],
+      facts: [{
+        claimId: "claim-1",
+        text: "产品支持受治理的知识检索。",
+        quote: "产品支持受治理的知识检索。",
+        claimType: "capability",
+        sourceId: "source-1",
+        sourceRevisionId: "revision-1",
+        headingPath: ["能力"],
+        authorityLevel: "A1",
+        reviewStatus: "approved",
+        conditions: [],
+        limitations: ["以已导入资料为准"],
+        relevanceScore: 1
+      }]
+    }]
+  });
+
+  assert.equal(compacted.authoritativeProfileRef, "productKnowledgeProfile");
+  assert.equal(compacted.questionClusters[0].facts[0].claimId, "claim-1");
+  assert.equal(compacted.questionClusters[0].facts[0].text, "产品支持受治理的知识检索。");
+  assert.deepEqual(compacted.questionClusters[0].facts[0].limitations, ["以已导入资料为准"]);
+  assert.equal(Object.hasOwn(compacted.questionClusters[0].facts[0], "quote"), false);
+  assert.equal(Object.hasOwn(compacted.questionClusters[0].facts[0], "sourceRevisionId"), false);
+});
+
 const query = [{
   queryId: "query-1",
   query: "WorkBuddy 用户问题",
@@ -153,7 +193,16 @@ test("blueprint synthesis receives governed knowledge context and website covera
   assert.match(workerSource, /contentStrategyKnowledgeContext: context\.contentStrategyKnowledgeContext/);
   assert.match(workerSource, /websiteCoverageProfile: context\.websiteCoverageProfile/);
   assert.match(providerSource, /The knowledge context decides what can be written; GEO findings decide what is worth covering; existingArticleTypes decide whether to reuse, adapt, or create a structure/);
-  assert.match(providerSource, /contentStrategyKnowledgeContext: context\.taskType === "blueprint_synthesis"/);
+  assert.match(providerSource, /synthesisKnowledgeContext = context\.taskType === "blueprint_synthesis"/);
+  assert.match(providerSource, /contentStrategyKnowledgeContext: synthesisKnowledgeContext/);
+  assert.match(providerSource, /blueprint_synthesis_shard_started/);
+  assert.match(providerSource, /research_and_retest/);
+  assert.match(providerSource, /content_types_and_evidence/);
+  assert.match(providerSource, /distribution_and_monthly/);
+  assert.match(providerSource, /blueprint_synthesis_shard_retry/);
+  assert.match(providerSource, /Select exactly 3 semantically distinct seeds/);
+  assert.match(providerSource, /Use matched only when an active existing version already covers intent, audience, goal, structure and evidence slots/);
+  assert.match(providerSource, /blueprint_article_type_expansion_started/);
 });
 
 test("frontend baseline falls back to entity-safe Doubao and Qwen evidence when Zhipu JSON is invalid", () => {
