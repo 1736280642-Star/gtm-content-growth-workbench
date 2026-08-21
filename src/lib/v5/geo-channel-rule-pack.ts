@@ -2,9 +2,12 @@
  * GEO 渠道规则包：受治理的平台收录规则配置载体。
  *
  * 领域代码不硬编码平台域名、板块名、CTA 文案或账号策略（AGENTS.md 规则 8）。
- * 规则包由外部配置（环境变量 JSON）注入，未来切换为治理存储表 + 人工激活。
+ * 规则包由外部配置（版本化文件或环境变量 JSON）注入，未来切换为治理存储表 + 人工激活。
  * 规则包缺失时链路以"无平台感知"模式运行（向后兼容）；配置了但结构非法则 fail-closed。
  */
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 export interface GeoChannelRule {
   /** 稳定渠道标识，如 tencent_cloud_community */
@@ -34,22 +37,50 @@ export interface GeoChannelRulePack {
   /** 人工激活记录（Agent 不能激活规则包） */
   activatedBy?: string;
   activatedAt?: string;
+  reviewStatus?: "activated";
+  /** 仅保存人工指令的非敏感审计摘要，不保存会话链接或账号凭证。 */
+  activationRecord?: {
+    decision: "approved";
+    source: "human_user_instruction";
+    approvalText: string;
+  };
   channels: GeoChannelRule[];
 }
 
-function parseChannelRulePack(raw: string): GeoChannelRulePack {
+function parseChannelRulePack(raw: string, sourceLabel: string): GeoChannelRulePack {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("GEO_CHANNEL_RULE_PACK_JSON 不是合法 JSON");
+    throw new Error(`${sourceLabel} 不是合法 JSON`);
   }
   const pack = parsed as GeoChannelRulePack;
   if (!pack || typeof pack !== "object" || !Array.isArray(pack.channels) || !pack.channels.length) {
-    throw new Error("GEO_CHANNEL_RULE_PACK_JSON 缺少非空 channels 数组");
+    throw new Error(`${sourceLabel} 缺少非空 channels 数组`);
   }
   if (typeof pack.rulePackVersionId !== "string" || !pack.rulePackVersionId.trim()) {
-    throw new Error("GEO_CHANNEL_RULE_PACK_JSON 缺少 rulePackVersionId");
+    throw new Error(`${sourceLabel} 缺少 rulePackVersionId`);
+  }
+  if (typeof pack.activatedBy !== "string" || !pack.activatedBy.trim()) {
+    throw new Error(`${sourceLabel} 缺少人工激活人 activatedBy`);
+  }
+  if (typeof pack.activatedAt !== "string" || !pack.activatedAt.trim() || Number.isNaN(Date.parse(pack.activatedAt))) {
+    throw new Error(`${sourceLabel} 缺少合法的人工激活时间 activatedAt`);
+  }
+  if (pack.reviewStatus !== undefined && pack.reviewStatus !== "activated") {
+    throw new Error(`${sourceLabel} reviewStatus 必须为 activated`);
+  }
+  if (pack.activationRecord !== undefined) {
+    const record = pack.activationRecord;
+    if (
+      !record
+      || record.decision !== "approved"
+      || record.source !== "human_user_instruction"
+      || typeof record.approvalText !== "string"
+      || !record.approvalText.trim()
+    ) {
+      throw new Error(`${sourceLabel} 缺少合法的人工授权审计摘要 activationRecord`);
+    }
   }
   const seenKeys = new Set<string>();
   for (const channel of pack.channels) {
@@ -74,23 +105,45 @@ function parseChannelRulePack(raw: string): GeoChannelRulePack {
     rulePackVersionId: pack.rulePackVersionId,
     activatedBy: typeof pack.activatedBy === "string" ? pack.activatedBy : undefined,
     activatedAt: typeof pack.activatedAt === "string" ? pack.activatedAt : undefined,
+    reviewStatus: pack.reviewStatus,
+    activationRecord: pack.activationRecord,
     channels: pack.channels
   };
 }
 
-let cachedPack: { envValue: string | undefined; pack?: GeoChannelRulePack } | undefined;
+let cachedPack: { sourceKey: string; raw: string; pack: GeoChannelRulePack } | undefined;
 
 /**
  * 读取当前激活的渠道规则包。
- * - 未配置环境变量：返回 undefined（无平台感知模式，向后兼容）；
+ * - JSON 环境变量优先，其次读取 GEO_CHANNEL_RULE_PACK_PATH；
+ * - 两者均未配置：返回 undefined（无平台感知模式，向后兼容）；
  * - 配置但非法：抛错（fail-closed，配置坏了不能静默降级）。
  */
 export function getActiveGeoChannelRulePack(): GeoChannelRulePack | undefined {
   const envValue = process.env.GEO_CHANNEL_RULE_PACK_JSON?.trim();
-  if (!envValue) return undefined;
-  if (cachedPack?.envValue === envValue) return cachedPack.pack;
-  const pack = parseChannelRulePack(envValue);
-  cachedPack = { envValue, pack };
+  let sourceKey: string;
+  let sourceLabel: string;
+  let raw: string;
+  if (envValue) {
+    sourceKey = "env:GEO_CHANNEL_RULE_PACK_JSON";
+    sourceLabel = "GEO_CHANNEL_RULE_PACK_JSON";
+    raw = envValue;
+  } else {
+    const configuredPath = process.env.GEO_CHANNEL_RULE_PACK_PATH?.trim();
+    if (!configuredPath) return undefined;
+    const resolvedPath = resolve(process.cwd(), configuredPath);
+    sourceKey = `file:${resolvedPath}`;
+    sourceLabel = "GEO_CHANNEL_RULE_PACK_PATH 指向的文件";
+    try {
+      raw = readFileSync(resolvedPath, "utf8").trim();
+    } catch {
+      throw new Error(`${sourceLabel}无法读取`);
+    }
+    if (!raw) throw new Error(`${sourceLabel}为空`);
+  }
+  if (cachedPack?.sourceKey === sourceKey && cachedPack.raw === raw) return cachedPack.pack;
+  const pack = parseChannelRulePack(raw, sourceLabel);
+  cachedPack = { sourceKey, raw, pack };
   return pack;
 }
 
@@ -139,7 +192,10 @@ export function evaluateTargetChannelRuleCoverage(input: {
     return `渠道规则包配置非法：${input.packError instanceof Error ? input.packError.message : "解析失败"}。`;
   }
   if (!input.pack) {
-    return `研究边界声明了第三方平台渠道（${platformChannels.join("、")}），但尚未激活渠道规则包（GEO_CHANNEL_RULE_PACK_JSON）。`;
+    return `研究边界声明了第三方平台渠道（${platformChannels.join("、")}），但尚未激活渠道规则包（GEO_CHANNEL_RULE_PACK_PATH / GEO_CHANNEL_RULE_PACK_JSON）。`;
+  }
+  if (!input.pack.activatedBy?.trim() || !input.pack.activatedAt || Number.isNaN(Date.parse(input.pack.activatedAt))) {
+    return `渠道规则包 ${input.pack.rulePackVersionId} 尚无有效人工激活记录（activatedBy/activatedAt）。`;
   }
   const packKeys = new Set(input.pack.channels.map((channel) => channel.channelKey));
   const missingChannels = platformChannels.filter((channelKey) => !packKeys.has(channelKey));

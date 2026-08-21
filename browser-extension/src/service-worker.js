@@ -18,10 +18,6 @@ async function runnerFetch(path, options = {}) {
   return body;
 }
 
-async function platformTabs(platform) {
-  return chrome.tabs.query({ url: PLATFORM_CONFIG[platform]?.urls || [] });
-}
-
 async function waitForTabComplete(tabId, timeoutMs = 30000) {
   const current = await chrome.tabs.get(tabId);
   if (current.status === "complete") return current;
@@ -47,10 +43,52 @@ async function waitForTabComplete(tabId, timeoutMs = 30000) {
 async function createConversationTab(platform) {
   const config = PLATFORM_CONFIG[platform];
   if (!config?.newConversationUrl) throw new Error(`不支持的平台：${platform}`);
+  const captureWindow = await chrome.windows.create({
+    url: config.newConversationUrl,
+    type: "popup",
+    focused: false,
+    width: 1180,
+    height: 860
+  });
+  const tab = captureWindow?.tabs?.[0] || (captureWindow?.id ? (await chrome.tabs.query({ windowId: captureWindow.id }))[0] : undefined);
+  if (!tab?.id) throw new Error(`无法为 ${config.label} 创建后台采集窗口。`);
+  await waitForTabComplete(tab.id);
+  return { ...tab, windowId: captureWindow.id };
+}
+
+async function closeCaptureWindow(tab) {
+  try {
+    if (tab.windowId) await chrome.windows.remove(tab.windowId);
+    else if (tab.id) await chrome.tabs.remove(tab.id);
+  } catch {
+    // 用户可能已经关闭窗口；任务结果不受影响。
+  }
+}
+
+async function createBindingTab(platform) {
+  const config = PLATFORM_CONFIG[platform];
+  if (!config?.newConversationUrl) throw new Error("不支持的平台：" + platform);
   const tab = await chrome.tabs.create({ url: config.newConversationUrl, active: true });
-  if (!tab.id) throw new Error(`无法为 ${config.label} 创建新会话标签页。`);
+  if (!tab.id) throw new Error("无法打开 " + config.label + " 登录页。");
   await waitForTabComplete(tab.id);
   return tab;
+}
+
+async function bindAccountConnection(input) {
+  const tab = await createBindingTab(input.platform);
+  const health = await sendCaptureTaskMessage(tab.id, { type: "CHECK_CONNECTION", platform: input.platform });
+  if (!health?.ok) {
+    throw Object.assign(new Error(health?.message || "请在打开的页面完成登录后再次点击绑定。"), { code: health?.code || "needs_login" });
+  }
+  return runnerFetch("/extension/connections", {
+    method: "POST",
+    body: JSON.stringify({
+      platform: input.platform,
+      accountAlias: input.accountAlias,
+      browserProfileSlot: input.browserProfileSlot || "default",
+      isolationPolicy: input.isolationPolicy
+    })
+  });
 }
 
 function withTimeout(promise, timeoutMs, message) {
@@ -72,10 +110,23 @@ async function sendCaptureTask(tabId, task) {
   }
 }
 
+async function sendCaptureTaskMessage(tabId, message) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    if (!String(error?.message || error).includes("Receiving end does not exist")) throw error;
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["src/adapters/china-ai.js"] });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["src/content/capture.js"] });
+    return chrome.tabs.sendMessage(tabId, message);
+  }
+}
+
 async function heartbeat() {
-  const adapters = await Promise.all(Object.entries(PLATFORM_CONFIG).map(async ([platform, config]) => {
-    const tabs = await platformTabs(platform);
-    return { platform, version: config.version, status: tabs.length ? "ready" : "needs_login", message: tabs.length ? `已找到 ${config.label} 任务页面。` : `请打开并登录 ${config.label}。` };
+  const adapters = Object.entries(PLATFORM_CONFIG).map(([platform, config]) => ({
+    platform,
+    version: config.version,
+    status: "ready",
+    message: `${config.label} 适配器可用；执行任务时自动打开页面并验证登录。`
   }));
   await runnerFetch("/extension/heartbeat", {
     method: "POST",
@@ -87,9 +138,11 @@ async function heartbeat() {
 }
 
 async function postFailure(task, error, adapterVersion) {
-  const code = ["needs_login", "adapter_mismatch", "interrupted", "timed_out", "capture_failed"].includes(error.code) ? error.code : "capture_failed";
+  const code = ["needs_login", "isolation_unverified", "adapter_mismatch", "interrupted", "timed_out", "capture_failed"].includes(error.code) ? error.code : "capture_failed";
   const recovery = code === "needs_login"
     ? `在 ${PLATFORM_CONFIG[task.platform]?.label || task.platform} 页面重新登录后，从任务列表重试。`
+    : code === "isolation_unverified"
+      ? "使用专用中立测试 Profile，或按平台要求关闭记忆和自定义指令后重试。"
     : code === "adapter_mismatch"
       ? "停止任务并更新平台适配器；可使用人工调试定位新页面结构。"
       : code === "timed_out"
@@ -120,23 +173,21 @@ async function pollTask() {
   pollInProgress = true;
   pollStartedAt = Date.now();
   let task;
+  let tab;
   try {
     await heartbeat().catch(() => undefined);
     const response = await runnerFetch("/tasks/next", { method: "POST", body: "{}" });
     if (!response.task) return;
     task = response.task;
-    const tabs = await platformTabs(task.platform);
-    if (!tabs.length) {
-      await runnerFetch(`/tasks/${encodeURIComponent(task.id)}/status`, { method: "POST", body: JSON.stringify({ task, status: "waiting_for_browser", note: `没有找到已登录的 ${PLATFORM_CONFIG[task.platform]?.label || task.platform} 标签页。` }) });
-      return;
-    }
-    const tab = await createConversationTab(task.platform);
-    await sendCaptureTask(tab.id, task);
+    tab = await createConversationTab(task.platform);
+    const result = await sendCaptureTask(tab.id, task);
+    if (!result?.ok) return;
   } catch (error) {
     if (task) {
       await postFailure(task, { code: error.code || "adapter_mismatch", stage: error.stage || "environment_checking", message: error.message || "浏览器伴侣无法创建新会话页面。" }, PLATFORM_CONFIG[task.platform]?.version || "unknown");
     }
   } finally {
+    if (tab) await closeCaptureWindow(tab);
     pollInProgress = false;
     pollStartedAt = 0;
   }
@@ -165,8 +216,41 @@ chrome.action.onClicked.addListener(() => {
   (pollInProgress ? heartbeat() : pollTask()).catch(() => undefined);
 });
 
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (message?.type !== "JOTO_CAPTURE_POLL") return false;
+  const allowed = sender.url && (
+    sender.url.startsWith("http://127.0.0.1:3027/")
+    || sender.url.startsWith("http://localhost:3027/")
+    || /^https:\/\/([a-z0-9-]+\.)*jotoai\.com\//i.test(sender.url)
+  );
+  if (!allowed) {
+    sendResponse({ ok: false, error: "来源页面不在工作台白名单。" });
+    return false;
+  }
+  recoverStalePoll();
+  sendResponse({ ok: true, accepted: true });
+  (pollInProgress ? heartbeat() : pollTask()).catch(() => undefined);
+  return false;
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
+    if (message.type === "PAIR_DEVICE") {
+      const result = await runnerFetch("/extension/pair", { method: "POST", body: JSON.stringify({ pairingCode: message.pairingCode }) });
+      sendResponse(result);
+      return;
+    }
+    if (message.type === "BIND_ACCOUNT") {
+      const result = await bindAccountConnection(message);
+      sendResponse(result);
+      return;
+    }
+    if (message.type === "POLL_NOW") {
+      recoverStalePoll();
+      await (pollInProgress ? heartbeat() : pollTask());
+      sendResponse({ ok: true });
+      return;
+    }
     if (message.type === "CAPTURE_SCREENSHOT") {
       const dataUrl = await chrome.tabs.captureVisibleTab(sender.tab?.windowId, { format: "png" });
       sendResponse({ dataBase64: dataUrl.slice(dataUrl.indexOf(",") + 1) });

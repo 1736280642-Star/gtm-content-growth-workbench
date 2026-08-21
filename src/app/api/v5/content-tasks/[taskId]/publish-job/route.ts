@@ -3,7 +3,8 @@ import { createPublishJobFromApprovedContent, dispatchPublishJob } from "@/lib/p
 import type { DirectPublishPlatformKey } from "@/lib/types";
 import { getMonthlyWorkspaceReadModel } from "@/lib/v5/monthly-workspace-read-model";
 import { readFormalDraftVersion } from "@/lib/v5/single-article-production-repository";
-import { assertFormalDraftRolloutReady, ProductRolloutReadinessError } from "@/lib/v5/product-rollout-readiness-service";
+import { assertFormalDraftRolloutReady, assertHostedManagedPublishAllowed, ProductRolloutReadinessError } from "@/lib/v5/product-rollout-readiness-service";
+import type { HostedPublishAccountConnection } from "@/lib/v5/product-rollout-readiness-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -43,6 +44,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
         markdown: draft.markdown
       }
     : undefined;
+  let publishAccountConnection: HostedPublishAccountConnection | undefined;
 
   if (draft && (!draft.copyAllowed || draft.testOnly || !draft.hardRuleResult.passed)) {
     return NextResponse.json(
@@ -53,7 +55,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
 
   if (draft) {
     try {
-      await assertFormalDraftRolloutReady(draft.productionContractId, platform);
+      const readiness = await assertFormalDraftRolloutReady(draft.productionContractId, platform, draft.matrixItemId || taskId);
+      publishAccountConnection = readiness.publishAccountConnection;
     } catch (error) {
       if (error instanceof ProductRolloutReadinessError) {
         return NextResponse.json(
@@ -80,11 +83,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
       .find((item) => item?.draftId === draftId && item.status === "available" && item.markdown?.trim());
     const expectedPlatform = task ? platformByChannel[task.channel] : undefined;
     const approvedPlanStatus = workspace.plan?.status === "confirmed" || workspace.plan?.status === "running";
-    if (!approvedPlanStatus || !task || task.status !== "scheduled" || !restoredDraft || expectedPlatform !== platform) {
+    if (!approvedPlanStatus || !task?.productId || task.status !== "scheduled" || !restoredDraft || expectedPlatform !== platform) {
       return NextResponse.json(
         { ok: false, message: "The restored monthly snapshot is not an approved, scheduled task for this platform." },
         { status: 422 }
       );
+    }
+    try {
+      publishAccountConnection = await assertHostedManagedPublishAllowed(task.productId, platform, task.taskId);
+    } catch (error) {
+      if (error instanceof ProductRolloutReadinessError) {
+        return NextResponse.json(
+          { ok: false, code: error.code, message: error.message, nextAction: error.nextAction },
+          { status: 409 }
+        );
+      }
+      throw error;
     }
     approvedDraft = {
       draftVersionId: restoredDraft.draftId,
@@ -108,6 +122,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
     title: approvedDraft.title,
     markdown: approvedDraft.markdown,
     platform,
+    accountConnectionId: publishAccountConnection?.accountConnectionId,
+    accountFingerprint: publishAccountConnection?.accountFingerprint,
+    browserProfileRef: publishAccountConnection?.browserProfileRef,
     scheduledAt: typeof payload.scheduledAt === "string" ? payload.scheduledAt : undefined
   });
   if (!created.ok || !created.data) {

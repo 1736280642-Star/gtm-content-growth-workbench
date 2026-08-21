@@ -33,6 +33,8 @@ def validate_publish_payload(payload: dict[str, Any]) -> str | None:
         return f"missing fields: {', '.join(missing)}"
     if payload["platform"] not in PLATFORM_CONFIG:
         return "platform is not supported"
+    if payload.get("accountConnectionId") and (not payload.get("browserProfileRef") or not payload.get("accountFingerprint")):
+        return "governed account connection requires browserProfileRef and accountFingerprint"
     if payload["platform"] in {"csdn", "juejin"}:
         hybrid_required = ["externalDraftId", "editorUrl", "tagIds"] if payload["platform"] == "csdn" else ["tagIds", "categoryId"]
         hybrid_missing = [name for name in hybrid_required if not payload.get(name)]
@@ -52,7 +54,24 @@ class RunnerService:
         platform = str(payload.get("platform", ""))
         if platform not in PLATFORM_CONFIG:
             return 400, {"authenticated": False, "status": "failed", "message": "unsupported platform", "nextAction": "Use csdn, juejin, or zhihu."}
-        return 200, self.publisher.check_auth(platform)
+        profile_ref = str(payload.get("profileRef", "")).strip()
+        return 200, self.publisher.check_auth(platform, profile_ref) if profile_ref else self.publisher.check_auth(platform)
+
+    def open_auth(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        platform = str(payload.get("platform", ""))
+        if platform not in PLATFORM_CONFIG:
+            return 400, {"ok": False, "status": "failed", "message": "unsupported platform", "nextAction": "Use csdn, juejin, or zhihu."}
+        profile_ref = str(payload.get("profileRef", "")).strip()
+        result = self.publisher.open_auth(platform, profile_ref) if profile_ref else self.publisher.open_auth(platform)
+        return (200 if result.get("ok") else 503), result
+
+    def identify_account(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        platform = str(payload.get("platform", ""))
+        if platform not in PLATFORM_CONFIG:
+            return 400, {"identified": False, "status": "failed", "message": "unsupported platform"}
+        profile_ref = str(payload.get("profileRef", "")).strip()
+        result = self.publisher.identify_account(platform, profile_ref) if profile_ref else self.publisher.identify_account(platform)
+        return (200 if result.get("identified") else 409), result
 
     def publish(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         error = validate_publish_payload(payload)
@@ -177,6 +196,10 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/auth/check":
                 status, result = self.service.check_auth(payload)
+            elif path == "/auth/connect":
+                status, result = self.service.open_auth(payload)
+            elif path == "/auth/identify":
+                status, result = self.service.identify_account(payload)
             elif path == "/publish":
                 status, result = self.service.publish(payload)
             elif path == "/verify":

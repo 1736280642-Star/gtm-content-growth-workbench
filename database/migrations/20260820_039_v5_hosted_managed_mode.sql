@@ -1,0 +1,103 @@
+-- GEO managed-mode orchestration. Formal strategy, sample, MonthlyPlan and
+-- publication records remain the domain truth; these tables only hold the
+-- user handoff, action links, execution digest and notification delivery.
+
+CREATE TABLE IF NOT EXISTS hosted_promotion_order (
+  id VARCHAR(64) PRIMARY KEY,
+  product_id VARCHAR(64) NOT NULL,
+  contact_email VARCHAR(320) NOT NULL,
+  contact_email_verified_at DATETIME NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'preparing',
+  channel_preferences_json JSON NOT NULL,
+  daily_caps_json JSON NOT NULL,
+  notification_preferences_json JSON NOT NULL,
+  material_summary_json JSON NOT NULL,
+  timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai',
+  current_monthly_plan_id VARCHAR(64) NULL,
+  current_action_type VARCHAR(32) NULL,
+  pause_reason VARCHAR(500) NULL,
+  last_error_code VARCHAR(96) NULL,
+  last_error_message VARCHAR(500) NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  idempotency_key VARCHAR(128) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  created_by VARCHAR(128) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_order_idempotency (idempotency_key),
+  INDEX idx_hosted_order_product (product_id, status),
+  INDEX idx_hosted_order_status (status, updated_at),
+  INDEX idx_hosted_order_monthly_plan (current_monthly_plan_id)
+);
+
+CREATE TABLE IF NOT EXISTS hosted_review_request (
+  id VARCHAR(64) PRIMARY KEY,
+  order_id VARCHAR(64) NOT NULL,
+  product_id VARCHAR(64) NOT NULL,
+  gate_type VARCHAR(32) NOT NULL,
+  target_id VARCHAR(64) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  expires_at DATETIME NOT NULL,
+  acted_at DATETIME NULL,
+  acted_by VARCHAR(128) NULL,
+  decision VARCHAR(32) NULL,
+  comment TEXT NULL,
+  idempotency_key VARCHAR(128) NOT NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_review_token (token_hash),
+  UNIQUE KEY uq_hosted_review_idempotency (idempotency_key),
+  INDEX idx_hosted_review_order (order_id, status),
+  INDEX idx_hosted_review_target (gate_type, target_id),
+  INDEX idx_hosted_review_expiry (status, expires_at)
+);
+
+CREATE TABLE IF NOT EXISTS hosted_daily_publish_batch (
+  id VARCHAR(64) PRIMARY KEY,
+  order_id VARCHAR(64) NOT NULL,
+  monthly_plan_id VARCHAR(64) NOT NULL,
+  business_date DATE NOT NULL,
+  timezone VARCHAR(64) NOT NULL,
+  version INT NOT NULL DEFAULT 1,
+  effective_caps_json JSON NOT NULL,
+  result_snapshot_json JSON NOT NULL,
+  planned_count INT NOT NULL DEFAULT 0,
+  published_count INT NOT NULL DEFAULT 0,
+  pending_count INT NOT NULL DEFAULT 0,
+  failed_count INT NOT NULL DEFAULT 0,
+  status VARCHAR(32) NOT NULL DEFAULT 'collecting',
+  closed_at DATETIME NULL,
+  digest_outbox_id VARCHAR(64) NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_daily_batch (order_id, business_date, version),
+  INDEX idx_hosted_daily_batch_plan (monthly_plan_id, business_date),
+  INDEX idx_hosted_daily_batch_status (status, business_date)
+);
+
+CREATE TABLE IF NOT EXISTS hosted_notification_outbox (
+  id VARCHAR(64) PRIMARY KEY,
+  order_id VARCHAR(64) NOT NULL,
+  review_request_id VARCHAR(64) NULL,
+  event_type VARCHAR(64) NOT NULL,
+  recipient_email VARCHAR(320) NOT NULL,
+  template_version VARCHAR(32) NOT NULL,
+  payload_json JSON NOT NULL,
+  dedupe_key VARCHAR(191) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  attempt_count INT NOT NULL DEFAULT 0,
+  available_at DATETIME NOT NULL,
+  sent_at DATETIME NULL,
+  provider_message_id VARCHAR(191) NULL,
+  last_error_code VARCHAR(96) NULL,
+  last_error_message VARCHAR(500) NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_notification_dedupe (dedupe_key),
+  INDEX idx_hosted_notification_delivery (status, available_at),
+  INDEX idx_hosted_notification_order (order_id, created_at)
+);

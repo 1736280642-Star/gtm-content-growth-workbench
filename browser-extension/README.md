@@ -11,6 +11,8 @@ Supported platform keys and official task-page hosts:
 - `chatgpt`: `https://chatgpt.com/*`
 - `qwen`: `https://tongyi.aliyun.com/qianwen/*` and `https://chat.qwen.ai/*`
 
-Click the extension action to poll immediately. The background alarm also polls once per minute. Login prompts, consent dialogs, verification challenges, and captcha must be handled by the user; the extension does not bypass platform access controls.
+Open the extension popup once to enter the workbench pairing code and bind a user-named AI account connection. A repeatable neutral benchmark must use a dedicated AI account with no prior JOTO history, platform memory/history reference disabled, and no custom instructions. A dedicated Chrome Profile is still recommended for login separation, but it cannot isolate server-side AI memory. The extension never reads or uploads the platform account identifier.
 
-Each leased task opens its platform's official new-conversation URL in a separate browser tab. The tab is left open after capture for human review. Before submitting the prompt, the adapter rejects any page that already contains an assistant answer, preventing an existing conversation from contaminating formal GEO evidence.
+In daily use, click the bound account on the hosted workbench. The page wakes the extension immediately, and the extension creates a non-focused capture window in the same Chrome Profile. The background alarm remains as a recovery poll. Login prompts, consent dialogs, verification challenges, and captcha must be handled by the user; the extension does not bypass platform access controls.
+
+Each leased task opens its platform's official new-conversation URL in a separate non-focused window and closes it after success or failure. Before submitting the prompt, the adapter verifies the connection's isolation policy. A neutral benchmark fails closed when the required new-conversation and dedicated-account attestation, temporary-chat, memory-off, or custom-instructions check is missing. Personalized accounts remain in a separate sample cohort and never count as neutral baseline evidence.

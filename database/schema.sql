@@ -241,6 +241,27 @@ CREATE TABLE IF NOT EXISTS capture_pairing_codes (
   INDEX idx_capture_pairing_expiry (expires_at, used_at)
 );
 
+CREATE TABLE IF NOT EXISTS ai_frontend_connections (
+  connection_id VARCHAR(64) PRIMARY KEY,
+  workspace_id VARCHAR(64) NOT NULL,
+  user_id VARCHAR(64) NOT NULL,
+  device_id VARCHAR(64) NOT NULL,
+  platform VARCHAR(32) NOT NULL,
+  account_alias VARCHAR(120) NOT NULL,
+  browser_profile_slot VARCHAR(120) NOT NULL DEFAULT 'default',
+  status VARCHAR(32) NOT NULL DEFAULT 'isolation_unverified',
+  isolation_policy JSON NOT NULL,
+  last_verified_at DATETIME NULL,
+  last_error VARCHAR(500) NULL,
+  revoked_at DATETIME NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ai_frontend_connection_slot (device_id, platform, browser_profile_slot),
+  INDEX idx_ai_frontend_connection_user (workspace_id, user_id, status),
+  INDEX idx_ai_frontend_connection_device (device_id, status),
+  INDEX idx_ai_frontend_connection_platform (platform, status)
+);
+
 CREATE TABLE IF NOT EXISTS capture_tasks (
   task_id VARCHAR(64) PRIMARY KEY,
   product_id VARCHAR(64) NOT NULL,
@@ -248,6 +269,7 @@ CREATE TABLE IF NOT EXISTS capture_tasks (
   question_version_id VARCHAR(64) NULL,
   published_content_id VARCHAR(64) NULL,
   source_publish_result_id VARCHAR(64) NULL,
+  connection_id VARCHAR(64) NULL,
   trigger_type VARCHAR(32) NOT NULL DEFAULT 'manual_once',
   capture_condition JSON NULL,
   platform VARCHAR(32) NOT NULL,
@@ -264,10 +286,12 @@ CREATE TABLE IF NOT EXISTS capture_tasks (
   UNIQUE INDEX idx_capture_task_idempotency (idempotency_key),
   INDEX idx_capture_task_status (status),
   INDEX idx_capture_task_device (device_id),
+  INDEX idx_capture_task_connection (connection_id, status, created_at),
   INDEX idx_capture_task_product (product_id),
   INDEX idx_capture_task_question (question_version_id),
   INDEX idx_capture_task_published_content (published_content_id),
-  INDEX idx_capture_task_trigger (trigger_type, created_at)
+  INDEX idx_capture_task_trigger (trigger_type, created_at),
+  INDEX idx_capture_task_connection (connection_id, status, created_at)
 );
 
 CREATE TABLE IF NOT EXISTS capture_evidence (
@@ -313,4 +337,104 @@ CREATE TABLE IF NOT EXISTS attribution_chain (
   INDEX idx_attribution_chain_event (source_event_id),
   INDEX idx_attribution_chain_platform (platform),
   INDEX idx_attribution_chain_outcome (outcome)
+);
+
+CREATE TABLE IF NOT EXISTS hosted_promotion_order (
+  id VARCHAR(64) PRIMARY KEY,
+  product_id VARCHAR(64) NOT NULL,
+  contact_email VARCHAR(320) NOT NULL,
+  contact_email_verified_at DATETIME NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'preparing',
+  channel_preferences_json JSON NOT NULL,
+  daily_caps_json JSON NOT NULL,
+  notification_preferences_json JSON NOT NULL,
+  material_summary_json JSON NOT NULL,
+  timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai',
+  current_monthly_plan_id VARCHAR(64) NULL,
+  current_action_type VARCHAR(32) NULL,
+  pause_reason VARCHAR(500) NULL,
+  last_error_code VARCHAR(96) NULL,
+  last_error_message VARCHAR(500) NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  idempotency_key VARCHAR(128) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  created_by VARCHAR(128) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_order_idempotency (idempotency_key),
+  INDEX idx_hosted_order_product (product_id, status),
+  INDEX idx_hosted_order_status (status, updated_at),
+  INDEX idx_hosted_order_monthly_plan (current_monthly_plan_id)
+);
+
+CREATE TABLE IF NOT EXISTS hosted_review_request (
+  id VARCHAR(64) PRIMARY KEY,
+  order_id VARCHAR(64) NOT NULL,
+  product_id VARCHAR(64) NOT NULL,
+  gate_type VARCHAR(32) NOT NULL,
+  target_id VARCHAR(64) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  expires_at DATETIME NOT NULL,
+  acted_at DATETIME NULL,
+  acted_by VARCHAR(128) NULL,
+  decision VARCHAR(32) NULL,
+  comment TEXT NULL,
+  idempotency_key VARCHAR(128) NOT NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_review_token (token_hash),
+  UNIQUE KEY uq_hosted_review_idempotency (idempotency_key),
+  INDEX idx_hosted_review_order (order_id, status),
+  INDEX idx_hosted_review_target (gate_type, target_id),
+  INDEX idx_hosted_review_expiry (status, expires_at)
+);
+
+CREATE TABLE IF NOT EXISTS hosted_daily_publish_batch (
+  id VARCHAR(64) PRIMARY KEY,
+  order_id VARCHAR(64) NOT NULL,
+  monthly_plan_id VARCHAR(64) NOT NULL,
+  business_date DATE NOT NULL,
+  timezone VARCHAR(64) NOT NULL,
+  version INT NOT NULL DEFAULT 1,
+  effective_caps_json JSON NOT NULL,
+  result_snapshot_json JSON NOT NULL,
+  planned_count INT NOT NULL DEFAULT 0,
+  published_count INT NOT NULL DEFAULT 0,
+  pending_count INT NOT NULL DEFAULT 0,
+  failed_count INT NOT NULL DEFAULT 0,
+  status VARCHAR(32) NOT NULL DEFAULT 'collecting',
+  closed_at DATETIME NULL,
+  digest_outbox_id VARCHAR(64) NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_daily_batch (order_id, business_date, version),
+  INDEX idx_hosted_daily_batch_plan (monthly_plan_id, business_date),
+  INDEX idx_hosted_daily_batch_status (status, business_date)
+);
+
+CREATE TABLE IF NOT EXISTS hosted_notification_outbox (
+  id VARCHAR(64) PRIMARY KEY,
+  order_id VARCHAR(64) NOT NULL,
+  review_request_id VARCHAR(64) NULL,
+  event_type VARCHAR(64) NOT NULL,
+  recipient_email VARCHAR(320) NOT NULL,
+  template_version VARCHAR(32) NOT NULL,
+  payload_json JSON NOT NULL,
+  dedupe_key VARCHAR(191) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  attempt_count INT NOT NULL DEFAULT 0,
+  available_at DATETIME NOT NULL,
+  sent_at DATETIME NULL,
+  provider_message_id VARCHAR(191) NULL,
+  last_error_code VARCHAR(96) NULL,
+  last_error_message VARCHAR(500) NULL,
+  row_version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hosted_notification_dedupe (dedupe_key),
+  INDEX idx_hosted_notification_delivery (status, available_at),
+  INDEX idx_hosted_notification_order (order_id, created_at)
 );

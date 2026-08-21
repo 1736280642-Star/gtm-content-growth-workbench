@@ -14,7 +14,7 @@ import { WechatArticlePreview } from "./WechatArticlePreview";
 import { WechatPublishAccountBar } from "./WechatPublishAccountBar";
 import type { WechatCoverFile } from "./WechatCoverBindingPanel";
 
-export function GenerationResultWorkspace({ batch, working, hotspotError, onBack, onRetry, onSupplements, onChangeLayout, onEditContent, onBindVisual, onSaveCover, onIntegrateHotspot, onRestorePreviousVersion, onPublish }: {
+export function GenerationResultWorkspace({ batch, working, hotspotError, onBack, onRetry, onSupplements, onChangeLayout, onEditContent, onBindVisual, onSaveCover, onBatchChange, onIntegrateHotspot, onRestorePreviousVersion, onPublish }: {
   batch: FreeProductionBatch;
   working?: "supplements" | "visual" | "cover" | "layout" | "content" | "hotspot" | "restore" | "publish" | "retry";
   hotspotError?: string;
@@ -25,6 +25,7 @@ export function GenerationResultWorkspace({ batch, working, hotspotError, onBack
   onEditContent: (artifactId: string, input: { title: string; summary: string; articleBody: string }) => Promise<void>;
   onBindVisual: (artifactId: string, suggestionId: string, mediaAssetId?: string) => Promise<void>;
   onSaveCover: (file: WechatCoverFile) => Promise<void>;
+  onBatchChange: (batch: FreeProductionBatch) => void;
   onIntegrateHotspot: (artifactId: string, mode: "integrate" | "replace") => Promise<void>;
   onRestorePreviousVersion: (artifactId: string) => Promise<void>;
   onPublish: () => void;
@@ -59,6 +60,7 @@ export function GenerationResultWorkspace({ batch, working, hotspotError, onBack
                 onEditContent={(input) => onEditContent(artifact.id, input)}
                 onBindVisual={(suggestionId, mediaAssetId) => onBindVisual(artifact.id, suggestionId, mediaAssetId)}
                 onSaveCover={onSaveCover}
+                onBatchChange={onBatchChange}
               />
             </div>
             <div className="right-column">

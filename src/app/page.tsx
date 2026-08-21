@@ -14,431 +14,274 @@ import {
   PlusOutlined,
   ReadOutlined,
   SafetyCertificateOutlined,
+  SettingOutlined,
   UploadOutlined,
   WechatOutlined
 } from "@ant-design/icons";
-import { Button, Input } from "antd";
+import { Button, Input, InputNumber, Spin } from "antd";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import styles from "./hosted-mode.module.css";
-
-// 高级运营控制台继续承载 productProduction、生产产品、自动化运行中、查看任务、处理异常等能力。
-
-type ChannelKey = "wechat" | "zhihu" | "csdn" | "juejin";
-type ExpressionKey = "recommended" | "professional" | "scenario" | "comparison";
-type ProductKnowledgeStatus = "ready" | "partial" | "building";
-
-interface MaterialItem {
-  name: string;
-  size: number;
-}
 
 interface HostedProduct {
   productId: string;
   displayName: string;
-  tagline: string;
+  officialUrl?: string;
+  productCategory?: string;
+  strategyPackId?: string;
+}
+
+type ChannelCapability = "auto_publish" | "draft_only" | "unsupported";
+type AuthorizationStatus = "connected" | "required" | "not_applicable" | "unavailable";
+
+interface ChannelOption {
+  channel: string;
+  capability: ChannelCapability;
+  authorizationStatus: AuthorizationStatus;
+  accountLabel?: string;
+  detail: string;
+  nextAction?: string;
+}
+
+interface ChannelPresentation {
+  label: string;
   icon: ReactNode;
-  knowledgeStatus: ProductKnowledgeStatus;
-  knowledgeLabel: string;
-  recommended?: boolean;
-  category: string;
 }
 
-interface NewProductDraft {
-  name: string;
-  officialUrl: string;
-  materials: MaterialItem[];
-}
-
-const channels: Array<{ key: ChannelKey; label: string; detail: string; icon: ReactNode; recommended?: boolean }> = [
-  { key: "wechat", label: "微信公众号", detail: "已连接 · 官方账号", icon: <WechatOutlined />, recommended: true },
-  { key: "zhihu", label: "知乎", detail: "已连接 · 专业问答", icon: <ReadOutlined />, recommended: true },
-  { key: "csdn", label: "CSDN", detail: "已连接 · 技术社区", icon: <CodeOutlined /> },
-  { key: "juejin", label: "掘金", detail: "已连接 · 技术社区", icon: <GlobalOutlined /> }
-];
-
-const expressions: Array<{ key: ExpressionKey; label: string; detail: string; icon: ReactNode }> = [
-  { key: "recommended", label: "系统推荐", detail: "按产品问题和渠道自动组合", icon: <SafetyCertificateOutlined /> },
-  { key: "professional", label: "专业解答", detail: "适合建立可信度和搜索覆盖", icon: <ReadOutlined /> },
-  { key: "scenario", label: "场景故事", detail: "从真实使用情境切入", icon: <FileTextOutlined /> },
-  { key: "comparison", label: "对比选型", detail: "回答用户的决策和取舍", icon: <GlobalOutlined /> }
-];
-
-const demoEmail = "marketing@example.cn";
-
-const availableProducts: HostedProduct[] = [
-  {
-    productId: "tencent-adp",
-    displayName: "腾讯云 ADP",
-    tagline: "AI 原生应用开发平台",
-    icon: <CodeOutlined />,
-    knowledgeStatus: "ready",
-    knowledgeLabel: "知识库就绪",
-    recommended: true,
-    category: "云服务"
-  },
-  {
-    productId: "workbuddy",
-    displayName: "WorkBuddy",
-    tagline: "智能工作助手",
-    icon: <AppstoreOutlined />,
-    knowledgeStatus: "ready",
-    knowledgeLabel: "知识库就绪",
-    recommended: true,
-    category: "效率工具"
-  },
-  {
-    productId: "noteflow",
-    displayName: "NoteFlow",
-    tagline: "知识管理与笔记",
-    icon: <ReadOutlined />,
-    knowledgeStatus: "partial",
-    knowledgeLabel: "资料待补充",
-    category: "效率工具"
-  }
-];
+const channelPresentation: Record<string, ChannelPresentation> = {
+  wechat: { label: "微信公众号", icon: <WechatOutlined /> },
+  zhihu: { label: "知乎", icon: <ReadOutlined /> },
+  csdn: { label: "CSDN", icon: <CodeOutlined /> },
+  juejin: { label: "掘金", icon: <GlobalOutlined /> }
+};
 
 function formatSize(size: number) {
-  if (!size) return "等待上传";
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function materialIcon(name: string) {
-  if (name.toLowerCase().endsWith(".pdf")) return <FilePdfOutlined />;
-  return <FileTextOutlined />;
+  return name.toLowerCase().endsWith(".pdf") ? <FilePdfOutlined /> : <FileTextOutlined />;
+}
+
+function readApiError(payload: unknown, fallback: string) {
+  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  return String(record.message || (record.error as Record<string, unknown> | undefined)?.message || fallback);
 }
 
 export default function HostedTaskPage() {
   const router = useRouter();
-  const newProductInputRef = useRef<HTMLInputElement>(null);
-  const [selectedProductId, setSelectedProductId] = useState<string>("tencent-adp");
-  const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newProduct, setNewProduct] = useState<NewProductDraft>({ name: "", officialUrl: "", materials: [] });
-  const [channelsSelected, setChannelsSelected] = useState<ChannelKey[]>(["wechat", "zhihu"]);
-  const [expression, setExpression] = useState<ExpressionKey>("recommended");
-  const [email, setEmail] = useState(demoEmail);
-  const [editingEmail, setEditingEmail] = useState(false);
-  const [newProductDragging, setNewProductDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [products, setProducts] = useState<HostedProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [isAddingNew, setIsAddingNew] = useState(true);
+  const [productName, setProductName] = useState("");
+  const [officialUrl, setOfficialUrl] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [customCaps, setCustomCaps] = useState<Record<string, number | undefined>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
+  const loadChannels = useCallback(async (productId?: string) => {
+    setChannelsLoading(true);
+    try {
+      const query = productId ? `?productId=${encodeURIComponent(productId)}` : "";
+      const response = await fetch(`/api/v5/hosted/channels${query}`, { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(readApiError(payload, "渠道状态读取失败。"));
+      const options = Array.isArray(payload.channels) ? payload.channels as ChannelOption[] : [];
+      setChannelOptions(options);
+      setSelectedChannels((current) => current.filter((key) => options.some((item) => item.channel === key && item.capability !== "unsupported")));
+    } catch (cause) {
+      setChannelOptions([]);
+      setError(cause instanceof Error ? cause.message : "渠道状态读取失败。请稍后重试。");
+    } finally {
+      setChannelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch("/api/v5/hosted/auth/session", { cache: "no-store" }).then(async (response) => {
+        const payload = await response.json();
+        if (response.status === 401) {
+          router.replace("/hosted/login");
+          throw new Error("请先通过邮箱登录。");
+        }
+        if (!response.ok) throw new Error(readApiError(payload, "登录状态读取失败。"));
+        return payload.identity as { email: string };
+      }),
+      fetch("/api/v5/hosted/products", { cache: "no-store" }).then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(readApiError(payload, "产品读取失败。"));
+        return Array.isArray(payload.products) ? payload.products as HostedProduct[] : [];
+      }),
+      loadChannels()
+    ]).then(([identity, items]) => {
+      if (active) {
+        setEmail(identity.email);
+        setProducts(items);
+      }
+    }).catch((cause) => {
+      if (active) setError(cause instanceof Error ? cause.message : "托管入口暂时不可用。");
+    }).finally(() => {
+      if (active) setProductsLoading(false);
+    });
+    return () => { active = false; };
+  }, [loadChannels, router]);
+
   const selectedProduct = useMemo(
-    () => availableProducts.find((p) => p.productId === selectedProductId),
-    [selectedProductId]
+    () => products.find((product) => product.productId === selectedProductId),
+    [products, selectedProductId]
+  );
+  const selectedOptionMap = useMemo(
+    () => new Map(channelOptions.map((item) => [item.channel, item])),
+    [channelOptions]
   );
   const selectedChannelLabels = useMemo(
-    () => channels.filter((channel) => channelsSelected.includes(channel.key)).map((channel) => channel.label),
-    [channelsSelected]
+    () => selectedChannels.map((key) => channelPresentation[key]?.label || key),
+    [selectedChannels]
   );
-  const expressionLabel = expressions.find((item) => item.key === expression)?.label || "系统推荐";
+  const authorizationRequired = selectedChannels.filter((key) => selectedOptionMap.get(key)?.authorizationStatus === "required");
 
-  const displayProductName = useMemo(() => {
-    if (selectedProduct) return selectedProduct.displayName;
-    if (isAddingNew && newProduct.name) return newProduct.name;
-    return "未选择";
-  }, [selectedProduct, isAddingNew, newProduct.name]);
-
-  const displayMaterialCount = useMemo(() => {
-    if (selectedProduct) {
-      if (selectedProduct.knowledgeStatus === "ready") return "知识库已就绪";
-      if (selectedProduct.knowledgeStatus === "partial") return "资料待补充";
-      return "建设中";
-    }
-    if (isAddingNew) {
-      const count = newProduct.materials.length;
-      const hasUrl = newProduct.officialUrl.trim().length > 0;
-      const items: string[] = [];
-      if (count) items.push(`${count} 份文件`);
-      if (hasUrl) items.push("1 个链接");
-      return items.length ? items.join(" + ") : "尚未添加资料";
-    }
-    return "尚未选择";
-  }, [selectedProduct, isAddingNew, newProduct.materials.length, newProduct.officialUrl]);
-
-  function addFiles(fileList: FileList | File[]) {
-    const incoming = Array.from(fileList)
-      .filter((file) => file.name.trim())
-      .map((file) => ({ name: file.name, size: file.size }));
-    setNewProduct((current) => {
-      const existing = new Set(current.materials.map((item) => item.name));
-      return { ...current, materials: [...current.materials, ...incoming.filter((item) => !existing.has(item.name))] };
-    });
-    setError(undefined);
-  }
-
-  function removeMaterial(name: string) {
-    setNewProduct((current) => ({
-      ...current,
-      materials: current.materials.filter((item) => item.name !== name)
-    }));
-  }
-
-  function toggleChannel(key: ChannelKey) {
-    setChannelsSelected((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
-  }
-
-  function selectProduct(productId: string) {
-    setSelectedProductId(productId);
+  function selectProduct(product: HostedProduct) {
+    setSelectedProductId(product.productId);
     setIsAddingNew(false);
+    setProductName("");
+    setOfficialUrl("");
+    setFiles([]);
     setError(undefined);
+    void loadChannels(product.productId);
   }
 
   function startAddingNew() {
     setSelectedProductId("");
     setIsAddingNew(true);
     setError(undefined);
+    void loadChannels();
   }
 
-  function submitTask() {
-    if (!selectedProductId && !isAddingNew) {
-      setError("请选择一个要推广的产品，或新增一个产品。");
-      return;
-    }
-    if (isAddingNew && !newProduct.name.trim()) {
-      setError("请填写新产品名称。");
-      return;
-    }
-    if (isAddingNew && !newProduct.officialUrl.trim() && newProduct.materials.length === 0) {
-      setError("请至少提供官方网址或一份产品资料，系统才能开始构建知识库。");
-      return;
-    }
-    if (!channelsSelected.length) {
-      setError("请至少选择一个发布渠道。");
-      return;
-    }
-    if (!email.includes("@")) {
-      setError("请填写可接收结果的阿里邮箱地址。");
-      return;
-    }
-    setSubmitting(true);
-    window.sessionStorage.setItem("joto-hosted-task", JSON.stringify({
-      email,
-      product: selectedProduct
-        ? { productId: selectedProduct.productId, displayName: selectedProduct.displayName, isNew: false }
-        : { productId: "new", displayName: newProduct.name, isNew: true, officialUrl: newProduct.officialUrl, materials: newProduct.materials },
-      channels: selectedChannelLabels,
-      expression: expressionLabel
-    }));
-    window.setTimeout(() => router.push("/hosted/success?task=JOTO-0820-01"), 650);
+  function addFiles(fileList: FileList | File[]) {
+    const incoming = Array.from(fileList).filter((file) => file.name.trim());
+    setFiles((current) => {
+      const keys = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
+      return [...current, ...incoming.filter((file) => !keys.has(`${file.name}:${file.size}:${file.lastModified}`))].slice(0, 10);
+    });
+    setError(undefined);
   }
+
+  function toggleChannel(channel: string) {
+    const option = selectedOptionMap.get(channel);
+    if (!option || option.capability === "unsupported") return;
+    setSelectedChannels((current) => current.includes(channel)
+      ? current.filter((item) => item !== channel)
+      : [...current, channel]);
+  }
+
+  async function submitTask() {
+    if (!selectedProductId && !productName.trim()) return setError("请填写产品名称，或选择已有产品。");
+    if (isAddingNew && !officialUrl.trim() && !files.length) return setError("请至少提供产品官网或一份产品资料。");
+    if (!selectedChannels.length) return setError("请至少选择一个可托管的推广渠道。");
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setError("请填写可接收确认链接和发布结果的邮箱。");
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      const idempotencyKey = `hosted-submit-${crypto.randomUUID()}`;
+      const formData = new FormData();
+      if (selectedProductId) formData.set("productId", selectedProductId);
+      if (productName.trim()) formData.set("productName", productName.trim());
+      if (officialUrl.trim()) formData.set("officialUrl", officialUrl.trim());
+      formData.set("contactEmail", email.trim());
+      formData.set("timezone", Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai");
+      formData.set("idempotencyKey", idempotencyKey);
+      formData.set("channels", JSON.stringify(selectedChannels.map((channel) => ({
+        channel,
+        ...(customCaps[channel] ? { dailyCap: customCaps[channel] } : {})
+      }))));
+      for (const file of files) formData.append("files", file);
+      const response = await fetch("/api/v5/hosted/orders", {
+        method: "POST",
+        headers: { "x-idempotency-key": idempotencyKey },
+        body: formData
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(readApiError(payload, "托管任务提交失败。"));
+      router.push(`/hosted/success?orderId=${encodeURIComponent(payload.order.orderId)}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "托管任务提交失败。请检查资料后重试。");
+      setSubmitting(false);
+    }
+  }
+
+  const displayProductName = selectedProduct?.displayName || productName.trim() || "尚未填写";
+  const materialLabel = selectedProduct
+    ? (files.length || officialUrl ? `${files.length} 份新文件${officialUrl ? " + 官网" : ""}` : "沿用已治理资料")
+    : `${files.length} 份文件${officialUrl ? " + 官网" : ""}`;
 
   return (
     <div className={styles.page}>
       <section className={styles.intro}>
-        <div>
-          <div className={styles.kicker}>JOTO / HANDOFF DESK</div>
-          <h1>把推广交给系统。</h1>
-          <p>选择要推广的产品，选定渠道和表达方式。文章生产、批量发布、效果测试和结果回传，都会在后台自动完成。</p>
-        </div>
-        <aside className={styles.introAside}>
-          <strong>你只需要做一次决定</strong>
-          <span>系统会按当前月度周期安排发布，遇到可恢复问题会自行重试，不会把过程变成待办。</span>
-          <small>结果默认发送到你的阿里邮箱</small>
-        </aside>
+        <div><div className={styles.kicker}>JOTO / MANAGED HANDOFF</div><h1>交资料，确认两次，其余交给系统。</h1><p>提交产品资料和渠道。调研完成后，你只需要在邮件里确认策略与样文；之后系统按当月计划自动发布并回传公开 URL。</p></div>
+        <aside className={styles.introAside}><strong>正常运行时每天零操作</strong><span>可恢复问题由系统重试；只有事实冲突、授权失效和平台阻断才会请求你处理。</span><small>今天只完成这张委托单</small></aside>
       </section>
 
       <div className={styles.workspace}>
         <div className={styles.formColumn}>
           <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <div className={styles.sectionTitle}>
-                <span className={styles.sectionNumber}>01</span>
-                <div><h2>选择推广产品</h2><p>从已有产品中选择，或新增一个产品并提交资料。</p></div>
+            <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>01</span><div><h2>提供产品资料</h2><p>官网和文件会作为受治理的产品事实来源。</p></div></div></div>
+            {productsLoading ? <div className={styles.inlineLoading}><Spin size="small" /> 正在读取已有产品</div> : (
+              <div className={styles.productGrid}>
+                {products.map((product) => {
+                  const selected = product.productId === selectedProductId;
+                  return <button className={`${styles.productCard} ${selected ? styles.isSelected : ""}`} type="button" aria-pressed={selected} key={product.productId} onClick={() => selectProduct(product)}><span className={styles.productIcon}><AppstoreOutlined /></span><span className={styles.productCopy}><strong>{product.displayName}</strong><span>{product.productCategory || product.officialUrl || "已有产品资料"}</span><small className={`${styles.knowledgeBadge} ${styles[product.strategyPackId ? "knowledge-ready" : "knowledge-building"]}`}>{product.strategyPackId ? "策略资料已建立" : "可继续补充资料"}</small></span><span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span></button>;
+                })}
+                <button className={`${styles.productCard} ${styles.addProductCard} ${isAddingNew ? styles.isSelected : ""}`} type="button" aria-pressed={isAddingNew} onClick={startAddingNew}><span className={`${styles.productIcon} ${styles.addProductIcon}`}><PlusOutlined /></span><span className={styles.productCopy}><strong>新增产品</strong><span>填写官网并上传公开推广资料</span></span><span className={styles.selectionMark}>{isAddingNew ? <CheckOutlined /> : null}</span></button>
               </div>
-            </div>
-            <div className={styles.productGrid}>
-              {availableProducts.map((product) => {
-                const selected = selectedProductId === product.productId;
-                return (
-                  <button
-                    className={`${styles.productCard} ${selected ? styles.isSelected : ""}`}
-                    type="button"
-                    aria-pressed={selected}
-                    key={product.productId}
-                    onClick={() => selectProduct(product.productId)}
-                  >
-                    <span className={styles.productIcon}>{product.icon}</span>
-                    <span className={styles.productCopy}>
-                      <strong>
-                        {product.displayName}
-                        {product.recommended ? <small className={styles.recommended}>推荐</small> : null}
-                      </strong>
-                      <span>{product.tagline}</span>
-                      <small className={`${styles.knowledgeBadge} ${styles[`knowledge-${product.knowledgeStatus}`]}`}>
-                        {product.knowledgeLabel}
-                      </small>
-                    </span>
-                    <span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span>
-                  </button>
-                );
-              })}
-              <button
-                className={`${styles.productCard} ${styles.addProductCard} ${isAddingNew ? styles.isSelected : ""}`}
-                type="button"
-                aria-pressed={isAddingNew}
-                onClick={startAddingNew}
-              >
-                <span className={`${styles.productIcon} ${styles.addProductIcon}`}><PlusOutlined /></span>
-                <span className={styles.productCopy}>
-                  <strong>新增产品</strong>
-                  <span>不在列表中？提交官方链接或资料文件</span>
-                </span>
-                <span className={styles.selectionMark}>{isAddingNew ? <CheckOutlined /> : null}</span>
-              </button>
-            </div>
-
-            {isAddingNew ? (
+            )}
+            {isAddingNew || selectedProduct ? (
               <div className={styles.newProductForm}>
-                <div className={styles.newProductField}>
-                  <label>产品名称</label>
-                  <Input
-                    value={newProduct.name}
-                    onChange={(e) => setNewProduct((c) => ({ ...c, name: e.target.value }))}
-                    placeholder="例如：JOTO Guard"
-                    size="large"
-                  />
-                </div>
-                <div className={styles.newProductField}>
-                  <label>官方网址（可选）</label>
-                  <Input
-                    value={newProduct.officialUrl}
-                    onChange={(e) => setNewProduct((c) => ({ ...c, officialUrl: e.target.value }))}
-                    placeholder="https://example.com/product"
-                    prefix={<LinkOutlined style={{ color: "#84908a" }} />}
-                    size="large"
-                  />
-                </div>
-                <div className={styles.newProductField}>
-                  <label>产品资料（可选，支持多文件）</label>
-                  <label
-                    className={`${styles.dropzone} ${styles.compactDropzone} ${newProductDragging ? styles.isDragging : ""}`}
-                    onDragEnter={(event) => { event.preventDefault(); setNewProductDragging(true); }}
-                    onDragOver={(event) => { event.preventDefault(); setNewProductDragging(true); }}
-                    onDragLeave={() => setNewProductDragging(false)}
-                    onDrop={(event) => { event.preventDefault(); setNewProductDragging(false); addFiles(event.dataTransfer.files); }}
-                  >
-                    <input
-                      ref={newProductInputRef}
-                      type="file"
-                      multiple
-                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md"
-                      onChange={(event) => { if (event.target.files) addFiles(event.target.files); }}
-                    />
-                    <span className={styles.uploadIcon}><UploadOutlined /></span>
-                    <strong>拖入文件，或点击选择</strong>
-                    <span>支持 PDF、Word、PPT、Excel、Markdown</span>
-                  </label>
-                  {newProduct.materials.length ? (
-                    <div className={styles.fileList} aria-label="已上传资料">
-                      {newProduct.materials.map((material) => (
-                        <div className={styles.fileItem} key={material.name}>
-                          {materialIcon(material.name)}
-                          <span>{material.name}</span>
-                          <small>{formatSize(material.size)}</small>
-                          <Button type="text" size="small" icon={<DeleteOutlined />} aria-label={`移除 ${material.name}`} onClick={() => removeMaterial(material.name)} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                {isAddingNew ? <div className={styles.newProductField}><label>产品名称</label><Input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：WorkBuddy" size="large" /></div> : null}
+                <div className={styles.newProductField}><label>产品官网{selectedProduct ? "（有更新时填写）" : ""}</label><Input value={officialUrl} onChange={(event) => setOfficialUrl(event.target.value)} placeholder={selectedProduct?.officialUrl || "https://example.com/product"} prefix={<LinkOutlined />} size="large" /></div>
+                <div className={styles.newProductField}><label>产品资料{selectedProduct ? "（可选补充）" : ""}</label><label className={`${styles.dropzone} ${styles.compactDropzone} ${dragging ? styles.isDragging : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }}><input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md" onChange={(event) => event.target.files && addFiles(event.target.files)} /><span className={styles.uploadIcon}><UploadOutlined /></span><strong>拖入资料，或点击选择</strong><span>最多 10 份，单个文件不超过 20 MB</span></label>{files.length ? <div className={styles.fileList}>{files.map((file) => <div className={styles.fileItem} key={`${file.name}:${file.size}:${file.lastModified}`}>{materialIcon(file.name)}<span>{file.name}</span><small>{formatSize(file.size)}</small><Button type="text" size="small" icon={<DeleteOutlined />} aria-label={`移除 ${file.name}`} onClick={() => setFiles((current) => current.filter((item) => item !== file))} /></div>)}</div> : null}</div>
               </div>
             ) : null}
           </section>
 
           <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <div className={styles.sectionTitle}>
-                <span className={styles.sectionNumber}>02</span>
-                <div><h2>结果发到哪里</h2><p>登录阿里邮箱后，所有公开 URL 和测试结论都会发到这里。</p></div>
-              </div>
-            </div>
-            {editingEmail ? (
-              <div className={styles.accountEditor}>
-                <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.cn" autoFocus />
-                <Button type="primary" onClick={() => setEditingEmail(false)}>确认邮箱</Button>
-              </div>
-            ) : (
-              <div className={styles.accountRow}>
-                <div className={styles.accountIdentity}>
-                  <span className={styles.mailMark}><MailOutlined /></span>
-                  <div><strong>{email}</strong><span>阿里邮箱已连接 · 结果通知已开启</span></div>
-                </div>
-                <Button type="text" onClick={() => setEditingEmail(true)}>更换邮箱</Button>
-              </div>
-            )}
+            <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>02</span><div><h2>选择推广渠道</h2><p>系统只允许选择已经具备托管规则的渠道。</p></div></div></div>
+            {channelsLoading ? <div className={styles.inlineLoading}><Spin size="small" /> 正在核对渠道能力</div> : <div className={styles.choiceGrid}>{channelOptions.map((option) => {
+              const selected = selectedChannels.includes(option.channel);
+              const disabled = option.capability === "unsupported";
+              const presentation = channelPresentation[option.channel] || { label: option.channel, icon: <GlobalOutlined /> };
+              return <button className={`${styles.choiceButton} ${selected ? styles.isSelected : ""} ${disabled ? styles.isDisabled : ""}`} type="button" aria-pressed={selected} aria-disabled={disabled} disabled={disabled} key={option.channel} onClick={() => toggleChannel(option.channel)}><span className={styles.choiceIcon}>{presentation.icon}</span><span className={styles.choiceCopy}><strong>{presentation.label}</strong><span>{option.detail}</span><small className={`${styles.capabilityBadge} ${styles[`capability-${option.authorizationStatus}`]}`}>{option.authorizationStatus === "connected" ? "已连接" : option.authorizationStatus === "required" ? "需连接账号" : "暂不可托管"}</small></span><span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span></button>;
+            })}</div>}
+            {authorizationRequired.length ? <div className={styles.actionNotice}><SettingOutlined /><span>已选渠道中有 {authorizationRequired.length} 个需要连接账号。可以先提交，系统会在正式发布前提醒你完成授权。</span><Link href="/settings?tab=connections">管理连接</Link></div> : null}
+            <button className={styles.advancedToggle} type="button" onClick={() => setShowAdvanced((current) => !current)}><SettingOutlined /> {showAdvanced ? "收起每日上限" : "高级：自定义每日上限"}</button>
+            {showAdvanced ? <div className={styles.capGrid}>{selectedChannels.map((channel) => <label key={channel}><span>{channelPresentation[channel]?.label || channel}</span><InputNumber min={1} max={100} value={customCaps[channel]} placeholder="系统安全上限" onChange={(value) => setCustomCaps((current) => ({ ...current, [channel]: value || undefined }))} /><small>篇 / 日</small></label>)}</div> : null}
           </section>
 
           <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <div className={styles.sectionTitle}>
-                <span className={styles.sectionNumber}>03</span>
-                <div><h2>选择发布渠道</h2><p>只显示适合当前产品且已经可以使用的渠道。</p></div>
-              </div>
-            </div>
-            <div className={styles.choiceGrid}>
-              {channels.map((channel) => {
-                const selected = channelsSelected.includes(channel.key);
-                return (
-                  <button className={`${styles.choiceButton} ${selected ? styles.isSelected : ""}`} type="button" aria-pressed={selected} key={channel.key} onClick={() => toggleChannel(channel.key)}>
-                    <span className={styles.choiceIcon}>{channel.icon}</span>
-                    <span className={styles.choiceCopy}><strong>{channel.label}{channel.recommended ? <small className={styles.recommended}>推荐</small> : null}</strong><span>{channel.detail}</span></span>
-                    <span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className={styles.channelMeta}><i />已选 {channelsSelected.length} 个渠道 · 系统会根据账号额度自动排程</div>
+            <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>03</span><div><h2>接收确认与结果</h2><p>策略、样文和每日公开 URL 都发送到这个邮箱。</p></div></div></div>
+            <div className={styles.accountEditor}><Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.cn" prefix={<MailOutlined />} size="large" /><span className={styles.emailAssurance}>不会逐篇打扰</span></div>
           </section>
 
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <div className={styles.sectionTitle}>
-                <span className={styles.sectionNumber}>04</span>
-                <div><h2>选择文章表达</h2><p>你可以指定倾向，也可以让系统按问题自动组合。</p></div>
-              </div>
-            </div>
-            <div className={styles.choiceGrid}>
-              {expressions.map((item) => {
-                const selected = expression === item.key;
-                return (
-                  <button className={`${styles.choiceButton} ${selected ? styles.isSelected : ""}`} type="button" aria-pressed={selected} key={item.key} onClick={() => setExpression(item.key)}>
-                    <span className={styles.choiceIcon}>{item.icon}</span>
-                    <span className={styles.choiceCopy}><strong>{item.label}{item.key === "recommended" ? <small className={styles.recommended}>默认</small> : null}</strong><span>{item.detail}</span></span>
-                    <span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <div className={styles.submitBar}>
-            <span className={styles.submitHint}>提交后可以关闭页面。系统会在完成发布、获得公开 URL 或遇到必须判断的问题时发邮件。</span>
-            <Button className={styles.submitButton} type="primary" size="large" loading={submitting} onClick={submitTask} icon={!submitting ? <ArrowRightOutlined /> : undefined}>交给系统处理</Button>
-          </div>
-          {error ? <div role="alert" style={{ marginTop: 12, color: "#a34836", fontSize: 12 }}>{error}</div> : null}
+          {error ? <div className={styles.formError} role="alert"><strong>暂时不能提交</strong><span>{error}</span></div> : null}
+          <div className={styles.submitBar}><span className={styles.submitHint}>点击即确认这些资料可以用于公开推广。策略和样文仍必须由你本人确认。</span><Button className={styles.submitButton} type="primary" size="large" loading={submitting} onClick={submitTask} icon={!submitting ? <ArrowRightOutlined /> : undefined}>确认委托，开始调研</Button></div>
         </div>
 
-        <aside className={styles.receipt} aria-label="托管回执预览">
-          <div className={styles.receiptHeader}>
-            <div><span className={styles.receiptKicker}>HANDOFF RECEIPT</span><h2>本次托管</h2><p>提交前，确认系统理解的是这件事。</p></div>
-            <span className={styles.receiptStamp}><SafetyCertificateOutlined /></span>
-          </div>
-          <div className={styles.receiptBody}>
-            <div className={styles.receiptSection}>
-              <dl>
-                <div className={styles.receiptRow}><dt>推广产品</dt><dd className={!selectedProductId && !isAddingNew ? styles.receiptEmpty : ""}>{displayProductName}</dd></div>
-                <div className={styles.receiptRow}><dt>资料状态</dt><dd className="wrap">{displayMaterialCount}</dd></div>
-                <div className={styles.receiptRow}><dt>发布渠道</dt><dd className="wrap">{selectedChannelLabels.length ? selectedChannelLabels.join("、") : "尚未选择"}</dd></div>
-                <div className={styles.receiptRow}><dt>文章表达</dt><dd>{expressionLabel}</dd></div>
-                <div className={styles.receiptRow}><dt>结果邮箱</dt><dd>{email || "尚未填写"}</dd></div>
-              </dl>
-            </div>
-            <div className={styles.receiptSection}>
-              <div className={styles.receiptNote}><strong>系统会自动完成</strong><br />资料整理、文章批量生产、渠道发布、公开 URL 回传，以及 24h / 72h 效果测试。</div>
-            </div>
-          </div>
-          <div className={styles.receiptFooter}>执行周期：2026 年 8 月 · 默认只在需要你判断时打扰</div>
+        <aside className={styles.receipt} aria-label="当前委托单">
+          <div className={styles.receiptHeader}><div><span className={styles.receiptKicker}>MANAGED HANDOFF</span><h2>当前委托单</h2><p>确认系统接手的是这件事。</p></div><span className={styles.receiptStamp}><SafetyCertificateOutlined /></span></div>
+          <div className={styles.receiptBody}><div className={styles.receiptSection}><dl><div className={styles.receiptRow}><dt>推广产品</dt><dd>{displayProductName}</dd></div><div className={styles.receiptRow}><dt>产品资料</dt><dd className="wrap">{materialLabel || "尚未添加"}</dd></div><div className={styles.receiptRow}><dt>推广渠道</dt><dd className="wrap">{selectedChannelLabels.length ? selectedChannelLabels.join("、") : "尚未选择"}</dd></div><div className={styles.receiptRow}><dt>每日上限</dt><dd>默认平台安全上限</dd></div><div className={styles.receiptRow}><dt>通知邮箱</dt><dd>{email || "尚未填写"}</dd></div></dl></div><div className={styles.receiptSection}><div className={styles.receiptNote}><strong>之后只需确认两次</strong><br />GEO 策略一次、代表样文一次。进入托管发布后，没有异常就不需要每天操作。</div></div></div>
+          <div className={styles.receiptFooter}>执行周期：当前日历月 · 每日发布属于月度计划的执行节流</div>
         </aside>
       </div>
     </div>

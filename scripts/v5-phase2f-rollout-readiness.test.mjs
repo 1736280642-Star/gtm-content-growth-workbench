@@ -48,7 +48,7 @@ test("server publish route enforces the same rollout gate and forbids sample dra
     readFile("src/app/api/v5/content-tasks/[taskId]/publish-job/route.ts", "utf8"),
     readFile("src/lib/v5/product-rollout-readiness-service.ts", "utf8")
   ]);
-  assert.match(route, /assertFormalDraftRolloutReady\(draft\.productionContractId, platform\)/);
+  assert.match(route, /assertFormalDraftRolloutReady\(draft\.productionContractId, platform, draft\.matrixItemId \|\| taskId\)/);
   assert.match(readiness, /sample_draft_publish_forbidden/);
   assert.match(readiness, /String\(contract\.production_mode\) !== "batch"/);
   assert.match(readiness, /real_publish_readiness_blocked/);

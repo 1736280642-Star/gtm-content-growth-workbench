@@ -1,5 +1,49 @@
 export type AiFrontendPlatform = "doubao" | "deepseek" | "qwen" | "chatgpt";
 
+export type AiFrontendConnectionStatus = "ready" | "needs_login" | "isolation_unverified" | "offline" | "revoked";
+export type AiFrontendIsolationMode = "dedicated_account" | "dedicated_profile" | "temporary_chat" | "memory_off" | "new_conversation_only";
+export type AiFrontendIsolationCheck =
+  | "new_conversation"
+  | "temporary_chat"
+  | "memory_off"
+  | "custom_instructions_off"
+  | "dedicated_account"
+  | "dedicated_profile";
+
+export interface AiFrontendIsolationPolicy {
+  mode: AiFrontendIsolationMode;
+  benchmarkCohort: "neutral_benchmark" | "personalized_user_sample";
+  requiredChecks: AiFrontendIsolationCheck[];
+  accountHistoryAttestedAt?: string;
+  memorySettingsAttestedAt?: string;
+}
+
+export interface AiFrontendConnection {
+  connectionId: string;
+  workspaceId: string;
+  userId: string;
+  deviceId: string;
+  platform: AiFrontendPlatform;
+  accountAlias: string;
+  browserProfileSlot: string;
+  status: AiFrontendConnectionStatus;
+  isolationPolicy: AiFrontendIsolationPolicy;
+  lastVerifiedAt?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt?: string;
+}
+
+export interface CaptureIsolationAttestation {
+  policy: AiFrontendIsolationPolicy;
+  checks: Record<AiFrontendIsolationCheck, "verified" | "user_attested" | "not_supported" | "failed" | "not_required">;
+  status: "verified_clean" | "unverified" | "contaminated";
+  checkedAt: string;
+  adapterVersion: string;
+  notes: string[];
+}
+
 export type FrontendCaptureTaskStatus =
   | "draft"
   | "environment_checking"
@@ -11,6 +55,7 @@ export type FrontendCaptureTaskStatus =
   | "capturing"
   | "completed"
   | "needs_login"
+  | "isolation_unverified"
   | "adapter_mismatch"
   | "interrupted"
   | "timed_out"
@@ -19,7 +64,7 @@ export type FrontendCaptureTaskStatus =
 
 export type CaptureFailureStatus = Extract<
   FrontendCaptureTaskStatus,
-  "needs_login" | "adapter_mismatch" | "interrupted" | "timed_out" | "capture_failed"
+  "needs_login" | "isolation_unverified" | "adapter_mismatch" | "interrupted" | "timed_out" | "capture_failed"
 >;
 
 export type ObservationGapCode =
@@ -69,6 +114,7 @@ export interface CaptureFailureDetail {
 export interface FrontendCaptureTask {
   id: string;
   captureSessionId: string;
+  connectionId?: string;
   version: number;
   questionKey: string;
   questionVersionId?: string;
@@ -131,6 +177,7 @@ export interface FrontendCaptureArtifactManifest {
   };
   completionSignals: CaptureCompletionSignals;
   captureWarnings: string[];
+  isolationAttestation: CaptureIsolationAttestation;
 }
 
 export interface FrontendCaptureArtifact {

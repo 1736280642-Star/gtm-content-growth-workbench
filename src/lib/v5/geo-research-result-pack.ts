@@ -1,8 +1,101 @@
 import type { ProbeSetSnapshot } from './geo-probe-contracts';
 import type { GeoResearchResultPack, ModelAnswerObservation } from './geo-research-result-contracts';
+import type { GeoMentionBaseline } from './geo-research-contracts';
+import type { GeoChannelRule } from './geo-channel-rule-pack';
 
 function unique(values: string[]) { return [...new Set(values.filter(Boolean))]; }
 function records(value: unknown): Array<Record<string, unknown>> { return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))) : []; }
+
+function normalizedQuestion(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function channelKeyForUrl(url: string, channelRules: GeoChannelRule[]) {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/\.$/, '');
+    return channelRules.find((channel) => channel.domains.some((domain) => {
+      const normalized = domain.trim().toLowerCase().replace(/\.$/, '');
+      return host === normalized || host.endsWith(`.${normalized}`);
+    }))?.channelKey;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 真实模型回答观测 -> 提及率基线。
+ * 计分只读取持久化前的 Provider 原始观测，不读取语义综合模型生成的 tests/aggregate。
+ */
+export function buildGeoMentionBaselineFromObservations(input: {
+  snapshot: ProbeSetSnapshot;
+  observations: ModelAnswerObservation[];
+  channelRules?: GeoChannelRule[];
+  capturedAt?: string;
+}): GeoMentionBaseline | null {
+  const probeById = new Map(input.snapshot.probes.map((probe) => [probe.probeId, probe]));
+  const validObservations = input.observations.filter((item) => probeById.has(item.probeId));
+  if (!input.snapshot.probes.length || !validObservations.length) return null;
+
+  const successful = validObservations.filter((item) => item.status === 'success');
+  if (!successful.length) return null;
+  const mentionedQuestions: string[] = [];
+  const unmentionedQuestions: string[] = [];
+  const unevaluableQuestions: string[] = [];
+  for (const probe of input.snapshot.probes) {
+    const rows = successful.filter((item) => item.probeId === probe.probeId);
+    const question = normalizedQuestion(probe.questionText);
+    if (!rows.length) {
+      unevaluableQuestions.push(question);
+      continue;
+    }
+    if (rows.some((item) => item.mentionedEntities.length > 0)) mentionedQuestions.push(question);
+    else unmentionedQuestions.push(question);
+  }
+  const evaluatedQuestionCount = mentionedQuestions.length + unmentionedQuestions.length;
+  if (!evaluatedQuestionCount) return null;
+
+  const providers = unique(validObservations.map((item) => item.provider));
+  const providerBreakdown = providers.map((provider) => {
+    const rows = validObservations.filter((item) => item.provider === provider);
+    const successfulRows = rows.filter((item) => item.status === 'success');
+    const targetMentionedCount = successfulRows.filter((item) => item.mentionedEntities.length > 0).length;
+    return {
+      provider,
+      observationCount: rows.length,
+      successfulObservationCount: successfulRows.length,
+      targetMentionedCount,
+      targetMentionRate: successfulRows.length ? targetMentionedCount / successfulRows.length : 0
+    };
+  });
+
+  const channelCounts = new Map<string, number>();
+  const citationUrls = unique(successful.flatMap((item) => item.visibleCitations));
+  for (const url of citationUrls) {
+    const channelKey = channelKeyForUrl(url, input.channelRules || []);
+    if (channelKey) channelCounts.set(channelKey, (channelCounts.get(channelKey) || 0) + 1);
+  }
+  const channelCitationStats = [...channelCounts.entries()].map(([channelKey, citedUrlCount]) => ({
+    channelKey,
+    citedUrlCount,
+    citedUrlShare: citationUrls.length ? citedUrlCount / citationUrls.length : 0
+  }));
+
+  return {
+    capturedAt: input.capturedAt || new Date().toISOString(),
+    measurementSource: 'model_answer_observations',
+    questionCount: evaluatedQuestionCount,
+    targetMentionedCount: mentionedQuestions.length,
+    targetMentionRate: mentionedQuestions.length / evaluatedQuestionCount,
+    mentionedQuestions,
+    unmentionedQuestions,
+    unevaluableQuestions,
+    successfulObservationCount: successful.length,
+    failedObservationCount: validObservations.length - successful.length,
+    providerBreakdown,
+    competitors: [],
+    channelCitationStats
+  };
+}
 
 /** frontend_baseline aggregate.channelCitationStats → KPI 归因数据（被 AI 引用 URL 的渠道分布） */
 function channelCitationStats(value: unknown): Array<Record<string, unknown>> {

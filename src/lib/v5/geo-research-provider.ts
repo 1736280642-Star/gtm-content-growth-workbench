@@ -19,7 +19,7 @@ import type {
 } from "./geo-search-contracts";
 import { pruneGeoResearchCitations, verifyGeoResearchEvidence } from "./geo-evidence-verifier";
 import { getActiveGeoChannelRulePack } from "./geo-channel-rule-pack";
-import type { ProductKnowledgeProfile } from "./product-knowledge-profile";
+import type { ContentStrategyKnowledgeContext, ProductKnowledgeProfile } from "./product-knowledge-profile";
 import type { ProductWebsiteCoverageProfile } from "./website-coverage-contracts";
 import {
   applyGeoEntityResolution,
@@ -66,6 +66,7 @@ export interface GeoResearchProviderContext {
     aliases: string[];
   };
   productKnowledgeProfile: ProductKnowledgeProfile;
+  contentStrategyKnowledgeContext?: ContentStrategyKnowledgeContext;
   websiteCoverageProfile?: ProductWebsiteCoverageProfile;
   project: {
     expressionFocus: string;
@@ -98,6 +99,73 @@ export interface GeoResearchProviderResult {
   payloadHash: string;
 }
 
+const BLUEPRINT_PREVIOUS_OUTPUT_FIELDS: Partial<Record<GeoResearchTaskType, readonly string[]>> = {
+  context_validation: [
+    "verifiedAt",
+    "sourceSnapshotVerified",
+    "productIdentityConfirmed",
+    "expressionBoundaryPresent"
+  ],
+  research_planning: [
+    "identityStatus",
+    "identitySummary",
+    "researchQuestions",
+    "frontendTestQuestions",
+    "competitorDimensions",
+    "successCriteria"
+  ],
+  live_question_discovery: [
+    "questions",
+    "queryClusters",
+    "contentGaps",
+    "claimAssessments",
+    "sourceCount",
+    "liveSearchVerified"
+  ],
+  live_competitor_discovery: [
+    "competitors",
+    "selectionAlternatives",
+    "comparisonDimensionEvidence",
+    "citationPatterns",
+    "contentOpportunities",
+    "claimAssessments",
+    "sourceCount",
+    "liveSearchVerified"
+  ],
+  frontend_baseline: [
+    "tests",
+    "aggregate",
+    "claimAssessments",
+    "observationCount",
+    "degraded",
+    "degradedReason",
+    "fallbackProviders",
+    "liveSearchVerified"
+  ],
+  evidence_alignment: [
+    "verifiedPatterns",
+    "unsupportedPatterns",
+    "priorityGaps",
+    "recommendedArticleTypes",
+    "retestRequirements"
+  ]
+};
+
+export function compactGeoBlueprintPreviousOutputs(
+  previousOutputs: GeoResearchProviderContext["previousOutputs"]
+): GeoResearchProviderContext["previousOutputs"] {
+  return previousOutputs.map((previousOutput) => {
+    const allowedFields = BLUEPRINT_PREVIOUS_OUTPUT_FIELDS[previousOutput.taskType];
+    if (!allowedFields) return previousOutput;
+    const outputSummary = Object.fromEntries(
+      allowedFields.flatMap((field) => Object.hasOwn(previousOutput.outputSummary, field)
+        ? [[field, previousOutput.outputSummary[field]]]
+        : [])
+    );
+    return { taskType: previousOutput.taskType, outputSummary };
+  });
+}
+
 const LIVE_SEARCH_TASKS = new Set<GeoResearchTaskType>([
   "live_question_discovery",
   "live_competitor_discovery",
@@ -122,12 +190,18 @@ interface TaskInstructionChannelContext {
   channelKeys: string[];
 }
 
-function taskInstructionChannelContext(): TaskInstructionChannelContext {
+function targetChannelRules(targetChannels: string[]) {
   const pack = getActiveGeoChannelRulePack();
+  const targetKeys = new Set(targetChannels);
+  return pack?.channels.filter((channel) => targetKeys.has(channel.channelKey)) || [];
+}
+
+function taskInstructionChannelContext(targetChannels: string[]): TaskInstructionChannelContext {
+  const channels = targetChannelRules(targetChannels);
   return {
-    faqBoards: pack ? [...new Set(pack.channels.flatMap((channel) => channel.faqBoards || []))] : [],
-    comparisonDimensions: pack ? [...new Set(pack.channels.flatMap((channel) => channel.comparisonDimensions || []))] : [],
-    channelKeys: pack ? pack.channels.map((channel) => channel.channelKey) : []
+    faqBoards: [...new Set(channels.flatMap((channel) => channel.faqBoards || []))],
+    comparisonDimensions: [...new Set(channels.flatMap((channel) => channel.comparisonDimensions || []))],
+    channelKeys: channels.map((channel) => channel.channelKey)
   };
 }
 
@@ -169,9 +243,22 @@ Return JSON with:
 {"verifiedPatterns":[],"unsupportedPatterns":[],"priorityGaps":[],"recommendedArticleTypes":[],"retestRequirements":[]}.
 Do not upgrade an unsupported pattern into a fact.`;
     case "blueprint_synthesis":
-      return `Produce a draft GEO content-distribution blueprint for human review. Select 3-5 semantically distinct article types (hard maximum 6). For each question cluster choose one of: matched (an existing active version already fits), adapted (an existing type needs a new product-specific version), or generated (no existing type fits). Never claim that an adapted/generated version is active. Treat websiteCoverageProfile as the deterministic current-state audit of official website coverage: do not recommend a new article that merely repeats a topic marked sufficient; prefer an adjacent unanswered question, refresh/distribution work, or a missing/partial topic. A topic marked partial or missing may become a content opportunity only when productKnowledgeProfile has the required governed evidence. A blocked publicGeoReadiness is a website remediation dependency, not a reason to produce duplicate articles. When productIdentity.serviceProvider exists, the strategy must contain one implementation-service-provider selection question cluster and one article type for choosing/recommending an implementation provider unless websiteCoverageProfile already marks provider_selection sufficient; in that case retain the question opportunity but assign the content type to refresh/distribution or an adjacent missing topic. Its definition must cover provider qualifications, delivery scope, implementation process, acceptance, training/support and evidence boundaries; it must present the provider as a service role rather than a co-branded product. A specific case may be used only when governed evidence proves the provider's involvement and outcome.
+      return `Produce a draft GEO content strategy for human review. This is a content-strategy compilation task, not another research task.
+Use the supplied inputs in this order:
+1. productKnowledgeProfile and contentStrategyKnowledgeContext answer what the product already has enough governed material to write. They are the authoritative product-content inventory. sourceSnapshotHash is traceability metadata only and contains no readable facts.
+2. previousOutputs and searchEvidence answer what users ask, where the target and competitors are visible, what AI answers currently cite, and which opportunities are worth covering. External pages may prove demand and visibility patterns, but they do not replace authoritative product facts.
+3. existingArticleTypes answer whether an existing writing structure can carry the opportunity.
+4. websiteCoverageProfile answers whether to create new content or refresh/distribute an existing official page.
+
+First summarize the writable product-content areas supported by the knowledge context. Then connect GEO question clusters and visibility gaps to those writable areas. Only after that compare with existingArticleTypes and select 3-5 semantically distinct article types (hard maximum 6).
+
+For each question cluster choose exactly one origin. Use matched when an existing active version already covers the user intent, audience, content goal, required structure and evidence slots. Use adapted when an existing type has the right core intent but needs product-specific modules, service-provider framing or emphasis. Use generated only when the knowledge context contains enough writable material and GEO research shows a real opportunity, but no existing type can carry the required intent and structure.
+
+Never create a type merely because an external article uses that label. Never mark knowledge-supported product material insufficient only because the public web lacks the same article. For every type return knowledgeSupportSummary, knowledgeClaimIds, geoOpportunitySummary, existingTypeComparison, expectedMentionRationale and retestProbeRefs. Explain what the knowledge base supports, what GEO result makes the type useful, why the existing type is reused/adapted/rejected, and how the result will be retested.
+
+Never claim that an adapted/generated version is active. Treat websiteCoverageProfile as the deterministic current-state audit of official website coverage: do not recommend a new article that merely repeats a topic marked sufficient; prefer an adjacent unanswered question, refresh/distribution work, or a missing/partial topic. A topic marked partial or missing may become a content opportunity only when contentStrategyKnowledgeContext contains relevant governed facts. A blocked publicGeoReadiness is a website remediation dependency, not a reason to produce duplicate articles. When productIdentity.serviceProvider exists, the strategy must contain one implementation-service-provider selection question cluster and one article type for choosing/recommending an implementation provider unless websiteCoverageProfile already marks provider_selection sufficient; in that case retain the question opportunity but assign the content type to refresh/distribution or an adjacent missing topic. Its definition must cover provider qualifications, delivery scope, implementation process, acceptance, training/support and evidence boundaries; it must present the provider as a service role rather than a co-branded product. A specific case may be used only when governed evidence proves the provider's involvement and outcome.
 Return JSON with:
-{"questionStrategy":{"priorityClusters":[{"id":"","name":"","intent":"","priority":"high|medium|low","evidenceReadiness":"ready|partial|blocked","representativeQuestions":[],"sourceIds":[]}],"journeyCoverage":[],"recommendedQuestions":[]},"competitorLandscape":{"competitors":[{"name":"","entityClassification":"verified_competitor","reason":"","overlapDimensions":[],"relationshipEvidence":"","sourceUrls":[],"evidenceStrength":"strong|moderate|weak"}],"selectionAlternatives":[{"name":"","entityClassification":"category_related","alternativeKind":"open_source|other_vendor|internal_build","reason":"","sourceUrls":[]}],"differentiationAngles":[],"contentGaps":[]},"citationStrategy":{"productClaimPolicy":"official_and_governed_sources_first","comparativeClaimPolicy":"two_sided_traceable_evidence_required","preferredSourceTypes":[],"citationPatterns":[],"sourceRequirements":[]},"contentTypeStrategy":{"articleTypes":[{"portfolioItemId":"","origin":"matched|adapted|generated","articleTypeId":"","articleTypeVersionId":"","baseArticleTypeId":"","baseArticleTypeVersionId":"","name":"","definition":"","suitableQuestions":[],"unsuitableQuestions":[],"targetAudience":[],"contentGoal":"","structureModules":[{"key":"","purpose":"","required":true}],"emphasisOrder":[],"style":[],"lengthRange":{"min":1200,"max":2400},"evidencePreferences":[],"ctaIntent":"","channelFit":[],"questionClusterIds":[],"recommendationReason":"","expectedMentionRationale":"","retestProbeRefs":[],"confidence":0.0,"evidenceReadiness":"ready|partial|blocked","proposedMonthlyShare":0.0}]},"platformStrategy":[{"channelKey":"","objective":"","suitableArticleTypes":[],"structureRequirements":[],"titlePatterns":[],"ctaVariantRef":"","authorAccountPolicy":"","hypothesis":false,"evidenceBasis":{"candidateIds":[],"sourceUrls":[]}}],"contentClusterPlan":[{"clusterTheme":"","memberArticleTypes":[],"internalLinkRationale":""}],"evidenceRequirements":{"claimsRequiringEvidence":[],"blockedClaims":[],"sourceGaps":[]},"monthlyStrategyInput":{"objectives":[],"channelPriorities":[],"contentMix":[]},"retestBaseline":{"questions":[],"targetMentionRate":0.0,"citationDomains":[]}}.
+{"questionStrategy":{"priorityClusters":[{"id":"","name":"","intent":"","priority":"high|medium|low","evidenceReadiness":"ready|partial|blocked","representativeQuestions":[],"sourceIds":[]}],"journeyCoverage":[],"recommendedQuestions":[]},"competitorLandscape":{"competitors":[{"name":"","entityClassification":"verified_competitor","reason":"","overlapDimensions":[],"relationshipEvidence":"","sourceUrls":[],"evidenceStrength":"strong|moderate|weak"}],"selectionAlternatives":[{"name":"","entityClassification":"category_related","alternativeKind":"open_source|other_vendor|internal_build","reason":"","sourceUrls":[]}],"differentiationAngles":[],"contentGaps":[]},"citationStrategy":{"productClaimPolicy":"official_and_governed_sources_first","comparativeClaimPolicy":"two_sided_traceable_evidence_required","preferredSourceTypes":[],"citationPatterns":[],"sourceRequirements":[]},"contentTypeStrategy":{"writableContentAreas":[{"name":"","knowledgeClaimIds":[],"supportedAngles":[]}],"articleTypes":[{"portfolioItemId":"","origin":"matched|adapted|generated","articleTypeId":"","articleTypeVersionId":"","baseArticleTypeId":"","baseArticleTypeVersionId":"","name":"","definition":"","suitableQuestions":[],"unsuitableQuestions":[],"targetAudience":[],"contentGoal":"","structureModules":[{"key":"","purpose":"","required":true}],"emphasisOrder":[],"style":[],"lengthRange":{"min":1200,"max":2400},"evidencePreferences":[],"ctaIntent":"","channelFit":[],"questionClusterIds":[],"recommendationReason":"","knowledgeSupportSummary":"","knowledgeClaimIds":[],"geoOpportunitySummary":"","existingTypeComparison":"","expectedMentionRationale":"","retestProbeRefs":[],"confidence":0.0,"evidenceReadiness":"ready|partial|blocked","proposedMonthlyShare":0.0}]},"platformStrategy":[{"channelKey":"","objective":"","suitableArticleTypes":[],"structureRequirements":[],"titlePatterns":[],"ctaVariantRef":"","authorAccountPolicy":"","hypothesis":false,"evidenceBasis":{"candidateIds":[],"sourceUrls":[]}}],"contentClusterPlan":[{"clusterTheme":"","memberArticleTypes":[],"internalLinkRationale":""}],"evidenceRequirements":{"claimsRequiringEvidence":[],"blockedClaims":[],"sourceGaps":[]},"monthlyStrategyInput":{"objectives":[],"channelPriorities":[],"contentMix":[]},"retestBaseline":{"questions":[],"targetMentionRate":0.0,"citationDomains":[]}}.
 The single promotion objective of this workbench is raising the brand/product AI mention rate; every strategy recommendation must state its expectedMentionRationale: which evidence from this run (frontend baseline gaps, competitor citation patterns, channel citation stats, question clusters) suggests the recommendation will move the mention rate. Article types must carry retestProbeRefs pointing at the retestBaseline questions they are designed to win citations on. Bold strategy hypotheses are allowed without blocking, but must carry hypothesis=true or a claimsRequiringEvidence entry.${platformGuidance} Each platformStrategy entry must ground its platform claims in evidenceBasis candidateIds/sourceUrls from this run's channel-tagged candidates; when a platform lacks sufficient evidence, keep the entry with hypothesis=true instead of inventing rules. Never inline CTA copy: reference the governed ctaVariantRef only. contentClusterPlan groups the chosen article types into internal-link clusters so each cluster can compound AI citation weight; every article type must appear in exactly one cluster.
 All article types are public-facing promotional content. Treat any provider delivery, implementation, acceptance, training or support topic above as a decision-level overview only. Never require or expose project-specific deployment prerequisites, environment parameters, configuration runbooks, delivery scopes, acceptance checklists or other internal customer-project artifacts.
 Every one of the eight top-level strategy modules must contain the named fields above and substantive values grounded in previous outputs. Do not return an empty object for any required module.
@@ -281,21 +368,21 @@ function assertProviderConfig() {
   } satisfies ZhipuProviderConfig;
 }
 
-function buildSearchQueries(identity: GeoProductIdentityCard, taskType: GeoResearchTaskType, maxQueries: number) {
+function buildSearchQueries(identity: GeoProductIdentityCard, taskType: GeoResearchTaskType, maxQueries: number, targetChannels: string[]) {
   return compileIdentityAnchoredQueries({
     taskType,
     identity,
     maxQueries,
-    channelRules: getActiveGeoChannelRulePack()?.channels
+    channelRules: targetChannelRules(targetChannels)
   });
 }
 
 /** 按证据缺口推断补充轮方向：目标平台全部无样本时优先补平台格局，否则补独立来源 */
-function inferSupplementaryGap(pack: MultiSearchEvidencePack, round: 1 | 2): GeoSupplementaryGap {
+export function inferSupplementaryGap(pack: MultiSearchEvidencePack, targetChannelKeys: string[], round: 1 | 2): GeoSupplementaryGap {
   const stats = pack.channelStats || {};
-  const channelKeys = Object.keys(stats);
+  const channelKeys = [...new Set(targetChannelKeys.filter(Boolean))];
   const platformEmpty = channelKeys.length > 0
-    && Object.values(stats).every((item) => item.candidateCount === 0);
+    && channelKeys.every((channelKey) => (stats[channelKey]?.candidateCount || 0) === 0);
   if (platformEmpty && round === 1) return "platform_evidence";
   return "independent_sources";
 }
@@ -304,14 +391,15 @@ function buildSupplementaryQueries(
   identity: GeoProductIdentityCard,
   taskType: GeoResearchTaskType,
   round: 1 | 2,
-  evidenceGap: GeoSupplementaryGap
+  evidenceGap: GeoSupplementaryGap,
+  targetChannels: string[]
 ) {
   return compileIdentityAnchoredQueries({
     taskType,
     identity,
     maxQueries: 1,
     round,
-    channelRules: getActiveGeoChannelRulePack()?.channels,
+    channelRules: targetChannelRules(targetChannels),
     evidenceGap
   });
 }
@@ -674,7 +762,8 @@ async function resolveSearchEvidencePackWithTimeout(
 export function enforceTaskEntityRules(
   taskType: GeoResearchTaskType,
   structured: Record<string, unknown>,
-  identity: GeoProductIdentityCard
+  identity: GeoProductIdentityCard,
+  targetChannels: string[] = []
 ) {
   const output = structuredClone(structured);
   const isVerifiedCompetitor = (item: unknown) => {
@@ -733,7 +822,7 @@ export function enforceTaskEntityRules(
 
   // 软门禁（质量，标注不拦截）：platformStrategy 渠道合法性 + 证据挂靠降级
   if (taskType === "blueprint_synthesis" && Array.isArray(output.platformStrategy)) {
-    const governedChannelKeys = new Set((getActiveGeoChannelRulePack()?.channels || []).map((channel) => channel.channelKey));
+    const governedChannelKeys = new Set(targetChannelRules(targetChannels).map((channel) => channel.channelKey));
     output.platformStrategy = output.platformStrategy.flatMap((item) => {
       const record = asRecord(item);
       if (!record) return [];
@@ -801,7 +890,7 @@ export function enforceTaskEntityRules(
         taskType: researchTask,
         identity,
         maxQueries: 6,
-        channelRules: getActiveGeoChannelRulePack()?.channels
+        channelRules: targetChannelRules(targetChannels)
       }));
   }
   if (taskType === "live_competitor_discovery" && Array.isArray(output.competitors)) {
@@ -870,7 +959,9 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
   };
   const requiresLiveSearch = LIVE_SEARCH_TASKS.has(context.taskType);
   const searchController = new AbortController();
-  const searchQueries = requiresLiveSearch ? buildSearchQueries(productIdentity, context.taskType, config.maxQueries) : [];
+  const searchQueries = requiresLiveSearch
+    ? buildSearchQueries(productIdentity, context.taskType, config.maxQueries, context.project.targetChannels)
+    : [];
   const queryPlan: GeoSearchQueryPlan | undefined = requiresLiveSearch ? {
     contractVersion: "geo-search-query-plan.v2",
     productId: context.product.productId,
@@ -917,9 +1008,13 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
     if (evidencePack && evidencePack.gate.configuredProviders.length >= 2) {
       for (const round of [1, 2] as const) {
         if (evidencePack.gate.decision === "passed") break;
-        const evidenceGap = inferSupplementaryGap(evidencePack, round);
+        const evidenceGap = inferSupplementaryGap(
+          evidencePack,
+          targetChannelRules(context.project.targetChannels).map((channel) => channel.channelKey),
+          round
+        );
         const supplementarySearchPack = await runMultiProviderWebSearch({
-          queries: buildSupplementaryQueries(productIdentity, context.taskType, round, evidenceGap),
+          queries: buildSupplementaryQueries(productIdentity, context.taskType, round, evidenceGap, context.project.targetChannels),
           officialUrl: context.product.officialUrl,
           signal: searchController.signal
         });
@@ -1017,14 +1112,21 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
     const synthesisController = new AbortController();
     const synthesisTimeout = setTimeout(() => synthesisController.abort(), providerTimeoutMs);
     try {
+      const synthesisPreviousOutputs = context.taskType === "blueprint_synthesis"
+        ? compactGeoBlueprintPreviousOutputs(context.previousOutputs)
+        : context.previousOutputs;
       logGeoProviderStage("semantic_synthesis_started", {
         taskType: context.taskType,
         evidenceCount: searchEvidence.length,
         evidenceCharacterCount: searchEvidence.reduce((total, item) => total + item.excerpt.length, 0),
-        previousOutputCount: context.previousOutputs.length
+        previousOutputCount: synthesisPreviousOutputs.length,
+        previousOutputCharacterCount: JSON.stringify(synthesisPreviousOutputs).length
       });
       const probeInstruction = context.probeSetSnapshot?.probes?.length ? ' Use the exact questionText values from probeSetSnapshot.probes for model observation; do not rewrite, merge, or add questions. Keep observationMode and expectedRelations as backend-only scoring metadata.' : '';
-      const synthesisSystemPrompt = "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity is authoritative and comes from user-provided materials. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Name similarity alone never proves identity or competition. A brand owner, implementation partner, reseller or service provider is a relationship role and must never be merged with the target name into a new composite product entity unless that exact composite appears in productIdentity.aliases. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules." + probeInstruction;
+      const contentStrategyInstruction = context.taskType === "blueprint_synthesis"
+        ? " For content strategy, read contentStrategyKnowledgeContext before GEO findings. The knowledge context decides what can be written; GEO findings decide what is worth covering; existingArticleTypes decide whether to reuse, adapt, or create a structure. Never treat sourceSnapshotHash as readable evidence."
+        : "";
+      const synthesisSystemPrompt = "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity, productKnowledgeProfile and contentStrategyKnowledgeContext come from governed user-provided materials and are authoritative for product facts. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Name similarity alone never proves identity or competition. A brand owner, implementation partner, reseller or service provider is a relationship role and must never be merged with the target name into a new composite product entity unless that exact composite appears in productIdentity.aliases. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules." + contentStrategyInstruction + probeInstruction;
       if (context.taskType === "live_question_discovery" && searchEvidence.length > 6) {
         const evidenceShards = Array.from(
           { length: Math.ceil(searchEvidence.length / 6) },
@@ -1042,13 +1144,15 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
               {
                 role: "user",
                 content: JSON.stringify({
-                  instruction: `${taskInstruction(context.taskType, taskInstructionChannelContext())} This is evidence shard ${shardIndex + 1} of ${evidenceShards.length}. Return 8-14 high-confidence questions grounded only in this shard; do not attempt the full 30-40 question catalog in one shard.`,
+                  instruction: `${taskInstruction(context.taskType, taskInstructionChannelContext(context.project.targetChannels))} This is evidence shard ${shardIndex + 1} of ${evidenceShards.length}. Return 8-14 high-confidence questions grounded only in this shard; do not attempt the full 30-40 question catalog in one shard.`,
                   productIdentity,
+                  productKnowledgeProfile: context.taskType === "blueprint_synthesis" ? context.productKnowledgeProfile : undefined,
+                  contentStrategyKnowledgeContext: context.taskType === "blueprint_synthesis" ? context.contentStrategyKnowledgeContext : undefined,
                   researchBoundary,
                   websiteCoverageProfile: context.websiteCoverageProfile,
                   sourceSnapshotHash: context.sourceSnapshotHash,
                   probeSetSnapshot: context.probeSetSnapshot,
-                  previousOutputs: context.previousOutputs,
+                  previousOutputs: synthesisPreviousOutputs,
                   searchEvidence: searchEvidenceShard,
                   channelStats: evidencePack?.channelStats,
                   evidenceGate: evidencePack?.gate
@@ -1083,13 +1187,15 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
             {
               role: "user",
               content: JSON.stringify({
-                instruction: taskInstruction(context.taskType, taskInstructionChannelContext()),
+                instruction: taskInstruction(context.taskType, taskInstructionChannelContext(context.project.targetChannels)),
                 productIdentity,
+                productKnowledgeProfile: context.taskType === "blueprint_synthesis" ? context.productKnowledgeProfile : undefined,
+                contentStrategyKnowledgeContext: context.taskType === "blueprint_synthesis" ? context.contentStrategyKnowledgeContext : undefined,
                 researchBoundary,
                 websiteCoverageProfile: context.websiteCoverageProfile,
                 sourceSnapshotHash: context.sourceSnapshotHash,
                 probeSetSnapshot: context.probeSetSnapshot,
-                previousOutputs: context.previousOutputs,
+                previousOutputs: synthesisPreviousOutputs,
                 existingArticleTypes,
                 searchEvidence,
                 channelStats: evidencePack?.channelStats,
@@ -1145,7 +1251,12 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       );
       }
     }
-    const entitySafeSemanticOutput = enforceTaskEntityRules(context.taskType, semanticOutput, productIdentity);
+    const entitySafeSemanticOutput = enforceTaskEntityRules(
+      context.taskType,
+      semanticOutput,
+      productIdentity,
+      context.project.targetChannels
+    );
     const citationPruning = evidencePack
       ? pruneGeoResearchCitations(entitySafeSemanticOutput, evidencePack)
       : undefined;

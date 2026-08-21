@@ -24,10 +24,11 @@ Register-ScheduledTask `
   -Trigger $trigger `
   -Principal $principal `
   -Settings $settings `
-  -Description "Start the existing JOTO GTM Workbench production containers on port 3027 without rebuilding images." `
+  -Description "Start the existing JOTO GTM Workbench on port 3027 and its loopback channel publishing companions without rebuilding images." `
   -Force | Out-Null
 
 Write-Host "Registered Windows logon task: $taskName"
+Write-Host "The same task also ensures Wechatsync Bridge and Arcs Runner are running."
 Write-Host "Daily launcher: npm.cmd run docker:3027"
 Write-Host "Explicit deployment only: npm.cmd run docker:3027:deploy"
 

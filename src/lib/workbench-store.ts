@@ -6748,6 +6748,9 @@ function buildDirectPublishPayload(
     sourceDraftId: draft.id,
     publishRecordId: schedule.publishRecordId,
     matrixItemId: schedule.matrixItemId,
+    accountConnectionId: schedule.accountConnectionId,
+    accountFingerprint: schedule.accountFingerprint,
+    browserProfileRef: schedule.browserProfileRef,
     coverUrl: schedule.platform === "wechat" ? schedule.coverUrl : undefined,
     categoryId:
       schedule.platform === "juejin"
@@ -6796,6 +6799,9 @@ export interface ApprovedPublishContentInput {
   matrixItemId?: string;
   contentFormat?: "markdown" | "wechat_html";
   coverUrl?: string;
+  accountConnectionId?: string;
+  accountFingerprint?: string;
+  browserProfileRef?: string;
 }
 
 /**
@@ -6850,7 +6856,10 @@ export function createPublishSchedulesFromApprovedContent(
     scheduledAt: input.scheduledAt,
     matrixItemId: input.matrixItemId || input.sourceTaskId,
     contentFormat: input.contentFormat,
-    coverUrl: input.coverUrl
+    coverUrl: input.coverUrl,
+    accountConnectionId: input.accountConnectionId,
+    accountFingerprint: input.accountFingerprint,
+    browserProfileRef: input.browserProfileRef
   });
 }
 
@@ -6927,6 +6936,9 @@ export function createPublishSchedules(input: Record<string, unknown>): Workflow
       platformVariantId: variant.id,
       publishRecordId: record.id,
       matrixItemId: typeof input.matrixItemId === "string" ? input.matrixItemId : undefined,
+      accountConnectionId: typeof input.accountConnectionId === "string" ? input.accountConnectionId : undefined,
+      accountFingerprint: typeof input.accountFingerprint === "string" ? input.accountFingerprint : undefined,
+      browserProfileRef: typeof input.browserProfileRef === "string" ? input.browserProfileRef : undefined,
       contentFormat: input.contentFormat === "wechat_html" ? "wechat_html" : "markdown",
       coverUrl: platform === "wechat" && typeof input.coverUrl === "string" ? input.coverUrl : undefined,
       contentHash,
@@ -7250,7 +7262,7 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
   const adapter = getPublishAdapter(schedule.platform);
   const startedAt = nowIso();
   const payload = buildDirectPublishPayload(schedule, draft, platformVariant);
-  const auth = await adapter.checkAuth();
+  const auth = await adapter.checkAuth(payload);
   const validation = await adapter.validatePayload(payload);
   const attemptBase: PublishAttempt = {
     id: createId("attempt"),
@@ -7408,7 +7420,7 @@ export async function runPublishSchedule(id: string): Promise<WorkflowResult<{ s
       );
     }
 
-    const verifyResult = await adapter.verify(publishResult);
+    const verifyResult = await adapter.verify(publishResult, payload);
     const lifecycle = resolvePublishVerificationLifecycle(schedule, verifyResult, nowIso());
     const finalStatus = lifecycle.status;
 
@@ -7521,6 +7533,17 @@ export async function verifyPublishSchedule(id: string): Promise<WorkflowResult<
     idempotencyKey: schedule.idempotencyKey,
     pendingCsvReturn: true,
     nextAction: "仅执行发布后验证。"
+  }, {
+    scheduleId: schedule.id,
+    contentHash: schedule.contentHash,
+    idempotencyKey: schedule.idempotencyKey,
+    title: "verify-only",
+    markdown: "verify-only",
+    scheduledAt: schedule.scheduledAt,
+    sourceDraftId: schedule.draftId,
+    accountConnectionId: schedule.accountConnectionId,
+    accountFingerprint: schedule.accountFingerprint,
+    browserProfileRef: schedule.browserProfileRef
   });
   const verifiedAt = nowIso();
   const lifecycle = resolvePublishVerificationLifecycle(schedule, verifyResult, verifiedAt);

@@ -1,5 +1,6 @@
 import type { DirectPublishPlatformKey, PlatformPublishPayload, PublishAttemptStatus, PublishFailureCode } from "./types";
 import type { AuthStatus, PublishResult, VerifyResult } from "./publish-adapters/types";
+import { executeGovernedBrowserOperation } from "./v5/browser-executor-pool";
 
 type BridgePlatform = "weixin" | "csdn" | "juejin" | "zhihu";
 
@@ -115,12 +116,16 @@ function failureCodeForResponse(response: Response): PublishFailureCode {
   return "adapter_failed";
 }
 
-export async function checkFormalPublishAuth(platform: DirectPublishPlatformKey): Promise<AuthStatus> {
+export async function checkFormalPublishAuth(platform: DirectPublishPlatformKey, browserProfileRef?: string): Promise<AuthStatus> {
   const configError = getBridgeConfigError();
   if (configError) return configError;
 
   try {
-    const response = await fetchBridge("/auth/check", { platform: bridgePlatform(platform), purpose: "formal_publish" });
+    const response = await fetchBridge("/auth/check", {
+      platform: bridgePlatform(platform),
+      purpose: "formal_publish",
+      ...(browserProfileRef ? { profileRef: browserProfileRef } : {})
+    });
     const payload = (await response.json().catch(() => ({}))) as {
       authenticated?: boolean;
       status?: AuthStatus["status"];
@@ -146,14 +151,91 @@ export async function checkFormalPublishAuth(platform: DirectPublishPlatformKey)
   }
 }
 
+export interface FormalPublishAuthorizationResult {
+  ok: boolean;
+  status: "waiting_for_user" | "manual_takeover_required" | "failed" | "unsupported";
+  message: string;
+  nextAction: string;
+}
+
+export async function openFormalPublishAuthorization(platform: DirectPublishPlatformKey): Promise<FormalPublishAuthorizationResult> {
+  if (!(["csdn", "juejin", "zhihu"] as DirectPublishPlatformKey[]).includes(platform)) {
+    return {
+      ok: false,
+      status: "unsupported",
+      message: "该渠道不使用专用浏览器授权。",
+      nextAction: "返回托管设置选择知乎、CSDN 或掘金。"
+    };
+  }
+  const configError = getBridgeConfigError();
+  if (configError) {
+    return {
+      ok: false,
+      status: "failed",
+      message: configError.message,
+      nextAction: configError.nextAction || "请先完成本机发布 Bridge 配置。"
+    };
+  }
+  try {
+    const response = await fetchBridge("/auth/connect", { platform: bridgePlatform(platform), purpose: "formal_publish" });
+    const payload = (await response.json().catch(() => ({}))) as Partial<FormalPublishAuthorizationResult>;
+    return {
+      ok: response.ok && payload.ok === true,
+      status: payload.status || (response.ok ? "waiting_for_user" : "failed"),
+      message: payload.message || (response.ok ? "专用登录窗口已打开。" : "专用登录窗口启动失败。"),
+      nextAction: payload.nextAction || "完成登录后回到工作台重新检查。"
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message: error instanceof Error ? error.message : "本机发布 Bridge 不可达。",
+      nextAction: "启动本机发布 Bridge 与 Arcs Runner 后重试。"
+    };
+  }
+}
+
 export async function submitFormalPublish(platform: DirectPublishPlatformKey, payload: PlatformPublishPayload): Promise<PublishResult> {
   try {
-    const response = await fetchBridge("/publish", { platform: bridgePlatform(platform), ...payload });
-    const result = (await response.json().catch(() => ({}))) as BridgePublishResponse;
-    const status = normalizeStatus(result.status, response.ok ? "pending_verify" : "failed");
+    let responseOk: boolean;
+    let responseStatus: number;
+    let result: BridgePublishResponse;
+    if (payload.accountConnectionId) {
+      const execution = await executeGovernedBrowserOperation({
+        accountConnectionId: payload.accountConnectionId,
+        operation: "publish",
+        channel: platform,
+        idempotencyKey: payload.idempotencyKey,
+        command: { ...payload, platform: bridgePlatform(platform) }
+      });
+      result = execution.result as BridgePublishResponse;
+      if (!execution.ok && !Object.keys(result).length) {
+        const executorUnavailable = execution.failureCode === "executor_unavailable";
+        const actionUnconfirmed = execution.failureCode === "executor_timeout" || execution.failureCode === "publish_action_unconfirmed";
+        result = {
+          ok: false,
+          status: executorUnavailable ? "pending_config" : actionUnconfirmed ? "pending_verify" : "failed",
+          failureCode: executorUnavailable ? "pending_config" : actionUnconfirmed ? "publish_action_unconfirmed" : "adapter_failed",
+          failureReason: execution.failureMessage,
+          nextAction: executorUnavailable
+            ? "等待浏览器执行节点上线；当前排程会保留，不要重复创建。"
+            : actionUnconfirmed
+              ? "平台动作可能已经发生；不要重复发布，只执行只读验证。"
+              : "检查浏览器执行节点和平台后台后再决定是否重试。"
+        };
+      }
+      responseOk = execution.ok;
+      responseStatus = execution.ok ? 200 : 503;
+    } else {
+      const response = await fetchBridge("/publish", { platform: bridgePlatform(platform), ...payload });
+      responseOk = response.ok;
+      responseStatus = response.status;
+      result = (await response.json().catch(() => ({}))) as BridgePublishResponse;
+    }
+    const status = normalizeStatus(result.status, responseOk ? "pending_verify" : "failed");
 
     return {
-      ok: response.ok && result.ok !== false,
+      ok: responseOk && result.ok !== false,
       status,
       mode: "real",
       publishStatus: result.publishStatus,
@@ -164,9 +246,9 @@ export async function submitFormalPublish(platform: DirectPublishPlatformKey, pa
       publicUrl: result.publicUrl,
       idempotencyKey: payload.idempotencyKey,
       pendingCsvReturn: result.pendingCsvReturn,
-      failureCode: result.failureCode || (!response.ok ? failureCodeForResponse(response) : undefined),
-      failureReason: result.failureReason || (!response.ok ? result.message || `bridge HTTP ${response.status}` : undefined),
-      nextAction: result.nextAction || (response.ok ? "等待发布验证。" : "请检查发布尝试详情后处理。"),
+      failureCode: result.failureCode || (!responseOk ? responseStatus === 401 || responseStatus === 403 ? "auth_required" : "adapter_failed" : undefined),
+      failureReason: result.failureReason || (!responseOk ? result.message || `publish executor HTTP ${responseStatus}` : undefined),
+      nextAction: result.nextAction || (responseOk ? "等待发布验证。" : "请检查发布尝试详情后处理。"),
       diagnosticSummary: result.duplicateProtected ? "duplicate_protected_by_bridge" : result.diagnosticSummary
     };
   } catch (error) {
@@ -183,7 +265,7 @@ export async function submitFormalPublish(platform: DirectPublishPlatformKey, pa
   }
 }
 
-export async function verifyFormalPublish(platform: DirectPublishPlatformKey, result: PublishResult): Promise<VerifyResult> {
+export async function verifyFormalPublish(platform: DirectPublishPlatformKey, result: PublishResult, publishPayload?: PlatformPublishPayload): Promise<VerifyResult> {
   if (!result.idempotencyKey) {
     return {
       ok: false,
@@ -200,18 +282,34 @@ export async function verifyFormalPublish(platform: DirectPublishPlatformKey, re
   }
 
   try {
-    const response = await fetchBridge("/publish/verify", {
+    const verifyPayload = {
       platform: bridgePlatform(platform),
       idempotencyKey: result.idempotencyKey,
       platformArticleId: result.platformArticleId,
       externalTaskId: result.externalTaskId,
       publicUrl: result.publicUrl
-    });
-    const payload = (await response.json().catch(() => ({}))) as BridgePublishResponse;
-    const status = normalizeStatus(payload.status, response.ok ? "pending_verify" : "failed");
+    };
+    let responseOk: boolean;
+    let payload: BridgePublishResponse;
+    if (publishPayload?.accountConnectionId) {
+      const execution = await executeGovernedBrowserOperation({
+        accountConnectionId: publishPayload.accountConnectionId,
+        operation: "verify",
+        channel: platform,
+        idempotencyKey: result.idempotencyKey,
+        command: verifyPayload
+      });
+      responseOk = execution.ok;
+      payload = execution.result as BridgePublishResponse;
+    } else {
+      const response = await fetchBridge("/publish/verify", verifyPayload);
+      responseOk = response.ok;
+      payload = (await response.json().catch(() => ({}))) as BridgePublishResponse;
+    }
+    const status = normalizeStatus(payload.status, responseOk ? "pending_verify" : "failed");
 
     return {
-      ok: response.ok && payload.ok !== false,
+      ok: responseOk && payload.ok !== false,
       status,
       publishStatus: payload.publishStatus,
       verifyStatus:
@@ -225,7 +323,7 @@ export async function verifyFormalPublish(platform: DirectPublishPlatformKey, re
       publicUrl: payload.publicUrl || result.publicUrl,
       pendingCsvReturn: payload.pendingCsvReturn ?? !payload.publicUrl,
       failureCode: payload.failureCode,
-      failureReason: payload.failureReason || (!response.ok ? payload.message : undefined),
+      failureReason: payload.failureReason || (!responseOk ? payload.message : undefined),
       nextAction: payload.nextAction || (status === "pending_verify" ? "平台仍在处理，稍后只执行验证，不要重复发布。" : "发布验证已完成。")
     };
   } catch (error) {

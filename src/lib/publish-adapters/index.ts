@@ -83,7 +83,7 @@ function verifyLocalResult(result: PublishResult): VerifyResult {
 abstract class BaseDirectPublishAdapter implements PublishAdapter {
   abstract platform: DirectPublishPlatformKey;
 
-  async checkAuth(): Promise<AuthStatus> {
+  async checkAuth(payload?: PlatformPublishPayload): Promise<AuthStatus> {
     const mode = getMode();
     if (mode === "mock") {
       return { ok: true, status: "ready", message: `${this.platform} mock 正式发布预检查通过。`, nextAction: "可以执行本地状态机验收；真实发布前必须启动本机 bridge 和平台执行器。" };
@@ -91,7 +91,7 @@ abstract class BaseDirectPublishAdapter implements PublishAdapter {
     if (mode === "disabled") {
       return { ok: false, status: "pending_config", message: `${this.platform} 正式发布未启用。`, nextAction: "完成本机配置与单篇验收后，再设置 DIRECT_PUBLISH_ENABLED=true。", missingConfig: ["DIRECT_PUBLISH_ENABLED"] };
     }
-    return checkFormalPublishAuth(this.platform);
+    return checkFormalPublishAuth(this.platform, payload?.browserProfileRef);
   }
 
   async validatePayload(payload: PlatformPublishPayload): Promise<ValidationResult> {
@@ -105,9 +105,9 @@ abstract class BaseDirectPublishAdapter implements PublishAdapter {
     return submitFormalPublish(this.platform, payload);
   }
 
-  async verify(result: PublishResult): Promise<VerifyResult> {
+  async verify(result: PublishResult, payload?: PlatformPublishPayload): Promise<VerifyResult> {
     if (getMode() !== "real" || !["pending_verify", "published_pending_url"].includes(result.status)) return verifyLocalResult(result);
-    return verifyFormalPublish(this.platform, result);
+    return verifyFormalPublish(this.platform, result, payload);
   }
 }
 
@@ -144,11 +144,11 @@ class CsdnDirectPublishAdapter extends BaseDirectPublishAdapter {
 class ZhihuDirectPublishAdapter extends BaseDirectPublishAdapter {
   platform = "zhihu" as const;
 
-  async checkAuth(): Promise<AuthStatus> {
+  async checkAuth(payload?: PlatformPublishPayload): Promise<AuthStatus> {
     if (process.env.ZHIHU_MANUAL_TAKEOVER_REQUIRED === "true") {
       return { ok: false, status: "manual_takeover_required", message: "知乎当前需要人工接管。", nextAction: "请人工处理验证码、手机确认或平台安全挑战；系统不会尝试绕过风控。" };
     }
-    return super.checkAuth();
+    return super.checkAuth(payload);
   }
 }
 

@@ -4,6 +4,7 @@ import type {
   GeoResearchFinding,
   GeoResearchQuestionCatalog,
   GeoResearchReadiness,
+  GeoResearchRetestBinding,
   GeoResearchRun,
   GeoResearchTask
 } from "./geo-research-contracts";
@@ -18,6 +19,7 @@ import {
   readActiveGeoResearchGovernanceBinding,
   readGeoResearchRunWorkspace,
   readGeoResearchWorkspace,
+  readGeoMentionBaselineByRunId,
   readLatestGeoSourceSnapshot,
   readPreviousGeoMentionBaseline,
   requestGeoBlueprintChangesRecord,
@@ -32,6 +34,7 @@ import { readProductKnowledgeProfile } from "./product-knowledge-profile";
 import { readProductWebsiteCoverageProfile } from "./website-coverage-repository";
 import { buildGeoResearchDownstreamCandidates } from "./geo-research-downstream";
 import type { ProbeSetSnapshot } from "./geo-probe-contracts";
+import { readLatestClosedProductGeoOptimizationSnapshot } from "./product-geo-optimization-repository";
 
 function assertText(value: string | undefined, field: string, maxLength = 255) {
   if (!value?.trim()) {
@@ -58,6 +61,56 @@ function assertStringList(values: string[] | undefined, field: string, maxItems 
       400
     );
   }
+}
+
+function targetChannelRuleBlockedReason(targetChannels: string[]) {
+  try {
+    return evaluateTargetChannelRuleCoverage({
+      targetChannels,
+      pack: getActiveGeoChannelRulePack()
+    });
+  } catch (packError) {
+    return evaluateTargetChannelRuleCoverage({ targetChannels, pack: undefined, packError });
+  }
+}
+
+async function resolveGeoRetestBinding(
+  productId: string,
+  workspace: Awaited<ReturnType<typeof readGeoResearchWorkspace>>
+): Promise<GeoResearchRetestBinding> {
+  const blueprint = workspace?.currentBlueprint;
+  if (!blueprint || blueprint.status !== "approved" || !blueprint.approvedAt) {
+    throw new V5GovernanceServiceError(
+      "retest_blueprint_missing",
+      "发布后复测必须绑定已批准的 GEO 蓝图。",
+      409,
+      "先完成正式调研并由人工批准蓝图。"
+    );
+  }
+  const snapshot = await readLatestClosedProductGeoOptimizationSnapshot({
+    productId,
+    generatedAfter: blueprint.approvedAt,
+    blueprintVersionId: blueprint.blueprintVersionId
+  });
+  if (!snapshot) {
+    throw new V5GovernanceServiceError(
+      "retest_published_batch_missing",
+      "蓝图批准后尚无完成发布存活与 AI 采集的关闭批次，不能启动发布后复测。",
+      409,
+      "等待 Content Monitor 中对应产品批次关闭后重试。"
+    );
+  }
+  return {
+    blueprintVersionId: blueprint.blueprintVersionId,
+    baselineRunId: blueprint.runId,
+    blueprintApprovedAt: blueprint.approvedAt,
+    optimizationSnapshotId: snapshot.id,
+    batchKey: snapshot.batchKey,
+    matrixVersionId: snapshot.matrixVersionId,
+    strategyPackId: snapshot.strategyPackId,
+    inputEvidenceHash: snapshot.inputEvidenceHash,
+    batchClosedAt: snapshot.generatedAt
+  };
 }
 
 function asRecord(value: unknown) {
@@ -320,10 +373,16 @@ export async function getGeoResearchRunDetails(input: { productId: string; runId
   let mentionDelta: ReturnType<typeof buildMentionDeltaAttribution> | undefined;
   let previousBaselineRun: { runId: string; runVersion: number; capturedAt: string } | undefined;
   if (runWorkspace.run.triggerType === "post_publish_retest" && mentionBaseline) {
-    const previous = await readPreviousGeoMentionBaseline({
-      productId: input.productId,
-      beforeRunVersion: runWorkspace.run.runVersion
-    });
+    const retestBinding = runWorkspace.run.plan.retestBinding && typeof runWorkspace.run.plan.retestBinding === "object"
+      && !Array.isArray(runWorkspace.run.plan.retestBinding)
+      ? runWorkspace.run.plan.retestBinding as Partial<GeoResearchRetestBinding>
+      : undefined;
+    const previous = typeof retestBinding?.baselineRunId === "string"
+      ? await readGeoMentionBaselineByRunId({ productId: input.productId, runId: retestBinding.baselineRunId })
+      : await readPreviousGeoMentionBaseline({
+          productId: input.productId,
+          beforeRunVersion: runWorkspace.run.runVersion
+        });
     if (previous) {
       previousBaselineRun = {
         runId: previous.runId,
@@ -551,6 +610,10 @@ export async function startGeoResearchRun(input: {
   assertText(input.productId, "productId", 64);
   assertText(input.idempotencyKey, "idempotencyKey", 128);
   assertActor(input.actor);
+  const triggerType = input.triggerType || "product_onboarding";
+  if (!["product_onboarding", "manual_refresh", "post_publish_retest"].includes(triggerType)) {
+    throw new V5GovernanceServiceError("invalid_contract", `不支持的 GEO 调研触发类型：${String(triggerType)}。`, 400);
+  }
   if (!Number.isInteger(input.expectedProjectVersion) || input.expectedProjectVersion < 1) {
     throw new V5GovernanceServiceError(
       "invalid_contract",
@@ -560,6 +623,19 @@ export async function startGeoResearchRun(input: {
     );
   }
   await getActiveProduct(input.productId);
+  const currentWorkspace = await readGeoResearchWorkspace(input.productId);
+  if (!currentWorkspace) {
+    throw new V5GovernanceServiceError("research_project_not_found", "调研项目不存在。", 404);
+  }
+  const channelRuleBlockedReason = targetChannelRuleBlockedReason(currentWorkspace.project.targetChannels);
+  if (channelRuleBlockedReason) {
+    throw new V5GovernanceServiceError(
+      "geo_channel_rule_pack_not_ready",
+      channelRuleBlockedReason,
+      409,
+      "激活覆盖全部目标第三方平台的渠道规则包，或从研究边界移除未治理渠道。"
+    );
+  }
   const websiteCoverageProfile = await readProductWebsiteCoverageProfile(input.productId);
   if (!websiteCoverageProfile || websiteCoverageProfile.publicGeoReadiness === "pending_audit") {
     throw new V5GovernanceServiceError(
@@ -569,9 +645,13 @@ export async function startGeoResearchRun(input: {
       "在产品知识库添加正式官网 URL，并等待自动官网审计完成后重试。"
     );
   }
+  const retestBinding = triggerType === "post_publish_retest"
+    ? await resolveGeoRetestBinding(input.productId, currentWorkspace)
+    : undefined;
   const write = await createGeoResearchRunRecord({
     productId: input.productId,
-    triggerType: input.triggerType || "product_onboarding",
+    triggerType,
+    retestBinding,
     expectedProjectVersion: input.expectedProjectVersion,
     idempotencyKey: input.idempotencyKey,
     actor: input.actor
@@ -699,8 +779,8 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
       });
       continue;
     }
-    if (recent && bindingIsCurrent && blueprint && ["pending_review", "approved"].includes(blueprint.status)) {
-      // M8 提及率 KPI 闭环：批准蓝图在 30 天周期内时，按复测状态决定是否触发下一轮
+    if (bindingIsCurrent && blueprint && ["pending_review", "approved"].includes(blueprint.status)) {
+      // 已批准蓝图优先走“发布批次关闭 -> 复测 -> 根因判断”闭环，不能被固定 30 天刷新越过。
       if (blueprint.status === "approved" && latestRun) {
         const retestBaseline = blueprint.retestBaseline || {};
         const retestQuestions = Array.isArray(retestBaseline.questions)
@@ -710,31 +790,71 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
           && Number.isFinite(retestBaseline.targetMentionRate)
           ? retestBaseline.targetMentionRate
           : undefined;
+        if (!retestQuestions.length || targetMentionRate === undefined) {
+          results.push({
+            productId: product.productId,
+            status: "requires_attention",
+            detail: "已批准蓝图缺少可执行的复测问题或目标提及率，不能进入自动复测"
+          });
+          continue;
+        }
         const approvedAtMs = Date.parse(blueprint.approvedAt || latestRun.updatedAt);
-        const retestIntervalMs = Math.max(1, Number(process.env.GEO_RETEST_INTERVAL_DAYS || 7)) * 24 * 60 * 60 * 1000;
+        const configuredRetestDays = Number(process.env.GEO_RETEST_INTERVAL_DAYS || 7);
+        const retestIntervalDays = Number.isFinite(configuredRetestDays) ? Math.max(1, configuredRetestDays) : 7;
+        const retestIntervalMs = retestIntervalDays * 24 * 60 * 60 * 1000;
+        const closedBatch = await readLatestClosedProductGeoOptimizationSnapshot({
+          productId: product.productId,
+          generatedAfter: blueprint.approvedAt,
+          blueprintVersionId: blueprint.blueprintVersionId
+        });
+        if (!closedBatch) {
+          results.push({
+            productId: product.productId,
+            status: "monitoring",
+            detail: "等待蓝图批准后的内容完成发布、存活观察与 published_content_retest 批次闭环"
+          });
+          continue;
+        }
         const latestRetestRun = state.workspace.runs.find((run) =>
           run.triggerType === "post_publish_retest"
           && run.status === "completed"
           && run.mentionBaseline
-          && Date.parse(run.createdAt) >= approvedAtMs);
-        if (!latestRetestRun && retestQuestions.length && Date.now() - approvedAtMs >= retestIntervalMs) {
+          && run.plan.retestBinding
+          && typeof run.plan.retestBinding === "object"
+          && !Array.isArray(run.plan.retestBinding)
+          && (run.plan.retestBinding as Partial<GeoResearchRetestBinding>).blueprintVersionId === blueprint.blueprintVersionId
+          && (run.plan.retestBinding as Partial<GeoResearchRetestBinding>).batchKey === closedBatch.batchKey);
+        const retestClockStartedAt = Math.max(approvedAtMs, Date.parse(closedBatch.generatedAt));
+        if (!latestRetestRun && retestQuestions.length && Date.now() - retestClockStartedAt >= retestIntervalMs) {
           await startGeoResearchRun({
             productId: product.productId,
             triggerType: "post_publish_retest",
             expectedProjectVersion: state.workspace.project.rowVersion,
-            idempotencyKey: `auto-geo-retest:${product.productId}:${blueprint.blueprintVersionId}`,
+            idempotencyKey: `auto-geo-retest:${product.productId}:${blueprint.blueprintVersionId}:${closedBatch.batchKey}`,
             actor: input.actor
           });
           results.push({
             productId: product.productId,
             status: "queued_retest",
-            detail: "批准蓝图已过复测间隔，排队发布后提及率复测"
+            detail: `发布批次 ${closedBatch.batchKey} 已闭环并超过复测间隔，排队提及率复测`
           });
           continue;
         }
         if (latestRetestRun && targetMentionRate !== undefined) {
           const retestMentionRate = latestRetestRun.mentionBaseline?.targetMentionRate || 0;
           if (retestMentionRate < targetMentionRate) {
+            const blockingAction = closedBatch.actions.find((item) => (
+              item.priority === "P0"
+              || ["fix_site", "collect_evidence", "continue_monitoring", "manual_review"].includes(item.action)
+            ));
+            if (blockingAction) {
+              results.push({
+                productId: product.productId,
+                status: "requires_attention",
+                detail: `复测未达标，但批次根因要求先执行「${blockingAction.title}」；不会用新一轮内容调研掩盖官网、证据或样本问题`
+              });
+              continue;
+            }
             if (Date.now() - Date.parse(latestRetestRun.updatedAt) >= retestIntervalMs) {
               await startGeoResearchRun({
                 productId: product.productId,
@@ -759,7 +879,7 @@ export async function runAutomaticGeoResearchOrchestration(input: { actor: V5Gov
           }
         }
       }
-      results.push({ productId: product.productId, status: "monitoring", detail: "本轮调研在 30 天监控周期内" });
+      results.push({ productId: product.productId, status: "monitoring", detail: "已批准蓝图处于发布与提及率监控闭环中" });
       continue;
     }
     await startGeoResearchRun({

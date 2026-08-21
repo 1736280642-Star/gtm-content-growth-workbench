@@ -35,15 +35,35 @@ function splitSqlStatements(sql) {
 }
 
 async function executePortableStatement(connection, statement) {
-  const match = statement.match(/^ALTER\s+TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+([\s\S]+)$/i);
-  if (!match) return connection.query(statement);
-  const [, tableName, columnName, definition] = match;
+  const columnMatch = statement.match(/^ALTER\s+TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+([\s\S]+)$/i);
+  if (columnMatch) {
+    const [, tableName, columnName, definition] = columnMatch;
+    const [rows] = await connection.query(
+      "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1",
+      [tableName, columnName]
+    );
+    if (rows.length) return;
+    return connection.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`);
+  }
+  const dropIndexMatch = statement.match(/^ALTER\s+TABLE\s+`?([a-zA-Z0-9_]+)`?\s+DROP\s+INDEX\s+IF\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?$/i);
+  if (dropIndexMatch) {
+    const [, tableName, indexName] = dropIndexMatch;
+    const [rows] = await connection.query(
+      "SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1",
+      [tableName, indexName]
+    );
+    if (!rows.length) return;
+    return connection.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${indexName}\``);
+  }
+  const indexMatch = statement.match(/^CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+ON\s+`?([a-zA-Z0-9_]+)`?\s*([\s\S]+)$/i);
+  if (!indexMatch) return connection.query(statement);
+  const [, unique, indexName, tableName, definition] = indexMatch;
   const [rows] = await connection.query(
-    "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1",
-    [tableName, columnName]
+    "SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1",
+    [tableName, indexName]
   );
   if (rows.length) return;
-  return connection.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`);
+  return connection.query(`CREATE ${unique ? "UNIQUE " : ""}INDEX \`${indexName}\` ON \`${tableName}\` ${definition}`);
 }
 
 async function loadMigrations() {

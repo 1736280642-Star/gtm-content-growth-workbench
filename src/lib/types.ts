@@ -492,6 +492,9 @@ export interface PlatformPublishPayload {
   tagIds?: string[];
   externalDraftId?: string;
   editorUrl?: string;
+  accountConnectionId?: string;
+  accountFingerprint?: string;
+  browserProfileRef?: string;
   dryRun?: boolean;
 }
 
@@ -504,6 +507,9 @@ export interface PublishSchedule {
   platformVariantId?: string;
   publishRecordId?: string;
   matrixItemId?: string;
+  accountConnectionId?: string;
+  accountFingerprint?: string;
+  browserProfileRef?: string;
   contentFormat?: "markdown" | "wechat_html";
   coverUrl?: string;
   contentHash: string;

@@ -316,10 +316,13 @@ function toEvidenceCandidate(input: {
 
 /** 基于当前候选集重算各目标渠道的证据分布（解析前 verifiedCount=0，解析后随存活候选更新） */
 export function recomputeChannelStats(
-  candidates: GeoSearchEvidenceCandidate[]
+  candidates: GeoSearchEvidenceCandidate[],
+  targetChannelKeys: string[] = []
 ): Record<string, GeoSearchChannelStats> | undefined {
-  const stats: Record<string, GeoSearchChannelStats> = {};
-  let hasChannelCandidate = false;
+  const stats: Record<string, GeoSearchChannelStats> = Object.fromEntries(
+    [...new Set(targetChannelKeys.filter(Boolean))].map((channelKey) => [channelKey, { candidateCount: 0, verifiedCount: 0 }])
+  );
+  let hasChannelCandidate = Object.keys(stats).length > 0;
   for (const candidate of candidates) {
     if (!candidate.channelKey) continue;
     hasChannelCandidate = true;
@@ -516,7 +519,7 @@ export async function runMultiProviderWebSearch(input: {
     queries: input.queries,
     providerRuns: providerRuns.sort((left, right) => left.provider.localeCompare(right.provider) || left.queryId.localeCompare(right.queryId)),
     candidates: merged,
-    channelStats: recomputeChannelStats(merged),
+    channelStats: recomputeChannelStats(merged, input.queries.flatMap((query) => query.channelKey || [])),
     gate: {
       decision: gaps.length ? "blocked" : "passed",
       degraded: gaps.length === 0 && failedProviders.length > 0,
@@ -556,7 +559,7 @@ export function combineMultiSearchEvidencePacks(packs: MultiSearchEvidencePack[]
     queries: packs.flatMap((pack) => pack.queries),
     providerRuns: providerRuns.sort((left, right) => left.provider.localeCompare(right.provider) || left.queryId.localeCompare(right.queryId)),
     candidates,
-    channelStats: recomputeChannelStats(candidates),
+    channelStats: recomputeChannelStats(candidates, packs.flatMap((pack) => pack.queries.flatMap((query) => query.channelKey || []))),
     gate: {
       decision: gaps.length ? "blocked" : "passed",
       degraded: gaps.length === 0 && failedProviders.length > 0,

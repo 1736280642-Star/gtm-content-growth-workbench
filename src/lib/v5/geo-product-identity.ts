@@ -293,8 +293,7 @@ export function compileIdentityAnchoredQueries(input: {
         [`"${product}" 误区 常见错误 使用率 采购`, [product, owner, category], "misconception"],
         [`${category} ${capability} 落地 效率 提升 数据 案例`, [category, capability, owner], "metric_benchmark"],
         [`"${product}" 踩坑 失败 教训 权限 集成`, [product, capability, category], "pitfall_evidence"],
-        [`${category} ${capability} 选型 部署 集成 安全 常见问题`, [category, capability, owner], "user_demand"],
-        ...platformQueries
+        [`${category} ${capability} 选型 部署 集成 安全 常见问题`, [category, capability, owner], "user_demand"]
       ]
     : input.taskType === "live_competitor_discovery"
       ? [
@@ -305,7 +304,6 @@ export function compileIdentityAnchoredQueries(input: {
           ] as QuerySpec] : []),
           [`"${product}" "${owner}" ${category} 竞品 对比 替代方案`, [product, owner, category], "competitive_relationship"],
           [`${category} ${capability} 开源自建 对比 推荐`, [category, capability, owner], "selection_alternative"],
-          ...platformQueries,
           [`${category} ${capability} 产品推荐 品牌比较`, [category, capability, owner], "competitive_relationship"],
           [`"${product}" ${capability} 市场评价 内容渠道`, [product, capability, category], "competitive_relationship"]
         ]
@@ -316,11 +314,10 @@ export function compileIdentityAnchoredQueries(input: {
             "service_provider_answer_baseline"
           ] as QuerySpec] : []),
           [`"${product}" "${owner}" ${category} 用户评价 常见问题`, [product, owner, category], "answer_engine_baseline"],
-          ...platformQueries,
           [`${category} ${capability} 对比 推荐`, [category, capability, owner], "answer_engine_baseline"],
           [`"${product}" ${capability} 选型 真实体验`, [product, capability, category], "answer_engine_baseline"]
         ];
-  const compiled = querySets.slice(0, input.maxQueries).map(([queryValue, anchors, evidenceRole, channelKey], index): GeoSearchQuery => ({
+  const compileQuerySpecs = (specs: QuerySpec[]) => specs.map(([queryValue, anchors, evidenceRole, channelKey], index): GeoSearchQuery => ({
     queryId: `geo-query-${input.taskType}-${round ? `supplement-${round}-` : ""}${index + 1}`,
     query: clipQuery(`${queryValue} ${suffix}`),
     intent: round ? "evidence_gap_resolution" : input.taskType,
@@ -335,7 +332,14 @@ export function compileIdentityAnchoredQueries(input: {
     candidateRejectionRule: "名称相同但品牌归属、品类、能力或场景不一致，以及身份不足的来源必须丢弃且不得留存。",
     channelKey
   }));
-  return round && platformGapQueries.length ? [...platformGapQueries, ...compiled] : compiled;
+  if (round && input.evidenceGap === "platform_evidence") return platformGapQueries;
+  const compiled = compileQuerySpecs(querySets.slice(0, input.maxQueries));
+  // 平台格局查询使用独立预算，避免被内容证据查询的 maxQueries 上限截断。
+  const compiledPlatforms = round ? [] : compileQuerySpecs(platformQueries).map((query, index) => ({
+    ...query,
+    queryId: `geo-query-${input.taskType}-platform-${index + 1}`
+  }));
+  return [...compiled, ...compiledPlatforms];
 }
 
 function acceptedClassification(taskType: string, classification: GeoSearchEntityClassification) {
@@ -390,7 +394,7 @@ function recalculatePack(pack: MultiSearchEvidencePack, candidates: GeoSearchEvi
     ...pack,
     providerRuns,
     candidates,
-    channelStats: recomputeChannelStats(candidates),
+    channelStats: recomputeChannelStats(candidates, pack.queries.flatMap((query) => query.channelKey || [])),
     gate: {
       decision: gaps.length ? "blocked" : "passed",
       degraded: gaps.length === 0 && failedProviders.length > 0,

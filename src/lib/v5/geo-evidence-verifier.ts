@@ -36,6 +36,8 @@ export function pruneGeoResearchCitations(
   evidencePack: MultiSearchEvidencePack
 ) {
   const allowedUrls = new Set(evidencePack.candidates.map((item) => normalizeUrl(item.canonicalUrl)));
+  const candidatesById = new Map(evidencePack.candidates.map((item) => [item.candidateId, item]));
+  const candidatesByUrl = new Map(evidencePack.candidates.map((item) => [normalizeUrl(item.canonicalUrl), item]));
   const output = structuredClone(structured);
   let removedInvalidUrls = 0;
   let removedUncitedItems = 0;
@@ -148,12 +150,24 @@ export function pruneGeoResearchCitations(
         record.hypothesis = true;
         return [record];
       }
+      const channelKey = typeof record.channelKey === "string" ? record.channelKey : "";
       const before = readUrlArray(basis.sourceUrls);
-      const after = [...new Set(before.filter((url) => allowedUrls.has(url)))];
+      const after = [...new Set(before.filter((url) => {
+        const candidate = candidatesByUrl.get(url);
+        return allowedUrls.has(url) && Boolean(channelKey) && candidate?.channelKey === channelKey;
+      }))];
       removedInvalidUrls += before.length - after.length;
       basis.sourceUrls = after;
+      const beforeCandidateIds = Array.isArray(basis.candidateIds)
+        ? basis.candidateIds.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+        : [];
+      const afterCandidateIds = [...new Set(beforeCandidateIds.filter((candidateId) => (
+        Boolean(channelKey) && candidatesById.get(candidateId)?.channelKey === channelKey
+      )))];
+      removedUncitedItems += beforeCandidateIds.length - afterCandidateIds.length;
+      basis.candidateIds = afterCandidateIds;
       record.evidenceBasis = basis;
-      const hasCandidateIds = Array.isArray(basis.candidateIds) && basis.candidateIds.length > 0;
+      const hasCandidateIds = afterCandidateIds.length > 0;
       if (!after.length && !hasCandidateIds) record.hypothesis = true;
       return [record];
     });

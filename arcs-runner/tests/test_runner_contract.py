@@ -38,6 +38,9 @@ class FakePublisher:
     def check_auth(self, platform):
         return {"authenticated": True, "status": "ready"}
 
+    def open_auth(self, platform):
+        return {"ok": True, "status": "waiting_for_user", "message": f"{platform} login opened"}
+
     def publish(self, platform, payload):
         self.publish_calls += 1
         return {"ok": True, "status": "published_verified", "publishStatus": "confirmed", "publicUrl": "https://example.com/public"}
@@ -76,6 +79,16 @@ def payload():
 
 
 class RunnerContractTest(unittest.TestCase):
+    def test_open_auth_only_opens_a_dedicated_login_window(self):
+        with tempfile.TemporaryDirectory() as directory:
+            publisher = FakePublisher()
+            service = RunnerService(PublishLedger(Path(directory) / "ledger.json"), publisher)
+            status, result = service.open_auth({"platform": "zhihu"})
+            self.assertEqual(status, 200)
+            self.assertEqual(result["status"], "waiting_for_user")
+            self.assertNotIn("cookie", str(result).lower())
+            self.assertNotIn("token", str(result).lower())
+
     def test_dynamic_editor_input_refetches_one_lost_element(self):
         class ElementLostError(Exception):
             pass

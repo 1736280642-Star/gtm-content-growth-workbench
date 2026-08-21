@@ -40,7 +40,7 @@ async function readJsonBody(request) {
 async function handleRequest(request, response) {
   const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
   if (request.method === "GET" && url.pathname === "/health") {
-    sendJson(response, token ? 200 : 503, { ok: Boolean(token), service: "joto-content-metrics-runner", configuredPlatforms: PLATFORMS.filter((platform) => platform === "wechat" ? process.env.WECHAT_MP_APP_ID && process.env.WECHAT_MP_APP_SECRET : process.env[`${platform.toUpperCase()}_COOKIE`]), checkedAt: new Date().toISOString() });
+    sendJson(response, 200, { ok: true, configured: Boolean(token), service: "joto-content-metrics-runner", configuredPlatforms: PLATFORMS.filter((platform) => platform === "wechat" ? process.env.WECHAT_MP_APP_ID && process.env.WECHAT_MP_APP_SECRET : process.env[`${platform.toUpperCase()}_COOKIE`]), checkedAt: new Date().toISOString() });
     return;
   }
   if (!authorized(request)) {

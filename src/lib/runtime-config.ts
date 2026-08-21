@@ -206,6 +206,13 @@ export function getRuntimeConfigStatus() {
       requiredEnv: ["DOUBAO_API_KEY", "DOUBAO_EMBEDDING_MODEL"],
       optionalEnv: ["DOUBAO_EMBEDDING_BASE_URL", "EMBEDDING_PROVIDER_TIMEOUT_MS"]
     }),
+    createCapability({
+      key: "wechat_visual_image",
+      label: "公众号智能配图",
+      purpose: "为当前公众号正文生成三种封面候选",
+      requiredEnv: ["WECHAT_VISUAL_IMAGE_BASE_URL", "WECHAT_VISUAL_IMAGE_API_KEY", "WECHAT_VISUAL_IMAGE_MODEL"],
+      optionalEnv: ["WECHAT_VISUAL_IMAGE_ENDPOINT", "WECHAT_VISUAL_IMAGE_SIZE", "WECHAT_VISUAL_IMAGE_TIMEOUT_MS", "WECHAT_VISUAL_IMAGE_PROVIDER_LABEL"]
+    }),
     createKnowledgeUrlCrawlerCapability(),
     createXcrawlFetchCapability(),
     createKnowledgeProxyFetchCapability(),

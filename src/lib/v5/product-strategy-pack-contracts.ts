@@ -57,6 +57,12 @@ export interface ProductGeoArticleTypePortfolioItem {
   channelFit: string[];
   questionClusterIds: string[];
   recommendationReason: string;
+  knowledgeSupportSummary: string;
+  knowledgeClaimIds: string[];
+  geoOpportunitySummary: string;
+  existingTypeComparison: string;
+  expectedMentionRationale: string;
+  retestProbeRefs: string[];
   confidence: number;
   evidenceReadiness: "ready" | "partial" | "blocked";
   websiteCoverageDisposition?: "new_content" | "refresh_existing" | "hold";
@@ -281,6 +287,17 @@ function ensureServiceProviderSelectionType(input: {
     channelFit: input.targetChannels,
     questionClusterIds: ["service-provider-selection"],
     recommendationReason: `产品归属与 ${input.provider} 服务商关系已被单独建模，且用户存在实施伙伴选择、服务边界与落地支持判断需求。`,
+    knowledgeSupportSummary: `由正式知识库中的产品定位、能力与服务边界资料支撑，具体表述仍须逐条引用已治理 Claim。`,
+    knowledgeClaimIds: [...new Set([
+      ...(input.profile?.positioning || []),
+      ...(input.profile?.capabilities || []),
+      ...(input.profile?.scenarios || []),
+      ...(input.profile?.boundaries || [])
+    ].map((fact) => fact.claimId))],
+    geoOpportunitySummary: `用户需要判断如何选择 ${input.productName} 服务商，以及 ${input.provider} 的适用场景与职责边界。`,
+    existingTypeComparison: "现有通用实施类结构不能完整承载服务商资质、角色边界与选择标准，因此生成受治理的服务商选型类型。",
+    expectedMentionRationale: "用可核验的服务能力和选择标准回答高意图问题，有助于 AI 在服务商选型与实施伙伴类回答中准确引用。",
+    retestProbeRefs: ["service-provider-selection"],
     confidence: evidenceReadiness === "ready" ? 0.9 : 0.65,
     evidenceReadiness,
     proposedMonthlyShare: 0.15,
@@ -477,6 +494,9 @@ function normalizeArticleTypePortfolio(contentTypeStrategy: Record<string, unkno
     const articleTypeVersionId = stringValue(item.articleTypeVersionId) || `strategy-article-type-version-${definitionHash.slice(0, 32)}`;
     const lengthRange = normalizedLengthRange(item.lengthRange);
     if (lengthRange.max < lengthRange.min) lengthRange.max = lengthRange.min;
+    const recommendationReason = stringValue(item.recommendationReason) || stringValue(item.reason) || "基于问题意图、证据准备度与渠道适配生成";
+    const knowledgeClaimIds = stringArray(item.knowledgeClaimIds);
+    const geoOpportunitySummary = stringValue(item.geoOpportunitySummary) || recommendationReason;
     return [{
       portfolioItemId: stringValue(item.portfolioItemId) || stringValue(item.id) || `research-article-type-${index + 1}`,
       origin,
@@ -498,7 +518,17 @@ function normalizeArticleTypePortfolio(contentTypeStrategy: Record<string, unkno
       ctaIntent: stringValue(item.ctaIntent) || stringValue(item.cta),
       channelFit: stringArray(item.channelFit).length ? stringArray(item.channelFit) : stringArray(item.channels),
       questionClusterIds: stringArray(item.questionClusterIds),
-      recommendationReason: stringValue(item.recommendationReason) || stringValue(item.reason) || "基于问题意图、证据准备度与渠道适配生成",
+      recommendationReason,
+      knowledgeSupportSummary: stringValue(item.knowledgeSupportSummary)
+        || (knowledgeClaimIds.length
+          ? `由 ${knowledgeClaimIds.length} 条知识库 Claim 支撑。`
+          : "该综合结果未提供逐条知识 Claim 映射，需在质检时回看知识快照。"),
+      knowledgeClaimIds,
+      geoOpportunitySummary,
+      existingTypeComparison: stringValue(item.existingTypeComparison)
+        || (origin === "matched" ? "复用现有类型；历史综合结果未记录更详细的匹配比较。" : "历史综合结果未记录与现有类型的逐项比较。"),
+      expectedMentionRationale: stringValue(item.expectedMentionRationale) || geoOpportunitySummary,
+      retestProbeRefs: stringArray(item.retestProbeRefs),
       confidence: Number.isFinite(Number(item.confidence)) ? Math.min(1, Math.max(0, Number(item.confidence))) : 0.5,
       evidenceReadiness: normalizedEvidenceReadiness(item.evidenceReadiness) || "partial",
       proposedMonthlyShare: Number.isFinite(Number(item.proposedMonthlyShare)) ? Math.min(1, Math.max(0, Number(item.proposedMonthlyShare))) : 0,
@@ -516,10 +546,12 @@ function applyEvidenceReadinessPolicy(
   portfolio: ProductGeoArticleTypePortfolioItem[],
   claimsRequiringEvidence: string[]
 ) {
-  if (!claimsRequiringEvidence.length) return portfolio;
   return portfolio.map((item) => {
     const semanticText = [item.name, item.definition, item.contentGoal, item.recommendationReason].join(" ");
-    return item.evidenceReadiness === "ready" && evidenceSensitiveTypePattern.test(semanticText)
+    const isEvidenceSensitive = evidenceSensitiveTypePattern.test(semanticText);
+    const isMissingKnowledgeTrace = isEvidenceSensitive && !item.knowledgeClaimIds.length;
+    const hasDeclaredEvidenceGap = isEvidenceSensitive && claimsRequiringEvidence.length > 0;
+    return item.evidenceReadiness === "ready" && (isMissingKnowledgeTrace || hasDeclaredEvidenceGap)
       ? { ...item, evidenceReadiness: "partial" as const }
       : item;
   });
@@ -586,6 +618,12 @@ function addGovernedCapabilityBoundaryType(
     channelFit: ["wechat", "official_website"],
     questionClusterIds: ["产品能力与适用边界"],
     recommendationReason: "当前正式知识库足以支撑产品能力、场景和边界解释，但不足以支撑竞品优劣、案例或 ROI 结论。",
+    knowledgeSupportSummary: "由知识库中已治理的产品定位、能力、场景与边界 Claim 直接支撑。",
+    knowledgeClaimIds: raw.knowledgeClaimIds,
+    geoOpportunitySummary: "补足用户对产品能力、适用场景与采用边界的基础判断问题。",
+    existingTypeComparison: "在现有场景解决方案结构上增加明确的能力边界和采用判断模块，因此采用改造版本。",
+    expectedMentionRationale: "结构化呈现能力与边界，可降低 AI 回答时将营销表述误当作无条件能力的风险。",
+    retestProbeRefs: ["产品能力与适用边界"],
     confidence: 0.95,
     evidenceReadiness: "ready",
     proposedMonthlyShare: safeShare,
@@ -903,7 +941,9 @@ export function assertProductGeoStrategyContentPlanV2(plan: ProductGeoStrategyCo
     }
     versionIds.add(item.articleTypeVersionId);
     if (!["matched", "adapted", "generated"].includes(item.origin)) throw new Error("product_strategy_article_type_origin_invalid");
-    if (!item.name.trim() || !item.definition.trim() || !item.contentGoal.trim() || !item.recommendationReason.trim()) {
+    if (!item.name.trim() || !item.definition.trim() || !item.contentGoal.trim() || !item.recommendationReason.trim()
+      || !item.knowledgeSupportSummary.trim() || !item.geoOpportunitySummary.trim()
+      || !item.existingTypeComparison.trim() || !item.expectedMentionRationale.trim()) {
       throw new Error("product_strategy_article_type_definition_incomplete");
     }
     if (!item.structureModules.length || item.structureModules.some((module) => !module.key.trim() || !module.purpose.trim())) {

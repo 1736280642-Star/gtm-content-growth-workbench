@@ -1,10 +1,23 @@
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "CHECK_CONNECTION") {
+    const adapter = globalThis.JotoCaptureAdapters?.[message.platform];
+    (async () => {
+      if (!adapter) throw new Error(`没有加载 ${message.platform} 适配器。`);
+      const health = await adapter.waitUntilReady(30000);
+      sendResponse(health);
+    })().catch((error) => sendResponse({ ok: false, code: error.code || "adapter_mismatch", message: error.message }));
+    return true;
+  }
   if (message?.type !== "RUN_CAPTURE") return false;
   const adapter = globalThis.JotoCaptureAdapters?.[message.task.platform];
   (async () => {
     if (!adapter) throw Object.assign(new Error(`没有加载 ${message.task.platform} 适配器。`), { code: "adapter_mismatch" });
     const health = await adapter.waitUntilReady();
     if (!health.ok) throw Object.assign(new Error(health.message), { code: health.code, stage: "environment_checking" });
+    const isolationAttestation = await adapter.verifyIsolation(message.task.isolationPolicy);
+    if (isolationAttestation.policy.benchmarkCohort === "neutral_benchmark" && isolationAttestation.status !== "verified_clean") {
+      throw Object.assign(new Error(isolationAttestation.notes.join(" ") || "账号记忆隔离未通过。"), { code: "isolation_unverified", stage: "environment_checking" });
+    }
     await chrome.runtime.sendMessage({ type: "TASK_STATUS", task: message.task, status: "submitting_prompt", note: "已定位输入框，正在提交问题。", adapterVersion: adapter.version });
     await adapter.submitQuestion(message.task.questionText);
     const { answer, signals } = await adapter.observeCompletion();
@@ -17,7 +30,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       citations: adapter.extractCitations(answer), gaps: [], targetEntity: message.task.targetEntity,
       targetEntityMentioned: Boolean(message.task.targetEntity && adapter.visibleText(answer).includes(message.task.targetEntity)),
       screenshot: { mimeType: "image/png", dataBase64: screenshot.dataBase64, redactionsApplied: ["account_identity", "conversation_history", "notifications"], viewport: { width: innerWidth, height: innerHeight } },
-      completionSignals: signals, captureWarnings: []
+      completionSignals: signals, captureWarnings: [], isolationAttestation
     };
     await chrome.runtime.sendMessage({ type: "SUBMIT_CAPTURE_RESULT", task: message.task, manifest });
     sendResponse({ ok: true });

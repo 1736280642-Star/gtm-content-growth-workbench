@@ -61,6 +61,7 @@ x-app-environment: &app-environment
   GEO_RESEARCH_QWEN_API_KEY: ${GEO_RESEARCH_QWEN_API_KEY:-}
   GEO_RESEARCH_QWEN_MODEL: ${GEO_RESEARCH_QWEN_MODEL:-}
   GEO_RESEARCH_QWEN_BASE_URL: ${GEO_RESEARCH_QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+  GEO_CHANNEL_RULE_PACK_PATH: ${GEO_CHANNEL_RULE_PACK_PATH:-/app/config/geo-channel-rule-pack.json}
   RAG_IMPORT_ACTOR_ID: ${RAG_IMPORT_ACTOR_ID:-docker-rag-source-import}
   RAG_IMPORT_ACTOR_ROLE: ${RAG_IMPORT_ACTOR_ROLE:-knowledge_production_worker}
   RAG_IMPORT_ACTOR_TYPE: system
@@ -85,6 +86,20 @@ x-app-environment: &app-environment
   GEO_RESEARCH_INTERVAL_SECONDS: ${GEO_RESEARCH_INTERVAL_SECONDS:-60}
   GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS: ${GEO_RESEARCH_ORCHESTRATION_INTERVAL_SECONDS:-300}
   MONTHLY_AUTOMATION_INTERVAL_SECONDS: ${MONTHLY_AUTOMATION_INTERVAL_SECONDS:-60}
+  HOSTED_MANAGED_INTERVAL_SECONDS: ${HOSTED_MANAGED_INTERVAL_SECONDS:-60}
+  HOSTED_PUBLIC_BASE_URL: ${HOSTED_PUBLIC_BASE_URL:-http://127.0.0.1:3027}
+  HOSTED_REVIEW_LINK_SECRET: ${HOSTED_REVIEW_LINK_SECRET:-}
+  HOSTED_EMAIL_DELIVERY_URL: ${HOSTED_EMAIL_DELIVERY_URL:-}
+  HOSTED_EMAIL_DELIVERY_TOKEN: ${HOSTED_EMAIL_DELIVERY_TOKEN:-}
+  HOSTED_DAILY_DIGEST_CUTOFF_HOUR: ${HOSTED_DAILY_DIGEST_CUTOFF_HOUR:-20}
+  PUBLISH_DEFAULT_EXECUTOR_TYPE: ${PUBLISH_DEFAULT_EXECUTOR_TYPE:-cloud_browser}
+  PUBLISH_EXECUTOR_REGISTRATION_SECRET: ${PUBLISH_EXECUTOR_REGISTRATION_SECRET:-}
+  PUBLISH_EXECUTOR_API_BASE_URL: ${PUBLISH_EXECUTOR_API_BASE_URL:-http://workbench-web:3027}
+  PUBLISH_EXECUTOR_TYPE: ${PUBLISH_EXECUTOR_TYPE:-cloud_browser}
+  PUBLISH_EXECUTOR_CAPACITY: ${PUBLISH_EXECUTOR_CAPACITY:-1}
+  PUBLISH_EXECUTOR_STATE_PATH: ${PUBLISH_EXECUTOR_STATE_PATH:-/app/runtime/browser-executor-node.json}
+  JOTO_PUBLISH_RUNNER_URL: ${JOTO_PUBLISH_RUNNER_URL:-http://host.docker.internal:9530}
+  JOTO_PUBLISH_RUNNER_TOKEN: ${JOTO_PUBLISH_RUNNER_TOKEN:-}
   PIPELINE_WORKER_INTERVAL_SECONDS: ${PIPELINE_WORKER_INTERVAL_SECONDS:-3600}
   WECHATSYNC_ENABLED: ${WECHATSYNC_ENABLED:-false}
   WECHATSYNC_MOCK: ${WECHATSYNC_MOCK:-true}
@@ -362,6 +377,21 @@ services:
       mysql:
         condition: service_healthy
       opensearch:
+        condition: service_healthy
+      workbench-web:
+        condition: service_healthy
+
+  browser-executor-worker:
+    <<: *worker
+    profiles: [full]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *app-environment
+      WORKER_ROLE: browser-executor-worker
+    command: ["node", "workers/browser-executor-worker.mjs"]
+    depends_on:
+      mysql:
         condition: service_healthy
       workbench-web:
         condition: service_healthy

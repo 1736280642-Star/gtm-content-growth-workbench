@@ -11,7 +11,9 @@ RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nod
 COPY --from=dependencies --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --chown=worker:nodejs package.json ./package.json
 COPY --chown=worker:nodejs workers ./workers
+COPY --chown=worker:nodejs workers/browser-executor-worker.mjs ./workers/browser-executor-worker.mjs
 COPY --chown=worker:nodejs scripts ./scripts
+COPY --chown=worker:nodejs scripts/check-hosted-identity-acceptance.mjs ./scripts/check-hosted-identity-acceptance.mjs
 COPY --chown=worker:nodejs src ./src
 COPY --chown=worker:nodejs database ./database
 COPY --chown=worker:nodejs data ./data
@@ -35,6 +37,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=production-dependencies --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/check-hosted-identity-acceptance.mjs ./scripts/check-hosted-identity-acceptance.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/data ./data
 COPY --from=builder --chown=nextjs:nodejs /app/config ./config
 RUN mkdir -p /app/artifacts /app/runtime/worker-status && chown -R nextjs:nodejs /app/data /app/artifacts /app/runtime

@@ -29,31 +29,33 @@ P2 是"落地与闭环"阶段：把 P0/P1 在调研链路内部产生的渠道�
 **1. 基线持久化（DB + 契约 + 仓储）**
 
 - 迁移 [20260819_037_v5_geo_research_mention_baseline.sql](../../database/migrations/20260819_037_v5_geo_research_mention_baseline.sql)：`geo_research_run` 新增 `mention_baseline` JSON 列；
-- 契约新增 `GeoMentionBaseline`（capturedAt / questionCount / targetMentionedCount / targetMentionRate / mentionedQuestions / unmentionedQuestions / competitors / channelCitationStats），`GeoResearchRun.mentionBaseline` 可选字段；
-- `buildMentionBaselineFromStructured`（[geo-research-repository.ts](../../src/lib/v5/geo-research-repository.ts)）：由 frontend_baseline 结构化输出**确定性推导**（不经 LLM）；frontend_baseline 任务完成时随事务写入 run 行。
+- 契约新增 `GeoMentionBaseline`（capturedAt / questionCount / targetMentionedCount / targetMentionRate / mentionedQuestions / unmentionedQuestions / unevaluableQuestions / competitors / channelCitationStats / providerBreakdown / measurementSource），`GeoResearchRun.mentionBaseline` 可选字段；失败或不支持的 Provider 观测不进入问题分母，整轮无成功观测则拒绝形成复测 KPI；
+- `buildGeoMentionBaselineFromObservations`（[geo-research-result-pack.ts](../../src/lib/v5/geo-research-result-pack.ts)）：直接由 `runMultiProviderProbeAnswers` 返回的逐问题、逐 Provider 真实观测确定性推导，模型语义总结不再作为新 run 的 KPI 事实源；旧 run 只保留 `legacy_semantic_output` 兼容读取；frontend_baseline 完成时随事务写入 run 行。
 
 **2. post_publish_retest 触发类型激活**
 
 - [geo-probe-compiler.ts](../../src/lib/v5/geo-probe-compiler.ts) 新增 `overrideGeoProbeSetQuestions`：用批准蓝图 `retestBaseline.questions` 覆盖探针集（全部 P0、scenario_anchored、scoringDimensions=target_mentioned、evidenceExpectation=ai_observation_only），重算 snapshotHash/probeSetId；
 - `createGeoResearchRunRecord` 中 post_publish_retest run 的探针集改为复测问题集，**fail-closed**：无已批准蓝图抛 409 `retest_blueprint_missing`；蓝图无复测问题抛 409 `retest_baseline_questions_missing`；
+- 复测 run 必须绑定批准蓝图、原始基线 run、由该蓝图策略包产生的已闭合发布批次和优化快照；发布批次未闭合、早于蓝图批准、策略包不属于当前蓝图或绑定不一致时拒绝创建；
+- 复测使用独立单任务图，仅执行 `frontend_baseline`，完成后 run 直接进入 `completed`，不会再次生成待批准蓝图，也不会形成递归复测；
 - 修复既有缺口：`readGeoResearchTaskExecutionContext` 此前从不返回 probeSetSnapshot（探针集快照表只写不读，探针应答从未真正执行）——现从 run plan_json 中读取并返回，前台基线探针应答链路（`runMultiProviderProbeAnswers`）至此贯通，普通 run 与复测 run 均受益。
 
 **3. 差值归因（[geo-research-service.ts](../../src/lib/v5/geo-research-service.ts)）**
 
-- `readPreviousGeoMentionBaseline`：读取当前 run 之前最近一次带基线的 run；
+- `readGeoMentionBaselineByRunId`：复测按绑定的 `baselineRunId` 读取原始基线，不再用“时间上最近一次”近似归属；旧数据仍保留最近基线回退；
 - `buildMentionDeltaAttribution`（确定性计算）：baselineMentionRate → retestMentionRate 的 `mentionRateDelta`、`newlyMentionedQuestions`（新增被提及）、`lostMentionQuestions`（失去提及），问题文本归一化（去标点/空白/大小写）后对比；
 - `getGeoResearchRunDetails` 返回顶层 `mentionKpi`：普通 run 携带 mentionBaseline；post_publish_retest run 额外携带 mentionDelta 与 previousBaselineRun；
 - 运行详情页新增两处展示：概要卡"目标提及率基线"（x% · n/N 个问题被 AI 提及）；复测 run 专属"提及率复测归因（发布后 KPI 闭环）"卡片（前次/本次提及率、增量涨跌着色、新增与失去提及问题清单、"差值由结构化基线确定性计算，不经 LLM"说明）。
 
 **4. 编排周期升级（`runAutomaticGeoResearchOrchestration`）**
 
-30 天周期判断升级为三态：
+编排周期升级为三态：
 
-1. **批准蓝图已过复测间隔（`GEO_RETEST_INTERVAL_DAYS`，默认 7 天）且尚无针对该蓝图的复测 run** → 排队 `post_publish_retest` run（status=queued_retest）；
+1. **批准蓝图对应的发布批次已闭合，且从“蓝图批准/批次闭合”较晚时间起已过复测间隔（`GEO_RETEST_INTERVAL_DAYS`，默认 7 天），同时尚无相同蓝图+批次绑定的复测 run** → 排队 `post_publish_retest` run（status=queued_retest）；
 2. **已有复测 run 且提及率低于蓝图 targetMentionRate**（未达标）→ 过复测间隔后自动触发 `manual_refresh` 新一轮调研（产出改进策略），间隔内保持 monitoring 并注明"等待复测间隔后触发下一轮"；
 3. **达标或超周期前** → 维持原有 monitoring / 30 天周期行为。
 
-约束保持：同一快照失败不自动重试（failedAgainstCurrentSnapshot 检查在前）；复测 run 以"创建时间 ≥ 蓝图批准时间"判定归属，避免旧复测误判新蓝图；幂等键绑定蓝图版本/复测 run，重复编排不重复建 run。
+约束保持：同一快照失败不自动重试（failedAgainstCurrentSnapshot 检查在前）；复测 run 以 `blueprintVersionId + batchKey + inputEvidenceHash` 显式绑定归属；幂等键绑定蓝图版本和发布批次，重复编排不重复建 run。批次优化快照存在 `P0` 或阻断动作时，先要求修复/补证/继续监控，不用新一轮内容调研掩盖根因。
 
 ## 三、闭环全景
 
@@ -64,7 +66,7 @@ P2 是"落地与闭环"阶段：把 P0/P1 在调研链路内部产生的渠道�
 蓝图批准（retestBaseline.questions+targetMentionRate）
       │                                    │
       ▼                                    ▼
-内容发布 ──编排器（7天间隔）──▶ post_publish_retest run（探针集=复测问题）
+内容发布 ──存活与 AI 样本闭合批次──▶ 编排器（7天间隔）──▶ post_publish_retest（仅前台探针任务）
                                      │
                                      ▼
                           mention_delta 归因（新增/失去提及、提及率增量）
@@ -79,7 +81,7 @@ P2 是"落地与闭环"阶段：把 P0/P1 在调研链路内部产生的渠道�
 
 - 未配置规则包 / 未运行复测时：mentionKpi 仅在有 frontend_baseline 产出时出现，复测归因卡片不渲染，编排行为与升级前一致；
 - `post_publish_retest` 此前只是契约中的预留枚举（API 传入即原样落库但不生效），现在有完整语义与 fail-closed 门禁；手动通过 API 传 `triggerType: "post_publish_retest"` 同样走新链路；
-- 探针集快照从 plan_json 读取不改变既有 7 步任务图与幂等结构，`geo_research_probe_set_snapshot` 表继续作为不可变持久层。
+- 普通调研保持既有 7 步任务图；`post_publish_retest` 使用仅含 `frontend_baseline` 的复测任务图，`geo_research_probe_set_snapshot` 表继续作为不可变持久层。
 
 ## 五、验证记录
 

@@ -310,3 +310,30 @@ export async function reconcileProductGeoOptimizations(productIds?: string[]): P
   }
   return { source: "formal_database", products: [...latestByProduct.values()], generatedAt: new Date().toISOString() };
 }
+
+/** 已关闭发布批次是 post_publish_retest 的唯一启动凭据。 */
+export async function readLatestClosedProductGeoOptimizationSnapshot(input: {
+  productId: string;
+  generatedAfter?: string;
+  blueprintVersionId?: string;
+}): Promise<ProductGeoOptimizationSnapshot | undefined> {
+  const parameters: unknown[] = [input.productId];
+  const generatedAfterClause = input.generatedAfter
+    ? "AND opt.generated_at >= ?"
+    : "";
+  if (input.generatedAfter) parameters.push(new Date(input.generatedAfter));
+  const blueprintClause = input.blueprintVersionId
+    ? "AND sp.geo_blueprint_id = ?"
+    : "";
+  if (input.blueprintVersionId) parameters.push(input.blueprintVersionId);
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT opt.optimization_json
+     FROM product_geo_optimization_snapshot opt
+     LEFT JOIN product_strategy_packs sp ON sp.id = opt.strategy_pack_id
+     WHERE opt.product_id = ? ${generatedAfterClause} ${blueprintClause}
+     ORDER BY opt.generated_at DESC, opt.created_at DESC LIMIT 1`,
+    parameters
+  );
+  const snapshot = parseV5Json<ProductGeoOptimizationSnapshot | undefined>(rows[0]?.optimization_json, undefined);
+  return snapshot?.batchClosed ? snapshot : undefined;
+}

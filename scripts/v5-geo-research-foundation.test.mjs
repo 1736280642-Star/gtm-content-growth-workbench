@@ -29,6 +29,7 @@ test("GEO research schema persists the auditable agent chain", async () => {
 
 test("research run cannot start without a governed source snapshot", async () => {
   const repository = await read("src/lib/v5/geo-research-repository.ts");
+  const contracts = await read("src/lib/v5/geo-research-contracts.ts");
   assert.match(repository, /FROM source_snapshot/);
   assert.match(repository, /research_governance_bundle_missing/);
   assert.match(repository, /readV5Idempotency/);
@@ -43,7 +44,7 @@ test("research run cannot start without a governed source snapshot", async () =>
     "evidence_alignment",
     "blueprint_synthesis"
   ]) {
-    assert.match(repository, new RegExp(taskType));
+    assert.match(`${repository}\n${contracts}`, new RegExp(taskType));
   }
 });
 

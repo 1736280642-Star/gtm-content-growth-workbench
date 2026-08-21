@@ -10,6 +10,17 @@ function Write-WorkbenchStep {
   Write-Host "[workbench:3027] $Message"
 }
 
+function Ensure-WorkbenchChannelPublishCompanions {
+  $launcher = Join-Path $PSScriptRoot "ensure-channel-publish-companions.ps1"
+  try {
+    & $launcher
+    Write-WorkbenchStep "Channel publish companions are ready for WeChat, Zhihu, CSDN, and Juejin."
+  } catch {
+    Write-Warning "Channel publish companions are not ready: $($_.Exception.Message)"
+    Write-WorkbenchStep "The 3027 workbench remains available; third-party channel actions stay fail-closed until the companion issue is fixed."
+  }
+}
+
 function Test-DockerReady {
   try {
     # A stopped Docker engine is an expected cold-start state. Temporarily

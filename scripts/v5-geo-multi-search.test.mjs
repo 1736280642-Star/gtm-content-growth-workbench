@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
-import { combineMultiSearchEvidencePacks, runMultiProviderWebSearch, runMultiProviderProbeAnswers } from "../src/lib/v5/geo-search-adapters.ts";
+import { combineMultiSearchEvidencePacks, recomputeChannelStats, runMultiProviderWebSearch, runMultiProviderProbeAnswers } from "../src/lib/v5/geo-search-adapters.ts";
 import {
   buildDegradedFrontendBaseline,
   buildGeoEntityResolutionBatches,
+  compactGeoBlueprintPreviousOutputs,
   enforceTaskEntityRules,
+  inferSupplementaryGap,
   mergeQuestionDiscoveryShardOutputs,
   parseStructuredOutput,
   selectGeoEntityResolutionCandidates
@@ -60,6 +63,30 @@ function jsonResponse(body, status = 200, headers = {}) {
   });
 }
 
+test("blueprint synthesis compacts duplicated research evidence but keeps strategy signals", () => {
+  const previousOutputs = [{
+    taskType: "live_question_discovery",
+    outputSummary: {
+      questions: [{ text: "如何选型？", sourceUrls: ["https://example.com/question"] }],
+      contentGaps: ["选型证据不足"],
+      claimAssessments: [{ claim: "需要实施服务商", sourceUrls: ["https://example.com/question"] }],
+      sourceCount: 20,
+      liveSearchVerified: true,
+      evidenceIds: Array.from({ length: 50 }, (_, index) => `evidence-${index}`),
+      researchEvidence: { candidates: [{ excerpt: "x".repeat(50_000) }] },
+      responseId: "provider-response"
+    }
+  }];
+
+  const compacted = compactGeoBlueprintPreviousOutputs(previousOutputs);
+  assert.deepEqual(compacted[0].outputSummary.questions, previousOutputs[0].outputSummary.questions);
+  assert.deepEqual(compacted[0].outputSummary.contentGaps, ["选型证据不足"]);
+  assert.equal(compacted[0].outputSummary.liveSearchVerified, true);
+  assert.equal(Object.hasOwn(compacted[0].outputSummary, "researchEvidence"), false);
+  assert.equal(Object.hasOwn(compacted[0].outputSummary, "evidenceIds"), false);
+  assert.ok(JSON.stringify(compacted).length < JSON.stringify(previousOutputs).length / 10);
+});
+
 const query = [{
   queryId: "query-1",
   query: "WorkBuddy 用户问题",
@@ -111,6 +138,22 @@ test("question discovery shards merge deterministically and enforce catalog limi
   assert.deepEqual(merged.questions.map((item) => item.text), ["WorkBuddy 如何部署？", "WorkBuddy 支持哪些集成？"]);
   assert.deepEqual(merged.queryClusters, ["部署", "集成"]);
   assert.deepEqual(merged.contentGaps, ["案例", "证据"]);
+});
+
+test("blueprint synthesis receives governed knowledge context and website coverage in decision order", async () => {
+  const [repositorySource, workerSource, providerSource] = await Promise.all([
+    readFile("src/lib/v5/geo-research-repository.ts", "utf8"),
+    readFile("workers/geo-research-worker.mjs", "utf8"),
+    readFile("src/lib/v5/geo-research-provider.ts", "utf8")
+  ]);
+
+  assert.match(repositorySource, /deriveContentStrategyQuestionClusters\(previousOutputs\)/);
+  assert.match(repositorySource, /readProductKnowledgeBundle/);
+  assert.match(repositorySource, /contentStrategyKnowledgeContext: productKnowledge\.contentStrategyKnowledgeContext/);
+  assert.match(workerSource, /contentStrategyKnowledgeContext: context\.contentStrategyKnowledgeContext/);
+  assert.match(workerSource, /websiteCoverageProfile: context\.websiteCoverageProfile/);
+  assert.match(providerSource, /The knowledge context decides what can be written; GEO findings decide what is worth covering; existingArticleTypes decide whether to reuse, adapt, or create a structure/);
+  assert.match(providerSource, /contentStrategyKnowledgeContext: context\.taskType === "blueprint_synthesis"/);
 });
 
 test("frontend baseline falls back to entity-safe Doubao and Qwen evidence when Zhipu JSON is invalid", () => {
@@ -567,4 +610,63 @@ test("probe answer observations preserve one raw answer per provider and probe",
   assert.equal(pack.observations.every((item) => item.probeId === "geo-probe-001"), true);
   assert.equal(Object.keys(pack.rawResponses).length, 3);
   assert.ok(pack.observations.every((item) => item.visibleCitations.length === 1));
+});
+
+test("platform queries use a separate budget and zero-sample stats trigger directed supplementation", () => {
+  const identity = {
+    productId: "product-platform", canonicalName: "Acme Assist", displayName: "Acme Assist", aliases: [],
+    brandName: "Acme", officialEntity: "Acme", officialUrl: "https://acme.example.com", officialDomain: "acme.example.com",
+    productCategory: "企业知识助手", positioning: ["企业知识助手"], capabilities: ["知识检索"], scenarios: ["客服"], audiences: ["企业"],
+    boundaries: [], profileSource: "parsed", profileFactCount: 4
+  };
+  const channelRules = [
+    { channelKey: "csdn", displayName: "CSDN", domains: ["csdn.net"], inclusionPatterns: [], structureRequirements: [] },
+    { channelKey: "zhihu", displayName: "知乎", domains: ["zhihu.com"], inclusionPatterns: [], structureRequirements: [] }
+  ];
+  const queries = compileIdentityAnchoredQueries({ taskType: "live_question_discovery", identity, maxQueries: 6, channelRules });
+  assert.equal(queries.filter((item) => item.expectedEvidenceRole === "platform_inclusion_landscape").length, 2);
+  assert.deepEqual(queries.filter((item) => item.channelKey).map((item) => item.channelKey), ["csdn", "zhihu"]);
+  assert.equal(queries.length, 8);
+
+  const stats = recomputeChannelStats([], ["csdn", "zhihu"]);
+  assert.deepEqual(stats, {
+    csdn: { candidateCount: 0, verifiedCount: 0 },
+    zhihu: { candidateCount: 0, verifiedCount: 0 }
+  });
+  const pack = {
+    contractVersion: "geo-multi-search-evidence.v2",
+    queries,
+    providerRuns: [],
+    candidates: [],
+    channelStats: stats,
+    gate: { decision: "blocked", failedProviders: [], successfulProviders: [], configuredProviders: ["zhipu", "doubao"], independentSourceCount: 0, requiredSuccessfulProviders: 2, requiredIndependentSources: 2, gaps: ["empty"] },
+    compiledAt: new Date(0).toISOString(), supplementaryRounds: 0
+  };
+  assert.equal(inferSupplementaryGap(pack, ["csdn", "zhihu"], 1), "platform_evidence");
+});
+
+test("platform strategy evidence must belong to the same governed channel", () => {
+  const evidencePack = {
+    contractVersion: "geo-multi-search-evidence.v2",
+    queries: [], providerRuns: [],
+    candidates: [
+      { candidateId: "candidate-csdn", canonicalUrl: "https://blog.csdn.net/a", sourceType: "community", authority: "medium", providerKeys: ["zhipu"], queryIds: ["q1"], queries: ["q"], channelKey: "csdn" },
+      { candidateId: "candidate-zhihu", canonicalUrl: "https://zhihu.com/question/1", sourceType: "community", authority: "medium", providerKeys: ["doubao"], queryIds: ["q2"], queries: ["q"], channelKey: "zhihu" }
+    ],
+    gate: { decision: "passed", failedProviders: [], successfulProviders: ["zhipu", "doubao"], configuredProviders: ["zhipu", "doubao"], independentSourceCount: 2, requiredSuccessfulProviders: 2, requiredIndependentSources: 2, gaps: [] },
+    compiledAt: new Date(0).toISOString(), supplementaryRounds: 0
+  };
+  const result = pruneGeoResearchCitations({
+    platformStrategy: [{
+      channelKey: "csdn",
+      hypothesis: false,
+      evidenceBasis: {
+        candidateIds: ["invented", "candidate-zhihu"],
+        sourceUrls: ["https://zhihu.com/question/1"]
+      }
+    }]
+  }, evidencePack);
+  assert.deepEqual(result.structured.platformStrategy[0].evidenceBasis.candidateIds, []);
+  assert.deepEqual(result.structured.platformStrategy[0].evidenceBasis.sourceUrls, []);
+  assert.equal(result.structured.platformStrategy[0].hypothesis, true);
 });
