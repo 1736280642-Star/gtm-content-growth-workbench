@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseKnowledgeDocumentFile } from "@/lib/knowledge-document-parser";
 import { parseKnowledgeSourcesForPreview } from "@/lib/workbench-store";
-import { readTrustedServerActor, v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
+import { v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
 import { listHostedChannelOptions } from "@/lib/v5/hosted-channel-service";
 import type { HostedChannelPreference, HostedMaterialSummary } from "@/lib/v5/hosted-managed-contracts";
 import { createHostedPromotionOrder } from "@/lib/v5/hosted-managed-service";
@@ -9,6 +9,12 @@ import { V5GovernanceServiceError } from "@/lib/v5/knowledge-governance-service"
 import { getActiveProduct, onboardProductForGeoResearch } from "@/lib/v5/product-registry-service";
 import { importManagedSources, type ManagedSourceInput } from "@/lib/v5/rag/managed-source-import-service";
 import { enqueueHostedNotification } from "@/lib/v5/hosted-notification-service";
+import {
+  assertWorkspaceProductAccess,
+  linkWorkspaceProduct,
+  requireHostedIdentity,
+  requireHostedRole
+} from "@/lib/v5/hosted-identity-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,24 +43,6 @@ function readChannels(value: string): HostedChannelPreference[] {
       : Number(record.dailyCap);
     return { channel: String(record.channel || "").trim(), dailyCap };
   });
-}
-
-function actorForHostedRequest() {
-  const trusted = readTrustedServerActor("product_owner");
-  if (process.env.NODE_ENV === "production" && !trusted) {
-    throw new V5GovernanceServiceError(
-      "authorization_not_configured",
-      "生产环境尚未配置可信用户身份，系统已阻止创建托管任务。",
-      503,
-      "配置 V5 可信服务端身份后重试。"
-    );
-  }
-  return trusted || {
-    actorId: "local-workbench-user",
-    actorRole: "product_owner",
-    actorType: "human" as const,
-    auditReason: "用户通过托管入口提交产品资料与推广渠道"
-  };
 }
 
 async function parseSubmittedSources(officialUrl: string, files: File[]) {
@@ -100,12 +88,16 @@ async function parseSubmittedSources(officialUrl: string, files: File[]) {
 
 export async function POST(request: Request) {
   try {
+    const identity = await requireHostedIdentity(request);
+    requireHostedRole(identity, ["workspace_admin", "product_owner"]);
     const formData = await request.formData();
-    const idempotencyKey = String(request.headers.get("x-idempotency-key") || field(formData, "idempotencyKey")).trim();
+    const rawIdempotencyKey = String(request.headers.get("x-idempotency-key") || field(formData, "idempotencyKey")).trim();
+    if (!rawIdempotencyKey) throw new V5GovernanceServiceError("idempotency_key_required", "提交标识不能为空。", 400);
+    const idempotencyKey = `${identity.workspaceId}:${rawIdempotencyKey}`.slice(0, 128);
     const selectedProductId = field(formData, "productId");
     const productName = field(formData, "productName");
     const officialUrl = field(formData, "officialUrl");
-    const contactEmail = field(formData, "contactEmail");
+    const contactEmail = identity.email;
     const timezone = field(formData, "timezone") || "Asia/Shanghai";
     const channels = readChannels(field(formData, "channels"));
     const files = formData.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
@@ -126,7 +118,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const actor = actorForHostedRequest();
+    const actor = {
+      actorId: identity.userId,
+      actorRole: identity.role,
+      actorType: "human" as const,
+      auditReason: "已登录用户通过托管入口提交产品资料与推广渠道"
+    };
+    if (selectedProductId) await assertWorkspaceProductAccess(identity.workspaceId, selectedProductId);
     const product = selectedProductId
       ? await getActiveProduct(selectedProductId)
       : (await onboardProductForGeoResearch({
@@ -145,6 +143,7 @@ export async function POST(request: Request) {
             targetChannels: channels.map((item) => item.channel)
           }
         })).product;
+    await linkWorkspaceProduct({ workspaceId: identity.workspaceId, productId: product.productId, userId: identity.userId });
 
     const availableChannels = await listHostedChannelOptions(product.productId);
     const optionsByKey = new Map(availableChannels.map((item) => [item.channel, item]));
@@ -183,6 +182,8 @@ export async function POST(request: Request) {
       importStatus
     };
     const created = await createHostedPromotionOrder({
+      workspaceId: identity.workspaceId,
+      userId: identity.userId,
       productId: product.productId,
       contactEmail,
       channels,

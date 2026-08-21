@@ -668,6 +668,8 @@
 .authorizationCard h2 { max-width: 610px; margin: 0 0 10px; color: #18201d; font-size: clamp(24px, 3vw, 34px); font-weight: 650; line-height: 1.18; }
 .authorizationCard > p { max-width: 620px; margin: 0; color: #63716b; font-size: 13px; line-height: 1.75; }
 .authorizationCallout { max-width: 650px; margin-top: 22px; padding: 13px 15px; border-left: 3px solid #a8c8ba; color: #4e6258; background: #f7faf8; font-size: 11px; line-height: 1.65; }
+.connectorPairingBox { display: grid; gap: 10px; padding: 16px; border: 1px solid #d8e6df; border-radius: 14px; background: #f7faf8; }
+.connectorPairingBox code { overflow-wrap: anywhere; padding: 12px; border-radius: 10px; background: #10231b; color: #d8f5e7; font-size: 12px; }
 .authorizationActions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; }
 .authorizationActions :global(.ant-btn) { min-height: 42px; }
 .authorizationCompleteIcon { display: block; margin-bottom: 17px; color: #176b52; font-size: 48px; }
@@ -741,3 +743,49 @@
 @media (prefers-reduced-motion: reduce) {
   .dropzone, .choiceButton { transition: none; }
 }
+.identityPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background: radial-gradient(circle at top left, #edf8f2 0, #f6f8f6 44%, #eef1ef 100%);
+}
+
+.identityCard {
+  width: min(100%, 480px);
+  display: grid;
+  gap: 20px;
+  padding: 40px;
+  border: 1px solid #d9e3dd;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 70px rgba(27, 55, 41, 0.12);
+}
+
+.identityCard h1,
+.identityCard p { margin: 0; }
+.identityCard p { color: #58655e; line-height: 1.7; }
+.identityCard small { color: #758078; }
+.identityIcon { font-size: 36px; color: #18794e; }
+.identityField { display: grid; gap: 8px; color: #32423a; font-weight: 600; }
+
+.connectionWizardPage { min-height: 100vh; padding: 32px clamp(20px, 5vw, 72px) 64px; background: #f4f7f5; }
+.connectionWizardGrid { display: grid; grid-template-columns: minmax(230px, 300px) minmax(0, 1fr); gap: 24px; max-width: 1120px; margin: 24px auto 0; }
+.connectionChannelList, .connectionWizardCard { border: 1px solid #dbe4df; border-radius: 22px; background: #fff; }
+.connectionChannelList { padding: 12px; display: grid; gap: 8px; align-content: start; }
+.connectionChannelItem { border: 0; border-radius: 14px; background: transparent; display: flex; gap: 12px; align-items: center; padding: 14px; text-align: left; cursor: pointer; }
+.connectionChannelItem:hover, .connectionChannelItem.isActive { background: #eef7f2; }
+.connectionChannelItem > span { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #e3eee8; color: #176b47; font-weight: 700; }
+.connectionChannelItem > div { display: grid; gap: 3px; }
+.connectionChannelItem small { color: #76827b; }
+.connectionWizardCard { min-height: 440px; padding: clamp(24px, 4vw, 48px); display: grid; align-content: center; gap: 20px; }
+.connectionWizardCard h2, .connectionWizardCard p { margin: 0; }
+.connectionWizardCard p { line-height: 1.7; color: #5f6d65; }
+.connectionWaiting, .detectedAccountCard { display: flex; align-items: center; gap: 16px; padding: 20px; border-radius: 16px; background: #f3f8f5; }
+.connectionWaiting > span { color: #18794e; font-size: 28px; }
+.connectionWaiting div, .detectedAccountCard div { display: grid; gap: 5px; }
+.connectionWaiting span, .detectedAccountCard small { color: #68766e; }
+.detectedAccountCard a { color: #18794e; }
+.connectionComplete { display: grid; justify-items: start; gap: 18px; }
+.connectionComplete > span { color: #188653; font-size: 46px; }
+@media (max-width: 760px) { .connectionWizardGrid { grid-template-columns: 1fr; } .connectionChannelList { grid-template-columns: repeat(3, 1fr); } .connectionChannelItem { padding: 10px; } .connectionChannelItem small { display: none; } }

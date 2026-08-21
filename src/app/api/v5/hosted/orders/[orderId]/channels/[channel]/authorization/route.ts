@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
 import { openHostedChannelAuthorization } from "@/lib/v5/hosted-channel-authorization-service";
-import { readTrustedServerActor, v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
-import { V5GovernanceServiceError } from "@/lib/v5/knowledge-governance-service";
+import { v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
+import { assertWorkspaceOrderAccess, requireHostedIdentity, requireHostedRole } from "@/lib/v5/hosted-identity-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(_request: Request, { params }: { params: Promise<{ orderId: string; channel: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ orderId: string; channel: string }> }) {
   try {
-    const trusted = readTrustedServerActor("product_owner");
-    if (process.env.NODE_ENV === "production" && !trusted) {
-      throw new V5GovernanceServiceError("authorization_not_configured", "生产环境尚未配置可信用户身份。", 503);
-    }
     const { orderId, channel } = await params;
+    const identity = await requireHostedIdentity(request);
+    requireHostedRole(identity, ["workspace_admin", "product_owner"]);
+    await assertWorkspaceOrderAccess(identity.workspaceId, orderId);
     const result = await openHostedChannelAuthorization({ orderId, channel });
     return NextResponse.json(
       { ok: result.ok, authorization: result },

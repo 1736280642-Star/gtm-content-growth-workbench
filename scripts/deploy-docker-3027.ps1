@@ -20,6 +20,7 @@ try {
   )
   Wait-WorkbenchReady
   Assert-WorkbenchProductionMode
+  Ensure-WorkbenchChannelPublishCompanions
   Write-WorkbenchStep "Deployment completed. Future daily starts reuse these images without rebuilding."
 } finally {
   Exit-WorkbenchStartupLock -Mutex $startupLock

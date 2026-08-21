@@ -89,6 +89,18 @@ const requiredFiles = [
   "workers/content-production-worker.mjs",
   "workers/monthly-automation-worker.mjs",
   "workers/geo-research-orchestrator.mjs",
+  "scripts/ensure-channel-publish-companions.ps1",
+  "scripts/start-desktop-publish-connector.ps1",
+  "workers/browser-executor-worker.mjs",
+  "database/migrations/20260821_040_v5_multi_user_channel_connections.sql",
+  "src/lib/v5/hosted-identity-service.ts",
+  "src/lib/v5/channel-account-connection-service.ts",
+  "src/lib/v5/browser-executor-pool.ts",
+  "src/app/hosted/login/page.tsx",
+  "src/app/hosted/connections/page.tsx",
+  "scripts/v5-multi-user-channel-connections.test.mjs",
+  "scripts/check-hosted-identity-acceptance.mjs",
+  "scripts/probe-channel-publish-companions.mjs",
   "scripts/smoke-pages.mjs",
   "scripts/smoke-interactions.mjs",
   "scripts/smoke-workflow.mjs",
@@ -210,7 +222,8 @@ const requiredFiles = [
   "src/lib/v5/product-geo-optimization-service.ts",
   "src/app/api/v5/content-monitor/product-optimizations/route.ts",
   "scripts/v5-website-geo-closed-loop.test.mjs",
-  "docs/方案与规划/2026-08-17-产品官网前置审计与GEO批次闭环实现.md"
+  "docs/方案与规划/2026-08-17-产品官网前置审计与GEO批次闭环实现.md",
+  "config/geo-channel-rule-pack.json"
 ];
 
 for (const filePath of requiredFiles) addFileCheck(`required file: ${filePath}`, filePath);
@@ -571,7 +584,8 @@ addContentCheck("phase2b Docker multi-provider configuration passthrough", "comp
   "GEO_RESEARCH_DOUBAO_BASE_URL: ${GEO_RESEARCH_DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}",
   "GEO_RESEARCH_QWEN_API_KEY: ${GEO_RESEARCH_QWEN_API_KEY:-}",
   "GEO_RESEARCH_QWEN_MODEL: ${GEO_RESEARCH_QWEN_MODEL:-}",
-  "GEO_RESEARCH_QWEN_BASE_URL: ${GEO_RESEARCH_QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+  "GEO_RESEARCH_QWEN_BASE_URL: ${GEO_RESEARCH_QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}",
+  "GEO_CHANNEL_RULE_PACK_PATH: ${GEO_CHANNEL_RULE_PACK_PATH:-/app/config/geo-channel-rule-pack.json}"
 ]);
 addContentCheck("3027 Docker launcher safely layers private local environment", "scripts/docker-compose-with-project-env.mjs", [
   'nextEnv.loadEnvConfig(process.cwd())',
@@ -595,6 +609,22 @@ addContentCheck("3027 daily startup is locked, health-aware, and never rebuilds"
   "Assert-WorkbenchProductionImagesAvailable",
   '"up", "-d", "--no-build", "--pull", "never"',
   "Assert-WorkbenchProductionMode"
+]);
+addContentCheck("3027 startup ensures loopback channel publishing companions", "scripts/ensure-channel-publish-companions.ps1", [
+  "Local\\JotoChannelPublishCompanions",
+  "arcs-runner\\.venv\\Scripts\\python.exe",
+  "-WindowStyle Hidden",
+  "RedirectStandardOutput",
+  "JotoPublishRunner",
+  "WECHATSYNC_BRIDGE_TOKEN",
+  "runnerTokenConfigured"
+]);
+addContentCheck("channel companion probe protects tokens and verifies service identity", "scripts/probe-channel-publish-companions.mjs", [
+  "LOOPBACK_HOSTS",
+  "joto-wechatsync-bridge",
+  "joto-arcs-publish-runner",
+  "bridgeTokenConfigured: Boolean(bridgeToken)",
+  "runnerTokenConfigured: Boolean(runnerToken)"
 ]);
 addContentCheck("3027 image building stays behind the explicit deployment command", "scripts/deploy-docker-3027.ps1", [
   "Build-WorkbenchProductionImages",

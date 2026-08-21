@@ -2,16 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyProductKnowledgeProfileOverride,
-  buildProductKnowledgeProfile
+  buildContentStrategyKnowledgeContext,
+  buildProductKnowledgeProfile,
+  deriveContentStrategyQuestionClusters
 } from "../src/lib/v5/product-knowledge-profile.ts";
 
 function claim(claimId, normalizedClaim, headingPath = []) {
   return {
     claimId,
     normalizedClaim,
+    originalQuote: normalizedClaim,
+    claimType: "product_fact",
     sourceId: "source-noteflow",
     sourceRevisionId: "revision-noteflow",
     sourceLocator: { headingPath },
+    authorityLevel: "A1",
+    reviewStatus: "supported",
     conditions: [],
     limitations: []
   };
@@ -91,4 +97,51 @@ test("taxonomy labels and heading-only matches never enter product information",
   assert.ok(projectedIds.includes("audience-fact"));
   assert.ok(projectedIds.includes("capability-fact"));
   assert.ok(projectedIds.includes("scenario-fact"));
+});
+
+test("question clusters retrieve governed claims beyond the compact product profile", () => {
+  const claims = Array.from({ length: 12 }, (_, index) => claim(
+    `capability-${index + 1}`,
+    index === 10
+      ? "腾讯云 ADP 支持实施培训、项目交付与上线后的持续服务。"
+      : `腾讯云 ADP 支持企业完成第 ${index + 1} 类智能体能力配置与业务流程管理。`,
+    index === 10 ? ["实施交付", "培训与持续服务"] : ["产品能力"]
+  ));
+  const profile = buildProductKnowledgeProfile("腾讯云 ADP", claims);
+  const context = buildContentStrategyKnowledgeContext({
+    productId: "adp",
+    productName: "腾讯云 ADP",
+    profile,
+    claims,
+    questionClusters: [{
+      clusterId: "implementation-delivery",
+      label: "实施交付与培训",
+      questions: ["腾讯云 ADP 如何实施交付，是否包含培训与持续服务？"]
+    }]
+  });
+
+  assert.equal(profile.capabilities.length, 8);
+  assert.equal(context.sourceFactCount, 12);
+  assert.ok(context.retrievedFactCount > 0);
+  assert.ok(context.questionClusters[0].facts.some((fact) => fact.claimId === "capability-11"));
+  assert.ok(!profile.capabilities.some((fact) => fact.claimId === "capability-11"));
+  assert.equal(context.questionClusters[0].facts.find((fact) => fact.claimId === "capability-11")?.sourceId, "source-noteflow");
+});
+
+test("live question discovery is converted into reusable content-strategy clusters", () => {
+  const clusters = deriveContentStrategyQuestionClusters([{
+    taskType: "live_question_discovery",
+    outputSummary: {
+      questions: [
+        { question: "企业如何评估腾讯云 ADP 的实施周期？", module: "实施与交付" },
+        { question: "上线后由谁提供培训和支持？", module: "实施与交付" },
+        { question: "腾讯云 ADP 如何计费？", module: "价格与采购" }
+      ]
+    }
+  }]);
+
+  assert.equal(clusters.length, 2);
+  assert.equal(clusters[0].label, "实施与交付");
+  assert.equal(clusters[0].questions.length, 2);
+  assert.equal(clusters[1].label, "价格与采购");
 });

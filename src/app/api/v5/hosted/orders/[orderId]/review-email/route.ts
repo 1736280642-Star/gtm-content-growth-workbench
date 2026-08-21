@@ -3,13 +3,17 @@ import { v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
 import { readHostedPromotionOrderRecord } from "@/lib/v5/hosted-managed-repository";
 import { enqueueHostedReviewNotification, ensureHostedReviewForOrder } from "@/lib/v5/hosted-review-service";
 import { V5GovernanceServiceError } from "@/lib/v5/knowledge-governance-service";
+import { assertWorkspaceOrderAccess, requireHostedIdentity, requireHostedRole } from "@/lib/v5/hosted-identity-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(_request: Request, { params }: { params: Promise<{ orderId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
   try {
     const { orderId } = await params;
+    const identity = await requireHostedIdentity(request);
+    requireHostedRole(identity, ["workspace_admin", "product_owner", "operator"]);
+    await assertWorkspaceOrderAccess(identity.workspaceId, orderId);
     const order = await readHostedPromotionOrderRecord(orderId);
     if (!order) throw new V5GovernanceServiceError("hosted_order_not_found", "托管任务不存在。", 404);
     const review = await ensureHostedReviewForOrder(order);

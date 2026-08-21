@@ -85,10 +85,51 @@ node scripts/knowledge-capacity-report.mjs
 | `knowledge-worker` | Source Import、Claim/Refresh、Collection | 心跳及子任务失败状态 |
 | `content-worker` | EvidencePack 准入后的正文任务 | 失败保持 `pending_config/failed` |
 | `publish-worker` | 到期领取、租约、重试、状态回写 | 浏览器动作交给 Windows Bridge |
+| `browser-executor-worker` | 账号授权、发布、只读验证 | 节点身份、工作区隔离 Profile、任务 Lease |
 
 Worker supervisor 每 10 秒写入共享心跳，业务失败不会伪装成进程崩溃；连续进程异常会退避重启。容器日志默认每文件 10 MB、保留 5 个文件。
 
 ## 日常操作
+
+日常启动推荐使用统一入口：
+
+```powershell
+npm.cmd run docker:3027
+```
+
+3027 健康后，启动器会自动检查并隐藏启动宿主机 Wechatsync Bridge 和 Arcs Runner；重复执行不会产生第二组进程。首次启用知乎、CSDN、掘金前执行一次 `uv sync --project arcs-runner`，并在 `.env.local` 配置 `WECHATSYNC_BRIDGE_TOKEN`，可选配置独立的 `JOTO_PUBLISH_RUNNER_TOKEN`。真实值不得提交或回显。伴侣日志位于 `%LOCALAPPDATA%\JotoPublishRunner\logs`。
+
+注册 Windows 登录自启：
+
+```powershell
+npm.cmd run docker:3027:autostart
+```
+
+该任务统一启动 Docker 3027 和渠道伴侣；不需要为 Arcs Runner 单独注册另一个计划任务。若伴侣配置或依赖缺失，3027 仍保持可用，第三方渠道动作失败关闭并在启动输出中提示修复命令。规则包激活仍是独立人工门禁，不能由启动脚本代替。
+
+## 浏览器执行池与 Desktop Connector
+
+云端节点在被 Git 忽略的部署 `.env` 中配置以下字段。`PUBLISH_EXECUTOR_REGISTRATION_SECRET` 与 `JOTO_PUBLISH_RUNNER_TOKEN` 必须分别生成、分别轮换，不能复用邮件或数据库凭据：
+
+```dotenv
+PUBLISH_DEFAULT_EXECUTOR_TYPE=cloud_browser
+PUBLISH_EXECUTOR_REGISTRATION_SECRET=<部署侧长随机值>
+PUBLISH_EXECUTOR_API_BASE_URL=http://workbench-web:3027
+PUBLISH_EXECUTOR_TYPE=cloud_browser
+PUBLISH_EXECUTOR_CAPACITY=1
+JOTO_PUBLISH_RUNNER_URL=http://host.docker.internal:9530
+JOTO_PUBLISH_RUNNER_TOKEN=<本机 Arcs Runner Bearer Token>
+```
+
+云端节点令牌在首次注册后写入 `worker_runtime` Volume，不进入业务表明文或日志。私有化场景由工作区管理员在统一渠道向导生成一次性配对码，再在用户电脑执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-desktop-publish-connector.ps1 -PairingCode <一次性配对码>
+```
+
+配对码 10 分钟失效且只能使用一次。Desktop 节点只领取自己工作区的任务；云端节点可承接多个工作区，但每个渠道账号使用独立 `browserProfileRef`。发布前必须重新识别公开账号并匹配 `accountFingerprint`，不一致时任务进入 `risk_blocked`，不得自动换号或绕过平台安全验证。
+
+验收至少包含：两个工作区互相读取订单返回 404；不同工作区可对相同产品渠道建立独立绑定；执行节点离线时任务保留在队列；Lease 超时最多恢复三次；账号切换后不发生平台写入；节点日志与数据库均无 Cookie、密码、配对码和原始节点令牌。
 
 ```powershell
 docker compose --profile full logs -f --tail 200 workbench-web rag-index-worker knowledge-worker content-worker publish-worker
@@ -118,6 +159,12 @@ npm.cmd run docker:3027:deploy -- -NoOpen
 ```
 
 上线验收不能只检查容器健康，还必须验证邮件接口真实接受请求、Outbox 进入 `sent`、确认链接可以从外部网络打开，以及相同幂等键不会重复发送。字段来源、生成命令、HTTP 契约、安全轮换和无泄密检查见 [`docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md`](./docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md)。
+
+## GEO 第三方渠道规则包
+
+Docker 默认从 `/app/config/geo-channel-rule-pack.json` 读取已经人工激活的非敏感规则包，当前版本为 `geo-third-party-cn-v1-20260820`，覆盖知乎、CSDN 和掘金。仓库文件保存规则与人工授权摘要，不包含 Cookie、Token 或账号资料。
+
+可通过本机被 Git 忽略的 `.env` 覆盖 `GEO_CHANNEL_RULE_PACK_PATH`；仅在临时运维场景使用 `GEO_CHANNEL_RULE_PACK_JSON`，它的优先级高于文件。配置了不存在、空或结构非法的规则包时，系统会 fail-closed，不会把第三方渠道伪装成可托管。规则激活不等于账号授权：用户仍需确认具体创作账号，验证码和安全挑战仍由人工接管。
 
 ## 备份与恢复
 

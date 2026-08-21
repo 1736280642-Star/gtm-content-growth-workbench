@@ -37,6 +37,7 @@ try {
   $logsCommand = "docker compose -f compose.yaml -f compose.dev-3027.yaml --profile full logs -f --tail 200 workbench-web rag-index-worker knowledge-worker content-worker monitor-worker publish-worker"
   Write-WorkbenchStep "Logs: $logsCommand"
   Wait-WorkbenchReady
+  Ensure-WorkbenchChannelPublishCompanions
 } finally {
   if ($null -ne $nextEnvSnapshot) {
     [System.IO.File]::WriteAllBytes($nextEnvPath, $nextEnvSnapshot)

@@ -24,15 +24,25 @@ async function executePortableStatement(connection, statement) {
     if (rows.length) return;
     return connection.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`);
   }
-  const indexMatch = statement.match(/^CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+ON\s+`?([a-zA-Z0-9_]+)`?\s*([\s\S]+)$/i);
+  const dropIndexMatch = statement.match(/^ALTER\s+TABLE\s+`?([a-zA-Z0-9_]+)`?\s+DROP\s+INDEX\s+IF\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?$/i);
+  if (dropIndexMatch) {
+    const [, tableName, indexName] = dropIndexMatch;
+    const [rows] = await connection.query(
+      "SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1",
+      [tableName, indexName]
+    );
+    if (!rows.length) return;
+    return connection.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${indexName}\``);
+  }
+  const indexMatch = statement.match(/^CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+ON\s+`?([a-zA-Z0-9_]+)`?\s*([\s\S]+)$/i);
   if (!indexMatch) return connection.query(statement);
-  const [, indexName, tableName, definition] = indexMatch;
+  const [, unique, indexName, tableName, definition] = indexMatch;
   const [rows] = await connection.query(
     "SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1",
     [tableName, indexName]
   );
   if (rows.length) return;
-  return connection.query(`CREATE INDEX \`${indexName}\` ON \`${tableName}\` ${definition}`);
+  return connection.query(`CREATE ${unique ? "UNIQUE " : ""}INDEX \`${indexName}\` ON \`${tableName}\` ${definition}`);
 }
 
 async function main() {

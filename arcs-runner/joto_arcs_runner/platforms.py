@@ -1,6 +1,8 @@
 import json
+import hashlib
 import os
 import re
+import socket
 import threading
 import atexit
 import time
@@ -33,6 +35,9 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://blog\.csdn\.net/[^/]+/article/details/\d+",
         "article_id_pattern": r"(?:article/details/|articleId=)(\d+)",
+        "account_name": ["css:.user-name", "css:.user-info .name", "css:[class*='userName']"],
+        "account_link": ["xpath://a[contains(@href,'blog.csdn.net/')][1]", "css:a.user-name"],
+        "account_avatar": ["css:.user-avatar img", "css:img.avatar"],
     },
     "juejin": {
         "auth_url": "https://juejin.cn/creator/content/article",
@@ -57,6 +62,9 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://juejin\.cn/post/[A-Za-z0-9]+",
         "article_id_pattern": r"(?:post/|drafts/)([A-Za-z0-9]+)",
+        "account_name": ["css:.user-name", "css:[class*='user-name']", "css:[class*='username']"],
+        "account_link": ["xpath://a[contains(@href,'/user/')][1]", "css:a.user-name"],
+        "account_avatar": ["css:img.avatar", "css:[class*='avatar'] img"],
     },
     "zhihu": {
         "auth_url": "https://www.zhihu.com/creator",
@@ -74,11 +82,14 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         "review_markers": ["审核中", "等待审核", "平台审核"],
         "public_pattern": r"https://zhuanlan\.zhihu\.com/p/\d+",
         "article_id_pattern": r"/p/(\d+)",
+        "account_name": ["css:.AppHeader-profile .Popover", "css:[class*='Creator'] [class*='name']", "css:[class*='Profile'] [class*='name']"],
+        "account_link": ["xpath://a[contains(@href,'/people/')][1]", "css:.AppHeader-profile a"],
+        "account_avatar": ["css:.AppHeader-profile img", "css:img.Avatar"],
     },
 }
 
 CHALLENGE_MARKERS = ["验证码", "安全验证", "手机号验证", "手机确认", "captcha", "security challenge", "滑块"]
-PLATFORM_LOCKS = {platform: threading.Lock() for platform in PLATFORM_CONFIG}
+PLATFORM_LOCKS: dict[str, threading.Lock] = {}
 PLATFORM_BROWSERS: dict[str, Any] = {}
 PLATFORM_AUTH_TABS: dict[str, Any] = {}
 TRANSIENT_BROWSER_ERRORS = {"BrowserConnectError", "PageDisconnectedError", "ContextLostError"}
@@ -103,10 +114,29 @@ def _profile_root() -> Path:
     return (Path.home() / ".joto-publish-profiles").resolve()
 
 
-def profile_dir(platform: str) -> Path:
+def _profile_key(platform: str, profile_ref: str | None = None) -> str:
+    normalized = str(profile_ref or "").strip()
+    if normalized and not re.fullmatch(r"[a-zA-Z0-9_-]{8,191}", normalized):
+        raise ValueError("profileRef must be an opaque identifier")
+    return f"{platform}:{normalized or 'legacy-default'}"
+
+
+def _profile_lock(platform: str, profile_ref: str | None = None) -> threading.Lock:
+    key = _profile_key(platform, profile_ref)
+    if key not in PLATFORM_LOCKS:
+        PLATFORM_LOCKS[key] = threading.Lock()
+    return PLATFORM_LOCKS[key]
+
+
+def profile_dir(platform: str, profile_ref: str | None = None) -> Path:
     env_name = f"{platform.upper()}_BROWSER_PROFILE_DIR"
     configured = os.environ.get(env_name, "").strip()
-    path = Path(configured).expanduser().resolve() if configured else (_profile_root() / platform).resolve()
+    normalized = str(profile_ref or "").strip()
+    path = (
+        (_profile_root() / platform / normalized).resolve()
+        if normalized
+        else Path(configured).expanduser().resolve() if configured else (_profile_root() / platform).resolve()
+    )
     repository_root = Path(__file__).resolve().parents[2]
     if path == repository_root or repository_root in path.parents:
         raise ValueError(f"{env_name} must be outside the repository")
@@ -148,29 +178,35 @@ def browser_executable_path() -> Path | None:
     return next((path.resolve() for path in candidates if path.is_file()), None)
 
 
-def _browser(platform: str):
+def _browser(platform: str, profile_ref: str | None = None):
     try:
         from DrissionPage import Chromium, ChromiumOptions
     except ImportError as error:
         raise RuntimeError("DrissionPage is not installed; run `uv sync` in arcs-runner") from error
 
-    cached = PLATFORM_BROWSERS.get(platform)
+    key = _profile_key(platform, profile_ref)
+    cached = PLATFORM_BROWSERS.get(key)
     if cached is not None:
         try:
             if cached.states.is_alive:
                 return cached
         except Exception:
             pass
-        PLATFORM_BROWSERS.pop(platform, None)
+        PLATFORM_BROWSERS.pop(key, None)
 
     options = ChromiumOptions()
     executable_path = browser_executable_path()
     if executable_path:
         options.set_browser_path(str(executable_path))
-    default_port = 9330 + list(PLATFORM_CONFIG).index(platform)
-    browser_port = int(os.environ.get(f"ARCS_{platform.upper()}_BROWSER_PORT", str(default_port)))
+    if profile_ref:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+            port_socket.bind(("127.0.0.1", 0))
+            default_port = int(port_socket.getsockname()[1])
+    else:
+        default_port = 9330 + list(PLATFORM_CONFIG).index(platform)
+    browser_port = int(os.environ.get(f"ARCS_{platform.upper()}_BROWSER_PORT", str(default_port))) if not profile_ref else default_port
     options.set_local_port(browser_port)
-    options.set_user_data_path(str(profile_dir(platform)))
+    options.set_user_data_path(str(profile_dir(platform, profile_ref)))
     options.set_argument("--start-maximized")
     options.headless(False)
     browser = None
@@ -186,7 +222,7 @@ def _browser(platform: str):
             time.sleep(2)
     if browser is None:
         raise RuntimeError("browser initialization returned no browser")
-    PLATFORM_BROWSERS[platform] = browser
+    PLATFORM_BROWSERS[key] = browser
     return browser
 
 
@@ -782,12 +818,13 @@ def _verify_juejin_draft_api(payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 class BrowserPublisher:
-    def open_auth(self, platform: str) -> dict[str, Any]:
+    def open_auth(self, platform: str, profile_ref: str | None = None) -> dict[str, Any]:
         """Open a dedicated, visible login window without reading or returning credentials."""
         config = _config(platform)
-        with PLATFORM_LOCKS[platform]:
-            browser = _browser(platform)
-            existing = PLATFORM_AUTH_TABS.get(platform)
+        key = _profile_key(platform, profile_ref)
+        with _profile_lock(platform, profile_ref):
+            browser = _browser(platform, profile_ref)
+            existing = PLATFORM_AUTH_TABS.get(key)
             if existing is not None:
                 try:
                     if existing.states.is_alive:
@@ -798,11 +835,11 @@ class BrowserPublisher:
                             "nextAction": "请在该窗口完成登录或安全验证，然后回到工作台重新检查。",
                         }
                 except Exception:
-                    PLATFORM_AUTH_TABS.pop(platform, None)
+                    PLATFORM_AUTH_TABS.pop(key, None)
             try:
                 tab = browser.new_tab()
                 tab.get(config["auth_url"])
-                PLATFORM_AUTH_TABS[platform] = tab
+                PLATFORM_AUTH_TABS[key] = tab
                 if has_security_challenge(_body_text(tab)):
                     return {
                         "ok": True,
@@ -824,10 +861,10 @@ class BrowserPublisher:
                     "nextAction": "检查专用浏览器是否可启动、profile 是否被占用，然后重试。",
                 }
 
-    def check_auth(self, platform: str) -> dict[str, Any]:
+    def check_auth(self, platform: str, profile_ref: str | None = None) -> dict[str, Any]:
         config = _config(platform)
-        with PLATFORM_LOCKS[platform]:
-            browser = _browser(platform)
+        with _profile_lock(platform, profile_ref):
+            browser = _browser(platform, profile_ref)
             tab = browser.new_tab()
             try:
                 tab.get(config["auth_url"])
@@ -855,10 +892,78 @@ class BrowserPublisher:
             finally:
                 tab.close()
 
+    def identify_account(self, platform: str, profile_ref: str | None = None) -> dict[str, Any]:
+        """Return public account identity only; never return browser credentials or private identifiers."""
+        config = _config(platform)
+        with _profile_lock(platform, profile_ref):
+            browser = _browser(platform, profile_ref)
+            tab = browser.new_tab()
+            try:
+                tab.get(config["auth_url"])
+                url = str(tab.url)
+                text = _body_text(tab)
+                if has_security_challenge(text):
+                    return {"identified": False, "status": "manual_takeover_required", "message": f"{platform} 出现安全挑战。"}
+                if any(marker.lower() in url.lower() for marker in config["login_markers"]):
+                    return {"identified": False, "status": "auth_required", "message": f"{platform} 尚未登录。"}
+                name_element = _first(tab, config.get("account_name") or [], timeout=2)
+                link_element = _first(tab, config.get("account_link") or [], timeout=1)
+                avatar_element = _first(tab, config.get("account_avatar") or [], timeout=1)
+                display_name = str(getattr(name_element, "text", "") or "").strip()
+                if not display_name and name_element:
+                    display_name = str(name_element.attr("aria-label") or name_element.attr("title") or name_element.attr("alt") or "").strip()
+                profile_url = str(link_element.attr("href") or "").strip() if link_element else ""
+                profile_url = urljoin(config["auth_url"], profile_url) if profile_url else ""
+                avatar_url = str(avatar_element.attr("src") or "").strip() if avatar_element else ""
+                avatar_url = urljoin(config["auth_url"], avatar_url) if avatar_url else ""
+                if not display_name:
+                    return {
+                        "identified": False,
+                        "status": "account_identity_unavailable",
+                        "message": f"{platform} 已登录，但未能从公开创作页面识别账号名称。",
+                        "nextAction": "更新账号公开信息 selector 后重试；不得用通用 Profile 名称代替真实账号。",
+                    }
+                provider_ref = profile_url or f"{platform}:public-name:{display_name}"
+                return {
+                    "identified": True,
+                    "status": "account_detected",
+                    "account": {
+                        "providerAccountRef": provider_ref[:191],
+                        "publicDisplayName": display_name[:160],
+                        "publicAvatarUrl": avatar_url[:1000] if avatar_url.startswith("https://") else None,
+                        "publicProfileUrl": profile_url[:1000] if profile_url.startswith("https://") else None,
+                        "capabilities": ["article_publish"],
+                    },
+                }
+            finally:
+                tab.close()
+
     def publish(self, platform: str, payload: dict[str, Any]) -> dict[str, Any]:
         config = _config(platform)
-        with PLATFORM_LOCKS[platform]:
-            browser = _browser(platform)
+        profile_ref = str(payload.get("browserProfileRef") or "").strip() or None
+        expected_fingerprint = str(payload.get("accountFingerprint") or "").strip().lower()
+        if expected_fingerprint:
+            identity = self.identify_account(platform, profile_ref)
+            if not identity.get("identified"):
+                return _failure(
+                    "auth_required",
+                    str(identity.get("message") or f"{platform} 发布前无法识别账号。"),
+                    "恢复已确认账号的登录态后创建新排程；系统不会向未知账号发布。",
+                )
+            account = identity.get("account") if isinstance(identity.get("account"), dict) else {}
+            provider_ref = str(account.get("providerAccountRef") or "").strip()
+            actual_fingerprint = hashlib.sha256(f"{platform}:{provider_ref}".encode("utf-8")).hexdigest()
+            if actual_fingerprint != expected_fingerprint:
+                return {
+                    "ok": False,
+                    "status": "risk_blocked",
+                    "publishStatus": "failed",
+                    "failureCode": "risk_blocked",
+                    "failureReason": f"{platform} 当前登录账号与工作台确认账号不一致。",
+                    "nextAction": "重新连接并确认当前真实账号；禁止继续或自动切换目标账号。",
+                }
+        with _profile_lock(platform, profile_ref):
+            browser = _browser(platform, profile_ref)
             tab = browser.new_tab()
             publish_action_started = False
             response_capture_started = False
@@ -988,7 +1093,9 @@ class BrowserPublisher:
                 tab.close()
 
     def verify(self, platform: str, payload: dict[str, Any]) -> dict[str, Any]:
-        with PLATFORM_LOCKS[platform]:
+        profile_ref = str(payload.get("browserProfileRef") or "").strip() or None
+        key = _profile_key(platform, profile_ref)
+        with _profile_lock(platform, profile_ref):
             public_result = _verify_known_public_url(platform, payload)
             if public_result:
                 return public_result
@@ -999,13 +1106,13 @@ class BrowserPublisher:
             for attempt in range(2):
                 tab = None
                 try:
-                    browser = _browser(platform)
+                    browser = _browser(platform, profile_ref)
                     tab = browser.new_tab()
                     return self._verify_tab(platform, tab, payload)
                 except Exception as error:
                     if not is_transient_browser_error(error) or attempt == 1:
                         raise
-                    PLATFORM_BROWSERS.pop(platform, None)
+                    PLATFORM_BROWSERS.pop(key, None)
                 finally:
                     if tab is not None:
                         try:

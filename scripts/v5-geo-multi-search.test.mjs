@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 import { combineMultiSearchEvidencePacks, recomputeChannelStats, runMultiProviderWebSearch, runMultiProviderProbeAnswers } from "../src/lib/v5/geo-search-adapters.ts";
 import {
   buildDegradedFrontendBaseline,
   buildGeoEntityResolutionBatches,
+  compactGeoBlueprintPreviousOutputs,
   enforceTaskEntityRules,
   inferSupplementaryGap,
   mergeQuestionDiscoveryShardOutputs,
@@ -61,6 +63,30 @@ function jsonResponse(body, status = 200, headers = {}) {
   });
 }
 
+test("blueprint synthesis compacts duplicated research evidence but keeps strategy signals", () => {
+  const previousOutputs = [{
+    taskType: "live_question_discovery",
+    outputSummary: {
+      questions: [{ text: "如何选型？", sourceUrls: ["https://example.com/question"] }],
+      contentGaps: ["选型证据不足"],
+      claimAssessments: [{ claim: "需要实施服务商", sourceUrls: ["https://example.com/question"] }],
+      sourceCount: 20,
+      liveSearchVerified: true,
+      evidenceIds: Array.from({ length: 50 }, (_, index) => `evidence-${index}`),
+      researchEvidence: { candidates: [{ excerpt: "x".repeat(50_000) }] },
+      responseId: "provider-response"
+    }
+  }];
+
+  const compacted = compactGeoBlueprintPreviousOutputs(previousOutputs);
+  assert.deepEqual(compacted[0].outputSummary.questions, previousOutputs[0].outputSummary.questions);
+  assert.deepEqual(compacted[0].outputSummary.contentGaps, ["选型证据不足"]);
+  assert.equal(compacted[0].outputSummary.liveSearchVerified, true);
+  assert.equal(Object.hasOwn(compacted[0].outputSummary, "researchEvidence"), false);
+  assert.equal(Object.hasOwn(compacted[0].outputSummary, "evidenceIds"), false);
+  assert.ok(JSON.stringify(compacted).length < JSON.stringify(previousOutputs).length / 10);
+});
+
 const query = [{
   queryId: "query-1",
   query: "WorkBuddy 用户问题",
@@ -112,6 +138,22 @@ test("question discovery shards merge deterministically and enforce catalog limi
   assert.deepEqual(merged.questions.map((item) => item.text), ["WorkBuddy 如何部署？", "WorkBuddy 支持哪些集成？"]);
   assert.deepEqual(merged.queryClusters, ["部署", "集成"]);
   assert.deepEqual(merged.contentGaps, ["案例", "证据"]);
+});
+
+test("blueprint synthesis receives governed knowledge context and website coverage in decision order", async () => {
+  const [repositorySource, workerSource, providerSource] = await Promise.all([
+    readFile("src/lib/v5/geo-research-repository.ts", "utf8"),
+    readFile("workers/geo-research-worker.mjs", "utf8"),
+    readFile("src/lib/v5/geo-research-provider.ts", "utf8")
+  ]);
+
+  assert.match(repositorySource, /deriveContentStrategyQuestionClusters\(previousOutputs\)/);
+  assert.match(repositorySource, /readProductKnowledgeBundle/);
+  assert.match(repositorySource, /contentStrategyKnowledgeContext: productKnowledge\.contentStrategyKnowledgeContext/);
+  assert.match(workerSource, /contentStrategyKnowledgeContext: context\.contentStrategyKnowledgeContext/);
+  assert.match(workerSource, /websiteCoverageProfile: context\.websiteCoverageProfile/);
+  assert.match(providerSource, /The knowledge context decides what can be written; GEO findings decide what is worth covering; existingArticleTypes decide whether to reuse, adapt, or create a structure/);
+  assert.match(providerSource, /contentStrategyKnowledgeContext: context\.taskType === "blueprint_synthesis"/);
 });
 
 test("frontend baseline falls back to entity-safe Doubao and Qwen evidence when Zhipu JSON is invalid", () => {

@@ -63,6 +63,8 @@ try {
       taskType: leasedTask.taskType,
       product: context.product,
       productKnowledgeProfile: context.productKnowledgeProfile,
+      contentStrategyKnowledgeContext: context.contentStrategyKnowledgeContext,
+      websiteCoverageProfile: context.websiteCoverageProfile,
       project: context.project,
       sourceSnapshotHash: context.sourceSnapshotHash,
       probeSetSnapshot: context.probeSetSnapshot,

@@ -221,12 +221,18 @@ export async function getProductRolloutReadiness(productId: string, platform: Di
   const configuredAccountCandidate = resolvePublishAccountCandidate(platform);
   const configuredAccountCandidateLabel = resolvePublishAccountCandidateLabel(platform, configuredAccountCandidate);
   const [bindingRows] = await pool.query<RowDataPacket[]>(
-    `SELECT account_label, row_version FROM product_publish_account_binding
-     WHERE product_id = ? AND platform = ? AND status = 'confirmed' LIMIT 1`,
+    `SELECT binding.account_label, binding.row_version, connection.authorization_status,
+            connection.capability_status
+     FROM product_publish_account_binding binding
+     LEFT JOIN publish_account_connection connection ON connection.id = binding.account_connection_id
+     WHERE binding.product_id = ? AND binding.platform = ? AND binding.status = 'confirmed'
+     ORDER BY connection.last_verified_at DESC, binding.confirmed_at DESC LIMIT 1`,
     [productId, platform]
   );
   const confirmedAccount = bindingRows[0]?.account_label ? String(bindingRows[0].account_label) : undefined;
-  const accountConfigured = Boolean(configuredAccountCandidate && confirmedAccount === configuredAccountCandidate);
+  const governedConnectionReady = bindingRows[0]?.authorization_status === "connected"
+    && bindingRows[0]?.capability_status === "verified";
+  const accountConfigured = Boolean(governedConnectionReady || configuredAccountCandidate && confirmedAccount === configuredAccountCandidate);
   const auth = await checkFormalPublishAuth(platform);
   return {
     ...evaluateProductRolloutReadiness({
@@ -299,7 +305,7 @@ export async function confirmProductPublishAccountBinding(input: {
       throw new V5GovernanceRepositoryError("product_not_found", "产品不存在或未启用。", 404, "返回产品列表重新选择。");
     }
     const [bindingRows] = await connection.query<RowDataPacket[]>(
-      "SELECT id, account_label, row_version FROM product_publish_account_binding WHERE product_id = ? AND platform = ? LIMIT 1 FOR UPDATE",
+      "SELECT id, account_label, row_version FROM product_publish_account_binding WHERE workspace_id = 'legacy-default' AND product_id = ? AND platform = ? LIMIT 1 FOR UPDATE",
       [input.productId, input.platform]
     );
     const existing = bindingRows[0];
@@ -318,8 +324,8 @@ export async function confirmProductPublishAccountBinding(input: {
     const nextVersion = currentVersion + 1;
     await connection.query(
       `INSERT INTO product_publish_account_binding
-       (id, product_id, platform, channel, account_label, status, confirmed_by, confirmed_at, row_version)
-       VALUES (?, ?, ?, ?, ?, 'confirmed', ?, NOW(), ?)
+       (id, workspace_id, product_id, platform, channel, account_label, status, confirmed_by, confirmed_at, row_version)
+       VALUES (?, 'legacy-default', ?, ?, ?, ?, 'confirmed', ?, NOW(), ?)
        ON DUPLICATE KEY UPDATE channel = VALUES(channel), account_label = VALUES(account_label),
          status = 'confirmed', confirmed_by = VALUES(confirmed_by), confirmed_at = NOW(), row_version = VALUES(row_version)`,
       [bindingId, input.productId, input.platform, channel, configuredAccount, input.actor.actorId, nextVersion]
@@ -347,7 +353,7 @@ export async function confirmProductPublishAccountBinding(input: {
   });
 }
 
-export async function assertFormalDraftRolloutReady(productionContractId: string, platform: DirectPublishPlatformKey) {
+export async function assertFormalDraftRolloutReady(productionContractId: string, platform: DirectPublishPlatformKey, matrixItemId?: string) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT pc.product_id, pc.production_mode, pc.expression_calibration_version_id,
             sp.status AS strategy_status, ec.status AS calibration_status
@@ -371,7 +377,7 @@ export async function assertFormalDraftRolloutReady(productionContractId: string
   if (!contract.expression_calibration_version_id || String(contract.calibration_status) !== "active") {
     throw new ProductRolloutReadinessError("contract_calibration_not_active", "正文合同未绑定有效的样稿校准版本。", "使用当前 active 校准版本重新生成批量正文。" );
   }
-  await assertHostedManagedPublishAllowed(String(contract.product_id), platform);
+  const connection = await assertHostedManagedPublishAllowed(String(contract.product_id), platform, matrixItemId);
   const readiness = await getProductRolloutReadiness(String(contract.product_id), platform);
   if (!readiness.canScheduleRealPublish) {
     const blockers = readiness.gates.filter((gate) => gate.status === "blocked");
@@ -381,16 +387,37 @@ export async function assertFormalDraftRolloutReady(productionContractId: string
       blockers.map((gate) => gate.nextAction).filter(Boolean).join(" ") || "完成账号选择和实时授权后重试。"
     );
   }
-  return readiness;
+  return { ...readiness, publishAccountConnection: connection };
 }
 
-export async function assertHostedManagedPublishAllowed(productId: string, platform: DirectPublishPlatformKey) {
+export interface HostedPublishAccountConnection {
+  workspaceId: string;
+  orderId: string;
+  accountConnectionId: string;
+  accountFingerprint: string;
+  browserProfileRef: string;
+}
+
+export async function assertHostedManagedPublishAllowed(
+  productId: string,
+  platform: DirectPublishPlatformKey,
+  matrixItemId?: string
+): Promise<HostedPublishAccountConnection | undefined> {
+  let monthlyPlanId: string | undefined;
+  if (matrixItemId) {
+    const [items] = await getV5GovernancePool().query<RowDataPacket[]>(
+      "SELECT monthly_plan_id FROM content_matrix_item WHERE id = ? AND product_id = ? LIMIT 1",
+      [matrixItemId, productId]
+    );
+    monthlyPlanId = items[0]?.monthly_plan_id ? String(items[0].monthly_plan_id) : undefined;
+  }
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
-    `SELECT id, status, channel_preferences_json
+    `SELECT id, workspace_id, status, channel_preferences_json
      FROM hosted_promotion_order
      WHERE product_id = ? AND status <> 'completed'
+       AND (? IS NULL OR current_monthly_plan_id = ?)
      ORDER BY created_at DESC LIMIT 1`,
-    [productId]
+    [productId, monthlyPlanId || null, monthlyPlanId || null]
   );
   if (!rows[0]) return;
   const status = String(rows[0].status);
@@ -417,4 +444,37 @@ export async function assertHostedManagedPublishAllowed(productId: string, platf
       "如需继续发布，请先在托管设置中重新启用该渠道。"
     );
   }
+  if (platform === "wechat") return undefined;
+  const workspaceId = rows[0].workspace_id ? String(rows[0].workspace_id) : "";
+  if (!workspaceId) {
+    throw new ProductRolloutReadinessError(
+      "hosted_workspace_migration_required",
+      "该托管任务尚未归属到用户工作区，不能安全选择发布账号。",
+      "由管理员完成旧托管任务迁移，或在当前工作区重新创建托管任务。"
+    );
+  }
+  const [connections] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT binding.account_connection_id, connection.account_fingerprint, connection.browser_profile_ref
+     FROM product_publish_account_binding binding
+     JOIN publish_account_connection connection ON connection.id = binding.account_connection_id
+     WHERE binding.workspace_id = ? AND binding.product_id = ? AND binding.platform = ?
+       AND binding.status = 'confirmed' AND connection.workspace_id = ?
+       AND connection.authorization_status = 'connected' AND connection.capability_status = 'verified'
+       AND connection.revoked_at IS NULL LIMIT 1`,
+    [workspaceId, productId, platform, workspaceId]
+  );
+  if (!connections[0]) {
+    throw new ProductRolloutReadinessError(
+      "hosted_publish_account_connection_required",
+      "当前工作区尚未确认该渠道的真实创作账号。",
+      "打开统一渠道连接向导，完成登录、真实账号识别与确认后再发布。"
+    );
+  }
+  return {
+    workspaceId,
+    orderId: String(rows[0].id),
+    accountConnectionId: String(connections[0].account_connection_id),
+    accountFingerprint: String(connections[0].account_fingerprint),
+    browserProfileRef: String(connections[0].browser_profile_ref)
+  };
 }

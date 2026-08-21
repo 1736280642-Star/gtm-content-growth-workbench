@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { readTrustedServerActor, v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
+import { v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
+import { assertWorkspaceOrderAccess, requireHostedIdentity, requireHostedRole } from "@/lib/v5/hosted-identity-service";
 import { listHostedChannelOptions } from "@/lib/v5/hosted-channel-service";
 import { readHostedPromotionOrderRecord, updateHostedPromotionOrderPreferences } from "@/lib/v5/hosted-managed-repository";
 import { V5GovernanceServiceError } from "@/lib/v5/knowledge-governance-service";
@@ -10,6 +11,9 @@ export const runtime = "nodejs";
 export async function POST(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
   try {
     const { orderId } = await params;
+    const identity = await requireHostedIdentity(request);
+    requireHostedRole(identity, ["workspace_admin", "product_owner"]);
+    await assertWorkspaceOrderAccess(identity.workspaceId, orderId);
     const body = await request.json().catch(() => ({}));
     const idempotencyKey = String(request.headers.get("x-idempotency-key") || "").trim();
     const channels = Array.isArray(body.channels) ? body.channels.map((value: unknown) => {
@@ -29,17 +33,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ ord
     const capability = new Map(available.map((item) => [item.channel, item.capability]));
     const unavailable = channels.filter((item) => capability.get(item.channel) !== "auto_publish");
     if (unavailable.length) throw new V5GovernanceServiceError("hosted_channel_unavailable", `以下渠道当前不能托管：${unavailable.map((item) => item.channel).join("、")}。`, 409);
-    const trusted = readTrustedServerActor("product_owner");
-    if (process.env.NODE_ENV === "production" && !trusted) throw new V5GovernanceServiceError("authorization_not_configured", "生产环境尚未配置可信用户身份。", 503);
-    const actor = trusted || { actorId: "local-workbench-user", actorRole: "product_owner", actorType: "human" as const, auditReason: "用户修改 GEO 托管偏好" };
     const result = await updateHostedPromotionOrderPreferences({
       orderId,
       channels,
       dailyDigest: body.dailyDigest !== false,
       monthlyCompleted: body.monthlyCompleted !== false,
       expectedVersion: body.expectedVersion,
-      idempotencyKey,
-      actor: { ...actor, auditReason: "用户修改托管渠道、每日上限或邮件偏好" }
+      idempotencyKey: `${identity.workspaceId}:${idempotencyKey}`,
+      actor: { actorId: identity.userId, actorRole: identity.role, actorType: "human", auditReason: "用户修改托管渠道、每日上限或邮件偏好" }
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

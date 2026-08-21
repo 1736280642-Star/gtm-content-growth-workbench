@@ -63,6 +63,8 @@ export interface HostedMaterialSummary {
 
 export interface HostedPromotionOrderRecord {
   orderId: string;
+  workspaceId: string;
+  userId: string;
   productId: string;
   productName: string;
   contactEmail: string;
@@ -83,6 +85,8 @@ export interface HostedPromotionOrderRecord {
 }
 
 export interface CreateHostedPromotionOrderInput {
+  workspaceId: string;
+  userId: string;
   productId: string;
   contactEmail: string;
   channels: HostedChannelPreference[];

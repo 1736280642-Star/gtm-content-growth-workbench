@@ -24,6 +24,7 @@ try {
     Wait-WorkbenchReady
     Assert-WorkbenchProductionMode
   }
+  Ensure-WorkbenchChannelPublishCompanions
 } finally {
   Exit-WorkbenchStartupLock -Mutex $startupLock
 }

@@ -50,8 +50,8 @@ export interface VerifyResult {
 
 export interface PublishAdapter {
   platform: DirectPublishPlatformKey;
-  checkAuth(): Promise<AuthStatus>;
+  checkAuth(payload?: PlatformPublishPayload): Promise<AuthStatus>;
   validatePayload(payload: PlatformPublishPayload): Promise<ValidationResult>;
   publish(payload: PlatformPublishPayload): Promise<PublishResult>;
-  verify(result: PublishResult): Promise<VerifyResult>;
+  verify(result: PublishResult, payload?: PlatformPublishPayload): Promise<VerifyResult>;
 }

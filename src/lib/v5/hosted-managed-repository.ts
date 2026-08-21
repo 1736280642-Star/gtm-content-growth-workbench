@@ -27,6 +27,8 @@ function mapOrder(row: RowDataPacket): HostedPromotionOrderRecord {
   const lastErrorCode = row.last_error_code ? String(row.last_error_code) : undefined;
   return {
     orderId: String(row.id),
+    workspaceId: String(row.workspace_id || "local-default"),
+    userId: String(row.user_id || row.created_by || "local-workbench-user"),
     productId: String(row.product_id),
     productName: String(row.product_name || row.display_name || row.canonical_name || row.product_id),
     contactEmail: String(row.contact_email),
@@ -55,6 +57,8 @@ const orderSelect = `SELECT order_row.*, product.display_name AS product_name, p
 
 export async function createHostedPromotionOrderRecord(input: CreateHostedPromotionOrderInput) {
   const requestHash = hashV5GovernancePayload({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
     productId: input.productId,
     contactEmail: input.contactEmail.toLocaleLowerCase(),
     channels: input.channels,
@@ -63,8 +67,8 @@ export async function createHostedPromotionOrderRecord(input: CreateHostedPromot
   });
   return withV5GovernanceTransaction(async (connection) => {
     const [existingRows] = await connection.query<RowDataPacket[]>(
-      `${orderSelect} WHERE order_row.idempotency_key = ? LIMIT 1 FOR UPDATE`,
-      [input.idempotencyKey]
+      `${orderSelect} WHERE order_row.workspace_id = ? AND order_row.idempotency_key = ? LIMIT 1 FOR UPDATE`,
+      [input.workspaceId, input.idempotencyKey]
     );
     if (existingRows[0]) {
       if (String(existingRows[0].request_hash) !== requestHash) {
@@ -77,10 +81,10 @@ export async function createHostedPromotionOrderRecord(input: CreateHostedPromot
     const dailyCaps = Object.fromEntries(input.channels.flatMap((item) => item.dailyCap ? [[item.channel, item.dailyCap]] : []));
     await connection.query(
       `INSERT INTO hosted_promotion_order
-       (id, product_id, contact_email, status, channel_preferences_json, daily_caps_json,
+       (id, workspace_id, user_id, product_id, contact_email, contact_email_verified_at, status, channel_preferences_json, daily_caps_json,
         notification_preferences_json, material_summary_json, timezone, row_version, idempotency_key, request_hash, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-      [orderId, input.productId, input.contactEmail.toLocaleLowerCase(), input.status || "preparing",
+       VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      [orderId, input.workspaceId, input.userId, input.productId, input.contactEmail.toLocaleLowerCase(), input.status || "preparing",
         stringifyV5Json(input.channels), stringifyV5Json(dailyCaps), stringifyV5Json({ dailyDigest: true, actionRequired: true, monthlyCompleted: true }), stringifyV5Json(input.materialSummary),
         input.timezone, input.idempotencyKey, requestHash, input.actorId]
     );
@@ -93,6 +97,7 @@ export async function createHostedPromotionOrderRecord(input: CreateHostedPromot
       objectType: "hosted_promotion_order",
       objectId: orderId,
       afterSummary: {
+        workspaceId: input.workspaceId,
         productId: input.productId,
         channelCount: input.channels.length,
         materialSourceCount: input.materialSummary.acceptedSourceCount,

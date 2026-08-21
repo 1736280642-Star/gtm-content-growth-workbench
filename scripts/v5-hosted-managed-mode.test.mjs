@@ -130,40 +130,40 @@ test("渠道授权、暂停门禁与月度完成均通过正式状态编排", as
     readFile(new URL("../src/lib/v5/hosted-managed-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/hosted-channel-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/app/hosted/settings/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/app/hosted/connect/[channel]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/connections/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/product-rollout-readiness-service.ts", import.meta.url), "utf8")
   ]);
   assert.match(channelService, /getProductRolloutReadiness/);
   assert.match(managedService, /hosted_channel_authorization_required/);
   assert.match(managedService, /\["review_ready", "completed"\]/);
   assert.match(managedService, /monthly_completed/);
-  assert.match(settingsPage, /\/hosted\/connect\//);
-  assert.match(connectPage, /publish-account-binding/);
+  assert.match(settingsPage, /\/hosted\/connections\?orderId=/);
+  assert.match(connectPage, /channel-connections/);
   assert.match(rolloutService, /hosted_managed_order_paused/);
   assert.match(rolloutService, /hosted_managed_channel_disabled/);
 });
 
 test("第三方授权使用专用浏览器，不要求用户粘贴敏感凭据", async () => {
-  const [connectPage, authorizationService, formalClient, bridge, arcsServer, arcsPlatforms, rolloutService] = await Promise.all([
-    readFile(new URL("../src/app/hosted/connect/[channel]/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/lib/v5/hosted-channel-authorization-service.ts", import.meta.url), "utf8"),
+  const [connectPage, authorizationService, formalClient, executorWorker, arcsServer, arcsPlatforms, rolloutService] = await Promise.all([
+    readFile(new URL("../src/app/hosted/connections/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/channel-account-connection-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/formal-publish-client.ts", import.meta.url), "utf8"),
-    readFile(new URL("../scripts/wechatsync-bridge.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../workers/browser-executor-worker.mjs", import.meta.url), "utf8"),
     readFile(new URL("../arcs-runner/joto_arcs_runner/server.py", import.meta.url), "utf8"),
     readFile(new URL("../arcs-runner/joto_arcs_runner/platforms.py", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/product-rollout-readiness-service.ts", import.meta.url), "utf8")
   ]);
-  assert.match(connectPage, /打开 .* 登录窗口/);
-  assert.match(connectPage, /我已完成登录，重新检查/);
+  assert.match(connectPage, /云端托管/);
+  assert.match(connectPage, /Desktop Connector/);
   assert.match(connectPage, /确认用于/);
-  assert.doesNotMatch(connectPage, /<Input|<TextArea|setCookie|setToken/);
-  assert.match(authorizationService, /hosted_channel_rule_not_active/);
-  assert.match(formalClient, /openFormalPublishAuthorization/);
-  assert.match(bridge, /\/auth\/connect/);
-  assert.match(arcsServer, /path == "\/auth\/connect"/);
+  assert.doesNotMatch(connectPage, /setCookie|setToken/);
+  assert.match(authorizationService, /account_detected/);
+  assert.match(formalClient, /executeGovernedBrowserOperation/);
+  assert.match(executorWorker, /\/auth\/connect/);
+  assert.match(arcsServer, /path == "\/auth\/identify"/);
   assert.match(arcsPlatforms, /def open_auth/);
-  assert.match(rolloutService, /publish_account_auth_required/);
-  assert.match(rolloutService, /zhihu:managed-profile/);
+  assert.match(arcsPlatforms, /def identify_account/);
+  assert.match(rolloutService, /hosted_publish_account_connection_required/);
 });
 
 test("策略修改意见会进入新一轮正式 GEO 调研而不是卡在已驳回状态", async () => {

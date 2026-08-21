@@ -25,6 +25,47 @@ export interface ProductKnowledgeProfile {
   humanCorrectedAt?: string;
 }
 
+export interface ContentStrategyQuestionClusterInput {
+  clusterId: string;
+  label: string;
+  questions: string[];
+}
+
+export interface ContentStrategyKnowledgeFact {
+  claimId: string;
+  text: string;
+  quote: string;
+  claimType: string;
+  sourceId: string;
+  sourceRevisionId: string;
+  headingPath: string[];
+  authorityLevel: string;
+  reviewStatus: string;
+  conditions: string[];
+  limitations: string[];
+  relevanceScore: number;
+}
+
+export interface ContentStrategyKnowledgeContext {
+  contractVersion: "content-strategy-knowledge.v1";
+  productId: string;
+  productName: string;
+  sourceFactCount: number;
+  retrievedFactCount: number;
+  profileSource: ProductKnowledgeProfile["source"];
+  authoritativeProfile: {
+    positioning: ProductKnowledgeProfileFact[];
+    audiences: ProductKnowledgeProfileFact[];
+    capabilities: ProductKnowledgeProfileFact[];
+    scenarios: ProductKnowledgeProfileFact[];
+    boundaries: ProductKnowledgeProfileFact[];
+  };
+  questionClusters: Array<ContentStrategyQuestionClusterInput & {
+    facts: ContentStrategyKnowledgeFact[];
+    writableAngles: string[];
+  }>;
+}
+
 interface ProfileClaim {
   claimId: string;
   normalizedClaim: string;
@@ -34,6 +75,8 @@ interface ProfileClaim {
   conditions?: string[];
   limitations?: string[];
 }
+
+type ApprovedProductClaim = Awaited<ReturnType<typeof listV5ProductClaimsRecord>>[number];
 
 const noisePattern = /privacy policy|cookie|copyright|all rights reserved|send message|respond within|updated\s+\d|visual concept overview|^comparison$|隐私政策|版权所有|联系我们|更新时间/i;
 const chineseFactPredicatePattern = /支持|提供|用于|能够|可以|采用|包含|覆盖|允许|需要|限制|适用|实现|帮助|接入|管理|生成|具备|完成|建立|规划|配置|执行|优化|保障|连接|部署|运行|使用|服务|是一个|是一款|专为/;
@@ -60,6 +103,174 @@ function cleanClaimText(value: string) {
 
 function normalizedKey(value: string) {
   return value.toLocaleLowerCase().replace(/[\s，。！？、：；“”"'（）()\-—_·|]/g, "");
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim())
+    : [];
+}
+
+function stringValue(...values: unknown[]) {
+  return values.find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim() || "";
+}
+
+const genericStrategyTerms = new Set([
+  "什么", "如何", "怎么", "哪些", "是否", "可以", "需要", "产品", "用户", "企业", "内容", "相关", "问题", "当前",
+  "what", "how", "which", "product", "user", "users", "content", "current", "related"
+]);
+
+function strategyTerms(value: string) {
+  const normalized = value.normalize("NFKC").toLocaleLowerCase();
+  const terms = new Set<string>();
+  for (const word of normalized.match(/[a-z0-9][a-z0-9._-]{1,}/g) || []) {
+    if (!genericStrategyTerms.has(word)) terms.add(word);
+  }
+  for (const sequence of normalized.match(/[\u3400-\u9fff]{2,}/g) || []) {
+    if (sequence.length <= 8 && !genericStrategyTerms.has(sequence)) terms.add(sequence);
+    for (let index = 0; index < sequence.length - 1; index += 1) {
+      const pair = sequence.slice(index, index + 2);
+      if (!genericStrategyTerms.has(pair)) terms.add(pair);
+    }
+  }
+  return terms;
+}
+
+function uniqueQuestionClusters(items: ContentStrategyQuestionClusterInput[]) {
+  const seen = new Set<string>();
+  return items.flatMap((item, index) => {
+    const questions = [...new Set(item.questions.map((question) => question.trim()).filter(Boolean))].slice(0, 10);
+    const label = item.label.trim() || questions[0] || `问题簇 ${index + 1}`;
+    const key = `${label}:${questions.join("|")}`.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, "");
+    if (!questions.length || seen.has(key)) return [];
+    seen.add(key);
+    return [{ clusterId: item.clusterId.trim() || `knowledge-cluster-${index + 1}`, label, questions }];
+  }).slice(0, 10);
+}
+
+export function deriveContentStrategyQuestionClusters(previousOutputs: Array<{ taskType: string; outputSummary: Record<string, unknown> }>) {
+  const discovery = previousOutputs.find((item) => item.taskType === "live_question_discovery")?.outputSummary || {};
+  const directClusters = Array.isArray(discovery.queryClusters)
+    ? discovery.queryClusters.flatMap((value, index): ContentStrategyQuestionClusterInput[] => {
+        const item = recordValue(value);
+        const questions = stringArray(item.questions).length
+          ? stringArray(item.questions)
+          : stringArray(item.representativeQuestions);
+        if (!questions.length) return [];
+        return [{
+          clusterId: stringValue(item.clusterId, item.id) || `query-cluster-${index + 1}`,
+          label: stringValue(item.name, item.title, item.intent, item.module) || `问题簇 ${index + 1}`,
+          questions
+        }];
+      })
+    : [];
+  const grouped = new Map<string, string[]>();
+  if (Array.isArray(discovery.questions)) {
+    for (const value of discovery.questions) {
+      const item = recordValue(value);
+      const question = stringValue(item.text, item.question, item.title);
+      if (!question) continue;
+      const label = stringValue(item.module, item.faqBoard, item.intent, item.audience) || "未分类用户问题";
+      const values = grouped.get(label) || [];
+      values.push(question);
+      grouped.set(label, values);
+    }
+  }
+  const groupedClusters = [...grouped.entries()].map(([label, questions], index) => ({
+    clusterId: `question-module-${index + 1}`,
+    label,
+    questions
+  }));
+  return uniqueQuestionClusters([...directClusters, ...groupedClusters]);
+}
+
+function knowledgeFactScore(claim: ApprovedProductClaim, cluster: ContentStrategyQuestionClusterInput) {
+  const queryText = `${cluster.label} ${cluster.questions.join(" ")}`;
+  const queryTerms = strategyTerms(queryText);
+  const headingPath = Array.isArray(claim.sourceLocator?.headingPath)
+    ? claim.sourceLocator.headingPath.filter((item): item is string => typeof item === "string")
+    : [];
+  const factText = `${claim.normalizedClaim} ${claim.originalQuote || ""} ${claim.claimType} ${headingPath.join(" ")}`;
+  const factTerms = strategyTerms(factText);
+  let score = 0;
+  for (const term of queryTerms) {
+    if (factTerms.has(term)) score += term.length > 2 ? 3 : 1;
+  }
+  const normalizedFact = normalizedKey(factText);
+  const normalizedLabel = normalizedKey(cluster.label);
+  if (normalizedLabel.length >= 2 && normalizedFact.includes(normalizedLabel)) score += 8;
+  // Governance quality ranks relevant facts; it must not make an unrelated
+  // claim look relevant by itself.
+  if (score > 0 && claim.reviewStatus === "supported") score += 1;
+  if (score > 0 && ["A1", "A2"].includes(String(claim.authorityLevel))) score += 1;
+  return score;
+}
+
+function toContentStrategyKnowledgeFact(claim: ApprovedProductClaim, relevanceScore: number): ContentStrategyKnowledgeFact {
+  const headingPath = Array.isArray(claim.sourceLocator?.headingPath)
+    ? claim.sourceLocator.headingPath.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    claimId: claim.claimId,
+    text: claim.normalizedClaim,
+    quote: String(claim.originalQuote || claim.normalizedClaim).slice(0, 600),
+    claimType: claim.claimType,
+    sourceId: claim.sourceId,
+    sourceRevisionId: claim.sourceRevisionId,
+    headingPath,
+    authorityLevel: String(claim.authorityLevel),
+    reviewStatus: String(claim.reviewStatus),
+    conditions: claim.conditions || [],
+    limitations: claim.limitations || [],
+    relevanceScore
+  };
+}
+
+export function buildContentStrategyKnowledgeContext(input: {
+  productId: string;
+  productName: string;
+  profile: ProductKnowledgeProfile;
+  claims: ApprovedProductClaim[];
+  questionClusters?: ContentStrategyQuestionClusterInput[];
+}): ContentStrategyKnowledgeContext {
+  const clusters = input.questionClusters?.length
+    ? uniqueQuestionClusters(input.questionClusters)
+    : [{ clusterId: "product-knowledge-overview", label: `${input.productName} 可写内容`, questions: [`${input.productName} 有哪些能力、场景、服务与采用信息可以对外表达？`] }];
+  const selectedClaimIds = new Set<string>();
+  const questionClusters = clusters.map((cluster) => {
+    const ranked = input.claims
+      .map((claim, index) => ({ claim, index, score: knowledgeFactScore(claim, cluster) }))
+      .filter((item) => item.score > 1)
+      .sort((left, right) => right.score - left.score || left.index - right.index)
+      .slice(0, 10);
+    const fallback = ranked.length ? ranked : input.claims.slice(0, 5).map((claim, index) => ({ claim, index, score: 0 }));
+    const facts = fallback.map(({ claim, score }) => {
+      selectedClaimIds.add(claim.claimId);
+      return toContentStrategyKnowledgeFact(claim, score);
+    });
+    const writableAngles = [...new Set(facts.flatMap((fact) => [fact.headingPath.at(-1), fact.claimType]).filter((item): item is string => Boolean(item)))].slice(0, 8);
+    return { ...cluster, facts, writableAngles };
+  });
+  return {
+    contractVersion: "content-strategy-knowledge.v1",
+    productId: input.productId,
+    productName: input.productName,
+    sourceFactCount: input.claims.length,
+    retrievedFactCount: selectedClaimIds.size,
+    profileSource: input.profile.source,
+    authoritativeProfile: {
+      positioning: input.profile.positioning,
+      audiences: input.profile.audiences,
+      capabilities: input.profile.capabilities,
+      scenarios: input.profile.scenarios,
+      boundaries: input.profile.boundaries
+    },
+    questionClusters
+  };
 }
 
 function headingText(claim: ProfileClaim) {
@@ -174,7 +385,11 @@ export function applyProductKnowledgeProfileOverride(input: {
   };
 }
 
-export async function readProductKnowledgeProfile(productId: string, productName: string): Promise<ProductKnowledgeProfile> {
+export async function readProductKnowledgeBundle(
+  productId: string,
+  productName: string,
+  questionClusters: ContentStrategyQuestionClusterInput[] = []
+) {
   const [supported, conditional, overrideRows] = await Promise.all([
     listV5ProductClaimsRecord({ productId, reviewStatus: "supported" }),
     listV5ProductClaimsRecord({ productId, reviewStatus: "conditional" }),
@@ -186,16 +401,32 @@ export async function readProductKnowledgeProfile(productId: string, productName
       [productId]
     ).then(([rows]) => rows)
   ]);
-  const parsed = buildProductKnowledgeProfile(productName, [...supported, ...conditional]);
+  const claims = [...supported, ...conditional];
+  const parsed = buildProductKnowledgeProfile(productName, claims);
   const row = overrideRows[0];
-  if (!row) return parsed;
-  const override = parseV5Json<ProductKnowledgeProfileOverrideInput | null>(row.profile_json, null);
-  if (!override) return parsed;
-  return applyProductKnowledgeProfileOverride({
-    parsed,
-    overrideId: String(row.id),
-    version: Number(row.version_number),
-    approvedAt: row.approved_at,
-    override
-  });
+  const override = row ? parseV5Json<ProductKnowledgeProfileOverrideInput | null>(row.profile_json, null) : null;
+  const profile = row && override
+    ? applyProductKnowledgeProfileOverride({
+        parsed,
+        overrideId: String(row.id),
+        version: Number(row.version_number),
+        approvedAt: row.approved_at,
+        override
+      })
+    : parsed;
+  return {
+    profile,
+    contentStrategyKnowledgeContext: buildContentStrategyKnowledgeContext({
+      productId,
+      productName,
+      profile,
+      claims,
+      questionClusters
+    })
+  };
+}
+
+export async function readProductKnowledgeProfile(productId: string, productName: string): Promise<ProductKnowledgeProfile> {
+  const bundle = await readProductKnowledgeBundle(productId, productName);
+  return bundle.profile;
 }

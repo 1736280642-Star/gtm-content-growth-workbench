@@ -111,21 +111,33 @@ export default function HostedTaskPage() {
   useEffect(() => {
     let active = true;
     Promise.all([
-      fetch("/api/v5/products", { cache: "no-store" }).then(async (response) => {
+      fetch("/api/v5/hosted/auth/session", { cache: "no-store" }).then(async (response) => {
+        const payload = await response.json();
+        if (response.status === 401) {
+          router.replace("/hosted/login");
+          throw new Error("请先通过邮箱登录。");
+        }
+        if (!response.ok) throw new Error(readApiError(payload, "登录状态读取失败。"));
+        return payload.identity as { email: string };
+      }),
+      fetch("/api/v5/hosted/products", { cache: "no-store" }).then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(readApiError(payload, "产品读取失败。"));
         return Array.isArray(payload.products) ? payload.products as HostedProduct[] : [];
       }),
       loadChannels()
-    ]).then(([items]) => {
-      if (active) setProducts(items);
+    ]).then(([identity, items]) => {
+      if (active) {
+        setEmail(identity.email);
+        setProducts(items);
+      }
     }).catch((cause) => {
       if (active) setError(cause instanceof Error ? cause.message : "托管入口暂时不可用。");
     }).finally(() => {
       if (active) setProductsLoading(false);
     });
     return () => { active = false; };
-  }, [loadChannels]);
+  }, [loadChannels, router]);
 
   const selectedProduct = useMemo(
     () => products.find((product) => product.productId === selectedProductId),

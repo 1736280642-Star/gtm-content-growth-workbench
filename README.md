@@ -1,6 +1,6 @@
-# 面向企业与品牌GEO推广优化的内容自动化工作台
+# 基于GEO的内容自动化工作台
 
-面向企业与品牌GEO推广优化的内容自动化工作台是一套以“知识与产品为输入、自动化内容增长为输出”的运营系统。
+基于GEO的内容自动化工作台是一套以“知识与产品为输入、自动化内容增长为输出”的月度运营系统。
 
 发起托管时，用户只需要完成三件事：
 
@@ -27,18 +27,21 @@
 
 ### 当前不能承诺
 
+- 不能在 Embedding、搜索、生成模型或 OpenSearch 不可用时伪造“已生成”结果，也不会自动降级为无证据正文；
+- 不能保证联网搜索结果天然真实，跨来源冲突、时效性和产品归属仍需要证据治理与必要的人工确认；
+- 不能仅凭模型自评确认内容质量；真实推广前必须完成人工样文验收，批量生产沿用已确认的策略和校准版本；
 - 不能绕过微信公众号、CSDN、掘金、知乎、头条等平台的登录、验证码、账号资质、接口权限、风控和内容审核；
 - 不能通过 Chrome Profile 消除 AI 平台的服务端记忆；中立基线必须使用专用测试账号，并由用户确认平台记忆/历史引用关闭且没有自定义指令；
-- 当前版本是本地/内部试运行系统，未完成面向公网 SaaS 所需的完整租户隔离、统一身份认证、密钥托管、配额计费和合规运营能力。
+- 草稿箱写入、HTTP 200、本地 mock 或任务进入队列均不代表正式发布成功；成功必须有平台结果、公开标识或 URL，并通过后续存活检查；
+- Graph Workflow 当前提升的是可靠编排、checkpoint、审计和故障恢复，不替代业务规则、内容质量判断或外部渠道授权；
+- AgentTeams 当前未接入主链路。现阶段由确定性 Service、Worker、MCP 和 Graph Shadow 承担闭环，避免在单篇质量尚未通过前增加多 Agent 协作复杂度；
+- 托管入口已经具备邮箱一次性登录、工作区级订单/产品/账号隔离和角色门禁；运营控制台、计费、企业 SSO、集中密钥托管与合规运营仍属于公网 SaaS 上线前置项，不能把本地 3027 直接暴露到公网。
 
 ## 当前产品形态
 
 产品采用双层架构：默认"托管模式"面向只需提交任务并收结果的用户，"运营控制台"保留完整的后台管理能力。
-<img width="1971" height="2670" alt="屏幕截图_20-8-2026_173627_127 0 0 1" src="https://github.com/user-attachments/assets/d4b68e43-fa7a-489c-b3ee-6fd7dcd19c4c" />
-
 
 ### 托管模式（默认）
-
 
 根路径 `/` 是托管任务单，用户只需三步即可完成推广委托：
 
@@ -53,9 +56,10 @@
 知乎、CSDN、掘金使用“专用浏览器登录 + 本人确认账号”的授权方式，不要求用户把密码、Cookie 或 Token 填入工作台：
 
 1. 运营人员先激活该渠道的收录规则与发布适配器；
-2. 用户从托管设置进入渠道连接页，在专用浏览器窗口中自行完成登录、验证码或安全挑战；
-3. 系统识别候选账号后，用户确认该账号只用于当前产品的托管发布；
-4. 登录失效或平台阻断时暂停相关渠道，并通过邮件给出可操作的恢复入口。
+2. 用户通过一次性邮箱链接进入自己的工作区，从一个统一向导依次连接知乎、CSDN、掘金；
+3. 用户选择云端浏览器，或用 10 分钟一次性配对码连接自己的 Desktop Connector，再在平台官方页面处理登录和安全挑战；
+4. 系统只读取公开昵称、头像与主页，用户确认真实创作账号后才生成工作区级账号连接；
+5. 发布前执行器再次计算账号指纹，不一致立即熔断；登录失效或平台阻断时只暂停相关渠道并给出恢复入口。
 
 微信公众号沿用已配置的合法发布连接。任何渠道未具备规则、适配器或有效授权时均 fail-closed，不会伪造发布成功。
 
@@ -138,7 +142,7 @@ GEO 调研完成 → 邮件确认策略 → 邮件确认代表样文
 
 GEO 调研是内容生成前的前置搜索链路，围绕唯一推广目的——**提升品牌/产品的 AI 提及率**——设计（获客是提及率提升的下游结果）：
 
-- **渠道规则包**：平台收录规则（域名、板块、结构要求、对比维度、CTA 变体引用）以版本化配置注入（环境变量 `GEO_CHANNEL_RULE_PACK_JSON`），领域代码不硬编码平台域名与文案；第三方目标渠道要求规则包具备有效激活人/时间并覆盖目标渠道，就绪检查和 run 创建双重 fail-closed；仅自有渠道可在缺省规则包时运行；
+- **渠道规则包**：平台收录规则（域名、板块、结构要求、对比维度、CTA 变体引用）以版本化非敏感文件注入；当前已经人工确认激活 `geo-third-party-cn-v1-20260820`，Docker 默认通过 `GEO_CHANNEL_RULE_PACK_PATH=/app/config/geo-channel-rule-pack.json` 读取，必要时可以 `GEO_CHANNEL_RULE_PACK_JSON` 临时覆盖；领域代码不硬编码平台域名与文案；第三方目标渠道要求规则包具备有效激活人/时间并覆盖目标渠道，就绪检查和 run 创建双重 fail-closed；仅自有渠道可在缺省规则包时运行；
 - **平台感知查询**：调研查询按内容类型证据需求编译——平台收录格局（`site:{domain}` 约束查询）、踩坑证据、开源自建替代、量化成效基准、采购误区五类查询意图；核心查询最多 6 条，目标第三方渠道查询使用独立预算；补充轮按证据缺口定向补查（缺平台证据补 `site:` 查询、缺独立来源补变体查询）；
 - **平台打标与引用格局**：候选来源命中渠道域名后携带 `channelKey`，`channelStats` / `channelCitationStats` 反映目标平台的收录分布与被 AI 引用占比，作为渠道优先级与 KPI 归因的原始数据；
 - **双轨门禁**：硬门禁只拦“撒谎”（编造引用、实体混淆、单源证据、混用实体名，命中即拦截重试）；质量类问题（平台证据不足、无来源数字、大胆策略假设）降级为标注放行（`hypothesis` / `claimsRequiringEvidence` / 复测探针），交给复测数据裁判；
@@ -302,6 +306,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-full-produ
 npm.cmd run docker:3027
 ```
 
+该命令在 3027 健康后自动幂等启动本机 Wechatsync Bridge 与 Arcs Runner：已运行则直接复用，缺失则隐藏启动，日志写入 `%LOCALAPPDATA%\JotoPublishRunner\logs`。首次使用第三方渠道前只需执行一次 `uv sync --project arcs-runner`，并由部署人员在被 Git 忽略的 `.env.local` 配置非空 `WECHATSYNC_BRIDGE_TOKEN`，按需配置独立的 `JOTO_PUBLISH_RUNNER_TOKEN`。单独修复或检查伴侣服务可运行 `npm.cmd run channels:companions:start`。统一渠道向导会把授权、发布和只读验证提交给浏览器执行池；任务通过 Lease 限制并发，执行节点离线时保持失败关闭。
+
+私有化用户选择 Desktop Connector 后，在向导中生成一次性配对码，并在仓库根目录执行页面显示的命令：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-desktop-publish-connector.ps1 -PairingCode <一次性配对码>
+```
+
+长期节点令牌仅保存在 `%LOCALAPPDATA%\JotoPublishRunner\desktop-connector\node-identity.json`，浏览器 Profile 也在仓库外；两者都不得提交、复制到文档或发送给其他用户。云端执行节点使用部署侧 `PUBLISH_EXECUTOR_REGISTRATION_SECRET` 注册，Desktop Connector 不使用该共享密钥。
+
+执行 `npm.cmd run docker:3027:autostart` 注册 Windows 登录自启后，同一个任务会同时保证 Docker 3027、Bridge 和 Arcs Runner 就绪，不需要再维护第二个开机任务。伴侣服务失败不会让工作台下线，但知乎、CSDN、掘金动作会保持失败关闭。运行服务就绪不等于渠道规则已激活；截图中的“尚未激活托管规则”仍需经过人工批准的正式规则包解决。
+
 仅准备 MySQL、OpenSearch 和容器、暂不配置模型时，可以显式增加 `-AllowPendingProvider`。该状态不会被报告为完整生产就绪，也不能生成正式 EvidencePack 或正文。
 
 访问：<http://127.0.0.1:3027>
@@ -369,6 +385,30 @@ HOSTED_EMAIL_DELIVERY_TOKEN=<邮件接口提供或本机随机生成，不提交
 
 完整的字段来源、随机值生成命令、邮件接口请求/响应格式、Docker 重启、无泄密验收和轮换要求见 [`docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md`](./docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md)。
 
+### 多用户渠道连接与浏览器执行池密钥
+
+知乎、CSDN、掘金的统一连接向导和浏览器执行池需要以下部署侧密钥。真实值只写在被 Git 忽略的 `.env`（Docker 生产）或 `.env.local`（本地非 Docker），不进入 GitHub：
+
+```dotenv
+# 浏览器执行池 Runner（Arcs Runner）令牌；URL 只接受回环或 host.docker.internal
+JOTO_PUBLISH_RUNNER_URL=http://host.docker.internal:9530
+JOTO_PUBLISH_RUNNER_TOKEN=<本机随机生成，不提交 GitHub>
+
+# 云端浏览器执行节点注册密钥；Desktop Connector 不使用该共享密钥
+PUBLISH_EXECUTOR_REGISTRATION_SECRET=<本机随机生成，不提交 GitHub>
+
+# 私有化 Desktop Connector 使用一次性配对码（向导内生成，用完即失效），非持久密钥
+# powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-desktop-publish-connector.ps1 -PairingCode <一次性配对码>
+```
+
+- 云端模式：执行节点用 `PUBLISH_EXECUTOR_REGISTRATION_SECRET` 换取随机节点令牌，数据库只保存令牌的 SHA-256 哈希；
+- 私有化模式：用户在向导中生成一次性配对码，把当前设备注册为工作区专属 Desktop Connector，`PUBLISH_EXECUTOR_PAIRING_CODE` 用完即失效；
+- 未配置 `JOTO_PUBLISH_RUNNER_TOKEN` 或对应注册凭据时，执行节点保持 `pending_config`，不领取任务、不伪造账号识别或发布成功（fail-closed）；
+- 长期节点令牌仅保存在 `%LOCALAPPDATA%\JotoPublishRunner\desktop-connector\node-identity.json`，浏览器 Profile 在仓库外，两者都不得提交、复制或发送给他人；
+- 云端交互浏览器若提供远程会话地址必须使用 HTTPS；没有安全交互流时只能使用同机可见浏览器或 Desktop Connector，不能把未隔离的调试端口暴露给用户。
+
+详细设计见 [`docs/方案与规划/2026-08-21-多用户渠道账号连接与浏览器执行池.md`](./docs/方案与规划/2026-08-21-多用户渠道账号连接与浏览器执行池.md)。
+
 公众号订阅采集由管理员在部署环境或本地 `.env.local` 自行配置：
 
 ```text
@@ -422,6 +462,7 @@ npm.cmd run smoke:workflow
 | [`docs/方案与规划/2026-08-04-3027自动发布前台接入说明.md`](./docs/方案与规划/2026-08-04-3027自动发布前台接入说明.md) | 3027 发布结果账本、回传和旧内容迁移 |
 | [`docs/方案与规划/GEO调研链路修改方案.md`](./docs/方案与规划/GEO调研链路修改方案.md) | GEO 调研平台感知与提及率 KPI 闭环改造方案（含 P0–P3 阶段总结索引） |
 | [`docs/方案与规划/2026-08-20-GEO托管模式开发改造方案.md`](./docs/方案与规划/2026-08-20-GEO托管模式开发改造方案.md) | 托管任务、邮件确认、每日发布与 URL 回传的完整闭环设计 |
+| [`docs/方案与规划/2026-08-21-多用户渠道账号连接与浏览器执行池.md`](./docs/方案与规划/2026-08-21-多用户渠道账号连接与浏览器执行池.md) | 邮箱登录、统一三渠道连接、真实账号识别、云端执行池与 Desktop Connector 运维说明 |
 | [`docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md`](./docs/方案与规划/P0-自动化发布能力与渠道配置说明书.md) | 第三方渠道规则、账号连接、授权边界与正式发布判定 |
 
 ## 安全与合规

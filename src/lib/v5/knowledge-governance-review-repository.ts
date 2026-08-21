@@ -42,7 +42,7 @@ export async function listV5ProductClaimsRecord(input: {
     values.push(input.claimType);
   }
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
-    `SELECT id, product_id, subject_type, claim_type, normalized_claim, source_id, source_revision_id, source_locator, authority_level, support_mode,
+    `SELECT id, product_id, subject_type, claim_type, normalized_claim, original_quote, source_id, source_revision_id, source_locator, authority_level, support_mode,
             capability_status, claim_scope, conditions, limitations, product_version, confidence, extractor_version, review_status, conflict_group_id,
             supersedes_claim_id, row_version, reviewed_by, reviewed_at, created_at
      FROM product_claim WHERE ${conditions.join(" AND ")} ORDER BY created_at, id`,
@@ -54,6 +54,7 @@ export async function listV5ProductClaimsRecord(input: {
     subjectType: String(row.subject_type),
     claimType: String(row.claim_type),
     normalizedClaim: String(row.normalized_claim),
+    originalQuote: String(row.original_quote || row.normalized_claim),
     sourceId: String(row.source_id),
     sourceRevisionId: String(row.source_revision_id),
     sourceLocator: parseV5Json<Record<string, unknown>>(row.source_locator, {}),

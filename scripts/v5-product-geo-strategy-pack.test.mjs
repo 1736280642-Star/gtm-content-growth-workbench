@@ -45,11 +45,19 @@ function sampleBlueprint() {
         {
           id: "type-1", origin: "matched", articleTypeId: "system-template-scenario-solution", articleTypeVersionId: "system-template-scenario-solution-v1",
           name: "场景解决方案", definition: "从真实业务阻塞展开。", channels: ["wechat"], suitableQuestions: ["适合什么场景？"], unsuitableQuestions: ["纯技术排错"],
-          structureModules: [{ key: "真实场景", purpose: "描述问题", required: true }], lengthRange: { min: 1500, max: 2300 }, evidenceReadiness: "ready", proposedMonthlyShare: 0.6
+          structureModules: [{ key: "真实场景", purpose: "描述问题", required: true }], lengthRange: { min: 1500, max: 2300 },
+          knowledgeSupportSummary: "知识库支持场景、能力与边界表述。", knowledgeClaimIds: ["capability-1", "boundary-1"],
+          geoOpportunitySummary: "用户正在询问适用场景。", existingTypeComparison: "现有场景解决方案可直接承载，不需要新建类型。",
+          expectedMentionRationale: "直接回答场景问题有助于 AI 在选型回答中引用。", retestProbeRefs: ["q1"],
+          evidenceReadiness: "ready", proposedMonthlyShare: 0.6
         },
         {
           id: "type-2", origin: "generated", name: "人机判断边界指南", definition: "解释 AI 自动执行与人工确认边界。", channels: ["wechat"],
-          suitableQuestions: ["哪些环节需要人？"], unsuitableQuestions: ["纯品牌介绍"], structureModules: ["边界判断", "执行清单"], lengthRange: { min: 1600, max: 2400 }, evidenceReadiness: "ready", proposedMonthlyShare: 0.4
+          suitableQuestions: ["哪些环节需要人？"], unsuitableQuestions: ["纯品牌介绍"], structureModules: ["边界判断", "执行清单"], lengthRange: { min: 1600, max: 2400 },
+          knowledgeSupportSummary: "知识库支持人机协作边界。", knowledgeClaimIds: ["boundary-1"],
+          geoOpportunitySummary: "调研发现用户缺少边界判断依据。", existingTypeComparison: "现有类型不能完整承载判断清单，因此新建结构。",
+          expectedMentionRationale: "结构化边界清单可提高答案引用稳定性。", retestProbeRefs: ["q1"],
+          evidenceReadiness: "ready", proposedMonthlyShare: 0.4
         }
       ]
     },
@@ -91,6 +99,9 @@ test("compiles the internal research synthesis into the user-facing strategy V2 
   assert.equal(plan.articleTypePortfolio[1].origin, "generated");
   assert.equal(plan.articleTypePortfolio[1].structureModules[0].key, "边界判断");
   assert.equal(plan.articleTypePortfolio.length, 2);
+  assert.deepEqual(plan.articleTypePortfolio[0].knowledgeClaimIds, ["capability-1", "boundary-1"]);
+  assert.match(plan.articleTypePortfolio[0].existingTypeComparison, /直接承载/);
+  assert.deepEqual(plan.articleTypePortfolio[0].retestProbeRefs, ["q1"]);
   assert.deepEqual(plan.productPositioning.prohibitedClaims, ["不得编造客户案例"]);
   assert.equal(plan.productPositioning.promotionPurpose, plan.productPositioning.expressionFocus);
   assert.deepEqual(plan.productPositioning.positioning, []);
@@ -284,6 +295,22 @@ test("strategy compilation removes weak competitor guesses and turns unsupported
   assert.equal("requiredClaims" in plan.evidencePolicy.evidenceRequirements, false);
   assert.ok(plan.productPositioning.prohibitedClaims.includes("产品比竞品更安全"));
   assert.match(plan.evidencePolicy.citationStrategy.productClaimPolicy, /A1\/A2/);
+});
+
+test("price, case, competitor, and ROI types cannot remain ready without knowledge claim traceability", () => {
+  for (const name of ["产品价格说明", "客户案例", "竞品对比", "ROI 投资回报分析"]) {
+    const blueprint = sampleBlueprint();
+    blueprint.contentTypeStrategy.articleTypes[0] = {
+      ...blueprint.contentTypeStrategy.articleTypes[0],
+      name,
+      knowledgeClaimIds: [],
+      evidenceReadiness: "ready"
+    };
+    const plan = contracts.compileProductGeoStrategyContentPlan({
+      project: sampleProject(), blueprint, sourceSnapshotId: "source-snapshot-1", synthesisModel: "zhipu"
+    });
+    assert.equal(plan.articleTypePortfolio.find((item) => item.portfolioItemId === "type-1")?.evidenceReadiness, "partial");
+  }
 });
 
 test("only a human in an allowed role can make the product strategy decision", () => {

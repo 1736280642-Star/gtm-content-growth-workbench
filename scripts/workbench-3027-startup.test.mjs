@@ -11,12 +11,14 @@ test("daily 3027 launcher is idempotent and never builds or tears down the stack
   assert.match(launcher, /"up", "-d", "--no-build", "--pull", "never"/);
   assert.doesNotMatch(launcher, /Build-WorkbenchProductionImages/);
   assert.doesNotMatch(launcher, /"down"|--force-recreate/);
+  assert.match(launcher, /Ensure-WorkbenchChannelPublishCompanions/);
 });
 
 test("production deployment remains explicit and separate from daily startup", async () => {
   const deploy = await readFile("scripts/deploy-docker-3027.ps1", "utf8");
   const wrapper = await readFile("scripts/start-docker-3027.ps1", "utf8");
   assert.match(deploy, /Build-WorkbenchProductionImages/);
+  assert.match(deploy, /Ensure-WorkbenchChannelPublishCompanions/);
   assert.doesNotMatch(deploy, /"down"|--remove-orphans/);
   assert.match(wrapper, /ensure-workbench-3027\.ps1/);
 });
@@ -28,4 +30,25 @@ test("Windows logon task uses the no-build launcher and ignores duplicate starts
   assert.match(register, /-MultipleInstances IgnoreNew/);
   assert.match(register, /-RestartCount 3/);
   assert.match(register, /-NoOpen/);
+  assert.match(register, /Wechatsync Bridge and Arcs Runner/);
+});
+
+test("channel publishing companions are loopback-only, hidden, idempotent, and keep secrets out of output", async () => {
+  const [launcher, probe, common, development] = await Promise.all([
+    readFile("scripts/ensure-channel-publish-companions.ps1", "utf8"),
+    readFile("scripts/probe-channel-publish-companions.mjs", "utf8"),
+    readFile("scripts/workbench-3027-common.ps1", "utf8"),
+    readFile("scripts/start-dev-3027.ps1", "utf8")
+  ]);
+  assert.match(launcher, /Local\\JotoChannelPublishCompanions/);
+  assert.match(launcher, /arcs-runner\\\.venv\\Scripts\\python\.exe/);
+  assert.match(launcher, /-WindowStyle Hidden/);
+  assert.match(launcher, /RedirectStandardOutput/);
+  assert.match(launcher, /JotoPublishRunner/);
+  assert.match(probe, /LOOPBACK_HOSTS/);
+  assert.match(probe, /JOTO_PUBLISH_RUNNER_TOKEN/);
+  assert.match(probe, /bridgeTokenConfigured: Boolean/);
+  assert.doesNotMatch(probe, /JSON\.stringify\([^)]*Token/);
+  assert.match(common, /third-party channel actions stay fail-closed/);
+  assert.match(development, /Ensure-WorkbenchChannelPublishCompanions/);
 });

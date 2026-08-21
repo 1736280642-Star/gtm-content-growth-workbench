@@ -4,6 +4,7 @@ import type { DirectPublishPlatformKey } from "@/lib/types";
 import { getMonthlyWorkspaceReadModel } from "@/lib/v5/monthly-workspace-read-model";
 import { readFormalDraftVersion } from "@/lib/v5/single-article-production-repository";
 import { assertFormalDraftRolloutReady, assertHostedManagedPublishAllowed, ProductRolloutReadinessError } from "@/lib/v5/product-rollout-readiness-service";
+import type { HostedPublishAccountConnection } from "@/lib/v5/product-rollout-readiness-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -43,6 +44,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
         markdown: draft.markdown
       }
     : undefined;
+  let publishAccountConnection: HostedPublishAccountConnection | undefined;
 
   if (draft && (!draft.copyAllowed || draft.testOnly || !draft.hardRuleResult.passed)) {
     return NextResponse.json(
@@ -53,7 +55,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
 
   if (draft) {
     try {
-      await assertFormalDraftRolloutReady(draft.productionContractId, platform);
+      const readiness = await assertFormalDraftRolloutReady(draft.productionContractId, platform, draft.matrixItemId || taskId);
+      publishAccountConnection = readiness.publishAccountConnection;
     } catch (error) {
       if (error instanceof ProductRolloutReadinessError) {
         return NextResponse.json(
@@ -87,7 +90,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
       );
     }
     try {
-      await assertHostedManagedPublishAllowed(task.productId, platform);
+      publishAccountConnection = await assertHostedManagedPublishAllowed(task.productId, platform, task.taskId);
     } catch (error) {
       if (error instanceof ProductRolloutReadinessError) {
         return NextResponse.json(
@@ -119,6 +122,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
     title: approvedDraft.title,
     markdown: approvedDraft.markdown,
     platform,
+    accountConnectionId: publishAccountConnection?.accountConnectionId,
+    accountFingerprint: publishAccountConnection?.accountFingerprint,
+    browserProfileRef: publishAccountConnection?.browserProfileRef,
     scheduledAt: typeof payload.scheduledAt === "string" ? payload.scheduledAt : undefined
   });
   if (!created.ok || !created.data) {

@@ -1,0 +1,76 @@
+{
+  "rulePackVersionId": "geo-third-party-cn-v1-20260820",
+  "reviewStatus": "activated",
+  "activatedBy": "workspace-owner",
+  "activatedAt": "2026-08-21T01:40:25.488Z",
+  "activationRecord": {
+    "decision": "approved",
+    "source": "human_user_instruction",
+    "approvalText": "确认激活规则包 geo-third-party-cn-v1-20260820"
+  },
+  "channels": [
+    {
+      "channelKey": "zhihu",
+      "displayName": "知乎",
+      "domains": ["zhihu.com"],
+      "inclusionPatterns": [
+        "围绕真实用户问题给出可验证的专业回答",
+        "以实践复盘、踩坑经验和选型判断承载产品能力",
+        "通过场景化对比解释适用边界而不是直接宣传"
+      ],
+      "structureRequirements": [
+        "开头先回答问题并给出适用条件",
+        "正文使用问题、原因、方案、证据和边界结构",
+        "产品事实必须引用可追溯证据，经验判断必须明确标注",
+        "结尾只使用已治理 CTA 引用，不承诺无法验证的效果"
+      ],
+      "faqBoards": ["企业 AI 落地", "产品选型", "智能体实践"],
+      "comparisonDimensions": ["适用场景", "部署方式", "知识接入", "权限审计", "实施成本"],
+      "ctaVariantRefs": [],
+      "authorAccountPolicy": "仅使用产品负责人本人确认的知乎账号；登录失效、验证码或安全挑战时立即暂停并请求人工接管。",
+      "evidenceCandidateIds": []
+    },
+    {
+      "channelKey": "csdn",
+      "displayName": "CSDN",
+      "domains": ["csdn.net"],
+      "inclusionPatterns": [
+        "可复现的技术教程、问题排查和工程实践",
+        "围绕集成、部署、配置和性能问题给出具体步骤",
+        "用真实约束和验证结果说明产品能力边界"
+      ],
+      "structureRequirements": [
+        "标题明确技术问题、对象和预期结果",
+        "正文至少包含环境前提、操作步骤、验证方式和常见失败",
+        "命令、配置和代码示例不得包含真实密钥或账号信息",
+        "标签必须与正文主题一致，分类缺失时不得伪造"
+      ],
+      "faqBoards": ["部署与集成", "故障排查", "工程实践"],
+      "comparisonDimensions": ["接入成本", "部署复杂度", "可观测性", "扩展能力", "安全边界"],
+      "ctaVariantRefs": [],
+      "authorAccountPolicy": "仅使用产品负责人确认的 CSDN 创作账号；标签为必填项，账号失效或编辑器结构变化时停止自动发布。",
+      "evidenceCandidateIds": []
+    },
+    {
+      "channelKey": "juejin",
+      "displayName": "掘金",
+      "domains": ["juejin.cn"],
+      "inclusionPatterns": [
+        "面向开发者的工程实践、架构分析和工具链经验",
+        "通过真实问题与实现过程介绍产品或技术方案",
+        "优先提供独立信息增量，避免浅层营销内容"
+      ],
+      "structureRequirements": [
+        "标题和摘要不得使用夸大承诺或纯推广措辞",
+        "正文包含问题背景、方案取舍、实现过程、验证结果和局限",
+        "涉及对比时必须给出双边证据和适用条件",
+        "发布前执行低质推广与重复内容检查，未通过时 fail-closed"
+      ],
+      "faqBoards": ["前端与全栈实践", "AI 工程", "架构与工具链"],
+      "comparisonDimensions": ["开发体验", "工程复杂度", "性能", "生态兼容", "维护成本"],
+      "ctaVariantRefs": [],
+      "authorAccountPolicy": "仅使用产品负责人确认的掘金创作账号；平台未公开、风控拦截或验证失败时不得计为发布成功。",
+      "evidenceCandidateIds": []
+    }
+  ]
+}

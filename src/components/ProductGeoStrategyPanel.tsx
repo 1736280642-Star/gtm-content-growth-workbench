@@ -413,6 +413,14 @@ export function ProductGeoStrategyPanel({ productId }: { productId: string }) {
                         <Descriptions.Item label="类型定义">{detailItem.definition}</Descriptions.Item>
                         <Descriptions.Item label="内容目标">{detailItem.contentGoal}</Descriptions.Item>
                         <Descriptions.Item label="推荐理由">{detailItem.recommendationReason}</Descriptions.Item>
+                        <Descriptions.Item label="知识库支撑">{detailItem.knowledgeSupportSummary || "历史策略未记录该字段"}</Descriptions.Item>
+                        <Descriptions.Item label="关联 Claim">
+                          {(detailItem.knowledgeClaimIds || []).length ? `${detailItem.knowledgeClaimIds.length} 条：${detailItem.knowledgeClaimIds.join("、")}` : "未建立逐条 Claim 映射"}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="GEO 机会">{detailItem.geoOpportunitySummary || "历史策略未记录该字段"}</Descriptions.Item>
+                        <Descriptions.Item label="类型匹配判断">{detailItem.existingTypeComparison || "历史策略未记录该字段"}</Descriptions.Item>
+                        <Descriptions.Item label="AI 可见性预期">{detailItem.expectedMentionRationale || "历史策略未记录该字段"}</Descriptions.Item>
+                        <Descriptions.Item label="复测问题引用">{(detailItem.retestProbeRefs || []).join("、") || "尚未绑定复测问题"}</Descriptions.Item>
                         <Descriptions.Item label="目标读者">{detailItem.targetAudience.join("、") || "未单独限定"}</Descriptions.Item>
                         <Descriptions.Item label="文章结构">
                           <Space direction="vertical" size={4}>

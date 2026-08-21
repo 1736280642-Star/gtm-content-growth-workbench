@@ -3,7 +3,7 @@ import test from 'node:test';
 import { buildGeoMentionBaselineFromObservations, buildGeoResearchResultPack } from '../src/lib/v5/geo-research-result-pack.ts';
 import { buildGeoResearchDownstreamCandidates } from '../src/lib/v5/geo-research-downstream.ts';
 import { overrideGeoProbeSetQuestions } from '../src/lib/v5/geo-probe-compiler.ts';
-import { evaluateTargetChannelRuleCoverage } from '../src/lib/v5/geo-channel-rule-pack.ts';
+import { evaluateTargetChannelRuleCoverage, getActiveGeoChannelRulePack } from '../src/lib/v5/geo-channel-rule-pack.ts';
 import { geoResearchTaskGraphForTrigger } from '../src/lib/v5/geo-research-contracts.ts';
 
 const snapshot = {
@@ -144,6 +144,40 @@ test('target channel rule coverage blocks platform channels without an activated
     evaluateTargetChannelRuleCoverage({ targetChannels: ['csdn'], pack: undefined, packError: new Error('坏 JSON') }),
     /渠道规则包配置非法/
   );
+});
+
+test('active channel rule pack loads from the governed non-secret file', () => {
+  const previousJson = process.env.GEO_CHANNEL_RULE_PACK_JSON;
+  const previousPath = process.env.GEO_CHANNEL_RULE_PACK_PATH;
+  try {
+    delete process.env.GEO_CHANNEL_RULE_PACK_JSON;
+    process.env.GEO_CHANNEL_RULE_PACK_PATH = 'config/geo-channel-rule-pack.json';
+    const pack = getActiveGeoChannelRulePack();
+    assert.equal(pack?.rulePackVersionId, 'geo-third-party-cn-v1-20260820');
+    assert.equal(pack?.reviewStatus, 'activated');
+    assert.equal(pack?.activationRecord?.decision, 'approved');
+    assert.equal(pack?.activationRecord?.source, 'human_user_instruction');
+    assert.deepEqual(pack?.channels.map((channel) => channel.channelKey), ['zhihu', 'csdn', 'juejin']);
+    assert.equal(
+      evaluateTargetChannelRuleCoverage({ targetChannels: ['zhihu', 'csdn', 'juejin'], pack }),
+      undefined
+    );
+    process.env.GEO_CHANNEL_RULE_PACK_JSON = JSON.stringify({
+      rulePackVersionId: 'temporary-override',
+      activatedBy: 'human-reviewer',
+      activatedAt: '2026-08-21T00:00:00.000Z',
+      channels: [{ channelKey: 'csdn', displayName: 'CSDN', domains: ['csdn.net'], inclusionPatterns: [], structureRequirements: [] }]
+    });
+    assert.equal(getActiveGeoChannelRulePack()?.rulePackVersionId, 'temporary-override');
+    delete process.env.GEO_CHANNEL_RULE_PACK_JSON;
+    process.env.GEO_CHANNEL_RULE_PACK_PATH = 'config/does-not-exist.json';
+    assert.throws(() => getActiveGeoChannelRulePack(), /无法读取/);
+  } finally {
+    if (previousJson === undefined) delete process.env.GEO_CHANNEL_RULE_PACK_JSON;
+    else process.env.GEO_CHANNEL_RULE_PACK_JSON = previousJson;
+    if (previousPath === undefined) delete process.env.GEO_CHANNEL_RULE_PACK_PATH;
+    else process.env.GEO_CHANNEL_RULE_PACK_PATH = previousPath;
+  }
 });
 
 test('mention baseline is compiled from real provider observations instead of semantic aggregate', () => {

@@ -6,18 +6,30 @@ import { createConnectedManualCaptureTask } from "@/lib/v5/capture-repository";
 import { getV5GovernancePool } from "@/lib/v5/knowledge-governance-repository";
 import { ObservationServiceError } from "@/lib/v5/observation-service";
 import { listApprovedGeoMonitoringQuestions } from "@/lib/v5/question-service";
+import { assertWorkspaceProductAccess, requireHostedIdentity, requireHostedRole } from "@/lib/v5/hosted-identity-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const identity = await requireHostedIdentity(request);
+    requireHostedRole(identity, ["workspace_admin", "product_owner", "operator"]);
     const payload = await readObservationPayload(request);
     const productId = String(payload.productId || "").trim();
     const connectionId = String(payload.connectionId || "").trim();
     const idempotencyKey = String(payload.idempotencyKey || `hosted-ai-test-${randomUUID()}`).trim();
     if (!productId || !connectionId) {
       throw new ObservationServiceError(400, "HOSTED_AI_TEST_INPUT_REQUIRED", "请选择推广产品和已绑定的 AI 账号。");
+    }
+    await assertWorkspaceProductAccess(identity.workspaceId, productId);
+    const [connections] = await getV5GovernancePool().query<RowDataPacket[]>(
+      `SELECT id FROM publish_account_connection
+       WHERE id = ? AND workspace_id = ? AND authorization_status = 'connected' AND revoked_at IS NULL LIMIT 1`,
+      [connectionId, identity.workspaceId]
+    );
+    if (!connections[0]) {
+      throw new ObservationServiceError(404, "HOSTED_AI_TEST_CONNECTION_NOT_FOUND", "AI 账号连接不存在或不属于当前工作区。");
     }
 
     const approved = listApprovedGeoMonitoringQuestions();

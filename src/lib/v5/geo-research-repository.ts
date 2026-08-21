@@ -688,10 +688,15 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
      WHERE run_id = ? AND status = 'completed' ORDER BY created_at, id`,
     [String(row.run_id)]
   );
-  const { readProductKnowledgeProfile } = await import("./product-knowledge-profile");
-  const productKnowledgeProfile = await readProductKnowledgeProfile(
+  const previousOutputs = previousRows.map((previous) => ({
+    taskType: String(previous.task_type) as GeoResearchTaskType,
+    outputSummary: parseV5Json<Record<string, unknown>>(previous.output_summary, {})
+  }));
+  const { deriveContentStrategyQuestionClusters, readProductKnowledgeBundle } = await import("./product-knowledge-profile");
+  const productKnowledge = await readProductKnowledgeBundle(
     String(row.product_id),
-    String(row.display_name || row.canonical_name)
+    String(row.display_name || row.canonical_name),
+    deriveContentStrategyQuestionClusters(previousOutputs)
   );
   const { readProductWebsiteCoverageProfile } = await import("./website-coverage-repository");
   const websiteCoverageProfile = await readProductWebsiteCoverageProfile(String(row.product_id));
@@ -715,7 +720,8 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
       entityRelationship: row.entity_relationship ? String(row.entity_relationship) : undefined,
       aliases: parseV5Json<string[]>(row.aliases, [])
     },
-    productKnowledgeProfile,
+    productKnowledgeProfile: productKnowledge.profile,
+    contentStrategyKnowledgeContext: productKnowledge.contentStrategyKnowledgeContext,
     websiteCoverageProfile,
     project: {
       expressionFocus: String(row.expression_focus),
@@ -726,10 +732,7 @@ export async function readGeoResearchTaskExecutionContext(taskId: string) {
     },
     sourceSnapshotHash: String(row.input_source_snapshot_hash),
     probeSetSnapshot,
-    previousOutputs: previousRows.map((previous) => ({
-      taskType: String(previous.task_type) as GeoResearchTaskType,
-      outputSummary: parseV5Json<Record<string, unknown>>(previous.output_summary, {})
-    }))
+    previousOutputs
   };
 }
 
