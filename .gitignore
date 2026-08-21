@@ -4,6 +4,8 @@ node_modules/
 dist/
 coverage/
 backups/
+# vendored standalone publishing engine (nested git repo, tracked in its own repo)
+content-publish-engine/
 .obsidian/
 .tmp/
 .workbuddy/
