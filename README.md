@@ -385,6 +385,30 @@ HOSTED_EMAIL_DELIVERY_TOKEN=<邮件接口提供或本机随机生成，不提交
 
 完整的字段来源、随机值生成命令、邮件接口请求/响应格式、Docker 重启、无泄密验收和轮换要求见 [`docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md`](./docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md)。
 
+### 多用户渠道连接与浏览器执行池密钥
+
+知乎、CSDN、掘金的统一连接向导和浏览器执行池需要以下部署侧密钥。真实值只写在被 Git 忽略的 `.env`（Docker 生产）或 `.env.local`（本地非 Docker），不进入 GitHub：
+
+```dotenv
+# 浏览器执行池 Runner（Arcs Runner）令牌；URL 只接受回环或 host.docker.internal
+JOTO_PUBLISH_RUNNER_URL=http://host.docker.internal:9530
+JOTO_PUBLISH_RUNNER_TOKEN=<本机随机生成，不提交 GitHub>
+
+# 云端浏览器执行节点注册密钥；Desktop Connector 不使用该共享密钥
+PUBLISH_EXECUTOR_REGISTRATION_SECRET=<本机随机生成，不提交 GitHub>
+
+# 私有化 Desktop Connector 使用一次性配对码（向导内生成，用完即失效），非持久密钥
+# powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-desktop-publish-connector.ps1 -PairingCode <一次性配对码>
+```
+
+- 云端模式：执行节点用 `PUBLISH_EXECUTOR_REGISTRATION_SECRET` 换取随机节点令牌，数据库只保存令牌的 SHA-256 哈希；
+- 私有化模式：用户在向导中生成一次性配对码，把当前设备注册为工作区专属 Desktop Connector，`PUBLISH_EXECUTOR_PAIRING_CODE` 用完即失效；
+- 未配置 `JOTO_PUBLISH_RUNNER_TOKEN` 或对应注册凭据时，执行节点保持 `pending_config`，不领取任务、不伪造账号识别或发布成功（fail-closed）；
+- 长期节点令牌仅保存在 `%LOCALAPPDATA%\JotoPublishRunner\desktop-connector\node-identity.json`，浏览器 Profile 在仓库外，两者都不得提交、复制或发送给他人；
+- 云端交互浏览器若提供远程会话地址必须使用 HTTPS；没有安全交互流时只能使用同机可见浏览器或 Desktop Connector，不能把未隔离的调试端口暴露给用户。
+
+详细设计见 [`docs/方案与规划/2026-08-21-多用户渠道账号连接与浏览器执行池.md`](./docs/方案与规划/2026-08-21-多用户渠道账号连接与浏览器执行池.md)。
+
 公众号订阅采集由管理员在部署环境或本地 `.env.local` 自行配置：
 
 ```text
