@@ -160,6 +160,17 @@ npm.cmd run docker:3027:deploy -- -NoOpen
 
 上线验收不能只检查容器健康，还必须验证邮件接口真实接受请求、Outbox 进入 `sent`、确认链接可以从外部网络打开，以及相同幂等键不会重复发送。字段来源、生成命令、HTTP 契约、安全轮换和无泄密检查见 [`docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md`](./docs/方案与规划/2026-08-20-GEO托管邮件与安全链接配置指南.md)。
 
+## 公众号订阅采集
+
+公众号订阅采集由管理员在部署环境或本地 `.env.local` 自行配置，真实值不提交 GitHub：
+
+```dotenv
+WECHAT_COLLECTION_BASE_URL=<订阅服务 API 地址>
+WECHAT_COLLECTION_API_KEY=<服务后台创建的 API Key>
+```
+
+配置后需重启 Web 与知识采集 Worker。设置页「连接 → 公众号订阅监控台」只展示是否配置、来源数量与异常数，不接收、不保存、也不回显实际 API 地址和密钥。
+
 ## GEO 第三方渠道规则包
 
 Docker 默认从 `/app/config/geo-channel-rule-pack.json` 读取已经人工激活的非敏感规则包，当前版本为 `geo-third-party-cn-v1-20260820`，覆盖知乎、CSDN 和掘金。仓库文件保存规则与人工授权摘要，不包含 Cookie、Token 或账号资料。
