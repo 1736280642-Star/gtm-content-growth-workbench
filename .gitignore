@@ -29,6 +29,7 @@ data/v5-media-library.json
 data/v5-media-library-assets/
 public/wechat/
 artifacts/v5-generation/
+artifacts/geo-strategy-archive/
 *.log
 *.tsbuildinfo
 npm-debug.log*

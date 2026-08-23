@@ -13,6 +13,7 @@ import {
   writeV5GovernanceAudit
 } from "./knowledge-governance-repository";
 import { buildHostedPreferenceToken } from "./hosted-link-signing";
+import { deliverHostedTransactionalEmail, hostedEmailDeliveryReady } from "./hosted-email-client";
 
 export type HostedNotificationEvent =
   | "order_received"
@@ -199,20 +200,6 @@ async function renderNotification(outbox: OutboxRecord) {
   });
 }
 
-async function deliverEmail(input: { to: string; subject: string; text: string; html: string; idempotencyKey: string }) {
-  const endpoint = process.env.HOSTED_EMAIL_DELIVERY_URL?.trim();
-  const token = process.env.HOSTED_EMAIL_DELIVERY_TOKEN?.trim();
-  if (!endpoint || !token) throw new V5GovernanceRepositoryError("hosted_email_provider_missing", "邮件供应商尚未配置。", 503, "配置邮件投递地址和服务端 Token 后重试。" );
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-idempotency-key": input.idempotencyKey },
-    body: JSON.stringify({ to: input.to, subject: input.subject, text: input.text, html: input.html })
-  });
-  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok) throw new V5GovernanceRepositoryError("hosted_email_delivery_failed", "邮件供应商拒绝了投递请求。", 502);
-  return String(payload.messageId || payload.id || "accepted");
-}
-
 async function finalizeNotificationDelivery(input: {
   outbox: OutboxRecord;
   status: "sent" | "retry" | "blocked";
@@ -260,7 +247,7 @@ async function finalizeNotificationDelivery(input: {
 }
 
 export async function dispatchHostedNotifications(limit = 20) {
-  if (!process.env.HOSTED_EMAIL_DELIVERY_URL?.trim() || !process.env.HOSTED_EMAIL_DELIVERY_TOKEN?.trim()) {
+  if (!await hostedEmailDeliveryReady()) {
     return { processed: 0, results: [] as Array<{ id: string; status: string }>, pendingConfig: true };
   }
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
@@ -281,7 +268,7 @@ export async function dispatchHostedNotifications(limit = 20) {
     if (claim.affectedRows !== 1) continue;
     try {
       const rendered = await renderNotification(outbox);
-      const providerMessageId = await deliverEmail({ to: outbox.recipientEmail, ...rendered, idempotencyKey: outbox.id });
+      const providerMessageId = await deliverHostedTransactionalEmail({ to: outbox.recipientEmail, ...rendered, idempotencyKey: outbox.id });
       await finalizeNotificationDelivery({ outbox, status: "sent", providerMessageId });
       results.push({ id: outbox.id, status: "sent" });
     } catch (error) {

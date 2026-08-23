@@ -2,6 +2,7 @@
 
 import { CheckCircleOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
 import { Button, Input } from "antd";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import styles from "../../hosted-mode.module.css";
 
@@ -60,6 +61,7 @@ export default function HostedLoginPage() {
           {error ? <div className={styles.formError}><strong>暂时不能登录</strong><span>{error}</span></div> : null}
           <Button type="primary" size="large" block loading={sending} onClick={submit}>发送登录链接</Button>
           <small>不使用共享密码；登录会话保存在 HttpOnly Cookie 中。</small>
+          <Link href="/hosted/email-sender" className={styles.identitySetupLink}>首次部署或需要更换发件邮箱？连接 QQ / 163 / Gmail / Outlook</Link>
         </>}
       </section>
     </main>
