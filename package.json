@@ -79,6 +79,7 @@
     "test:v5-geo-multi-search": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-geo-multi-search.test.mjs",
     "test:v5-product-strategy": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-product-geo-strategy-pack.test.mjs",
     "test:v5-hosted-managed": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-hosted-managed-mode.test.mjs",
+    "test:v5-personal-email-sender": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-personal-email-sender.test.mjs",
     "test:v5-multi-user-channel-connections": "node --test scripts/v5-multi-user-channel-connections.test.mjs",
     "test:v5-product-strategy:integration": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-product-geo-strategy-pack.integration.test.mjs",
     "test:v5-article-types": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-article-types.test.mjs",
@@ -142,6 +143,7 @@
     "mammoth": "^1.12.0",
     "mysql2": "^3.11.0",
     "next": "15.5.21",
+    "nodemailer": "^9.0.5",
     "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -150,6 +152,7 @@
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
     "@types/node": "^20.14.10",
+    "@types/nodemailer": "^7.0.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "eslint": "^8.57.0",

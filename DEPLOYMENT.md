@@ -145,6 +145,8 @@ docker compose --profile full up -d --build
 
 正式托管邮件依赖公网工作台地址、链接签名密钥、邮件投递接口和接口 Bearer Token。Docker 3027 部署把真实值保存在被 Git 忽略的 `.env`，公开模板只保留以下占位字段：
 
+如果使用个人 QQ / 163 / Gmail / Outlook 发件箱，改用授权页 `/hosted/email-sender`；完整配置、OAuth 回调地址和真实验收步骤见 [`个人发件邮箱授权与3027验收指南`](./docs/方案与规划/2026-08-23-个人发件邮箱授权与3027验收指南.md)。HTTP Mail Relay 与个人邮箱二选一，Relay 配置完整时保持优先。
+
 ```dotenv
 HOSTED_PUBLIC_BASE_URL=https://workbench.example.com
 HOSTED_REVIEW_LINK_SECRET=<本机生成>

@@ -146,8 +146,19 @@ function Build-WorkbenchProductionImages {
 
   Write-WorkbenchStep "Building production Worker image: $workerImage"
   Invoke-WorkbenchDocker -Arguments @("build", "--target", "worker", "--tag", $workerImage, ".")
+  Assert-WorkbenchWorkerImageEntrypoints -WorkerImage $workerImage
   Write-WorkbenchStep "Building production Web image: $webImage"
   Invoke-WorkbenchDocker -Arguments @("build", "--target", "web", "--tag", $webImage, ".")
+}
+
+function Assert-WorkbenchWorkerImageEntrypoints {
+  param([string]$WorkerImage)
+
+  Write-WorkbenchStep "Verifying required Worker entrypoints inside: $WorkerImage"
+  Invoke-WorkbenchDocker -Arguments @(
+    "run", "--rm", "--entrypoint", "node", $WorkerImage, "-e",
+    "const fs=require('node:fs');for(const path of ['/app/workers/browser-executor-worker.mjs','/app/scripts/check-hosted-identity-acceptance.mjs']){if(!fs.existsSync(path)){console.error('Missing required Worker entrypoint: '+path);process.exit(1)}}"
+  )
 }
 
 function Assert-WorkbenchProductionImagesAvailable {

@@ -789,3 +789,48 @@
 .connectionComplete { display: grid; justify-items: start; gap: 18px; }
 .connectionComplete > span { color: #188653; font-size: 46px; }
 @media (max-width: 760px) { .connectionWizardGrid { grid-template-columns: 1fr; } .connectionChannelList { grid-template-columns: repeat(3, 1fr); } .connectionChannelItem { padding: 10px; } .connectionChannelItem small { display: none; } }
+
+.identitySetupLink { color: #176b52; font-size: 12px; line-height: 1.5; text-align: center; }
+.identitySetupLink:hover { color: #0e513c; text-decoration: underline; }
+
+.senderSetupPage { min-height: 100vh; padding: 34px clamp(20px, 6vw, 84px) 72px; background: radial-gradient(circle at 10% 0, #e9f6ef 0, #f5f7f5 38%, #eef2ef 100%); }
+.senderSetupHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; max-width: 960px; margin: 0 auto 24px; }
+.senderSetupHeader h1 { margin: 8px 0 8px; color: #17221d; font-size: clamp(30px, 4vw, 44px); letter-spacing: -.04em; }
+.senderSetupHeader p { max-width: 680px; margin: 0; color: #5d6b64; line-height: 1.7; }
+.senderStatusCard, .senderConnectedCard, .senderSetupCard, .senderSecurityNote { max-width: 960px; margin: 0 auto 18px; border: 1px solid #d7e2dc; border-radius: 20px; background: rgba(255, 255, 255, .96); box-shadow: 0 16px 50px rgba(28, 58, 43, .07); }
+.senderStatusCard, .senderConnectedCard { display: flex; align-items: center; gap: 14px; padding: 17px 20px; }
+.senderStatusCard > svg, .senderConnectedCard > svg { color: #18794e; font-size: 25px; }
+.senderStatusCard div, .senderConnectedCard div { display: grid; flex: 1; gap: 3px; }
+.senderStatusCard span, .senderConnectedCard span, .senderConnectedCard small { color: #69766f; font-size: 12px; }
+.senderConnectedCard small { text-align: right; }
+.senderSetupCard { padding: clamp(22px, 4vw, 34px); }
+.senderSectionTitle { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 22px; }
+.senderSectionTitle > span { width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #176b52; color: #fff; font-size: 12px; font-weight: 700; }
+.senderSectionTitle > div { display: grid; gap: 4px; }
+.senderSectionTitle strong { color: #26352e; font-size: 16px; }
+.senderSectionTitle small { color: #748078; line-height: 1.5; }
+.senderProviderGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.senderProvider, .senderProviderSelected { min-width: 0; display: grid; justify-items: start; gap: 7px; padding: 17px; border: 1px solid #dce5e0; border-radius: 15px; background: #fbfcfb; color: #36443d; text-align: left; cursor: pointer; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.senderProvider:hover, .senderProviderSelected { border-color: #579179; background: #eef7f2; transform: translateY(-1px); }
+.senderProviderSelected { box-shadow: inset 0 0 0 1px #579179; }
+.senderProviderMark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: #dfeee6; color: #176b52; font-size: 13px; font-weight: 800; }
+.senderProvider small, .senderProviderSelected small { color: #76827b; font-size: 10px; }
+.senderSetupForm { display: grid; gap: 17px; max-width: 590px; }
+.senderSetupForm label { display: grid; gap: 8px; color: #34423b; font-size: 12px; font-weight: 650; }
+.senderOAuthNotice { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 13px; padding: 17px; border-radius: 14px; background: #eef6f2; }
+.senderOAuthNotice > svg { color: #176b52; font-size: 25px; }
+.senderOAuthNotice div { display: grid; gap: 4px; }
+.senderOAuthNotice span { color: #647169; font-size: 11px; line-height: 1.55; }
+.senderSuccess { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border: 1px solid #b9d8c7; border-radius: 10px; background: #edf8f2; color: #176b52; font-size: 12px; }
+.senderSecurityNote { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 18px 20px; color: #526159; }
+.senderSecurityNote > svg { margin-top: 2px; color: #176b52; font-size: 18px; }
+.senderSecurityNote div { display: grid; gap: 4px; }
+.senderSecurityNote strong { color: #2d3a34; font-size: 12px; }
+.senderSecurityNote span { font-size: 10px; line-height: 1.65; }
+
+@media (max-width: 760px) {
+  .senderSetupHeader { align-items: stretch; flex-direction: column; }
+  .senderProviderGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .senderConnectedCard { align-items: flex-start; flex-wrap: wrap; }
+  .senderConnectedCard small { width: 100%; padding-left: 39px; text-align: left; }
+}
