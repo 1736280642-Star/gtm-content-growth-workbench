@@ -1,3 +1,5 @@
+import { isDemoMode } from "../demo/config";
+import { recordDemoEmail } from "../demo/email";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
 import {
   deliverWithPersonalEmailSender,
@@ -6,6 +8,13 @@ import {
 } from "./hosted-email-sender-service";
 
 export function hostedPublicBaseUrl() {
+  if (isDemoMode()) {
+    const configured = process.env.HOSTED_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
+    if (configured) return configured;
+    const vercelUrl = process.env.VERCEL_URL?.trim();
+    if (vercelUrl) return `https://${vercelUrl.replace(/^https?:\/\//, "")}`;
+    return "http://localhost:3000";
+  }
   const configured = process.env.HOSTED_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
   if (configured) return configured;
   if (process.env.NODE_ENV === "production") {
@@ -15,6 +24,7 @@ export function hostedPublicBaseUrl() {
 }
 
 export async function hostedEmailDeliveryReady() {
+  if (isDemoMode()) return true;
   const endpoint = process.env.HOSTED_EMAIL_DELIVERY_URL?.trim();
   const token = process.env.HOSTED_EMAIL_DELIVERY_TOKEN?.trim();
   if (endpoint && token) return true;
@@ -24,6 +34,15 @@ export async function hostedEmailDeliveryReady() {
 }
 
 export async function deliverHostedTransactionalEmail(input: HostedEmailDelivery) {
+  if (isDemoMode()) {
+    return recordDemoEmail({
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+      idempotencyKey: input.idempotencyKey
+    });
+  }
   const endpoint = process.env.HOSTED_EMAIL_DELIVERY_URL?.trim();
   const token = process.env.HOSTED_EMAIL_DELIVERY_TOKEN?.trim();
   if (!endpoint && !token) return deliverWithPersonalEmailSender(input);

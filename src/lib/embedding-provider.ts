@@ -1,3 +1,5 @@
+import { isDemoMode } from "./demo/config";
+import { demoEmbeddingVectors } from "./demo/providers";
 import { getRuntimeConfigStatus } from "./runtime-config";
 import type { KnowledgeEmbeddingModelProvider } from "./types";
 
@@ -48,6 +50,15 @@ function normalizeEmbeddingVector(value: unknown) {
 }
 
 export async function callEmbeddingProvider(request: EmbeddingProviderRequest): Promise<EmbeddingProviderResult> {
+  if (isDemoMode()) {
+    return {
+      ok: true,
+      status: "success",
+      provider: request.provider,
+      model: "demo-embedding",
+      vectors: demoEmbeddingVectors(request.input)
+    };
+  }
   const env = embeddingProviderEnvMap[request.provider];
   const missingConfig = getEmbeddingProviderMissingEnv(request.provider);
 

@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isDemoMode } from "../demo/config";
+import { demoObservationSeed } from "../demo/fixtures/observation";
+import { demoRead, demoWrite } from "../demo/store";
 import type { MonthlyReview, NextMonthProposal } from "./monthly-review-contracts";
 import type {
   CaptureComparison,
@@ -102,6 +105,9 @@ function normalizeState(value: Partial<V5ObservationState> | undefined): V5Obser
 }
 
 export async function readV5ObservationState(): Promise<V5ObservationState> {
+  if (isDemoMode()) {
+    return demoRead("demo:v5-observation", () => demoObservationSeed);
+  }
   try {
     return normalizeState(JSON.parse(await readFile(resolveStatePath(), "utf8")) as Partial<V5ObservationState>);
   } catch (error) {
@@ -111,6 +117,10 @@ export async function readV5ObservationState(): Promise<V5ObservationState> {
 }
 
 async function writeState(state: V5ObservationState) {
+  if (isDemoMode()) {
+    demoWrite("demo:v5-observation", state);
+    return;
+  }
   const statePath = resolveStatePath();
   await mkdir(path.dirname(statePath), { recursive: true });
   const temporaryPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;

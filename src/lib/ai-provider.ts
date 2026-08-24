@@ -1,3 +1,5 @@
+import { demoId, demoLatencyMs, isDemoMode } from "./demo/config";
+import { demoAiContent } from "./demo/providers";
 import { getRuntimeConfigStatus } from "./runtime-config";
 
 export type AiProviderKey = "qwen" | "deepseek" | "doubao" | "zhipu";
@@ -82,6 +84,24 @@ function formatAiProviderError(error: unknown, timeoutMs: number) {
 }
 
 export async function callAiProvider(request: AiProviderRequest): Promise<AiProviderResult> {
+  if (isDemoMode()) {
+    const env = providerEnvMap[request.provider];
+    return {
+      ok: true,
+      status: "success",
+      provider: request.provider,
+      model: process.env[env.model] || "demo-model",
+      content: demoAiContent(request.userPrompt),
+      metrics: {
+        durationMs: demoLatencyMs(),
+        requestId: demoId("req"),
+        finishReason: "stop",
+        inputTokens: 180,
+        outputTokens: 640,
+        totalTokens: 820
+      }
+    };
+  }
   const startedAt = Date.now();
   const env = providerEnvMap[request.provider];
   const missingConfig = getMissingConfig(request.provider);

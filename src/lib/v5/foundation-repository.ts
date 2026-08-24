@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { isDemoMode } from "../demo/config";
+import { demoFoundationSeed } from "../demo/fixtures/foundation";
+import { demoRead, demoWrite } from "../demo/store";
 import type { V5ArticleExpressionProfile, V5ArticleExpressionProfileVersion } from "./article-expression-contracts";
 import type {
   V5KnowledgeActionItem,
@@ -106,6 +109,9 @@ export function createV5FoundationId(prefix: string) {
 }
 
 export function readV5FoundationState(): V5FoundationState {
+  if (isDemoMode()) {
+    return demoRead("demo:v5-foundation", () => demoFoundationSeed);
+  }
   const path = statePath();
   if (!existsSync(path)) return emptyState();
   const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<V5FoundationState>;
@@ -118,6 +124,10 @@ export function readV5FoundationState(): V5FoundationState {
 }
 
 function writeV5FoundationState(state: V5FoundationState) {
+  if (isDemoMode()) {
+    demoWrite("demo:v5-foundation", state);
+    return;
+  }
   const path = statePath();
   mkdirSync(dirname(path), { recursive: true });
   const temporaryPath = `${path}.${process.pid}.tmp`;

@@ -1,5 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isDemoMode } from "../demo/config";
+import { demoMonthlySeed } from "../demo/fixtures/monthly";
+import { demoRead, demoWrite } from "../demo/store";
 import type {
   BatchQueueItem,
   ExceptionItem,
@@ -95,6 +98,9 @@ function normalizeState(value: Partial<V5MonthlyState> | undefined): V5MonthlySt
 }
 
 export async function readV5MonthlyState(): Promise<V5MonthlyState> {
+  if (isDemoMode()) {
+    return demoRead("demo:v5-monthly", () => demoMonthlySeed);
+  }
   try {
     const raw = await readFile(resolveStatePath(), "utf8");
     return normalizeState(JSON.parse(raw) as Partial<V5MonthlyState>);
@@ -108,6 +114,10 @@ export async function readV5MonthlyState(): Promise<V5MonthlyState> {
 }
 
 async function writeV5MonthlyState(state: V5MonthlyState) {
+  if (isDemoMode()) {
+    demoWrite("demo:v5-monthly", state);
+    return;
+  }
   const statePath = resolveStatePath();
   await mkdir(path.dirname(statePath), { recursive: true });
   const temporaryPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;

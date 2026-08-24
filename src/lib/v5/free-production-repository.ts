@@ -1,5 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isDemoMode } from "../demo/config";
+import { demoFreeProductionSeed } from "../demo/fixtures/free-production";
+import { demoRead, demoWrite } from "../demo/store";
 import type { FreeProductionAuditEvent, FreeProductionBatch, FreeProductionTask } from "./free-production-contracts";
 
 export interface FreeProductionState {
@@ -40,6 +43,9 @@ function normalizeState(value: Partial<FreeProductionState>): FreeProductionStat
 }
 
 export async function readFreeProductionState() {
+  if (isDemoMode()) {
+    return demoRead("demo:v5-free-production", () => demoFreeProductionSeed);
+  }
   try {
     return normalizeState(JSON.parse(await readFile(resolveStatePath(), "utf8")) as Partial<FreeProductionState>);
   } catch (error) {
@@ -49,6 +55,10 @@ export async function readFreeProductionState() {
 }
 
 async function writeState(state: FreeProductionState) {
+  if (isDemoMode()) {
+    demoWrite("demo:v5-free-production", state);
+    return;
+  }
   const statePath = resolveStatePath();
   await mkdir(path.dirname(statePath), { recursive: true });
   const temporaryPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;

@@ -1,10 +1,12 @@
 "use client";
 
-import { CheckCircleOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
-import { Button, Input } from "antd";
+import { CheckCircleOutlined, LockOutlined, MailOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Button, Divider, Input } from "antd";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import styles from "../../hosted-mode.module.css";
+
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 function readError(payload: unknown) {
   const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
@@ -15,6 +17,7 @@ export default function HostedLoginPage() {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [demoCode, setDemoCode] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -35,10 +38,29 @@ export default function HostedLoginPage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(readError(payload));
+      if (payload.demoCode) setDemoCode(String(payload.demoCode));
       setSent(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "登录邮件发送失败，请稍后重试。");
     } finally {
+      setSending(false);
+    }
+  }
+
+  async function demoLogin() {
+    setSending(true);
+    setError("");
+    try {
+      const response = await fetch("/api/v5/hosted/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "000000" })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(readError(payload));
+      window.location.href = typeof payload.redirectTo === "string" ? payload.redirectTo : "/";
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "演示登录失败，请重试。");
       setSending(false);
     }
   }
@@ -51,12 +73,16 @@ export default function HostedLoginPage() {
           <CheckCircleOutlined className={styles.identityIcon} />
           <h1>检查你的邮箱</h1>
           <p>登录链接已发送到 <strong>{email}</strong>。链接15分钟内有效且只能使用一次。</p>
-          <div className={styles.authorizationCallout}>打开邮件后会自动回到当前工作台，不需要设置密码。</div>
+          {demoCode ? <div className={styles.authorizationCallout}>演示模式：固定验证码为 <strong>{demoCode}</strong>，已进入演示收件箱。</div> : <div className={styles.authorizationCallout}>打开邮件后会自动回到当前工作台，不需要设置密码。</div>}
           <Button size="large" onClick={() => setSent(false)}>重新发送</Button>
         </> : <>
           <LockOutlined className={styles.identityIcon} />
           <h1>登录 GEO 托管工作台</h1>
           <p>使用工作邮箱登录。系统只把邮箱用于工作区身份、关键确认和发布结果通知。</p>
+          {DEMO_MODE ? <>
+            <Button type="primary" size="large" block icon={<ThunderboltOutlined />} loading={sending} onClick={demoLogin}>一键演示登录（进入已跑通的工作台）</Button>
+            <Divider plain>或体验邮箱登录</Divider>
+          </> : null}
           <label className={styles.identityField}><span>工作邮箱</span><Input size="large" prefix={<MailOutlined />} value={email} onChange={(event) => setEmail(event.target.value)} onPressEnter={submit} placeholder="name@company.com" /></label>
           {error ? <div className={styles.formError}><strong>暂时不能登录</strong><span>{error}</span></div> : null}
           <Button type="primary" size="large" block loading={sending} onClick={submit}>发送登录链接</Button>

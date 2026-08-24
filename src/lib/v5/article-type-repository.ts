@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isDemoMode } from "../demo/config";
+import articleTypeTemplatesData from "../../../data/v5-article-type-templates.json";
 import type {
   ArticleTypeProfile,
   ArticleTypeProfileVersion,
@@ -52,8 +54,9 @@ function resolveStatePath() {
 }
 
 async function createSeedState(): Promise<ArticleTypeState> {
-  const raw = await readFile(path.resolve(process.cwd(), "data/v5-article-type-templates.json"), "utf8");
-  const templates = JSON.parse(raw) as ArticleTypeTemplateSeed[];
+  const templates = isDemoMode()
+    ? (articleTypeTemplatesData as unknown as ArticleTypeTemplateSeed[])
+    : (JSON.parse(await readFile(path.resolve(process.cwd(), "data/v5-article-type-templates.json"), "utf8")) as ArticleTypeTemplateSeed[]);
   const now = new Date().toISOString();
   const profiles: Record<string, ArticleTypeProfile> = {};
   const versions: Record<string, ArticleTypeProfileVersion> = {};

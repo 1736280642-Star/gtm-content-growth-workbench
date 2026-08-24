@@ -1,5 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { RowDataPacket } from "mysql2/promise";
+import { DEMO_LOGIN_CODE, isDemoMode } from "../demo/config";
+import { recordDemoEmail } from "../demo/email";
+import { demoRead, demoReset, demoWrite } from "../demo/store";
 import { deliverHostedTransactionalEmail, hostedPublicBaseUrl } from "./hosted-email-client";
 import {
   getV5GovernancePool,
@@ -13,6 +16,29 @@ const LOGIN_TTL_MINUTES = 15;
 const SESSION_TTL_DAYS = 30;
 const hostedRoles = ["workspace_admin", "product_owner", "operator", "viewer"] as const;
 export type HostedWorkspaceRole = typeof hostedRoles[number];
+
+const DEMO_SESSION_KEY = "demo:hosted-identity-session";
+const DEMO_EMAIL = "demo@joto.ai";
+const DEMO_USER_ID = "demo-user-1";
+const DEMO_WORKSPACE_ID = "demo-workspace-1";
+
+interface DemoHostedSession {
+  token: string;
+  context: HostedIdentityContext;
+}
+
+function createDemoSession(): { context: HostedIdentityContext; sessionToken: string } {
+  const sessionToken = `demo-${randomBytes(24).toString("base64url")}`;
+  const context: HostedIdentityContext = {
+    sessionId: `demo-session-${randomUUID()}`,
+    userId: DEMO_USER_ID,
+    workspaceId: DEMO_WORKSPACE_ID,
+    email: DEMO_EMAIL,
+    role: "workspace_admin"
+  };
+  demoWrite(DEMO_SESSION_KEY, { token: sessionToken, context } satisfies DemoHostedSession);
+  return { context, sessionToken };
+}
 
 export interface HostedIdentityContext {
   sessionId: string;
@@ -44,7 +70,18 @@ function escapeHtml(value: string) {
   })[character] || character);
 }
 
-export async function requestHostedEmailLogin(rawEmail: string) {
+export async function requestHostedEmailLogin(rawEmail: string): Promise<{ accepted: boolean; deliveryQueued: boolean; demoCode?: string }> {
+  if (isDemoMode()) {
+    const email = normalizeEmail(rawEmail);
+    recordDemoEmail({
+      to: email,
+      subject: "登录 JOTO GEO 托管工作台（演示）",
+      text: `演示验证码：${DEMO_LOGIN_CODE}`,
+      html: `<p>演示验证码：<strong>${DEMO_LOGIN_CODE}</strong></p>`,
+      idempotencyKey: `demo-login-${email}`
+    });
+    return { accepted: true, deliveryQueued: true, demoCode: DEMO_LOGIN_CODE };
+  }
   const email = normalizeEmail(rawEmail);
   const [recent] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT id FROM hosted_identity_login_challenge
@@ -87,6 +124,12 @@ export async function requestHostedEmailLogin(rawEmail: string) {
 }
 
 export async function consumeHostedEmailLogin(token: string) {
+  if (isDemoMode()) {
+    if (token !== DEMO_LOGIN_CODE) {
+      throw new V5GovernanceRepositoryError("hosted_identity_login_invalid", "演示模式请输入固定验证码 000000，或使用一键演示登录。", 401);
+    }
+    return createDemoSession();
+  }
   if (!token || token.length < 32 || token.length > 200) {
     throw new V5GovernanceRepositoryError("hosted_identity_login_invalid", "登录链接无效或已过期。", 401);
   }
@@ -185,6 +228,13 @@ function readCookie(request: Request, name: string) {
 }
 
 export async function readHostedIdentity(request: Request): Promise<HostedIdentityContext | undefined> {
+  if (isDemoMode()) {
+    const token = readCookie(request, HOSTED_IDENTITY_COOKIE);
+    if (!token) return undefined;
+    const session = demoRead<DemoHostedSession | undefined>(DEMO_SESSION_KEY, () => undefined);
+    if (!session || session.token !== token) return undefined;
+    return session.context;
+  }
   const token = readCookie(request, HOSTED_IDENTITY_COOKIE);
   if (!token) return undefined;
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
@@ -228,6 +278,7 @@ export function requireHostedRole(context: HostedIdentityContext, allowed: Hoste
 }
 
 export async function linkWorkspaceProduct(input: { workspaceId: string; productId: string; userId: string }) {
+  if (isDemoMode()) return;
   await getV5GovernancePool().query(
     `INSERT INTO hosted_workspace_product (workspace_id, product_id, linked_by, linked_at)
      VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE linked_by = linked_by`,
@@ -236,6 +287,7 @@ export async function linkWorkspaceProduct(input: { workspaceId: string; product
 }
 
 export async function assertWorkspaceProductAccess(workspaceId: string, productId: string) {
+  if (isDemoMode()) return;
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     "SELECT product_id FROM hosted_workspace_product WHERE workspace_id = ? AND product_id = ? LIMIT 1",
     [workspaceId, productId]
@@ -244,6 +296,7 @@ export async function assertWorkspaceProductAccess(workspaceId: string, productI
 }
 
 export async function assertWorkspaceOrderAccess(workspaceId: string, orderId: string) {
+  if (isDemoMode()) return;
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     "SELECT id FROM hosted_promotion_order WHERE workspace_id = ? AND id = ? LIMIT 1",
     [workspaceId, orderId]
@@ -252,6 +305,10 @@ export async function assertWorkspaceOrderAccess(workspaceId: string, orderId: s
 }
 
 export async function revokeHostedIdentitySession(sessionId: string) {
+  if (isDemoMode()) {
+    demoReset(DEMO_SESSION_KEY);
+    return;
+  }
   await getV5GovernancePool().query(
     "UPDATE hosted_identity_session SET revoked_at = COALESCE(revoked_at, NOW()) WHERE id = ?",
     [sessionId]

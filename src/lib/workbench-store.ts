@@ -106,7 +106,7 @@ export interface PipelineRunRecord {
 
 export interface WorkbenchState {
   runtime: {
-    storage: "local_json";
+    storage: "local_json" | "memory";
     statePath: string;
     initializedAt: string;
   };

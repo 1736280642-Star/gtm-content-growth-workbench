@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isDemoMode } from "../demo/config";
+import freeExpressionPresetsData from "../../../data/v5-free-expression-presets.json";
 import type {
   AudienceLensKey,
   FreeContentExpressionType,
@@ -62,8 +64,9 @@ function digest(value: unknown) {
 }
 
 async function createSeedState(): Promise<FreeContentExpressionTypeState> {
-  const raw = await readFile(path.resolve(process.cwd(), "data/v5-free-expression-presets.json"), "utf8");
-  const seed = JSON.parse(raw) as PresetSeedFile;
+  const seed = isDemoMode()
+    ? (freeExpressionPresetsData as unknown as PresetSeedFile)
+    : (JSON.parse(await readFile(path.resolve(process.cwd(), "data/v5-free-expression-presets.json"), "utf8")) as PresetSeedFile);
   const now = "2026-07-27T00:00:00.000Z";
   const sourceRuleDigest = digest({ brandBaseline: seed.brandBaseline, presets: seed.presets });
   const types: Record<string, FreeContentExpressionType> = {};
@@ -197,7 +200,8 @@ export function updateFreeContentExpressionTypeState<T>(mutator: (state: FreeCon
 }
 
 export async function readFreeExpressionBrandBaseline() {
-  const raw = await readFile(path.resolve(process.cwd(), "data/v5-free-expression-presets.json"), "utf8");
-  const seed = JSON.parse(raw) as PresetSeedFile;
+  const seed = isDemoMode()
+    ? (freeExpressionPresetsData as unknown as PresetSeedFile)
+    : (JSON.parse(await readFile(path.resolve(process.cwd(), "data/v5-free-expression-presets.json"), "utf8")) as PresetSeedFile);
   return { ...seed.brandBaseline, sourceRuleDocumentId: seed.sourceRuleDocumentId, sourceRuleVersion: seed.sourceRuleVersion, sourceRuleDigest: digest({ brandBaseline: seed.brandBaseline, presets: seed.presets }) };
 }

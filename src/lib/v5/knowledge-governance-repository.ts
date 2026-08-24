@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import mysql, { type Pool, type PoolConnection, type RowDataPacket } from "mysql2/promise";
+import { isDemoMode } from "../demo/config";
 import type { V5GateCode } from "./knowledge-governance-contracts";
 import type { V5GateResult } from "./knowledge-governance-workflow";
 
@@ -65,7 +66,47 @@ export interface V5GovernanceRunRecord {
   completedAt?: string;
 }
 
+interface DemoGovernanceConnection {
+  query(sql: string): Promise<[RowDataPacket[] | { affectedRows: number; insertId: number }[], unknown[]]>;
+  beginTransaction(): Promise<void>;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+  release(): void;
+}
+
+function createDemoGovernancePool(): Pool {
+  const query = async (sql: string): Promise<[RowDataPacket[] | { affectedRows: number; insertId: number }[], unknown[]]> => {
+    const kind = String(sql || "").trim().split(/\s+/)[0]?.toUpperCase();
+    if (kind === "SELECT" || kind === "SHOW" || kind === "DESCRIBE") {
+      return [[], []];
+    }
+    return [[{ affectedRows: 1, insertId: 0 }], []];
+  };
+  const connection: DemoGovernanceConnection = {
+    query: query as unknown as DemoGovernanceConnection["query"],
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {}
+  };
+  const pool = {
+    query: query as unknown as Pool["query"],
+    getConnection: async () => connection as unknown as PoolConnection,
+    end: async () => {}
+  };
+  return pool as unknown as Pool;
+}
+
+function getDemoGovernancePool(): Pool {
+  const globalObject = globalThis as unknown as GlobalWithV5Pool & { __demoGovernancePool?: Pool };
+  if (!globalObject.__demoGovernancePool) {
+    globalObject.__demoGovernancePool = createDemoGovernancePool();
+  }
+  return globalObject.__demoGovernancePool;
+}
+
 export function getV5GovernancePool() {
+  if (isDemoMode()) return getDemoGovernancePool();
   const missingEnv = requiredEnv.filter((name) => !process.env[name]?.trim());
   if (missingEnv.length > 0) {
     throw new V5GovernanceRepositoryError(
