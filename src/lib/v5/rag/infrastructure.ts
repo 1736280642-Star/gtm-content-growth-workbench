@@ -1,3 +1,4 @@
+import { isDemoMode } from "../../demo/config";
 import type { RagInfrastructureStatus } from "./contracts";
 
 const mysqlConfig = ["MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"] as const;
@@ -46,6 +47,14 @@ export function getOpenSearchAuthorizationHeader() {
 }
 
 export function getRagInfrastructureStatus(): RagInfrastructureStatus {
+  if (isDemoMode()) {
+    return {
+      status: "ready",
+      mysql: { status: "ready", missingConfig: [] },
+      opensearch: { status: "ready", missingConfig: [] },
+      embedding: { status: "ready", provider: "qwen_embedding", model: "text-embedding-v3", missingConfig: [] }
+    };
+  }
   const mysqlMissing = missing(mysqlConfig);
   const openSearchMissing = getOpenSearchMissingConfig();
   const provider = process.env.RAG_EMBEDDING_PROVIDER?.trim() as keyof typeof embeddingProviders | undefined;

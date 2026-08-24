@@ -1,3 +1,5 @@
+import { isDemoMode } from "./demo/config";
+
 export type RuntimeCapabilityStatus = "ready" | "pending_config";
 
 export interface RuntimeCapability {
@@ -149,8 +151,8 @@ function createZhihuDraftCapability(): RuntimeCapability {
   });
 }
 
-export function getRuntimeConfigStatus() {
-  const capabilities = [
+function buildRuntimeCapabilities(): RuntimeCapability[] {
+  return [
     createCapability({
       key: "local_json_repository",
       label: "本地 JSON Repository",
@@ -246,7 +248,16 @@ export function getRuntimeConfigStatus() {
       purpose: "读取 CDN 导出日志",
       requiredEnv: ["CDN_LOG_EXPORT_PATH"]
     })
-  ] satisfies RuntimeCapability[];
+  ];
+}
+
+export function getRuntimeConfigStatus() {
+  const capabilities = buildRuntimeCapabilities();
+
+  if (isDemoMode()) {
+    const demoCapabilities = capabilities.map((item) => ({ ...item, status: "ready" as const, missingEnv: [] }));
+    return { capabilities: demoCapabilities, ready: demoCapabilities, pending: [] };
+  }
 
   return {
     capabilities,
