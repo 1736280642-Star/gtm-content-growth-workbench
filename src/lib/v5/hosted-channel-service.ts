@@ -1,3 +1,4 @@
+import { isDemoMode } from "../demo/config";
 import type { DirectPublishPlatformKey } from "../types";
 import { getActiveGeoChannelRulePack, GEO_OWNED_CHANNEL_KEYS } from "./geo-channel-rule-pack";
 import { deriveHostedChannelAuthorizationPhase, type HostedChannelOption } from "./hosted-managed-contracts";
@@ -5,7 +6,28 @@ import { getProductRolloutReadiness } from "./product-rollout-readiness-service"
 
 export const hostedDirectPublishChannels = ["wechat", "zhihu", "csdn", "juejin"] as const satisfies readonly DirectPublishPlatformKey[];
 
+const demoChannelAccounts: Record<string, string> = {
+  wechat: "JOTO 官方公众号",
+  csdn: "JOTO 技术博客",
+  juejin: "JOTO 掘金号",
+  zhihu: "JOTO 知乎号"
+};
+
 export async function listHostedChannelOptions(productId?: string): Promise<HostedChannelOption[]> {
+  if (isDemoMode()) {
+    return hostedDirectPublishChannels.map((channel) => {
+      const accountLabel = demoChannelAccounts[channel] || `JOTO ${channel} 账号`;
+      return {
+        channel,
+        capability: "auto_publish",
+        authorizationStatus: "connected",
+        authorizationPhase: "connected",
+        accountLabel,
+        accountBindingVersion: 1,
+        detail: `已连接 ${accountLabel}`
+      } satisfies HostedChannelOption;
+    });
+  }
   let packError: unknown;
   let pack: ReturnType<typeof getActiveGeoChannelRulePack>;
   try {

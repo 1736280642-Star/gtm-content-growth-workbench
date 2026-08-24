@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { isDemoMode } from "../demo/config";
+import { demoHostedOrder } from "../demo/fixtures/hosted";
 import {
   getV5GovernancePool,
   hashV5GovernancePayload,
@@ -111,6 +113,7 @@ export async function createHostedPromotionOrderRecord(input: CreateHostedPromot
 }
 
 export async function readHostedPromotionOrderRecord(orderId: string) {
+  if (isDemoMode()) return demoHostedOrder(orderId);
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(`${orderSelect} WHERE order_row.id = ? LIMIT 1`, [orderId]);
   return rows[0] ? mapOrder(rows[0]) : undefined;
 }

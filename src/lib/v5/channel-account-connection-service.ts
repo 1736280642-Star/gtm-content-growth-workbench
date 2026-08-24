@@ -1,5 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { isDemoMode } from "../demo/config";
+import { demoOrderChannelConnections } from "../demo/fixtures/hosted";
 import type { DirectPublishPlatformKey } from "../types";
 import type { HostedIdentityContext } from "./hosted-identity-service";
 import { assertWorkspaceOrderAccess, requireHostedRole } from "./hosted-identity-service";
@@ -463,6 +465,7 @@ export async function confirmDetectedPublishAccount(input: {
 }
 
 export async function listOrderChannelConnections(identity: HostedIdentityContext, orderId: string) {
+  if (isDemoMode()) return demoOrderChannelConnections();
   await assertWorkspaceOrderAccess(identity.workspaceId, orderId);
   const [orders] = await getV5GovernancePool().query<RowDataPacket[]>(
     "SELECT product_id, channel_preferences_json FROM hosted_promotion_order WHERE id = ? AND workspace_id = ? LIMIT 1",

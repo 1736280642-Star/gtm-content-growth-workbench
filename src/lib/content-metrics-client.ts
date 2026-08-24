@@ -1,3 +1,4 @@
+import { isDemoMode } from "./demo/config";
 import type { V5ConfigurationStatusItem } from "./v5/article-expression-contracts";
 import type { ContentMonitorPlatform } from "./v5/content-monitor-contracts";
 
@@ -52,6 +53,17 @@ function pendingItems(message: string): V5ConfigurationStatusItem[] {
 }
 
 export async function getContentMetricsConfigurationStatus(): Promise<V5ConfigurationStatusItem[]> {
+  if (isDemoMode()) {
+    return (["wechat", "csdn", "juejin", "zhihu"] as ContentMonitorPlatform[]).map((platform) => ({
+      key: `content_metrics_${platform}`,
+      label: `${platformLabels[platform]}内容指标`,
+      purpose: "获取已发布内容的浏览量、点赞数和收藏数",
+      category: "content_metrics_connection",
+      status: "ready",
+      lastCheckedAt: new Date().toISOString(),
+      nextAction: "授权有效，系统每 6 小时自动更新。"
+    }));
+  }
   const runnerUrl = getContentMetricsRunnerUrl();
   const token = String(process.env.CONTENT_METRICS_RUNNER_TOKEN || "").trim();
   if (!runnerUrl || !token) return pendingItems("配置 CONTENT_METRICS_RUNNER_URL 与 CONTENT_METRICS_RUNNER_TOKEN 后重新检查。");

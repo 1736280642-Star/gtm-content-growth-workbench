@@ -1,7 +1,17 @@
 import { createHash } from "node:crypto";
+import { isDemoMode } from "./demo/config";
 import { DEFAULT_BLOG_SOURCE_URLS } from "./blog-source";
 import { parseCsv, readTextInput } from "./import-utils";
 import type { BlogArticle } from "./types";
+
+function demoBlogArticles(): BlogArticle[] {
+  const crawledAt = new Date().toISOString();
+  return [
+    { id: "demo-blog-1", title: "WorkBuddy 智能工作台如何打通企业 AI 落地的最后一公里", url: "https://jotoai.com/articles/workbuddy-last-mile", indexedStatus: "indexed", seoIssueCount: 1, geoResult: "hit", dataConfidence: "imported", lastCrawledAt: crawledAt },
+    { id: "demo-blog-2", title: "腾讯云 ADP 智能体开发平台的企业级实践", url: "https://jotoai.com/articles/tencent-adp-enterprise", indexedStatus: "indexed", seoIssueCount: 0, geoResult: "hit", dataConfidence: "imported", lastCrawledAt: crawledAt },
+    { id: "demo-blog-3", title: "GEO 增长方法论：从关键词到 AI 可见性", url: "https://jotoai.com/articles/geo-growth-method", indexedStatus: "unknown", seoIssueCount: 3, geoResult: "partial", dataConfidence: "imported", lastCrawledAt: crawledAt }
+  ];
+}
 
 export interface BlogSyncAdapterResult {
   ok: boolean;
@@ -127,6 +137,10 @@ function dedupeArticles(articles: BlogArticle[]) {
 }
 
 export async function loadBlogArticles(input: Record<string, unknown>): Promise<BlogSyncAdapterResult> {
+  if (isDemoMode()) {
+    const articles = demoBlogArticles();
+    return { ok: true, status: "success", message: `已从官网 sitemap 同步 ${articles.length} 篇文章（演示数据）。`, articles };
+  }
   if (Array.isArray(input.articles) && input.articles.length) {
     const articles = dedupeArticles(
       input.articles

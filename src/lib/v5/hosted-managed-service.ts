@@ -1,3 +1,5 @@
+import { isDemoMode } from "../demo/config";
+import { demoHostedOrder } from "../demo/fixtures/hosted";
 import { V5GovernanceServiceError } from "./knowledge-governance-service";
 import { getProductGeoStrategyPackView } from "./product-strategy-pack-service";
 import { readProductSampleArticles } from "./product-sample-article-service";
@@ -152,6 +154,10 @@ async function enqueueHostedStateNotification(order: NonNullable<Awaited<ReturnT
 }
 
 export async function getHostedPromotionOrder(orderId: string) {
+  if (isDemoMode()) {
+    const demoOrder = demoHostedOrder(orderId);
+    return { order: demoOrder, nextAction: compileHostedOrderNextAction(demoOrder), pendingReview: undefined };
+  }
   let order = await readHostedPromotionOrderRecord(orderId);
   if (!order) throw new V5GovernanceServiceError("hosted_order_not_found", "托管任务不存在。", 404);
   if (!["paused", "completed"].includes(order.status) && canAutomaticallyReconcile(order)) {

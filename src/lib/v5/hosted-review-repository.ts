@@ -1,5 +1,7 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { isDemoMode } from "../demo/config";
+import { demoReviewRequest } from "../demo/fixtures/hosted";
 import {
   getV5GovernancePool,
   V5GovernanceRepositoryError,
@@ -161,6 +163,7 @@ export async function ensureHostedReviewRequestRecord(input: {
 }
 
 export async function readHostedReviewRequestByToken(token: string) {
+  if (isDemoMode()) return demoReviewRequest();
   const verified = verifyTokenSignature(token);
   const result = await withV5GovernanceTransaction(async (connection) => {
     const [rows] = await connection.query<RowDataPacket[]>(
