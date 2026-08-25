@@ -1,4 +1,5 @@
 import type { RowDataPacket } from "mysql2/promise";
+import { isDemoMode } from "../demo/config";
 import {
   getV5GovernancePool,
   hashV5GovernancePayload,
@@ -424,6 +425,44 @@ function evidenceReadiness(definition: unknown) {
 }
 
 export async function readProductSampleArticles(productId: string) {
+  if (isDemoMode()) {
+    const now = new Date().toISOString();
+    return {
+      productId,
+      strategyPackId: "sp-workbuddy-adp-001",
+      strategyVersion: 1,
+      strategyStatus: "approved",
+      requiredCount: 2,
+      approvedCount: 1,
+      items: [
+        {
+          articleTypeVersionId: "atp-001",
+          articleTypeName: "技术实践型",
+          evidenceReadiness: "ready",
+          taskId: "sample-task-1",
+          title: "为什么企业选 WorkBuddy 智能工作台时，不能只看单点工具能力",
+          taskStatus: "completed",
+          reviewStatus: "approved",
+          acceptedDraftVersionId: "dv-1",
+          operation: undefined,
+          draft: { draftVersionId: "dv-1", versionNumber: 1, copyAllowed: true, createdAt: now },
+          updatedAt: now
+        },
+        {
+          articleTypeVersionId: "atp-002",
+          articleTypeName: "避坑指南型",
+          evidenceReadiness: "ready",
+          taskId: "sample-task-2",
+          title: "腾讯云 ADP 智能体开发平台的 GEO 增长实践与避坑指南",
+          taskStatus: "completed",
+          reviewStatus: "pending_review",
+          operation: undefined,
+          draft: { draftVersionId: "dv-2", versionNumber: 1, copyAllowed: true, createdAt: now },
+          updatedAt: now
+        }
+      ]
+    };
+  }
   const [strategyRows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT sp.id, sp.strategy_version, sp.status
      FROM product_entity product
