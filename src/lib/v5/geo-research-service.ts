@@ -1,3 +1,5 @@
+import { isDemoMode } from "../demo/config";
+import { demoProductKnowledgeProfile, demoProducts, demoResearchWorkspace, demoSourceSnapshot, demoWebsiteCoverageProfile } from "../demo/fixtures/research";
 import type {
   GeoMentionBaseline,
   GeoResearchEvidence,
@@ -225,6 +227,30 @@ function suggestedArticleTypesForQuestion(question: string) {
 }
 
 export async function getGeoResearchWorkspace(productId: string) {
+  if (isDemoMode()) {
+    const product = demoProducts[productId] || demoProducts["workbuddy"];
+    const workspace = demoResearchWorkspace(product.productId);
+    const snapshot = demoSourceSnapshot();
+    return {
+      product,
+      productProfile: demoProductKnowledgeProfile(),
+      websiteCoverageProfile: demoWebsiteCoverageProfile(product.productId),
+      workspace,
+      readiness: {
+        status: "ready",
+        canCreateRun: true,
+        canExecuteLiveResearch: true,
+        latestSourceSnapshot: snapshot,
+        checks: [
+          { key: "product_identity", label: "产品身份", status: "ready", detail: "产品实体已人工确认。" },
+          { key: "research_boundary", label: "研究边界", status: "ready", detail: "表达重点、市场、语言和渠道已保存。" },
+          { key: "source_snapshot", label: "产品资料快照", status: "ready", detail: `已冻结 ${snapshot.sourceCount} 个资料源、${snapshot.approvedClaimCount} 条已批准事实；其中 ${snapshot.quality.officialSourceCount} 个正式来源可公开追溯。` },
+          { key: "website_coverage", label: "官网覆盖基线", status: "ready", detail: "官网知识准备度为 ready，公开 GEO 准备度为 ready。" },
+          { key: "live_search_provider", label: "联网研究 Provider", status: "ready", detail: "智谱、豆包、千问事实搜索已配置；智谱负责统一语义综合。" }
+        ]
+      }
+    };
+  }
   assertText(productId, "productId", 64);
   const product = await getActiveProduct(productId);
   const [workspace, latestSourceSnapshot, productProfile, websiteCoverageProfile] = await Promise.all([

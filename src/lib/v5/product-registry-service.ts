@@ -1,3 +1,5 @@
+import { isDemoMode } from "../demo/config";
+import { demoProducts } from "../demo/fixtures/research";
 import type { CreateGeoResearchProjectInput } from "./geo-research-contracts";
 import {
   createGeoResearchProjectRecord,
@@ -186,6 +188,7 @@ export async function listProductsWithGeoOverview(input?: { includeInactive?: bo
 }
 
 export async function getProduct(productId: string) {
+  if (isDemoMode()) return demoProducts[productId] || demoProducts["workbuddy"];
   assertText(productId, "productId", 64);
   const product = await readProductRegistryRecord(productId);
   if (!product) {
@@ -195,6 +198,7 @@ export async function getProduct(productId: string) {
 }
 
 export async function getActiveProduct(productId: string) {
+  if (isDemoMode()) return demoProducts[productId] || demoProducts["workbuddy"];
   assertText(productId, "productId", 64);
   return assertActiveProductRegistryRecord(productId);
 }
