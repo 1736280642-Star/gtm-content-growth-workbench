@@ -503,7 +503,7 @@ export default function HostedTaskPage() {
   return (
     <div className={styles.page}>
       <section className={styles.intro}>
-        <div><div className={styles.kicker}>JOTO / GUIDED MANAGED SETUP</div><h1>一张页面，把托管前的所有配置做完。</h1><p>按 1–6 的顺序往下做。每一步都写明了“点哪里、填什么、做完后看什么”，不需要在多个设置页之间来回查找。</p></div>
+        <div><div className={styles.kicker}>JOTO / GUIDED MANAGED SETUP</div><h1>一次配置，托管你后续的GEO品牌推广。</h1></div>
         <aside className={styles.introAside}><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></aside>
       </section>
 
