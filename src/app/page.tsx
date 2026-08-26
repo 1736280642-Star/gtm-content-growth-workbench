@@ -32,7 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import styles from "./hosted-mode.module.css";
 
 const HostedConnectionsWorkspace = dynamic(
-  () => import("./hosted/connections/page").then((module) => module.HostedConnectionsWorkspace),
+  () => import("./hosted/connections/HostedConnectionsWorkspace").then((module) => module.HostedConnectionsWorkspace),
   {
     ssr: false,
     loading: () => <div className={styles.embeddedConnectionLoading}><Spin /><span>正在加载安全账号连接向导</span></div>

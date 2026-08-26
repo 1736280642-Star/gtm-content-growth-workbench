@@ -87,12 +87,13 @@ test("托管前端不再依赖会话假数据或模拟结果邮件", async () =>
 });
 
 test("首次配置以单页六步向导呈现并保留可折叠详细指引", async () => {
-  const [home, login, success, settings, connections] = await Promise.all([
+  const [home, login, success, settings, connectionsPage, connections] = await Promise.all([
     readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/hosted/login/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/hosted/success/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/hosted/settings/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/app/hosted/connections/page.tsx", import.meta.url), "utf8")
+    readFile(new URL("../src/app/hosted/connections/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/connections/HostedConnectionsWorkspace.tsx", import.meta.url), "utf8")
   ]);
 
   for (const sectionId of ["setup-identity", "setup-product", "setup-channels", "setup-notifications", "setup-accounts", "setup-ready"]) {
@@ -108,6 +109,8 @@ test("首次配置以单页六步向导呈现并保留可折叠详细指引", as
   assert.match(login, /redirect\(query\.error \? "\/\?loginError=invalid" : "\/\?setup=login"\)/);
   assert.match(success, /#setup-accounts/);
   assert.match(settings, /#setup-accounts/);
+  assert.match(connectionsPage, /export default function HostedConnectionsPage/);
+  assert.doesNotMatch(connectionsPage, /export function HostedConnectionsWorkspace/);
   assert.match(connections, /export function HostedConnectionsWorkspace/);
   assert.doesNotMatch(`${home}\n${login}\n${success}\n${settings}`, /\/settings\?tab=connections/);
 });
@@ -156,7 +159,7 @@ test("渠道授权、暂停门禁与月度完成均通过正式状态编排", as
     readFile(new URL("../src/lib/v5/hosted-managed-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/hosted-channel-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/app/hosted/settings/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/app/hosted/connections/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/connections/HostedConnectionsWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/product-rollout-readiness-service.ts", import.meta.url), "utf8")
   ]);
   assert.match(channelService, /getProductRolloutReadiness/);
@@ -171,7 +174,7 @@ test("渠道授权、暂停门禁与月度完成均通过正式状态编排", as
 
 test("第三方授权使用专用浏览器，不要求用户粘贴敏感凭据", async () => {
   const [connectPage, authorizationService, formalClient, executorWorker, arcsServer, arcsPlatforms, rolloutService] = await Promise.all([
-    readFile(new URL("../src/app/hosted/connections/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/connections/HostedConnectionsWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/channel-account-connection-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/formal-publish-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../workers/browser-executor-worker.mjs", import.meta.url), "utf8"),
