@@ -69,8 +69,16 @@ function readError(payload: unknown, fallback: string) {
   return String(record.message || fallback);
 }
 
-export default function HostedConnectionsPage() {
-  const [orderId, setOrderId] = useState("");
+export function HostedConnectionsWorkspace({
+  embeddedOrderId,
+  embedded = false,
+  onConnectionsChanged
+}: {
+  embeddedOrderId?: string;
+  embedded?: boolean;
+  onConnectionsChanged?: () => void;
+}) {
+  const [orderId, setOrderId] = useState(embeddedOrderId || "");
   const [order, setOrder] = useState<HostedOrder>();
   const [channels, setChannels] = useState<ChannelState[]>([]);
   const [executorType, setExecutorType] = useState<ExecutorType>("cloud_browser");
@@ -114,11 +122,13 @@ export default function HostedConnectionsPage() {
   }, []);
 
   useEffect(() => {
-    const targetOrderId = new URLSearchParams(window.location.search).get("orderId")?.trim() || "";
+    const targetOrderId = embeddedOrderId?.trim()
+      || new URLSearchParams(window.location.search).get("orderId")?.trim()
+      || "";
     setOrderId(targetOrderId);
     if (targetOrderId) void load(targetOrderId);
     else { setError("缺少托管任务编号。"); setLoading(false); }
-  }, [load]);
+  }, [embeddedOrderId, load]);
 
   const activeSessionId = activeSession?.id;
   const activeSessionStatus = activeSession?.status;
@@ -210,6 +220,7 @@ export default function HostedConnectionsPage() {
       const next = (latest.channels as ChannelState[]).find((item) => !item.connection);
       if (next) setActiveChannel(next.channel);
       setActiveSession(undefined);
+      onConnectionsChanged?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "账号确认失败。请刷新后重试。");
     } finally {
@@ -217,21 +228,24 @@ export default function HostedConnectionsPage() {
     }
   }
 
-  if (loading) return <div className={styles.reviewLoading}><Spin /><span>正在读取发布账号连接</span></div>;
-  if (!order) return <div className={styles.reviewError}><strong>无法打开账号连接向导</strong><span>{error}</span><Link href="/"><Button>返回工作台</Button></Link></div>;
+  if (loading) return <div className={embedded ? styles.embeddedConnectionLoading : styles.reviewLoading}><Spin /><span>正在读取发布账号连接</span></div>;
+  if (!order) return <div className={embedded ? styles.embeddedConnectionError : styles.reviewError}><strong>无法打开账号连接向导</strong><span>{error}</span>{!embedded ? <Link href="/"><Button>返回工作台</Button></Link> : null}</div>;
+  if (!channels.length) return embedded
+    ? <div className={styles.embeddedConnectionEmpty}><CheckCircleFilled /><div><strong>当前没有需要浏览器登录的渠道</strong><span>如果只选择了微信公众号，请按上方公众号卡片的指引完成。</span></div></div>
+    : <div className={styles.reviewError}><strong>当前委托没有浏览器发布渠道</strong><span>返回托管设置选择知乎、CSDN 或掘金后再连接。</span><Link href={`/hosted/settings?orderId=${encodeURIComponent(orderId)}`}><Button>返回托管设置</Button></Link></div>;
 
   const session = activeSession || current?.session;
   const account = session?.detectedAccount;
   return (
-    <div className={styles.connectionWizardPage}>
-      <header className={styles.authorizationHeader}>
+    <div className={embedded ? styles.embeddedConnectionWizard : styles.connectionWizardPage}>
+      {!embedded ? <header className={styles.authorizationHeader}>
         <Link href={`/hosted/settings?orderId=${encodeURIComponent(orderId)}`}><Button type="text" icon={<ArrowLeftOutlined />}>返回托管设置</Button></Link>
         <div className={styles.kicker}>PUBLISH ACCOUNT CONNECTIONS</div>
         <h1>连接发布账号</h1>
         <p>{order.productName} · 已完成 {connectedCount}/{channels.length}。每个账号都与当前工作区隔离，确认后自动进入下一个渠道。</p>
-      </header>
+      </header> : <div className={styles.embeddedConnectionIntro}><strong>逐个完成平台登录与账号确认</strong><span>{order.productName} · 已完成 {connectedCount}/{channels.length}。确认后会自动跳到下一个未连接渠道。</span></div>}
 
-      <div className={styles.connectionWizardGrid}>
+      <div className={`${styles.connectionWizardGrid} ${embedded ? styles.connectionWizardGridEmbedded : ""}`}>
         <aside className={styles.connectionChannelList}>
           {channels.map((item, index) => {
             const connected = item.connection?.authorizationStatus === "connected";
@@ -241,7 +255,7 @@ export default function HostedConnectionsPage() {
         </aside>
 
         <main className={styles.connectionWizardCard}>
-          {complete ? <div className={styles.connectionComplete}><CheckCircleFilled /><h2>三个渠道已经连接完成</h2><p>系统会在每次发布前核对账号指纹，发现账号切换时立即暂停，不会发布到未知账号。</p><Link href={`/hosted/success?orderId=${encodeURIComponent(orderId)}`}><Button type="primary" size="large">返回托管状态</Button></Link></div> : current?.connection ? <div className={styles.connectionComplete}><CheckCircleFilled /><h2>{labels[current.channel]} 已连接</h2><p>{current.connection.publicDisplayName}</p><Button type="primary" onClick={() => { const next = channels.find((item) => !item.connection); if (next) setActiveChannel(next.channel); }}>连接下一个渠道</Button></div> : <>
+          {complete ? <div className={styles.connectionComplete}><CheckCircleFilled /><h2>{channels.length} 个浏览器渠道已全部连接</h2><p>系统会在每次发布前核对账号指纹，发现账号切换时立即暂停，不会发布到未知账号。</p>{!embedded ? <Link href={`/hosted/success?orderId=${encodeURIComponent(orderId)}`}><Button type="primary" size="large">返回托管状态</Button></Link> : <Button type="primary" onClick={onConnectionsChanged}>重新检查全部状态</Button>}</div> : current?.connection ? <div className={styles.connectionComplete}><CheckCircleFilled /><h2>{labels[current.channel]} 已连接</h2><p>{current.connection.publicDisplayName}</p><Button type="primary" onClick={() => { const next = channels.find((item) => !item.connection); if (next) setActiveChannel(next.channel); else onConnectionsChanged?.(); }}>连接下一个渠道</Button></div> : <>
             <div className={styles.authorizationState}>{session ? session.status.toUpperCase() : "READY TO CONNECT"}</div>
             <h2>{labels[activeChannel || "zhihu"]}</h2>
             {!session || ["failed", "expired", "cancelled"].includes(session.status) ? <>
@@ -276,4 +290,8 @@ export default function HostedConnectionsPage() {
       </div>
     </div>
   );
+}
+
+export default function HostedConnectionsPage() {
+  return <HostedConnectionsWorkspace />;
 }

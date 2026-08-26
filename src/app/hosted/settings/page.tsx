@@ -144,7 +144,7 @@ export default function HostedSettingsPage() {
           : option.channel === "wechat"
             ? option.authorizationPhase === "needs_account_confirmation" && option.accountCandidate
               ? <Button size="small" loading={connectingChannel === option.channel} onClick={() => confirmChannelAccount(option)}>确认使用 {option.accountCandidateLabel || "此公众号"}</Button>
-              : <Link href="/settings?tab=connections"><Button size="small">连接公众号账号</Button></Link>
+              : <Link href={`/?orderId=${encodeURIComponent(order.orderId)}#setup-accounts`}><Button size="small">按引导连接公众号</Button></Link>
             : <Link href={`/hosted/connections?orderId=${encodeURIComponent(order.orderId)}`}><Button size="small">{option.authorizationPhase === "needs_account_confirmation" ? "确认发布账号" : option.authorizationPhase === "manual_takeover_required" ? "完成安全验证" : "连接发布账号"}</Button></Link>;
         return <div className={styles.settingsRow} key={option.channel}><Checkbox checked={checked} disabled={disabled} onChange={(event) => setSelected((current) => event.target.checked ? [...new Set([...current, option.channel])] : current.filter((item) => item !== option.channel))}><strong>{channelLabels[option.channel] || option.channel}</strong><span>{option.detail}</span></Checkbox><div className={styles.channelControls}><div className={styles.capControl}><InputNumber min={1} max={100} value={caps[option.channel]} disabled={!checked || disabled} placeholder="系统上限" onChange={(value) => setCaps((current) => ({ ...current, [option.channel]: value || undefined }))} /><small>篇 / 日</small></div>{authorizationControl}</div></div>;
       })}</div></section>

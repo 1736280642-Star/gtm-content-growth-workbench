@@ -347,11 +347,13 @@ addContentCheck("product-first content orchestration", "src/app/monthly-matrix/b
   "异常处理"
 ]);
 addContentCheck("product-first hosted handoff", "src/app/page.tsx", [
-  "MANAGED HANDOFF",
+  "SETUP PASSPORT",
+  "用工作邮箱登录",
   "提供产品资料",
-  "选择推广渠道",
-  "接收确认与结果",
-  "确认委托"
+  "选择渠道与每日上限",
+  "确认通知方式并创建委托",
+  "连接正式发布账号",
+  "检查就绪状态，了解后续操作"
 ]);
 addContentCheck("hosted channel authorization handoff", "src/app/hosted/connect/[channel]/page.tsx", [
   "CHANNEL HANDOFF",
