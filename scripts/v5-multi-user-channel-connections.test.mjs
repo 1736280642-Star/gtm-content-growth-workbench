@@ -33,7 +33,7 @@ test("email login keeps raw tokens out of database and request URLs", async () =
 test("channel connection flow identifies a real public account before binding", async () => {
   const [service, wizard, arcs] = await Promise.all([
     read("src/lib/v5/channel-account-connection-service.ts"),
-    read("src/app/hosted/connections/page.tsx"),
+    read("src/app/hosted/connections/HostedConnectionsWorkspace.tsx"),
     read("arcs-runner/joto_arcs_runner/platforms.py")
   ]);
   assert.match(service, /accountFingerprint: createHash\("sha256"\)/);

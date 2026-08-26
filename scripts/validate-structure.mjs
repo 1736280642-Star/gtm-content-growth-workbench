@@ -98,6 +98,7 @@ const requiredFiles = [
   "src/lib/v5/browser-executor-pool.ts",
   "src/app/hosted/login/page.tsx",
   "src/app/hosted/connections/page.tsx",
+  "src/app/hosted/connections/HostedConnectionsWorkspace.tsx",
   "scripts/v5-multi-user-channel-connections.test.mjs",
   "scripts/check-hosted-identity-acceptance.mjs",
   "scripts/probe-channel-publish-companions.mjs",
