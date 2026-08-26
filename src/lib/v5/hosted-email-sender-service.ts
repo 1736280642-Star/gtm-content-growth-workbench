@@ -15,7 +15,7 @@ import {
   writeV5GovernanceAudit
 } from "./knowledge-governance-repository";
 
-export const personalEmailProviders = ["qq", "163", "gmail", "outlook"] as const;
+export const personalEmailProviders = ["qq", "163", "aliyun", "gmail", "outlook"] as const;
 export type PersonalEmailProvider = (typeof personalEmailProviders)[number];
 
 type StoredCredentials =
@@ -33,10 +33,16 @@ interface SenderConnection {
 const PRIMARY_CONNECTION_ID = "hosted-email-primary";
 const OAUTH_STATE_TTL_MINUTES = 10;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SMTP_PROVIDERS: Record<"qq" | "163", { host: string; port: number }> = {
+const SMTP_PROVIDERS = {
   qq: { host: "smtp.qq.com", port: 465 },
-  "163": { host: "smtp.163.com", port: 465 }
-};
+  "163": { host: "smtp.163.com", port: 465 },
+  aliyun: { host: "smtp.qiye.aliyun.com", port: 465 }
+} as const;
+type SmtpPersonalEmailProvider = keyof typeof SMTP_PROVIDERS;
+
+function isSmtpProvider(provider: PersonalEmailProvider): provider is SmtpPersonalEmailProvider {
+  return provider in SMTP_PROVIDERS;
+}
 
 function repositoryError(code: string, message: string, status = 400, nextAction?: string) {
   return new V5GovernanceRepositoryError(code, message, status, nextAction);
@@ -133,7 +139,7 @@ function assertEmail(value: string) {
 
 function assertProvider(value: string): PersonalEmailProvider {
   if (!personalEmailProviders.includes(value as PersonalEmailProvider)) {
-    throw repositoryError("hosted_email_provider_invalid", "请选择 QQ、163、Gmail 或 Outlook。", 400);
+    throw repositoryError("hosted_email_provider_invalid", "请选择 QQ、163、阿里云企业邮箱、Gmail 或 Outlook。", 400);
   }
   return value as PersonalEmailProvider;
 }
@@ -222,7 +228,7 @@ async function saveConnection(input: {
   });
 }
 
-function smtpTransport(provider: "qq" | "163", email: string, appPassword: string) {
+function smtpTransport(provider: SmtpPersonalEmailProvider, email: string, appPassword: string) {
   const server = SMTP_PROVIDERS[provider];
   return nodemailer.createTransport({
     host: server.host,
@@ -245,7 +251,7 @@ export async function connectHostedSmtpSender(input: {
 }) {
   requireHostedEmailSetupToken(input.setupToken);
   const provider = assertProvider(input.provider);
-  if (provider !== "qq" && provider !== "163") {
+  if (!isSmtpProvider(provider)) {
     throw repositoryError("hosted_email_smtp_provider_invalid", "该邮箱需要使用 OAuth 授权。", 400);
   }
   const senderEmail = assertEmail(input.email);
@@ -474,10 +480,10 @@ export interface HostedEmailDelivery {
 export async function deliverWithPersonalEmailSender(input: HostedEmailDelivery) {
   const connection = await readConnection();
   if (!connection || connection.status !== "connected") {
-    throw repositoryError("hosted_email_provider_missing", "发件邮箱尚未授权。", 503, "选择 QQ、163、Gmail 或 Outlook 并完成授权。" );
+    throw repositoryError("hosted_email_provider_missing", "发件邮箱尚未授权。", 503, "使用 QQ、163、阿里云企业邮箱、Gmail 或 Outlook 完成授权。" );
   }
   const credentials = decryptJson<StoredCredentials>(connection.encryptedCredentials);
-  if ((connection.provider === "qq" || connection.provider === "163") && credentials.kind === "smtp_app_password") {
+  if (isSmtpProvider(connection.provider) && credentials.kind === "smtp_app_password") {
     const info = await smtpTransport(connection.provider, connection.senderEmail, credentials.appPassword).sendMail({
       from: connection.senderEmail,
       to: input.to,

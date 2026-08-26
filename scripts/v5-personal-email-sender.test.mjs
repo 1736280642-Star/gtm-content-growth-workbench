@@ -3,10 +3,23 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const serviceUrl = new URL("../src/lib/v5/hosted-email-sender-service.ts", import.meta.url);
+const providerUrl = new URL("../src/app/hosted/email-sender/provider.ts", import.meta.url);
 
-test("个人发件邮箱只支持明确的四种供应商", async () => {
+test("个人发件邮箱只支持明确的供应商白名单", async () => {
   const { personalEmailProviders } = await import(serviceUrl);
-  assert.deepEqual(personalEmailProviders, ["qq", "163", "gmail", "outlook"]);
+  assert.deepEqual(personalEmailProviders, ["qq", "163", "aliyun", "gmail", "outlook"]);
+});
+
+test("授权页根据邮箱域名自动识别供应商", async () => {
+  const { detectHostedEmailProvider } = await import(providerUrl);
+  assert.equal(detectHostedEmailProvider("owner@qq.com"), "qq");
+  assert.equal(detectHostedEmailProvider("owner@163.com"), "163");
+  assert.equal(detectHostedEmailProvider("owner@jotoglobal.com"), "aliyun");
+  assert.equal(detectHostedEmailProvider("owner@gmail.com"), "gmail");
+  assert.equal(detectHostedEmailProvider("owner@hotmail.com"), "outlook");
+  assert.equal(detectHostedEmailProvider("owner@@qq.com"), undefined);
+  assert.equal(detectHostedEmailProvider("owner@jototch.cn"), undefined);
+  assert.equal(detectHostedEmailProvider("owner@company.example"), undefined);
 });
 
 test("部署级设置口令采用失败关闭门禁", async () => {
@@ -21,6 +34,7 @@ test("SMTP、Gmail 与 Outlook 使用各自的正式发送协议", async () => {
   const source = await readFile(serviceUrl, "utf8");
   assert.match(source, /smtp\.qq\.com/);
   assert.match(source, /smtp\.163\.com/);
+  assert.match(source, /smtp\.qiye\.aliyun\.com/);
   assert.match(source, /gmail\.googleapis\.com\/gmail\/v1\/users\/me\/messages\/send/);
   assert.match(source, /graph\.microsoft\.com\/v1\.0\/me\/sendMail/);
   assert.match(source, /gmail\.send/);
@@ -50,6 +64,24 @@ test("授权页不把私密凭据放入 React state、URL 或浏览器持久存�
   assert.match(page, /form\.reset\(\)/);
   assert.match(smtpRoute, /request\.formData\(\)/);
   assert.match(oauthStart, /request\.formData\(\)/);
+});
+
+test("首页按普通用户与部署人员分开引导发件配置", async () => {
+  const [homePage, senderPage, styles] = await Promise.all([
+    readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/email-sender/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted-mode.module.css", import.meta.url), "utf8")
+  ]);
+  assert.match(homePage, /我是普通用户/);
+  assert.match(homePage, /我是部署人员/);
+  assert.match(homePage, /普通用户不需要配置发件邮箱、SMTP、OAuth 或 Setup Token/);
+  assert.match(homePage, /HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY/);
+  assert.match(homePage, /切到普通用户试发/);
+  assert.doesNotMatch(homePage, /identitySenderSetup/);
+  assert.doesNotMatch(homePage, /部署管理员一次性准备/);
+  assert.match(senderPage, /\?role=deployment#deployment-email/);
+  assert.match(styles, /\.workspace\[hidden\]/);
+  assert.match(styles, /\.deploymentWorkspace\[hidden\]/);
 });
 
 test("登录邮件与通知邮件复用统一投递适配器", async () => {

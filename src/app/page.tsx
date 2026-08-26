@@ -96,8 +96,15 @@ interface BrowserConnectionSummary {
   connected: number;
 }
 
+interface SenderSetupStatus {
+  configured: boolean;
+  provider?: string;
+  senderHint?: string;
+}
+
 type IdentityStatus = "checking" | "anonymous" | "authenticated";
 type StepState = "done" | "active" | "locked" | "waiting";
+type PageAudience = "user" | "deployment";
 
 const channelPresentation: Record<string, ChannelPresentation> = {
   wechat: { label: "微信公众号", icon: <WechatOutlined /> },
@@ -176,6 +183,9 @@ function StepStatusBadge({ state }: { state: StepState }) {
 
 export default function HostedTaskPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pageAudience, setPageAudience] = useState<PageAudience>("user");
+  const [senderStatus, setSenderStatus] = useState<SenderSetupStatus>();
+  const [senderStatusLoading, setSenderStatusLoading] = useState(true);
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
   const [identity, setIdentity] = useState<HostedIdentity>();
   const [loginEmail, setLoginEmail] = useState("");
@@ -203,6 +213,20 @@ export default function HostedTaskPage() {
   const [confirmingWechat, setConfirmingWechat] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string>();
+
+  const loadSenderStatus = useCallback(async () => {
+    setSenderStatusLoading(true);
+    try {
+      const response = await fetch("/api/v5/hosted/email-sender", { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readApiError(payload, "发件邮箱状态读取失败。"));
+      setSenderStatus(payload.sender as SenderSetupStatus);
+    } catch {
+      setSenderStatus(undefined);
+    } finally {
+      setSenderStatusLoading(false);
+    }
+  }, []);
 
   const loadChannels = useCallback(async (productId?: string) => {
     setChannelsLoading(true);
@@ -241,7 +265,10 @@ export default function HostedTaskPage() {
     let active = true;
     let sessionEstablished = false;
     const params = new URLSearchParams(window.location.search);
+    if (params.get("role") === "deployment") setPageAudience("deployment");
     if (params.get("loginError") || params.get("error")) setError("登录链接无效、已使用或已过期，请重新获取。");
+
+    void loadSenderStatus();
 
     void fetch("/api/v5/hosted/auth/session", { cache: "no-store" }).then(async (response) => {
       const payload = await response.json().catch(() => ({}));
@@ -298,7 +325,7 @@ export default function HostedTaskPage() {
       setError(cause instanceof Error ? cause.message : "托管入口暂时不可用。");
     });
     return () => { active = false; };
-  }, [loadBrowserConnectionSummary, loadChannels]);
+  }, [loadBrowserConnectionSummary, loadChannels, loadSenderStatus]);
 
   const selectedProduct = useMemo(() => products.find((product) => product.productId === selectedProductId), [products, selectedProductId]);
   const selectedOptionMap = useMemo(() => new Map(channelOptions.map((item) => [item.channel, item])), [channelOptions]);
@@ -325,6 +352,21 @@ export default function HostedTaskPage() {
     { number: 5, label: "发布账号连接", state: publishReady ? "done" : order ? "waiting" : "locked" },
     { number: 6, label: "就绪检查与后续", state: publishReady ? "done" : order ? "waiting" : "locked" }
   ];
+
+  function switchAudience(nextAudience: PageAudience, anchor?: string) {
+    setPageAudience(nextAudience);
+    setError(undefined);
+    setNotice(undefined);
+    const url = new URL(window.location.href);
+    if (nextAudience === "deployment") url.searchParams.set("role", "deployment");
+    else url.searchParams.delete("role");
+    url.hash = anchor || "";
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    window.requestAnimationFrame(() => {
+      if (anchor) document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      else window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
 
   function selectProduct(product: HostedProduct) {
     if (order) return;
@@ -503,17 +545,111 @@ export default function HostedTaskPage() {
   return (
     <div className={styles.page}>
       <section className={styles.intro}>
-        <div><div className={styles.kicker}>JOTO / GUIDED MANAGED SETUP</div><h1>一次配置，托管你后续的GEO品牌推广。</h1></div>
-        <aside className={styles.introAside}><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></aside>
+        <div><div className={styles.kicker}>JOTO / GUIDED MANAGED SETUP</div><h1>{pageAudience === "deployment" ? "先把系统发信跑通，再交给普通用户。" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
+        <aside className={styles.introAside}>{pageAudience === "deployment" ? <><strong>{senderStatus?.configured ? "系统发件邮箱已连接" : "现在处理：部署初始化"}</strong><span>{senderStatus?.configured ? "下一步切到普通用户，发送一封真实登录邮件完成验收。" : "先写入服务端安全参数，再连接一个系统发件邮箱。"}</span><small>只需部署人员操作一次</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside>
       </section>
+
+      <nav className={styles.roleSwitcher} aria-label="选择当前操作角色">
+        <button type="button" aria-controls="role-panel-user" aria-pressed={pageAudience === "user"} className={pageAudience === "user" ? styles.roleSwitchActive : ""} onClick={() => switchAudience("user")}>
+          <UserOutlined />
+          <span><strong>我是普通用户</strong><small>登录、提交资料、查看托管进度</small></span>
+          {pageAudience === "user" ? <CheckCircleFilled /> : <ArrowRightOutlined />}
+        </button>
+        <button type="button" aria-controls="role-panel-deployment" aria-pressed={pageAudience === "deployment"} className={pageAudience === "deployment" ? styles.roleSwitchActive : ""} onClick={() => switchAudience("deployment")}>
+          <SafetyCertificateOutlined />
+          <span><strong>我是部署人员</strong><small>配置系统发件邮箱和部署安全参数</small></span>
+          {pageAudience === "deployment" ? <CheckCircleFilled /> : <ArrowRightOutlined />}
+        </button>
+      </nav>
 
       {error || notice ? <div className={`${styles.setupFeedbackDock} ${error ? styles.setupFeedbackError : styles.setupFeedbackSuccess}`} role={error ? "alert" : "status"}><span>{error ? <InfoCircleOutlined /> : <CheckCircleFilled />}</span><div><strong>{error ? "当前操作未完成" : "操作已生效"}</strong><small>{error || notice}</small></div><Button type="text" size="small" onClick={() => { setError(undefined); setNotice(undefined); }}>关闭</Button></div> : null}
 
-      <div className={styles.workspace}>
+      <div id="role-panel-deployment" className={styles.deploymentWorkspace} hidden={pageAudience !== "deployment"}>
+        <div className={styles.deploymentMain}>
+          <section className={styles.deploymentSection} id="deployment-security">
+            <div className={styles.deploymentSectionHeader}><div><h2>准备服务端安全参数</h2><p>这一步只在部署机器上完成。普通用户看不到，也不需要填写任何 Token。</p></div><StepStatusBadge state="active" /></div>
+            <SetupGuide
+              title="照着填，不需要理解代码"
+              summary="打开 .env.local，逐行加入 5 个配置项"
+              defaultOpen
+              steps={[
+                "在项目根目录打开被 Git 忽略的 .env.local。不要把真实值写进聊天、截图或代码仓库。",
+                "新增 HOSTED_EMAIL_SETUP_TOKEN，使用密码管理器生成至少 32 位随机值。稍后管理员授权邮箱时，需要在页面输入同一个值。",
+                "新增 HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY，填写独立的 32 字节随机值。这个值只留在服务端，不要填进任何页面。",
+                "填写 HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL。本机使用 http://127.0.0.1:3027，线上使用正式 HTTPS 域名。",
+                "如果使用 Gmail，再填写 HOSTED_EMAIL_GOOGLE_CLIENT_ID 和 HOSTED_EMAIL_GOOGLE_CLIENT_SECRET。它们来自你自己的 Google Cloud OAuth Web Client。",
+                "保存文件后运行 npm.cmd run docker:3027:deploy -- -NoOpen。看到 3027 健康检查通过，再继续下一步。"
+              ]}
+              note="Setup Token、加密密钥和 Google Client Secret 必须是三个不同的值。Gmail 登录密码或应用专用密码都不能替代它们。"
+            />
+            <div className={styles.deploymentVariables} aria-label="部署配置清单">
+              <div><code>HOSTED_EMAIL_SETUP_TOKEN</code><span>管理员页面核对口令</span></div>
+              <div><code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code><span>加密保存邮箱授权</span></div>
+              <div><code>HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL</code><span>Google 授权返回地址</span></div>
+              <div><code>HOSTED_EMAIL_GOOGLE_CLIENT_ID</code><span>Google OAuth 应用编号</span></div>
+              <div><code>HOSTED_EMAIL_GOOGLE_CLIENT_SECRET</code><span>只保存在服务端</span></div>
+            </div>
+          </section>
+
+          <section className={styles.deploymentSection} id="deployment-email">
+            <div className={styles.deploymentSectionHeader}><div><h2>连接系统发件邮箱</h2><p>系统以后统一用这个邮箱发送登录链接和托管通知，普通用户只负责收信。</p></div><StepStatusBadge state={senderStatus?.configured ? "done" : "active"} /></div>
+            <SetupGuide
+              title="完成邮箱授权"
+              summary="系统自动识别邮箱服务商，不需要手动选择"
+              defaultOpen={!senderStatus?.configured}
+              steps={[
+                "点击下方按钮进入发件邮箱授权页。",
+                "输入准备作为系统发件人的完整邮箱地址，等待页面显示识别结果。",
+                "QQ、163、阿里云企业邮箱填写供应商生成的 SMTP 授权码。Gmail 和 Outlook 点击供应商 OAuth 授权。",
+                "在部署级 Setup Token 输入框中，填写 .env.local 里完全相同的 HOSTED_EMAIL_SETUP_TOKEN。",
+                "提交后查看页面顶部。只有显示“当前发件邮箱已连接”，才算完成。"
+              ]}
+              note="这里连接的是系统发件邮箱，不是普通用户用来接收登录邮件的邮箱。一个部署只需要连接一次。"
+            />
+            <div className={`${styles.deploymentActionCard} ${senderStatus?.configured ? styles.deploymentActionReady : ""}`}>
+              {senderStatusLoading ? <Spin size="small" /> : senderStatus?.configured ? <CheckCircleFilled /> : <MailOutlined />}
+              <div><strong>{senderStatusLoading ? "正在检查发件邮箱" : senderStatus?.configured ? "发件邮箱已经连接" : "还没有连接发件邮箱"}</strong><span>{senderStatus?.configured ? `${senderStatus.senderHint || "已连接邮箱"} 可以发送系统邮件。` : "完成授权后，所有普通用户共用这一个系统发件邮箱。"}</span></div>
+              <Link href="/hosted/email-sender"><Button type={senderStatus?.configured ? "default" : "primary"}>{senderStatus?.configured ? "检查或更换邮箱" : "现在连接发件邮箱"}</Button></Link>
+            </div>
+          </section>
+
+          <section className={styles.deploymentSection} id="deployment-test">
+            <div className={styles.deploymentSectionHeader}><div><h2>切换角色，发送真实测试邮件</h2><p>部署人员最后模拟一次普通用户登录，确认邮件从系统发件邮箱送达。</p></div><StepStatusBadge state={senderStatus?.configured ? "active" : "locked"} /></div>
+            <SetupGuide
+              title="最后一次验收"
+              summary="发送、收信、打开链接，三件事都成功才算交付"
+              defaultOpen={Boolean(senderStatus?.configured)}
+              steps={[
+                "确认上一项已经显示“发件邮箱已经连接”。",
+                "点击下方“切到普通用户试发”，页面会自动回到普通用户登录步骤。",
+                "输入一个你能立即查收的工作邮箱，点击“发送登录链接”。",
+                "查看收件箱和垃圾邮件，在 15 分钟内打开主题含 JOTO 的邮件。",
+                "浏览器自动回到本页并显示登录已验证后，部署流程才算完成。"
+              ]}
+              note="普通用户以后只重复登录和业务配置，不会再看到或填写部署级密钥。"
+            />
+            {senderStatus?.configured ? <Button type="primary" size="large" icon={<UserOutlined />} onClick={() => switchAudience("user", "setup-identity")}>切到普通用户试发</Button> : <LockedStep reason="先连接系统发件邮箱" nextAction="完成上一项后刷新状态，再进行真实登录邮件验收。" />}
+          </section>
+        </div>
+
+        <aside className={styles.deploymentPassport} aria-label="部署完成清单">
+          <SafetyCertificateOutlined />
+          <h2>部署完成清单</h2>
+          <p>只看这三项，不需要在多个设置页之间来回找。</p>
+          <ol>
+            <li><span>1</span><div><strong>安全参数</strong><small>写入 .env.local 并重建 3027</small></div></li>
+            <li className={senderStatus?.configured ? styles.deploymentPassportDone : ""}><span>{senderStatus?.configured ? <CheckOutlined /> : "2"}</span><div><strong>系统发件邮箱</strong><small>{senderStatus?.configured ? "已连接" : "等待授权"}</small></div></li>
+            <li><span>3</span><div><strong>普通用户试发</strong><small>收到并打开登录邮件</small></div></li>
+          </ol>
+          <Button block icon={<ReloadOutlined />} loading={senderStatusLoading} onClick={loadSenderStatus}>重新检查发件邮箱</Button>
+        </aside>
+      </div>
+
+      <div id="role-panel-user" className={styles.workspace} hidden={pageAudience !== "user"}>
         <div className={styles.formColumn}>
           <section className={styles.section} id="setup-identity">
             <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>01</span><div><h2>用工作邮箱登录</h2><p>不设密码，邮件里的一次性链接就是登录凭证。</p></div></div><StepStatusBadge state={stepRows[0].state} /></div>
-            <SetupGuide title="详细操作教程" summary="第一次使用大约需要 1 分钟" defaultOpen={!identityReady} steps={["在下方输入你常用、能正常收信的工作邮箱。", "点击“发送登录链接”，然后去收件箱查找主题含 JOTO 的邮件。", "在 15 分钟内打开邮件中的链接。链接只能用一次。", "验证成功后会自动回到本页，并解锁第 2 步。"]} note="收不到邮件时，先查看垃圾邮件；仍然没有时再点一次发送。不要把登录链接转发给别人。" />
+            <SetupGuide title="详细操作教程" summary="第一次使用大约需要 1 分钟" defaultOpen={!identityReady} steps={["在下方输入你常用、能正常收信的工作邮箱。这个邮箱同时用于接收登录链接和托管结果。", "点击“发送登录链接”，然后打开这个邮箱的收件箱。", "查找主题中含 JOTO 的邮件。如果 1 分钟后仍未收到，再查看垃圾邮件。", "在 15 分钟内点击邮件中的登录链接。每条链接只能使用一次。", "验证成功后浏览器会自动回到本页，并解锁第 2 步。"]} note="普通用户不需要配置发件邮箱、SMTP、OAuth 或 Setup Token。收不到邮件时，请联系部署人员检查系统发件邮箱。不要把登录链接转发给别人。" />
             {identityStatus === "checking" ? <div className={styles.inlineLoading}><Spin size="small" /> 正在检查当前登录状态</div> : identity ? <div className={styles.accountRow}><div className={styles.accountIdentity}><span className={styles.mailMark}><UserOutlined /></span><span><strong>{identity.email}</strong><span>{roleLabels[identity.role]} · 登录已验证</span></span></div><Button type="text" icon={<LogoutOutlined />} onClick={logout}>退出或更换账号</Button></div> : loginSent ? <div className={styles.loginSentCard}><CheckCircleFilled /><div><strong>登录邮件已发送到 {loginEmail}</strong><span>请在 15 分钟内打开邮件链接。完成后会自动回到这里。</span></div><Button onClick={() => setLoginSent(false)}>更换邮箱或重新发送</Button></div> : <div className={styles.inlineLoginForm}><label><span>工作邮箱</span><Input size="large" prefix={<MailOutlined />} value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} onPressEnter={requestLogin} placeholder="name@company.com" /></label><Button type="primary" size="large" icon={<ArrowRightOutlined />} loading={loginSending} onClick={requestLogin}>发送登录链接</Button></div>}
           </section>
 
@@ -525,7 +661,7 @@ export default function HostedTaskPage() {
 
           <section className={styles.section} id="setup-channels">
             <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>03</span><div><h2>选择渠道与每日上限</h2><p>只选你确定要运营的渠道；账号登录在第 5 步完成。</p></div></div><StepStatusBadge state={stepRows[2].state} /></div>
-            <SetupGuide title="渠道选择和频率设置教程" summary="点卡片选中；需要控制数量时再展开高级设置" defaultOpen={identityReady && currentStep === 3} steps={["点击渠道卡片即可选中，再点一次取消。灰色卡片表示系统能力尚未开通。", "“已连接”表示可直接使用；“需连接账号”表示选完后还要去第 5 步登录平台。", "没有特殊要求时，保留系统安全上限即可，不需要填数字。", "如果想降低每日发布量，展开“自定义每日上限”，为已选渠道填写 1–100 的整数。"]} note="每日上限只能比系统安全上限更保守，不会绕过平台规则。" />
+            <SetupGuide title="渠道选择和频率设置教程" summary="点卡片选中；需要控制数量时再展开高级设置" defaultOpen={identityReady && currentStep === 3} steps={["点击渠道卡片即可选中，再点一次取消。灰色卡片表示系统能力尚未开通。", "“已连接”表示可直接使用；“需连接账号”表示选完后还要去第 5 步登录平台。", "没有特殊要求时，保留系统安全上限即可，不需要填数字。", "如果想降低每日发布量，展开“自定义每日上限”，为已选渠道填写 1-100 的整数。"]} note="每日上限只能比系统安全上限更保守，不会绕过平台规则。" />
             {!identityReady ? <LockedStep reason="先完成第 1 步登录" nextAction="系统会在登录后检查当前可用的托管渠道。" /> : channelsLoading ? <div className={styles.inlineLoading}><Spin size="small" /> 正在核对渠道能力</div> : <><div className={styles.choiceGrid}>{channelOptions.map((option) => { const selected = selectedChannels.includes(option.channel); const disabled = option.capability === "unsupported"; const presentation = channelPresentation[option.channel] || { label: option.channel, icon: <GlobalOutlined /> }; return <button className={`${styles.choiceButton} ${selected ? styles.isSelected : ""} ${disabled ? styles.isDisabled : ""}`} type="button" aria-pressed={selected} aria-disabled={disabled} disabled={disabled} key={option.channel} onClick={() => toggleChannel(option.channel)}><span className={styles.choiceIcon}>{presentation.icon}</span><span className={styles.choiceCopy}><strong>{presentation.label}</strong><span>{option.detail}</span><small className={`${styles.capabilityBadge} ${styles[`capability-${option.authorizationStatus}`]}`}>{option.authorizationStatus === "connected" ? "已连接" : option.authorizationStatus === "required" ? "需连接账号" : "暂不可托管"}</small></span><span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span></button>; })}</div>{selectedChannels.some((key) => selectedOptionMap.get(key)?.authorizationStatus === "required") ? <div className={styles.actionNotice}><SettingOutlined /><span>这不会阻止系统先开始调研。委托创建后，继续在本页第 5 步完成账号连接即可。</span></div> : null}<button className={styles.advancedToggle} type="button" onClick={() => setShowAdvanced((current) => !current)}><SettingOutlined /> {showAdvanced ? "收起每日上限" : "高级：自定义每日上限"}</button>{showAdvanced ? <div className={styles.capGrid}>{selectedChannels.map((channel) => <label key={channel}><span>{channelPresentation[channel]?.label || channel}</span><InputNumber min={1} max={100} value={customCaps[channel]} placeholder="系统上限" onChange={(value) => setCustomCaps((current) => ({ ...current, [channel]: value || undefined }))} /><small>篇 / 日</small></label>)}</div> : null}</>}
           </section>
 
@@ -547,12 +683,11 @@ export default function HostedTaskPage() {
             {!order ? <LockedStep reason="创建委托后才能生成真实就绪检查" nextAction="现在请继续完成前面的必填步骤。" /> : <div className={styles.finalReadinessGrid}><div className={`${styles.finalReadinessCard} ${styles.isReady}`}><CheckCircleFilled /><div><strong>调研已就绪</strong><span>委托 {order.orderId} 已创建，资料处理与 GEO 调研已经开始。</span></div></div><div className={`${styles.finalReadinessCard} ${publishReady ? styles.isReady : styles.needsWork}`}>{publishReady ? <CheckCircleFilled /> : <SettingOutlined />}<div><strong>{publishReady ? "发布账号已就绪" : "发布前还有配置要完成"}</strong><span>{publishReady ? "所有已选渠道都有已确认的正式账号。" : `微信公众号：${wechatReady ? "已就绪" : "待配置"}；浏览器渠道：${browserConnectionSummary.connected}/${selectedBrowserChannelCount} 已连接。`}</span></div></div><div className={styles.finalReadinessActions}><Link href={`/hosted/success?orderId=${encodeURIComponent(order.orderId)}`}><Button type="primary" size="large">查看托管状态与调研进度</Button></Link><Button size="large" icon={<ReloadOutlined />} onClick={() => void Promise.all([loadChannels(order.productId), loadBrowserConnectionSummary(order.orderId)])}>重新检查全部状态</Button></div></div>}
           </section>
 
-          <details className={styles.deploymentGuide}><summary><SafetyCertificateOutlined /><span><strong>部署管理员一次性准备</strong><small>普通使用者不需要处理；只在发邮件或连接渠道失败时展开</small></span></summary><div><p>管理员需要事先准备邮件投递、公开访问地址、发布执行节点与公众号官方能力。页面只显示就绪状态，不显示或收集密钥。</p><Link href="/hosted/email-sender">仅部署管理员：管理发件邮箱</Link></div></details>
         </div>
 
         <aside className={styles.receipt} aria-label="配置通行证">
           <div className={styles.receiptHeader}><div><span className={styles.receiptKicker}>SETUP PASSPORT</span><h2>配置通行证</h2><p>不用记路径，只看哪一步还没有绿。</p></div><span className={styles.receiptStamp}><SafetyCertificateOutlined /></span></div>
-          <div className={styles.receiptBody}><div className={styles.setupPassportSteps}>{stepRows.map((step) => <a href={`#setup-${["identity", "product", "channels", "notifications", "accounts", "ready"][step.number - 1]}`} className={`${styles.setupPassportStep} ${styles[`passport-${step.state}`]}`} key={step.number}><span>{step.state === "done" ? <CheckOutlined /> : step.number}</span><strong>{step.label}</strong><small>{step.state === "done" ? "已完成" : step.number === currentStep ? "现在处理" : step.state === "waiting" ? "发布前完成" : "等待前置"}</small></a>)}</div><div className={styles.receiptSection}><dl><div className={styles.receiptRow}><dt>登录账号</dt><dd>{identity?.email || "尚未登录"}</dd></div><div className={styles.receiptRow}><dt>推广产品</dt><dd>{displayProductName}</dd></div><div className={styles.receiptRow}><dt>产品资料</dt><dd className={styles.wrap}>{materialLabel || "尚未添加"}</dd></div><div className={styles.receiptRow}><dt>推广渠道</dt><dd className={styles.wrap}>{selectedChannelLabels.length ? selectedChannelLabels.join("、") : "尚未选择"}</dd></div></dl></div><div className={styles.receiptSection}><div className={styles.readinessStampGrid}><div className={researchReady ? styles.readinessReady : styles.readinessWaiting}><span>{researchReady ? <CheckOutlined /> : <LockOutlined />}</span><strong>调研就绪</strong><small>{researchReady ? "已开始" : "完成 1–4 步"}</small></div><div className={publishReady ? styles.readinessReady : styles.readinessWaiting}><span>{publishReady ? <CheckOutlined /> : <LockOutlined />}</span><strong>发布就绪</strong><small>{publishReady ? "账号已齐" : "完成第 5 步"}</small></div></div></div><div className={styles.receiptSection}><div className={styles.receiptNote}><strong>你只保留核心判断</strong><br />策略确认一次、代表样文确认一次。正常运行后不需要每天操作。</div></div></div>
+          <div className={styles.receiptBody}><div className={styles.setupPassportSteps}>{stepRows.map((step) => <a href={`#setup-${["identity", "product", "channels", "notifications", "accounts", "ready"][step.number - 1]}`} className={`${styles.setupPassportStep} ${styles[`passport-${step.state}`]}`} key={step.number}><span>{step.state === "done" ? <CheckOutlined /> : step.number}</span><strong>{step.label}</strong><small>{step.state === "done" ? "已完成" : step.number === currentStep ? "现在处理" : step.state === "waiting" ? "发布前完成" : "等待前置"}</small></a>)}</div><div className={styles.receiptSection}><dl><div className={styles.receiptRow}><dt>登录账号</dt><dd>{identity?.email || "尚未登录"}</dd></div><div className={styles.receiptRow}><dt>推广产品</dt><dd>{displayProductName}</dd></div><div className={styles.receiptRow}><dt>产品资料</dt><dd className={styles.wrap}>{materialLabel || "尚未添加"}</dd></div><div className={styles.receiptRow}><dt>推广渠道</dt><dd className={styles.wrap}>{selectedChannelLabels.length ? selectedChannelLabels.join("、") : "尚未选择"}</dd></div></dl></div><div className={styles.receiptSection}><div className={styles.readinessStampGrid}><div className={researchReady ? styles.readinessReady : styles.readinessWaiting}><span>{researchReady ? <CheckOutlined /> : <LockOutlined />}</span><strong>调研就绪</strong><small>{researchReady ? "已开始" : "完成 1-4 步"}</small></div><div className={publishReady ? styles.readinessReady : styles.readinessWaiting}><span>{publishReady ? <CheckOutlined /> : <LockOutlined />}</span><strong>发布就绪</strong><small>{publishReady ? "账号已齐" : "完成第 5 步"}</small></div></div></div><div className={styles.receiptSection}><div className={styles.receiptNote}><strong>你只保留核心判断</strong><br />策略确认一次、代表样文确认一次。正常运行后不需要每天操作。</div></div></div>
           <div className={styles.receiptFooter}>执行周期：当前日历月 · 日期只是 MonthlyPlan 下的执行视图</div>
         </aside>
       </div>
