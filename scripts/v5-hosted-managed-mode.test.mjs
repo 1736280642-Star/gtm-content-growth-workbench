@@ -86,6 +86,32 @@ test("托管前端不再依赖会话假数据或模拟结果邮件", async () =>
   assert.match(email, /daily-batches/);
 });
 
+test("首次配置以单页六步向导呈现并保留可折叠详细指引", async () => {
+  const [home, login, success, settings, connections] = await Promise.all([
+    readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/login/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/success/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/settings/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/connections/page.tsx", import.meta.url), "utf8")
+  ]);
+
+  for (const sectionId of ["setup-identity", "setup-product", "setup-channels", "setup-notifications", "setup-accounts", "setup-ready"]) {
+    assert.match(home, new RegExp(`id="${sectionId}"`));
+  }
+  assert.match(home, /<details className=\{styles\.setupGuide\}/);
+  assert.match(home, /配置通行证/);
+  assert.match(home, /调研就绪/);
+  assert.match(home, /发布就绪/);
+  assert.match(home, /HostedConnectionsWorkspace/);
+  assert.match(home, /publish-account-binding/);
+  assert.match(home, /\/api\/v5\/hosted\/auth\/request/);
+  assert.match(login, /redirect\(query\.error \? "\/\?loginError=invalid" : "\/\?setup=login"\)/);
+  assert.match(success, /#setup-accounts/);
+  assert.match(settings, /#setup-accounts/);
+  assert.match(connections, /export function HostedConnectionsWorkspace/);
+  assert.doesNotMatch(`${home}\n${login}\n${success}\n${settings}`, /\/settings\?tab=connections/);
+});
+
 test("每日上限归属于 MonthlyPlan 排程且使用较小安全值", async () => {
   const monthlyAutomation = await readFile(new URL("../src/lib/v5/monthly-automation-service.ts", import.meta.url), "utf8");
   assert.match(monthlyAutomation, /hosted_promotion_order/);

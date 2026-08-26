@@ -212,7 +212,7 @@ export default function HostedSuccessPage() {
         <Link href="/"><Button icon={<FileTextOutlined />}>再发起一项推广</Button></Link>
         {order.status === "paused" ? <Button type="text" loading={mutating} onClick={() => changePauseState("resume")}>恢复托管</Button> : <Popconfirm title="暂停这项托管推广？" description="新发布作业会停止；已经交给平台处理或已经公开的内容不会撤回。" okText="暂停" cancelText="取消" onConfirm={() => changePauseState("pause")}><Button type="text" icon={<PauseCircleOutlined />} loading={mutating}>暂停托管</Button></Popconfirm>}
         <Link href={`/hosted/settings?orderId=${encodeURIComponent(order.orderId)}`}><Button type="text" icon={<SettingOutlined />}>托管设置</Button></Link>
-        <Link href="/settings?tab=connections"><Button type="text" icon={<SettingOutlined />}>渠道连接</Button></Link>
+        <Link href={`/?orderId=${encodeURIComponent(order.orderId)}#setup-accounts`}><Button type="text" icon={<SettingOutlined />}>继续完成渠道连接</Button></Link>
       </div>
     </div>
   );
