@@ -359,12 +359,13 @@ async function exchangeOAuthCode(provider: "gmail" | "outlook", code: string, ve
 
 async function resolveOAuthEmail(provider: "gmail" | "outlook", accessToken: string) {
   const endpoint = provider === "gmail"
-    ? "https://gmail.googleapis.com/gmail/v1/users/me/profile"
+    ? "https://openidconnect.googleapis.com/v1/userinfo"
     : "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName";
   const response = await fetch(endpoint, { headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-  const email = provider === "gmail" ? payload.emailAddress : payload.mail || payload.userPrincipalName;
-  if (!response.ok || typeof email !== "string") {
+  const email = provider === "gmail" ? payload.email : payload.mail || payload.userPrincipalName;
+  const verified = provider !== "gmail" || payload.email_verified === true;
+  if (!response.ok || typeof email !== "string" || !verified) {
     throw repositoryError("hosted_email_oauth_profile_failed", "无法确认授权邮箱身份。", 422);
   }
   return assertEmail(email);
