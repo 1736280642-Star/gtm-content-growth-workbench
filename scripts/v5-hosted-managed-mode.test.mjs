@@ -4,7 +4,7 @@ import test from "node:test";
 
 process.env.HOSTED_REVIEW_LINK_SECRET = "hosted-managed-mode-test-secret";
 
-const [{ compileHostedOrderNextAction, deriveHostedChannelAuthorizationPhase }, { buildHostedReviewToken, hashHostedReviewToken }, { dispatchHostedNotifications }, { allHostedChannelCapsReached }, { buildHostedPreferenceToken, verifyHostedPreferenceToken }] = await Promise.all([
+const [{ compileHostedOrderNextAction, deriveHostedChannelAuthorizationPhase }, { buildHostedReviewExpiry, buildHostedReviewToken, hashHostedReviewToken }, { dispatchHostedNotifications }, { allHostedChannelCapsReached }, { buildHostedPreferenceToken, verifyHostedPreferenceToken }] = await Promise.all([
   import("../src/lib/v5/hosted-managed-contracts.ts"),
   import("../src/lib/v5/hosted-review-repository.ts"),
   import("../src/lib/v5/hosted-notification-service.ts"),
@@ -65,6 +65,18 @@ test("审核 Token 可重建、只落哈希且不同有效期产生不同 Token"
   assert.notEqual(first, renewed);
   assert.match(hashHostedReviewToken(first), /^[a-f0-9]{64}$/);
   assert.ok(!hashHostedReviewToken(first).includes("hosted-review-test"));
+});
+
+test("审核过期时间以 Date 写入 MySQL，同时以 ISO 字符串参与 Token 签名", async () => {
+  const now = Date.parse("2026-08-27T09:06:16.275Z");
+  const expiresAtDate = buildHostedReviewExpiry(72, now);
+  assert.ok(expiresAtDate instanceof Date);
+  assert.equal(expiresAtDate.toISOString(), "2026-08-30T09:06:16.275Z");
+
+  const repository = await readFile(new URL("../src/lib/v5/hosted-review-repository.ts", import.meta.url), "utf8");
+  assert.match(repository, /buildHostedReviewToken\(reviewRequestId, expiresAt\)/);
+  assert.match(repository, /tokenHash, expiresAtDate, idempotencyKey/);
+  assert.doesNotMatch(repository, /tokenHash, expiresAt, idempotencyKey/);
 });
 
 test("邮件通知偏好使用签名链接且篡改后失效", () => {

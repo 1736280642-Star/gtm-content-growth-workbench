@@ -68,6 +68,10 @@ export function buildHostedReviewToken(reviewRequestId: string, expiresAt: strin
   return `${payload}.${signature}`;
 }
 
+export function buildHostedReviewExpiry(expiresInHours = 72, now = Date.now()) {
+  return new Date(now + expiresInHours * 60 * 60 * 1000);
+}
+
 export function hashHostedReviewToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -136,13 +140,14 @@ export async function ensureHostedReviewRequestRecord(input: {
     );
     if (existingRows[0]) return { review: mapReview(existingRows[0]), created: false };
     const reviewRequestId = `hosted-review-${randomUUID()}`;
-    const expiresAt = new Date(Date.now() + (input.expiresInHours || 72) * 60 * 60 * 1000).toISOString();
+    const expiresAtDate = buildHostedReviewExpiry(input.expiresInHours || 72);
+    const expiresAt = expiresAtDate.toISOString();
     const tokenHash = hashHostedReviewToken(buildHostedReviewToken(reviewRequestId, expiresAt));
     await connection.query(
       `INSERT INTO hosted_review_request
        (id, order_id, product_id, gate_type, target_id, token_hash, status, expires_at, idempotency_key)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      [reviewRequestId, input.orderId, input.productId, input.gateType, input.targetId, tokenHash, expiresAt, idempotencyKey]
+      [reviewRequestId, input.orderId, input.productId, input.gateType, input.targetId, tokenHash, expiresAtDate, idempotencyKey]
     );
     await writeV5GovernanceAudit(connection, {
       actorId: input.actorId,
