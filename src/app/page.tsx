@@ -47,11 +47,11 @@ const HostedAiCaptureRequestPanel = dynamic(
   }
 );
 
-const HostedAiCaptureDeploymentGuide = dynamic(
-  () => import("@/components/HostedAiCaptureDeploymentGuide").then((module) => module.HostedAiCaptureDeploymentGuide),
+const HostedDeploymentCenter = dynamic(
+  () => import("@/components/HostedDeploymentCenter").then((module) => module.HostedDeploymentCenter),
   {
     ssr: false,
-    loading: () => <div className={styles.embeddedConnectionLoading}><Spin /><span>正在加载共享采集服务器控制台</span></div>
+    loading: () => <div className={styles.embeddedConnectionLoading}><Spin /><span>正在加载完整部署向导</span></div>
   }
 );
 
@@ -571,8 +571,8 @@ export default function HostedTaskPage() {
   return (
     <div className={styles.page}>
       <section className={styles.intro}>
-        <div><div className={styles.kicker}>JOTO / GUIDED MANAGED SETUP</div><h1>{pageAudience === "deployment" ? "先把系统发信跑通，再交给普通用户。" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
-        <aside className={styles.introAside}>{pageAudience === "deployment" ? <><strong>{senderStatus?.configured ? "系统发件邮箱已连接" : "现在处理：部署初始化"}</strong><span>{senderStatus?.configured ? "下一步切到普通用户，发送一封真实登录邮件完成验收。" : "先写入服务端安全参数，再连接一个系统发件邮箱。"}</span><small>只需部署人员操作一次</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside>
+        <div><div className={styles.kicker}>JOTO / GUIDED MANAGED SETUP</div><h1>{pageAudience === "deployment" ? "一次走完首次部署，之后只交给用户使用。" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
+        <aside className={styles.introAside}>{pageAudience === "deployment" ? <><strong>{senderStatus?.configured ? "邮箱链路已连接，继续完成整体验收" : "现在处理：完整部署初始化"}</strong><span>从数据库、AI、邮箱到自动发布，页面会按所选能力生成必填清单和脱敏模板。</span><small>部署人员操作，普通用户不接触密钥</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside>
       </section>
 
       <nav className={styles.roleSwitcher} aria-label="选择当前操作角色">
@@ -583,204 +583,20 @@ export default function HostedTaskPage() {
         </button>
         <button type="button" aria-controls="role-panel-deployment" aria-pressed={pageAudience === "deployment"} className={pageAudience === "deployment" ? styles.roleSwitchActive : ""} onClick={() => switchAudience("deployment")}>
           <SafetyCertificateOutlined />
-          <span><strong>我是部署人员</strong><small>配置系统发件邮箱、部署安全参数和 24h 共享采集服务器</small></span>
+          <span><strong>我是部署人员</strong><small>配置数据库、AI、邮箱、发布执行器和共享采集服务器</small></span>
           {pageAudience === "deployment" ? <CheckCircleFilled /> : <ArrowRightOutlined />}
         </button>
       </nav>
 
       {error || notice ? <div className={`${styles.setupFeedbackDock} ${error ? styles.setupFeedbackError : styles.setupFeedbackSuccess}`} role={error ? "alert" : "status"}><span>{error ? <InfoCircleOutlined /> : <CheckCircleFilled />}</span><div><strong>{error ? "当前操作未完成" : "操作已生效"}</strong><small>{error || notice}</small></div><Button type="text" size="small" onClick={() => { setError(undefined); setNotice(undefined); }}>关闭</Button></div> : null}
 
-      <div id="role-panel-deployment" className={styles.deploymentWorkspace} hidden={pageAudience !== "deployment"}>
-        <div className={styles.deploymentMain}>
-          <section className={styles.deploymentSection} id="deployment-security">
-            <div className={styles.deploymentSectionHeader}><div><h2>准备服务端安全参数</h2><p>这一步只在部署机器上完成。普通用户看不到，也不需要填写任何 Token。</p></div><StepStatusBadge state="active" /></div>
-            <SetupGuide
-              title="照着填，不需要理解代码"
-              summary="打开 .env.local，逐行加入所需配置项"
-              defaultOpen
-              steps={[
-                "在项目根目录打开被 Git 忽略的 .env.local。不要把真实值写进聊天、截图或代码仓库。",
-                "新增 HOSTED_EMAIL_SETUP_TOKEN，使用密码管理器生成至少 32 位随机值。稍后管理员授权邮箱时，需要在页面输入同一个值。",
-                "新增 HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY。它不是从 Gmail 或 Vercel 领取的，请按下方命令在本机生成独立的 32 字节随机值。",
-                "填写 HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL。本机使用 http://127.0.0.1:3027，线上使用正式 HTTPS 域名。",
-                "如果使用 Gmail，填写 HOSTED_EMAIL_GOOGLE_CLIENT_ID / HOSTED_EMAIL_GOOGLE_CLIENT_SECRET；如果使用 Outlook，填写对应的 HOSTED_EMAIL_MICROSOFT_CLIENT_ID / CLIENT_SECRET。它们来自部署人员创建的 OAuth Web 应用。",
-                "保存文件后运行 npm.cmd run docker:3027:deploy -- -NoOpen。看到 3027 健康检查通过，再继续下一步。"
-              ]}
-              note="Setup Token、加密密钥和 Google Client Secret 必须是三个不同的值。Gmail 登录密码或应用专用密码都不能替代它们。"
-            />
-            <div className={styles.deploymentVariables} aria-label="部署配置清单">
-              <div><code>HOSTED_EMAIL_SETUP_TOKEN</code><span>管理员页面核对口令</span></div>
-              <div><code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code><span>加密保存邮箱授权</span></div>
-              <div><code>HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL</code><span>OAuth 授权返回域名</span></div>
-              <div><code>HOSTED_EMAIL_GOOGLE_CLIENT_ID</code><span>Google OAuth 应用编号</span></div>
-              <div><code>HOSTED_EMAIL_GOOGLE_CLIENT_SECRET</code><span>只保存在服务端</span></div>
-              <div><code>HOSTED_EMAIL_MICROSOFT_CLIENT_ID</code><span>Microsoft OAuth 应用编号</span></div>
-              <div><code>HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET</code><span>只保存在服务端</span></div>
-            </div>
-            <div className={styles.credentialSourceGuide} aria-labelledby="credential-source-guide-title">
-              <div className={styles.credentialSourceGuideHeader}>
-                <LinkOutlined />
-                <div><strong id="credential-source-guide-title">每个字段从哪里获得</strong><span>按要使用的邮箱选择对应入口。链接打开的都是供应商官方页面，生成的 Secret 只写入服务端环境变量。</span></div>
-              </div>
-              <div className={styles.credentialSourceGrid}>
-                <article>
-                  <span className={styles.credentialSourceLabel}>工作台自己生成</span>
-                  <strong>Setup Token 与加密密钥</strong>
-                  <dl>
-                    <div><dt><code>HOSTED_EMAIL_SETUP_TOKEN</code></dt><dd>在项目终端运行：<code>{`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`}</code></dd></div>
-                    <div><dt><code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code></dt><dd>在项目终端运行：<code>{`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}</code></dd></div>
-                  </dl>
-                  <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">打开 Vercel Dashboard 写入环境变量 <ArrowRightOutlined /></a>
-                </article>
-                <article>
-                  <span className={styles.credentialSourceLabel}>部署域名</span>
-                  <strong>OAuth 返回域名</strong>
-                  <dl><div><dt><code>HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL</code></dt><dd>打开 Vercel 项目 → Settings → Domains，复制 Production 主域名，只保留 <code>https://域名</code>，末尾不要加斜杠。</dd></div></dl>
-                  <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">打开 Vercel 项目列表 <ArrowRightOutlined /></a>
-                </article>
-                <article>
-                  <span className={styles.credentialSourceLabel}>Gmail / Google Workspace</span>
-                  <strong>Google OAuth Client</strong>
-                  <dl>
-                    <div><dt><code>HOSTED_EMAIL_GOOGLE_CLIENT_ID</code></dt><dd>Google Auth Platform → Clients → Create client → Web application；创建后复制 Client ID。</dd></div>
-                    <div><dt><code>HOSTED_EMAIL_GOOGLE_CLIENT_SECRET</code></dt><dd>在同一个 Web client 详情页复制 Client secret，并立即保存到服务端。</dd></div>
-                    <div><dt>Authorized redirect URI</dt><dd><code>{`<正式域名>/api/v5/hosted/email-sender/oauth/callback/gmail`}</code></dd></div>
-                  </dl>
-                  <div className={styles.credentialSourceActions}><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">打开 Google OAuth Clients <ArrowRightOutlined /></a><a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noreferrer">启用 Gmail API <ArrowRightOutlined /></a></div>
-                </article>
-                <article>
-                  <span className={styles.credentialSourceLabel}>Outlook 个人邮箱</span>
-                  <strong>Microsoft Entra OAuth App</strong>
-                  <dl>
-                    <div><dt><code>HOSTED_EMAIL_MICROSOFT_CLIENT_ID</code></dt><dd>App registrations → New registration；创建后在 Overview 复制 Application (client) ID。</dd></div>
-                    <div><dt><code>HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET</code></dt><dd>Certificates &amp; secrets → New client secret；复制 Value，不是 Secret ID。</dd></div>
-                    <div><dt>Web redirect URI</dt><dd><code>{`<正式域名>/api/v5/hosted/email-sender/oauth/callback/outlook`}</code></dd></div>
-                  </dl>
-                  <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">打开 Microsoft App registrations <ArrowRightOutlined /></a>
-                </article>
-              </div>
-              <p><InfoCircleOutlined /> 环境变量新增或修改后不会作用于旧部署。保存后必须重新部署最新的 main，再进入下一步授权邮箱。</p>
-            </div>
-            <div className={styles.deploymentKeyGuide} aria-label="邮箱凭据加密密钥获取说明">
-              <div className={styles.deploymentKeyGuideHeader}>
-                <SafetyCertificateOutlined />
-                <div><strong>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY 怎么获得</strong><span>由部署人员在本机生成，不需要向 Gmail、Vercel 或邮箱供应商申请。</span></div>
-              </div>
-              <ol>
-                <li><strong>生成随机值</strong><span>在项目终端运行下面的命令。它会输出 64 位 hex，正好代表 32 字节。</span><code>{`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}</code></li>
-                <li><strong>写入部署环境</strong><span>本机把结果写入被 Git 忽略的 <code>.env.local</code>。Vercel 打开 Project Settings → Environment Variables，变量名填写 <code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code>，变量值粘贴刚生成的 64 位字符串，至少勾选 Production。</span></li>
-                <li><strong>保存并重新部署</strong><span>值的前后不要加引号。Vercel 保存后重新部署最新的 main，本机则重新执行 3027 部署命令。</span></li>
-              </ol>
-              <p><strong>请妥善保存：</strong>不要把真实值发到聊天、截图或 GitHub，也不要随意更换。更换后，之前保存的 SMTP 或 OAuth 凭据将无法解密，必须重新连接系统发件邮箱。</p>
-            </div>
-          </section>
-
-          <section className={styles.deploymentSection} id="deployment-email">
-            <div className={styles.deploymentSectionHeader}><div><h2>连接系统发件邮箱</h2><p>系统以后统一用这个邮箱发送登录链接和托管通知，普通用户只负责收信。</p></div><StepStatusBadge state={senderStatus?.configured ? "done" : "active"} /></div>
-            <SetupGuide
-              title="完成邮箱授权"
-              summary="系统自动识别邮箱服务商，不需要手动选择"
-              defaultOpen={!senderStatus?.configured}
-              steps={[
-                "点击下方按钮进入发件邮箱授权页。",
-                "输入准备作为系统发件人的完整邮箱地址，等待页面显示识别结果。",
-                "QQ、163、阿里云企业邮箱填写供应商生成的 SMTP 授权码。Gmail 和 Outlook 会跳到 Google / Microsoft 官方页面登录并授权，应用不接触邮箱登录密码。",
-                "在部署级 Setup Token 输入框中，填写 .env.local 里完全相同的 HOSTED_EMAIL_SETUP_TOKEN。",
-                "提交后查看页面顶部。只有显示“当前发件邮箱已连接”，才算完成。"
-              ]}
-              note="这里连接的是系统发件邮箱，不是普通用户用来接收登录邮件的邮箱。一个部署只需要连接一次。"
-            />
-            <SetupGuide
-              title="Gmail / Outlook OAuth 到底是什么"
-              summary="部署人员先登记应用，用户只在供应商官方页面点同意"
-              steps={[
-                "部署人员在 Google Cloud 或 Microsoft Entra 创建 Web OAuth 应用，并只申请发送邮件和识别当前账号所需权限，不申请读取收件箱。",
-                "在供应商后台登记回调地址：Gmail 使用 <正式域名>/api/v5/hosted/email-sender/oauth/callback/gmail；Outlook 使用 <正式域名>/api/v5/hosted/email-sender/oauth/callback/outlook。下方卡片可直接复制核对。",
-                "把 Client ID / Client Secret 写入 Vercel 环境变量并重新部署。Secret 只能保存在服务端，不能放进 NEXT_PUBLIC_ 变量。",
-                "授权时页面会离开工作台，进入 Google / Microsoft 官方登录页。确认账号和权限后点同意，供应商再把浏览器送回工作台。",
-                "工作台只保存可撤销的发送授权，用它发送登录链接和通知；普通用户不会看到 Client Secret，也不需要提供邮箱密码。"
-              ]}
-              note="OAuth 不是 SMTP 授权码。二者是两条不同连接方式：Gmail / Outlook 优先 OAuth，QQ / 163 等使用邮箱后台生成的 SMTP 授权码。"
-            />
-            <div className={styles.smtpSourceGuide} aria-labelledby="smtp-source-guide-title">
-              <div className={styles.credentialSourceGuideHeader}>
-                <MailOutlined />
-                <div><strong id="smtp-source-guide-title">SMTP 授权码直达入口</strong><span>先用准备作为系统发件人的账号登录，再按卡片中的路径操作。授权码不是邮箱登录密码。</span></div>
-              </div>
-              <div className={styles.smtpSourceGrid}>
-                <article><strong>QQ 邮箱</strong><p>登录后打开 设置 → 账号与安全 → 安全设置 → POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV 服务，开启 SMTP 并点击“生成授权码”。</p><a href="https://mail.qq.com/" target="_blank" rel="noreferrer">打开 QQ 邮箱官方网页版 <ArrowRightOutlined /></a></article>
-                <article><strong>163 邮箱</strong><p>登录后打开 设置 → POP3/SMTP/IMAP，开启 IMAP/SMTP 或 POP3/SMTP；按安全验证提示创建“客户端授权密码”。</p><a href="https://mail.163.com/" target="_blank" rel="noreferrer">打开 163 邮箱官方网页版 <ArrowRightOutlined /></a></article>
-                <article><strong>阿里云企业邮箱</strong><p>管理员先允许三方客户端访问；用户再在邮箱设置中开启“三方客户端安全密码”，生成独立密码后填入 SMTP 授权码字段。</p><a href="https://help.aliyun.com/zh/document_detail/444380.html" target="_blank" rel="noreferrer">查看阿里云官方操作说明 <ArrowRightOutlined /></a></article>
-                <article><strong>Gmail / Outlook</strong><p>不生成 SMTP 授权码。部署字段填写完成并重新部署后，点击页面中的 Google / Microsoft OAuth 按钮，在供应商官方授权页完成登录。</p><div className={styles.credentialSourceActions}><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">Google Clients <ArrowRightOutlined /></a><a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">Microsoft Apps <ArrowRightOutlined /></a></div></article>
-              </div>
-            </div>
-            <div className={`${styles.deploymentActionCard} ${senderStatus?.configured ? styles.deploymentActionReady : ""}`}>
-              {senderStatusLoading ? <Spin size="small" /> : senderStatus?.configured ? <CheckCircleFilled /> : <MailOutlined />}
-              <div><strong>{senderStatusLoading ? "正在检查发件邮箱" : senderStatus?.configured ? "发件邮箱已经连接" : "还没有连接发件邮箱"}</strong><span>{senderStatus?.configured ? `${senderStatus.senderHint || "已连接邮箱"} 可以发送系统邮件。` : "完成授权后，所有普通用户共用这一个系统发件邮箱。"}</span></div>
-              <Link href="/hosted/email-sender"><Button type={senderStatus?.configured ? "default" : "primary"}>{senderStatus?.configured ? "检查或更换邮箱" : "现在连接发件邮箱"}</Button></Link>
-            </div>
-          </section>
-
-          <section className={styles.deploymentSection} id="deployment-ai-capture">
-            <div className={styles.deploymentSectionHeader}><div><h2>部署一台 24h 共享 AI 采集服务器</h2><p>扩展、Windows 伴侣和 AI 测试账号都只安装在部署人员的常开电脑；普通用户不接触这些配置。</p></div><span className={styles.optionalBadge}>部署人员操作</span></div>
-            <SetupGuide
-              title="从零部署照着做"
-              summary="一台 Windows 常开机服务所有普通用户"
-              steps={[
-                "在数据库执行到 20260827_042_v5_deployment_shared_ai_capture.sql。它会把共享执行器与普通用户工作区分开，并为每个请求保存发起人归属。",
-                "在 Vercel 生成并保存 HOSTED_CAPTURE_SETUP_TOKEN。它只用于部署人员打开本区控制台，不能发给普通用户。保存后重新部署。",
-                "在这台 24h Windows 电脑打开 Chrome → 扩展程序 → 开发者模式 → 加载已解压的扩展程序，选择项目中的 browser-extension 目录。",
-                "复制 Chrome 显示的扩展 ID，在这台电脑的伴侣环境中设置 V5_CAPTURE_EXTENSION_ID；再把正式工作台地址设置为 V5_WORKBENCH_BASE_URL。",
-                "在下方输入部署级 Setup Token，先点“生成部署配对码”。然后启动 npm.cmd run capture-companion:start，并在伴侣窗口输入这个一次性配对码。",
-                "只在这台共享电脑的 Chrome 中登录 ChatGPT、豆包、DeepSeek、千问测试账号。验收在线后运行 npm.cmd run capture-companion:autostart，让伴侣随 Windows 启动。"
-              ]}
-              note="这不是运行在 Vercel 容器里的浏览器。Vercel 负责接收和隔离请求，常开 Windows 电脑负责真实页面操作。普通用户只提交请求，不安装扩展、不配对设备、不登录 AI 测试账号。"
-              defaultOpen
-            />
-            <div className={styles.deploymentVariables} aria-label="AI 前台采集部署变量">
-              <div><code>HOSTED_CAPTURE_SETUP_TOKEN</code><span>Vercel：部署人员控制台口令，建议 32 字节随机值</span></div>
-              <div><code>V5_CAPTURE_EXTENSION_ID</code><span>共享电脑：伴侣只信任这一 Chrome 扩展</span></div>
-              <div><code>V5_WORKBENCH_BASE_URL</code><span>共享电脑：正式 HTTPS 工作台地址</span></div>
-              <div><code>V5_CAPTURE_CHROME_PROFILE_DIRECTORY</code><span>共享电脑：专用浏览器档案，可选</span></div>
-            </div>
-            <div className={styles.deploymentCommandGrid}>
-              <div><span>先在前台运行验收</span><code>npm.cmd run capture-companion:start</code></div>
-              <div><span>验收通过后设置开机运行</span><code>npm.cmd run capture-companion:autostart</code></div>
-            </div>
-            {pageAudience === "deployment" ? <HostedAiCaptureDeploymentGuide /> : null}
-          </section>
-
-          <section className={styles.deploymentSection} id="deployment-test">
-            <div className={styles.deploymentSectionHeader}><div><h2>切换角色，发送真实测试邮件</h2><p>部署人员最后模拟一次普通用户登录，确认邮件从系统发件邮箱送达。</p></div><StepStatusBadge state={senderStatus?.configured ? "active" : "locked"} /></div>
-            <SetupGuide
-              title="最后一次验收"
-              summary="发送、收信、打开链接，三件事都成功才算交付"
-              defaultOpen={Boolean(senderStatus?.configured)}
-              steps={[
-                "确认上一项已经显示“发件邮箱已经连接”。",
-                "点击下方“切到普通用户试发”，页面会自动回到普通用户登录步骤。",
-                "输入一个你能立即查收的工作邮箱，点击“发送登录链接”。",
-                "查看收件箱和垃圾邮件，在 15 分钟内打开主题含 JOTO 的邮件。",
-                "浏览器自动回到本页并显示登录已验证后，部署流程才算完成。"
-              ]}
-              note="普通用户以后只重复登录和业务配置，不会再看到或填写部署级密钥。"
-            />
-            {senderStatus?.configured ? <Button type="primary" size="large" icon={<UserOutlined />} onClick={() => switchAudience("user", "setup-identity")}>切到普通用户试发</Button> : <LockedStep reason="先连接系统发件邮箱" nextAction="完成上一项后刷新状态，再进行真实登录邮件验收。" />}
-          </section>
-        </div>
-
-        <aside className={styles.deploymentPassport} aria-label="部署完成清单">
-          <SafetyCertificateOutlined />
-          <h2>部署完成清单</h2>
-          <p>系统发信是必做项；AI 前台采集按实际需要开启。</p>
-          <ol>
-            <li><span>1</span><div><strong>安全参数</strong><small>写入 .env.local 并重建 3027</small></div></li>
-            <li className={senderStatus?.configured ? styles.deploymentPassportDone : ""}><span>{senderStatus?.configured ? <CheckOutlined /> : "2"}</span><div><strong>系统发件邮箱</strong><small>{senderStatus?.configured ? "已连接" : "等待授权"}</small></div></li>
-            <li><span>3</span><div><strong>共享 AI 采集服务器</strong><small>扩展、伴侣、部署级配对</small></div></li>
-            <li><span>4</span><div><strong>普通用户试发</strong><small>收到并打开登录邮件</small></div></li>
-          </ol>
-          <Button block icon={<ReloadOutlined />} loading={senderStatusLoading} onClick={loadSenderStatus}>重新检查发件邮箱</Button>
-        </aside>
+      <div id="role-panel-deployment" hidden={pageAudience !== "deployment"}>
+        {pageAudience === "deployment" ? <HostedDeploymentCenter
+          senderStatus={senderStatus}
+          senderStatusLoading={senderStatusLoading}
+          onReloadSenderStatus={loadSenderStatus}
+          onSwitchToUserTest={() => switchAudience("user", "setup-identity")}
+        /> : null}
       </div>
 
       <div id="role-panel-user" className={styles.workspace} hidden={pageAudience !== "user"}>

@@ -79,6 +79,7 @@
     "test:v5-geo-multi-search": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-geo-multi-search.test.mjs",
     "test:v5-product-strategy": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-product-geo-strategy-pack.test.mjs",
     "test:v5-hosted-managed": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-hosted-managed-mode.test.mjs",
+    "test:v5-hosted-deployment-center": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-hosted-deployment-center.test.mjs",
     "test:v5-personal-email-sender": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-personal-email-sender.test.mjs",
     "test:v5-multi-user-channel-connections": "node --test scripts/v5-multi-user-channel-connections.test.mjs",
     "test:v5-product-strategy:integration": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/v5-product-geo-strategy-pack.integration.test.mjs",

@@ -1310,3 +1310,148 @@
   .finalReadinessActions a, .finalReadinessActions :global(.ant-btn) { width: 100%; }
   .deploymentGuide > div { padding-left: 14px; }
 }
+
+/* Complete first-deployment center */
+.deploymentScope { padding: 20px; border: 1px solid #b9d8c7; border-radius: 10px; background: #f7fbf8; box-shadow: 0 12px 30px rgba(28, 58, 43, .06); }
+.deploymentScopeIntro { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.deploymentScopeIntro strong, .deploymentScopeIntro span { display: block; }
+.deploymentScopeIntro strong { color: #18201d; font-size: 15px; }
+.deploymentScopeIntro span { margin-top: 4px; color: #63716b; font-size: 10px; line-height: 1.55; }
+.deploymentScopeIntro > span { flex: 0 0 auto; min-height: 26px; margin: 0; padding: 5px 9px; border: 1px solid #b9d8c7; border-radius: 999px; color: #176b52; background: #fff; font-size: 9px; font-weight: 700; }
+.deploymentModeGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 16px; }
+.deploymentModeGrid button, .deploymentFeatureGrid button { position: relative; min-width: 0; border: 1px solid #d4dfd9; border-radius: 9px; color: #26342e; background: #fff; text-align: left; cursor: pointer; transition: border-color .18s ease, background-color .18s ease, transform .18s ease; }
+.deploymentModeGrid button { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 3px 9px; padding: 13px; }
+.deploymentModeGrid button:hover, .deploymentFeatureGrid button:hover { border-color: #7fb49c; }
+.deploymentModeGrid button:active, .deploymentFeatureGrid button:active { transform: translateY(1px); }
+.deploymentModeGrid button:focus-visible, .deploymentFeatureGrid button:focus-visible, .deploymentTemplateHeader button:focus-visible { outline: 3px solid rgba(23, 107, 82, .16); outline-offset: 2px; }
+.deploymentModeGrid button > span { grid-row: 1 / span 2; display: grid; width: 28px; height: 28px; place-items: center; border-radius: 7px; color: #176b52; background: #eef7f2; font-size: 15px; }
+.deploymentModeGrid button > strong, .deploymentModeGrid button > small { grid-column: 2; display: block; }
+.deploymentModeGrid button > strong { font-size: 11px; }
+.deploymentModeGrid button > small { color: #74817a; font-size: 8px; line-height: 1.45; }
+.deploymentModeGrid button > :last-child:not(small):not(strong):not(span) { position: absolute; top: 9px; right: 9px; color: #176b52; }
+.deploymentFeatureGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 9px; }
+.deploymentFeatureGrid button { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; padding: 10px 11px; }
+.deploymentFeatureGrid button > span { grid-row: 1 / span 2; color: #176b52; font-size: 15px; }
+.deploymentFeatureGrid button > strong, .deploymentFeatureGrid button > small { grid-column: 2; display: block; }
+.deploymentFeatureGrid button > strong { font-size: 10px; }
+.deploymentFeatureGrid button > small { color: #74817a; font-size: 8px; line-height: 1.35; }
+.deploymentFeatureGrid button > b { grid-column: 3; grid-row: 1 / span 2; color: #7c8781; font-size: 8px; font-weight: 700; }
+.deploymentChoiceActive { border-color: #5d9f81 !important; background: #eef7f2 !important; }
+.deploymentChoiceActive > b { color: #176b52 !important; }
+
+.deploymentStepHeader { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: start; gap: 11px; margin-bottom: 16px; }
+.deploymentStepHeader > span { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; color: #fff; background: #176b52; font: 750 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.deploymentStepHeader h2 { margin: 0; color: #18201d; font-size: 17px; line-height: 1.25; }
+.deploymentStepHeader p { max-width: 68ch; margin: 5px 0 0; color: #63716b; font-size: 10px; line-height: 1.55; }
+.deploymentStepHeader > b { min-height: 26px; padding: 5px 9px; border: 1px solid; border-radius: 999px; font-size: 8px; white-space: nowrap; }
+.deploymentStep-active { border-color: #b9d8c7; color: #176b52; background: #eef7f2; }
+.deploymentStep-done { border-color: #176b52; color: #fff; background: #176b52; }
+.deploymentStep-optional { border-color: #d8dfdb; color: #74817a; background: #f5f7f6; }
+
+.deploymentLocationNotice, .deploymentSafetyGate { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; margin-bottom: 12px; padding: 13px 14px; border-radius: 8px; }
+.deploymentLocationNotice { border: 1px solid #c8ddd2; color: #176b52; background: #f1f8f4; }
+.deploymentSafetyGate { margin-top: 12px; border: 1px solid #e1c69f; color: #9a5b13; background: #fdf8f1; }
+.deploymentLocationNotice > svg, .deploymentSafetyGate > svg { margin-top: 2px; font-size: 18px; }
+.deploymentLocationNotice strong, .deploymentLocationNotice span, .deploymentSafetyGate strong, .deploymentSafetyGate span { display: block; }
+.deploymentLocationNotice strong, .deploymentSafetyGate strong { color: #26342e; font-size: 11px; }
+.deploymentLocationNotice span, .deploymentSafetyGate span { margin-top: 4px; color: #63716b; font-size: 9px; line-height: 1.55; }
+
+.deploymentFieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.deploymentFieldCard { min-width: 0; padding: 14px; border: 1px solid #dce4df; border-radius: 9px; background: #fff; }
+.deploymentFieldTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.deploymentFieldTop code { overflow-wrap: anywhere; color: #176b52; font: 700 9px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.deploymentFieldTop span { flex: 0 0 auto; padding: 3px 6px; border: 1px solid; border-radius: 999px; font-size: 7px; font-weight: 750; }
+.requirement-required { border-color: #bd6b5b !important; color: #8f3627; background: #fff3f0; }
+.requirement-conditional { border-color: #d9b27d !important; color: #8a5a1f; background: #fdf8f1; }
+.requirement-optional, .requirement-default { border-color: #d4dfd9 !important; color: #66736c; background: #f5f7f6; }
+.requirement-generated { border-color: #8fbea8 !important; color: #176b52; background: #eef7f2; }
+.deploymentFieldCard > strong { display: block; margin-top: 10px; color: #26342e; font-size: 11px; }
+.deploymentFieldCard > p { margin: 4px 0 10px; color: #63716b; font-size: 9px; line-height: 1.55; }
+.deploymentFieldCard dl { display: grid; gap: 7px; margin: 0; }
+.deploymentFieldCard dl > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 7px; }
+.deploymentFieldCard dt { color: #84908a; font-size: 8px; }
+.deploymentFieldCard dd { margin: 0; color: #4e5e56; font-size: 8px; line-height: 1.5; }
+.deploymentFieldCard pre { overflow: auto; margin: 10px 0 0; padding: 8px 9px; border-radius: 6px; color: #26342e; background: #f4f7f5; font: 650 8px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.deploymentFieldCard > a { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: #176b52; font-size: 8px; font-weight: 750; text-decoration: none; }
+.deploymentFieldCard > a:hover { text-decoration: underline; }
+
+.deploymentTemplatePanel { margin-top: 12px; padding: 14px; border: 1px solid #cbdad2; border-radius: 9px; background: #f7f9f8; }
+.deploymentTemplateHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.deploymentTemplateHeader strong, .deploymentTemplateHeader span { display: block; }
+.deploymentTemplateHeader strong { color: #26342e; font-size: 11px; }
+.deploymentTemplateHeader span { margin-top: 3px; color: #74817a; font-size: 8px; line-height: 1.45; }
+.deploymentTemplateHeader > div:last-child { display: flex; flex: 0 0 auto; gap: 5px; }
+.deploymentTemplateHeader button { min-height: 28px; padding: 0 9px; border: 1px solid #d4dfd9; border-radius: 6px; color: #63716b; background: #fff; font-size: 8px; font-weight: 700; cursor: pointer; }
+.deploymentTemplateTabActive { border-color: #176b52 !important; color: #176b52 !important; background: #eef7f2 !important; }
+.deploymentTemplateCode { max-height: 310px; overflow: auto; margin: 12px 0 0; padding: 13px; border-radius: 7px; color: #dfeee7; background: #1d2923; font: 600 9px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.deploymentTemplateActions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.deploymentSkipped { display: flex; align-items: flex-start; gap: 9px; padding: 13px 14px; border: 1px dashed #c9d2cd; border-radius: 8px; color: #63716b; background: #f7f9f8; font-size: 9px; line-height: 1.55; }
+.deploymentSkipped svg { flex: 0 0 auto; margin-top: 2px; color: #176b52; }
+.deploymentOauthCallbacks { display: grid; gap: 6px; margin: 12px 0; padding: 13px 14px; border: 1px solid #dce4df; border-radius: 8px; background: #f7f9f8; }
+.deploymentOauthCallbacks strong { color: #26342e; font-size: 10px; }
+.deploymentOauthCallbacks code { overflow-wrap: anywhere; color: #176b52; font: 650 8px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+.deploymentTopology { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin-bottom: 12px; }
+.deploymentTopology > div { display: grid; justify-items: center; gap: 4px; min-height: 92px; padding: 12px; border: 1px solid #dce4df; border-radius: 8px; background: #f7f9f8; text-align: center; }
+.deploymentTopology > div > svg { color: #176b52; font-size: 19px; }
+.deploymentTopology strong { color: #26342e; font-size: 10px; }
+.deploymentTopology span { color: #74817a; font-size: 8px; line-height: 1.4; }
+.deploymentTopology > svg { color: #8aa798; }
+
+.deploymentAdvanced { margin-top: 12px; border: 1px solid #dce4df; border-radius: 9px; background: #f9fbfa; }
+.deploymentAdvanced > summary { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 9px; padding: 12px 14px; cursor: pointer; list-style: none; }
+.deploymentAdvanced > summary::-webkit-details-marker { display: none; }
+.deploymentAdvanced > summary > svg { color: #176b52; }
+.deploymentAdvanced > summary strong, .deploymentAdvanced > summary small { display: block; }
+.deploymentAdvanced > summary strong { color: #26342e; font-size: 10px; }
+.deploymentAdvanced > summary small { margin-top: 3px; color: #74817a; font-size: 8px; }
+.deploymentAdvanced > div { padding: 0 14px 14px; }
+.deploymentAdvanced p { margin: 8px 0 0; color: #63716b; font-size: 9px; line-height: 1.6; }
+.deploymentAdvanced p code { color: #176b52; font: 650 8px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+.deploymentCheckForm { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px; }
+.deploymentCheckForm label > span { display: block; margin-bottom: 6px; color: #26342e; font-size: 9px; font-weight: 700; }
+.deploymentCheckError { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 11px 12px; border-left: 3px solid #b94b3b; color: #8f3627; background: #fff3f0; font-size: 9px; line-height: 1.5; }
+.deploymentCheckError svg { flex: 0 0 auto; margin-top: 2px; }
+.deploymentReadinessResult { margin-top: 12px; }
+.deploymentReadinessSummary { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 11px; padding: 13px; border: 1px solid #cbdad2; border-radius: 8px; background: #f7f9f8; }
+.deploymentReadinessSummary > span { display: grid; width: 50px; height: 50px; place-items: center; border-radius: 50%; font: 750 13px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.deploymentReadinessReady { color: #fff; background: #176b52; }
+.deploymentReadinessPending { color: #8a5a1f; background: #f2dfc5; }
+.deploymentReadinessSummary strong, .deploymentReadinessSummary div > span { display: block; }
+.deploymentReadinessSummary strong { color: #26342e; font-size: 11px; }
+.deploymentReadinessSummary div > span { margin-top: 4px; color: #63716b; font-size: 8px; line-height: 1.5; }
+.deploymentReadinessGroups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.deploymentReadinessGroups article { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; padding: 12px; border: 1px solid #e1c69f; border-radius: 8px; color: #9a5b13; background: #fdf8f1; }
+.deploymentReadinessGroups article > span { font-size: 16px; }
+.deploymentReadinessGroups strong, .deploymentReadinessGroups small { display: block; }
+.deploymentReadinessGroups strong { color: #26342e; font-size: 10px; }
+.deploymentReadinessGroups small { margin-top: 3px; overflow-wrap: anywhere; color: #63716b; font-size: 8px; line-height: 1.45; }
+.deploymentReadinessGroups ul { margin: 8px 0 0; padding-left: 15px; color: #63716b; font-size: 8px; line-height: 1.55; }
+.readinessGroupReady { border-color: #acd0bd !important; color: #176b52 !important; background: #eef7f2 !important; }
+.deploymentHandoff { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #dce4df; }
+.deploymentHandoff strong, .deploymentHandoff span { display: block; }
+.deploymentHandoff strong { color: #26342e; font-size: 11px; }
+.deploymentHandoff span { margin-top: 4px; color: #63716b; font-size: 9px; line-height: 1.5; }
+.deploymentHandoff > small { grid-column: 1 / -1; color: #8a5a1f; font-size: 8px; }
+.deploymentDocsLink { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: #176b52; font-size: 8px; font-weight: 700; text-decoration: none; }
+.deploymentDocsLink:hover { text-decoration: underline; }
+
+@media (max-width: 980px) {
+  .deploymentModeGrid, .deploymentFeatureGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .deploymentFieldGrid, .deploymentReadinessGroups { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .deploymentScopeIntro, .deploymentTemplateHeader { align-items: stretch; flex-direction: column; }
+  .deploymentScopeIntro > span { align-self: flex-start; }
+  .deploymentModeGrid, .deploymentFeatureGrid { grid-template-columns: 1fr; }
+  .deploymentStepHeader { grid-template-columns: 32px minmax(0, 1fr); }
+  .deploymentStepHeader > b { grid-column: 2; justify-self: start; }
+  .deploymentTemplateHeader > div:last-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .deploymentTopology { grid-template-columns: 1fr; }
+  .deploymentTopology > svg { justify-self: center; transform: rotate(90deg); }
+  .deploymentCheckForm, .deploymentHandoff { grid-template-columns: 1fr; }
+  .deploymentCheckForm :global(.ant-btn), .deploymentHandoff :global(.ant-btn) { width: 100%; }
+  .deploymentHandoff > small { grid-column: 1; }
+}
