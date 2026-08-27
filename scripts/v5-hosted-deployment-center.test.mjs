@@ -44,7 +44,7 @@ test("deployment center exposes six guided sections, official sources and saniti
     "连接 AI 与 GEO 服务",
     "配置邮箱登录与安全链接",
     "启动自动发布执行器",
-    "配置发布渠道与可选能力",
+    "配置发布渠道与增强能力",
     "检查配置并完成交接"
   ]) assert.match(component, new RegExp(heading));
 
@@ -59,6 +59,12 @@ test("deployment center exposes six guided sections, official sources and saniti
 
   assert.match(component, /复制当前模板/);
   assert.match(component, /下载 \{activeTemplate\.filename\}/);
+  assert.match(component, /所有产品能力默认开启/);
+  assert.match(component, /const allDeploymentFeatures: HostedDeploymentFeature\[\]/);
+  for (const feature of ["email", "geo", "wechat", "browser_publish", "metrics", "capture"]) {
+    assert.match(component, new RegExp(`"${feature}"`));
+  }
+  assert.doesNotMatch(component, /toggleFeature|setFeatures|deploymentFeatureGrid/);
   assert.match(page, /HostedDeploymentCenter/);
   assert.match(envExample, /WECHATSYNC_BRIDGE_TOKEN=/);
   assert.match(envExample, /WECHAT_MP_APP_ID=/);

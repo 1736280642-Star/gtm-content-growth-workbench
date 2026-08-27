@@ -1,27 +1,22 @@
 "use client";
 
 import {
-  ApiOutlined,
   ArrowRightOutlined,
   CheckCircleFilled,
   CheckOutlined,
   CloudServerOutlined,
-  CodeOutlined,
   CopyOutlined,
   DatabaseOutlined,
   DownloadOutlined,
-  GlobalOutlined,
   InfoCircleOutlined,
   LaptopOutlined,
   LinkOutlined,
   LockOutlined,
   MailOutlined,
   ReloadOutlined,
-  RobotOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
-  UserOutlined,
-  WechatOutlined
+  UserOutlined
 } from "@ant-design/icons";
 import { Button, Input, Spin } from "antd";
 import dynamic from "next/dynamic";
@@ -93,13 +88,13 @@ const deploymentModes: Array<{ id: HostedDeploymentMode; title: string; descript
   { id: "private", title: "完整私有化", description: "服务、数据和执行器都在企业控制的环境。", icon: <SafetyCertificateOutlined /> }
 ];
 
-const deploymentFeatures: Array<{ id: HostedDeploymentFeature; title: string; description: string; icon: ReactNode; recommended?: boolean }> = [
-  { id: "email", title: "邮箱登录", description: "登录链接、审核链接和托管通知。", icon: <MailOutlined />, recommended: true },
-  { id: "geo", title: "AI 与 GEO", description: "内容生成、Embedding 和 GEO 调研。", icon: <RobotOutlined />, recommended: true },
-  { id: "wechat", title: "微信公众号", description: "公众号识别、草稿和正式发布。", icon: <WechatOutlined /> },
-  { id: "browser_publish", title: "浏览器渠道", description: "知乎、CSDN、掘金账号连接与发布。", icon: <GlobalOutlined /> },
-  { id: "metrics", title: "指标回收", description: "自动获取发布后的阅读和互动指标。", icon: <ApiOutlined /> },
-  { id: "capture", title: "AI 前台采集", description: "共享 Windows 电脑执行真实 AI 页面测试。", icon: <CodeOutlined /> }
+const allDeploymentFeatures: HostedDeploymentFeature[] = [
+  "email",
+  "geo",
+  "wechat",
+  "browser_publish",
+  "metrics",
+  "capture"
 ];
 
 const runtimeDockerFields: ConfigField[] = [
@@ -264,8 +259,8 @@ function readApiMessage(payload: unknown, fallback: string) {
 
 export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onReloadSenderStatus, onSwitchToUserTest }: HostedDeploymentCenterProps) {
   const [mode, setMode] = useState<HostedDeploymentMode>("vercel");
-  const [features, setFeatures] = useState<HostedDeploymentFeature[]>(["email", "geo", "wechat", "browser_publish", "capture"]);
-  const templates = useMemo(() => buildTemplates(mode, features), [mode, features]);
+  const features = allDeploymentFeatures;
+  const templates = useMemo(() => buildTemplates(mode, allDeploymentFeatures), [mode]);
   const [templateId, setTemplateId] = useState("infrastructure");
   const activeTemplate = templates.find((template) => template.id === templateId) || templates[0];
   const [copied, setCopied] = useState(false);
@@ -273,11 +268,6 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string>();
   const [readiness, setReadiness] = useState<ReadinessResult>();
-
-  function toggleFeature(feature: HostedDeploymentFeature) {
-    setFeatures((current) => current.includes(feature) ? current.filter((item) => item !== feature) : [...current, feature]);
-    setReadiness(undefined);
-  }
 
   async function copyTemplate() {
     await navigator.clipboard.writeText(activeTemplate.content);
@@ -316,24 +306,16 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
   }
 
   const runtimeFields = mode === "vercel" ? runtimeVercelFields : runtimeDockerFields;
-  const emailSelected = features.includes("email");
-  const browserSelected = features.includes("browser_publish");
-  const wechatSelected = features.includes("wechat");
-  const optionalSelected = features.some((feature) => ["metrics", "capture"].includes(feature));
-
   return (
     <div className={styles.deploymentWorkspace}>
       <main className={styles.deploymentMain}>
         <section className={styles.deploymentScope} aria-labelledby="deployment-scope-title">
           <div className={styles.deploymentScopeIntro}>
-            <div><strong id="deployment-scope-title">先选择部署方式和要开启的能力</strong><span>系统会根据你的选择生成最小配置模板。没有选择的能力不会阻塞首次上线。</span></div>
-            <span>{features.length + 1} 个检查组</span>
+            <div><strong id="deployment-scope-title">只需选择部署方式，所有产品能力默认开启</strong><span>邮箱、AI 与 GEO、微信公众号、浏览器渠道、指标回收和 AI 前台采集全部进入配置与验收清单。</span></div>
+            <span>全部能力已开启 · {features.length + 1} 个检查组</span>
           </div>
           <div className={styles.deploymentModeGrid}>
             {deploymentModes.map((item) => <button type="button" key={item.id} aria-pressed={mode === item.id} className={mode === item.id ? styles.deploymentChoiceActive : ""} onClick={() => { setMode(item.id); setReadiness(undefined); }}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.description}</small>{mode === item.id ? <CheckCircleFilled /> : null}</button>)}
-          </div>
-          <div className={styles.deploymentFeatureGrid}>
-            {deploymentFeatures.map((item) => { const selected = features.includes(item.id); return <button type="button" key={item.id} aria-pressed={selected} className={selected ? styles.deploymentChoiceActive : ""} onClick={() => toggleFeature(item.id)}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.description}</small><b>{selected ? <CheckOutlined /> : "选择"}</b></button>; })}
           </div>
         </section>
 
@@ -343,7 +325,7 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
           <FieldGrid fields={runtimeFields} />
           <div className={styles.deploymentTemplatePanel}>
             <div className={styles.deploymentTemplateHeader}>
-              <div><strong>按当前选择生成的脱敏模板</strong><span>模板只有占位符。请在部署环境中替换，不要把真实值上传 GitHub。</span></div>
+              <div><strong>按当前部署方式生成的全能力脱敏模板</strong><span>模板只有占位符。请在部署环境中替换，不要把真实值上传 GitHub。</span></div>
               <div>{templates.map((template) => <button type="button" key={template.id} className={template.id === activeTemplate.id ? styles.deploymentTemplateTabActive : ""} onClick={() => setTemplateId(template.id)}>{template.label}</button>)}</div>
             </div>
             <pre className={styles.deploymentTemplateCode}>{activeTemplate.content}</pre>
@@ -352,13 +334,13 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
         </section>
 
         <section className={styles.deploymentSection} id="deployment-ai-geo">
-          <StepHeader number={2} title="连接 AI 与 GEO 服务" description="默认用 Qwen 生成和 Embedding，用智谱完成 GEO 语义综合。豆包和独立 Qwen 搜索按需开启。" state={features.includes("geo") ? "active" : "optional"} />
-          {features.includes("geo") ? <FieldGrid fields={aiFields} /> : <div className={styles.deploymentSkipped}><InfoCircleOutlined /><span>当前没有选择 AI 与 GEO。基础设施仍可上线，但不会生成正式内容、向量或 GEO 调研结果。</span></div>}
+          <StepHeader number={2} title="连接 AI 与 GEO 服务" description="默认用 Qwen 生成和 Embedding，用智谱完成 GEO 语义综合。豆包和独立 Qwen 搜索按需配置。" />
+          <FieldGrid fields={aiFields} />
         </section>
 
         <section className={styles.deploymentSection} id="deployment-email">
-          <StepHeader number={3} title="配置邮箱登录与安全链接" description="先配置服务端安全参数，再连接一个系统发件邮箱。普通用户只负责接收邮件。" state={senderStatus?.configured ? "done" : emailSelected ? "active" : "optional"} />
-          {emailSelected ? <>
+          <StepHeader number={3} title="配置邮箱登录与安全链接" description="先配置服务端安全参数，再连接一个系统发件邮箱。普通用户只负责接收邮件。" state={senderStatus?.configured ? "done" : "active"} />
+          <>
             <FieldGrid fields={emailFields} />
             <div className={styles.deploymentOauthCallbacks}>
               <strong>OAuth 回调地址必须逐字匹配</strong>
@@ -370,34 +352,30 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
               <div><strong>{senderStatusLoading ? "正在检查发件邮箱" : senderStatus?.configured ? "发件邮箱已经连接" : "安全参数保存后，继续连接发件邮箱"}</strong><span>{senderStatus?.configured ? `${senderStatus.senderHint || "已连接邮箱"} 可以发送系统邮件。` : "系统会自动识别 Gmail、Outlook、QQ、163 和常见企业邮箱。"}</span></div>
               <Link href="/hosted/email-sender"><Button type={senderStatus?.configured ? "default" : "primary"}>{senderStatus?.configured ? "检查或更换邮箱" : "连接系统发件邮箱"}</Button></Link>
             </div>
-          </> : <div className={styles.deploymentSkipped}><InfoCircleOutlined /><span>当前跳过邮箱登录。用户将无法通过邮件登录，也收不到审核和托管通知。</span></div>}
+          </>
         </section>
 
         <section className={styles.deploymentSection} id="deployment-publish-runtime">
-          <StepHeader number={4} title="启动自动发布执行器" description="Vercel 负责 Web 和任务编排，Runner 或 Desktop Connector 负责真实浏览器操作。" state={browserSelected ? "active" : "optional"} />
-          {browserSelected ? <>
+          <StepHeader number={4} title="启动自动发布执行器" description="Vercel 负责 Web 和任务编排，Runner 或 Desktop Connector 负责真实浏览器操作。" />
+          <>
             <div className={styles.deploymentTopology}>
               <div><CloudServerOutlined /><strong>Vercel / Workbench</strong><span>接收任务、隔离工作区、保存发布账本</span></div><ArrowRightOutlined /><div><SafetyCertificateOutlined /><strong>Runner Token</strong><span>只允许受信执行器领取任务</span></div><ArrowRightOutlined /><div><LaptopOutlined /><strong>常开执行器</strong><span>打开真实平台页面并等待用户完成安全挑战</span></div>
             </div>
             <FieldGrid fields={publishFields} />
             <div className={styles.deploymentSafetyGate}><LockOutlined /><div><strong>首次部署不得直接开启真实发布</strong><span>保持 DIRECT_PUBLISH_ENABLED=false、DIRECT_PUBLISH_MOCK=true。先完成账号识别和模拟发布，再由部署人员明确切换。</span></div></div>
-          </> : <div className={styles.deploymentSkipped}><InfoCircleOutlined /><span>当前没有选择浏览器渠道，Runner 和 Bridge 可以不部署。微信公众号官方接口仍按下一步单独配置。</span></div>}
+          </>
         </section>
 
         <section className={styles.deploymentSection} id="deployment-channels">
-          <StepHeader number={5} title="配置发布渠道与可选能力" description="公众号凭证由部署人员设置，浏览器渠道账号由普通用户本人登录。密码和 Cookie 不进入托管前端。" state={wechatSelected || browserSelected || optionalSelected ? "active" : "optional"} />
-          {wechatSelected || browserSelected ? <FieldGrid fields={channelFields.filter((field) => field.name.startsWith("WECHAT") ? wechatSelected : browserSelected)} /> : <div className={styles.deploymentSkipped}><InfoCircleOutlined /><span>当前没有选择发布渠道，只运行调研和内容生产。</span></div>}
-          {browserSelected ? <details className={styles.deploymentAdvanced}>
+          <StepHeader number={5} title="配置发布渠道与增强能力" description="公众号凭证由部署人员设置，浏览器渠道账号由普通用户本人登录。密码和 Cookie 不进入托管前端。" />
+          <FieldGrid fields={channelFields} />
+          <details className={styles.deploymentAdvanced}>
             <summary><SafetyCertificateOutlined /><span><strong>旧版私有 Bridge 高级配置</strong><small>只有已确认风险并由企业自己维护时才展开</small></span></summary>
             <div><p><strong>推荐方式：</strong>让普通用户通过 Connector 在知乎、CSDN、掘金官方页面登录。验证码、扫码和风控确认必须由账号本人完成。</p><p><strong>不要默认使用：</strong><code>ZHIHU_COOKIE</code>、<code>CSDN_COOKIE</code>、<code>JUEJIN_COOKIE</code> 属于易失效敏感凭证，只能保存在受控本机的 <code>.env.local</code>，不能进入 Vercel 前端、聊天、文档或 GitHub。</p></div>
-          </details> : null}
-          <details className={styles.deploymentAdvanced} open={optionalSelected}>
-            <summary><SettingOutlined /><span><strong>可选增强能力</strong><small>指标回收、AI 前台采集、AI 配图和网站渲染</small></span></summary>
-            <div><FieldGrid fields={optionalFields.filter((field) => {
-              if (field.name.startsWith("CONTENT_METRICS")) return features.includes("metrics");
-              if (field.name.startsWith("HOSTED_CAPTURE") || field.name.startsWith("V5_CAPTURE")) return features.includes("capture");
-              return true;
-            })} />{features.includes("capture") ? <HostedAiCaptureDeploymentGuide /> : null}</div>
+          </details>
+          <details className={styles.deploymentAdvanced} open>
+            <summary><SettingOutlined /><span><strong>增强能力配置</strong><small>指标回收、AI 前台采集、AI 配图和网站渲染</small></span></summary>
+            <div><FieldGrid fields={optionalFields} /><HostedAiCaptureDeploymentGuide /></div>
           </details>
         </section>
 
@@ -415,8 +393,8 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
           </div> : null}
           <div className={styles.deploymentHandoff}>
             <div><strong>最后做一次真实用户验收</strong><span>部署人员切到普通用户，发送登录邮件、打开一次性链接、创建委托并检查账号连接入口。</span></div>
-            <Button type="primary" size="large" icon={<UserOutlined />} disabled={emailSelected && !senderStatus?.configured} onClick={onSwitchToUserTest}>切到普通用户试跑</Button>
-            {emailSelected && !senderStatus?.configured ? <small>先完成系统发件邮箱连接，才能验证邮件登录。</small> : null}
+            <Button type="primary" size="large" icon={<UserOutlined />} disabled={!senderStatus?.configured} onClick={onSwitchToUserTest}>切到普通用户试跑</Button>
+            {!senderStatus?.configured ? <small>先完成系统发件邮箱连接，才能验证邮件登录。</small> : null}
           </div>
         </section>
       </main>
@@ -427,10 +405,10 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
         <p>{mode === "vercel" ? "Vercel Web 与外部执行器分开验收。" : "基础设施和业务密钥分层配置。"}</p>
         <ol>
           <li><span>1</span><div><strong>运行环境</strong><small>{mode === "vercel" ? "Vercel 与远程 MySQL" : ".env、MySQL、OpenSearch"}</small></div></li>
-          <li><span>2</span><div><strong>AI 与 GEO</strong><small>{features.includes("geo") ? "Qwen、Embedding、智谱" : "本次不启用"}</small></div></li>
-          <li className={senderStatus?.configured ? styles.deploymentPassportDone : ""}><span>{senderStatus?.configured ? <CheckOutlined /> : "3"}</span><div><strong>邮箱与安全链接</strong><small>{features.includes("email") ? senderStatus?.configured ? "发件邮箱已连接" : "等待配置" : "本次不启用"}</small></div></li>
-          <li><span>4</span><div><strong>发布执行器</strong><small>{browserSelected ? "Runner、Token、模拟发布" : "本次不启用"}</small></div></li>
-          <li><span>5</span><div><strong>渠道账号</strong><small>{wechatSelected || browserSelected ? "公众号与浏览器连接" : "本次不启用"}</small></div></li>
+          <li><span>2</span><div><strong>AI 与 GEO</strong><small>Qwen、Embedding、智谱</small></div></li>
+          <li className={senderStatus?.configured ? styles.deploymentPassportDone : ""}><span>{senderStatus?.configured ? <CheckOutlined /> : "3"}</span><div><strong>邮箱与安全链接</strong><small>{senderStatus?.configured ? "发件邮箱已连接" : "等待配置"}</small></div></li>
+          <li><span>4</span><div><strong>发布执行器</strong><small>Runner、Token、模拟发布</small></div></li>
+          <li><span>5</span><div><strong>渠道账号</strong><small>公众号与浏览器连接</small></div></li>
           <li><span>6</span><div><strong>总体验收</strong><small>{readiness ? `${readiness.readyGroups}/${readiness.totalGroups} 组变量齐全` : "等待检查"}</small></div></li>
         </ol>
         <Button block icon={<ReloadOutlined />} loading={senderStatusLoading} onClick={onReloadSenderStatus}>重新检查发件邮箱</Button>
