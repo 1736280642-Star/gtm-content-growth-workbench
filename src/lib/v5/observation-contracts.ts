@@ -1,6 +1,7 @@
 export type AiFrontendPlatform = "doubao" | "deepseek" | "qwen" | "chatgpt";
 
 export type AiFrontendConnectionStatus = "ready" | "needs_login" | "isolation_unverified" | "offline" | "revoked";
+export type AiFrontendExecutionScope = "user_private" | "deployment_shared";
 export type AiFrontendIsolationMode = "dedicated_account" | "dedicated_profile" | "temporary_chat" | "memory_off" | "new_conversation_only";
 export type AiFrontendIsolationCheck =
   | "new_conversation"
@@ -22,6 +23,7 @@ export interface AiFrontendConnection {
   connectionId: string;
   workspaceId: string;
   userId: string;
+  executionScope: AiFrontendExecutionScope;
   deviceId: string;
   platform: AiFrontendPlatform;
   accountAlias: string;
