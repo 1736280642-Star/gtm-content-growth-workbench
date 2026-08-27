@@ -9,7 +9,6 @@ import {
   CopyOutlined,
   DatabaseOutlined,
   DownloadOutlined,
-  FolderOpenOutlined,
   InfoCircleOutlined,
   LaptopOutlined,
   LinkOutlined,
@@ -266,7 +265,6 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
   const [templateId, setTemplateId] = useState("infrastructure");
   const activeTemplate = templates.find((template) => template.id === templateId) || templates[0];
   const [copied, setCopied] = useState(false);
-  const [copiedCaptureItem, setCopiedCaptureItem] = useState<string>();
   const [setupToken, setSetupToken] = useState("");
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string>();
@@ -276,12 +274,6 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
     await navigator.clipboard.writeText(activeTemplate.content);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
-  }
-
-  async function copyCaptureValue(id: string, value: string) {
-    await navigator.clipboard.writeText(value);
-    setCopiedCaptureItem(id);
-    window.setTimeout(() => setCopiedCaptureItem((current) => current === id ? undefined : current), 1600);
   }
 
   function downloadTemplate() {
@@ -393,7 +385,7 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
                 </div>
                 <ol>
                   <li><strong>取得最新扩展包</strong><span>在共享电脑拉取 GitHub <code>main</code>，或下载 main ZIP 并解压。确认目录中存在 <code>browser-extension\manifest.json</code>；不要只选 ZIP 文件。</span></li>
-                  <li><strong>打开浏览器扩展管理页</strong><span>Chrome 在地址栏粘贴 <code>chrome://extensions/</code>，Edge 粘贴 <code>edge://extensions/</code>；回车后打开“开发者模式”。网页按钮不能替你打开浏览器内部地址，因此下方分别提供一键复制。</span></li>
+                  <li><strong>打开浏览器扩展管理页</strong><span>Chrome 在地址栏输入 <code>chrome://extensions/</code>，Edge 输入 <code>edge://extensions/</code>；回车后打开“开发者模式”。浏览器内部地址无法由网页按钮直接打开，需要在地址栏手动输入。</span></li>
                   <li><strong>加载已解压的扩展程序</strong><span>点击“加载已解压的扩展程序”，选择整个 <code>&lt;项目根目录&gt;\browser-extension</code> 文件夹。加载成功后应看到 <code>JOTO AI Front Test Companion</code>，建议将它固定到工具栏。</span></li>
                   <li><strong>复制扩展 ID 并配置伴侣</strong><span>在扩展卡片中复制 ID，写入共享电脑的 <code>V5_CAPTURE_EXTENSION_ID</code>；把正式工作台 HTTPS 地址写入 <code>V5_WORKBENCH_BASE_URL</code>。这两个值只属于共享电脑。</span></li>
                   <li><strong>启动本机 Runner</strong><span>在项目根目录运行 <code>npm.cmd run capture-companion:start</code>。保持窗口运行，确认本地 Runner 正在监听 <code>127.0.0.1:17321</code>。</span></li>
@@ -401,14 +393,6 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
                 </ol>
                 <div className={styles.captureInstallActions}>
                   <a href="https://github.com/1736280642-Star/gtm-content-growth-workbench/archive/refs/heads/main.zip"><DownloadOutlined /><span><strong>下载最新 main ZIP</strong><small>下载后先完整解压</small></span></a>
-                  <a href="https://github.com/1736280642-Star/gtm-content-growth-workbench/tree/main/browser-extension" target="_blank" rel="noreferrer"><FolderOpenOutlined /><span><strong>查看扩展目录</strong><small>核对 manifest 与版本</small></span></a>
-                  {[
-                    { id: "extensions-url", label: "复制 Chrome 管理地址", value: "chrome://extensions/" },
-                    { id: "edge-extensions-url", label: "复制 Edge 管理地址", value: "edge://extensions/" },
-                    { id: "extension-path", label: "复制扩展目录", value: "<项目根目录>\\browser-extension" },
-                    { id: "companion-start", label: "复制伴侣启动命令", value: "npm.cmd run capture-companion:start" },
-                    { id: "companion-autostart", label: "复制开机运行命令", value: "npm.cmd run capture-companion:autostart" }
-                  ].map((item) => <button type="button" key={item.id} onClick={() => copyCaptureValue(item.id, item.value)}><span>{copiedCaptureItem === item.id ? <CheckOutlined /> : <CopyOutlined />}</span><div><strong>{copiedCaptureItem === item.id ? "已复制" : item.label}</strong><code>{item.value}</code></div></button>)}
                 </div>
                 <p><InfoCircleOutlined /><span><strong>不要混淆：</strong>浏览器扩展负责打开和采集 AI 官方页面；浏览器伴侣（本机 Runner）负责领取任务、鉴权和回传。两者必须同时在线，关闭伴侣窗口后扩展不能领取新任务。</span></p>
               </div>

@@ -1422,11 +1422,11 @@
 .captureInstallGuide li > strong { color: #26342e; font-size: 10px; }
 .captureInstallGuide li > span { margin-top: 3px; color: #63716b; line-height: 1.6; }
 .captureInstallGuide li code { color: #176b52; font: 650 8px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
-.captureInstallActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 14px; }
-.captureInstallActions > a, .captureInstallActions > button { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; min-height: 52px; padding: 9px 10px; border: 1px solid #d4dfd9; border-radius: 7px; color: #26342e; background: #fff; text-align: left; text-decoration: none; cursor: pointer; }
-.captureInstallActions > a:hover, .captureInstallActions > button:hover { border-color: #7fb49c; }
-.captureInstallActions > a:focus-visible, .captureInstallActions > button:focus-visible { outline: 3px solid rgba(23, 107, 82, .16); outline-offset: 2px; }
-.captureInstallActions > a > svg, .captureInstallActions > button > span { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 6px; color: #176b52; background: #eef7f2; font-size: 13px; }
+.captureInstallActions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; max-width: 430px; margin-top: 14px; }
+.captureInstallActions > a { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; min-height: 52px; padding: 9px 10px; border: 1px solid #d4dfd9; border-radius: 7px; color: #26342e; background: #fff; text-align: left; text-decoration: none; cursor: pointer; }
+.captureInstallActions > a:hover { border-color: #7fb49c; }
+.captureInstallActions > a:focus-visible { outline: 3px solid rgba(23, 107, 82, .16); outline-offset: 2px; }
+.captureInstallActions > a > svg { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 6px; color: #176b52; background: #eef7f2; font-size: 13px; }
 .captureInstallActions strong, .captureInstallActions small, .captureInstallActions code { display: block; }
 .captureInstallActions strong { font-size: 9px; }
 .captureInstallActions small, .captureInstallActions code { margin-top: 2px; overflow-wrap: anywhere; color: #74817a; font-size: 7px; line-height: 1.4; }

@@ -69,6 +69,14 @@ test("deployment center exposes six guided sections, official sources and saniti
     "capture-companion:autostart",
     "下载最新 main ZIP"
   ]) assert.match(component, new RegExp(captureGuideText));
+  for (const removedCaptureAction of [
+    "查看扩展目录",
+    "复制 Chrome 管理地址",
+    "复制 Edge 管理地址",
+    "复制扩展目录",
+    "复制伴侣启动命令",
+    "复制开机运行命令"
+  ]) assert.doesNotMatch(component, new RegExp(removedCaptureAction));
   assert.match(component, /const allDeploymentFeatures: HostedDeploymentFeature\[\]/);
   for (const feature of ["email", "geo", "wechat", "browser_publish", "metrics", "capture"]) {
     assert.match(component, new RegExp(`"${feature}"`));
