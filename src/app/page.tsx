@@ -18,6 +18,7 @@ import {
   PlusOutlined,
   ReadOutlined,
   ReloadOutlined,
+  RobotOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   UploadOutlined,
@@ -35,6 +36,22 @@ const HostedConnectionsWorkspace = dynamic(
   {
     ssr: false,
     loading: () => <div className={styles.embeddedConnectionLoading}><Spin /><span>正在加载安全账号连接向导</span></div>
+  }
+);
+
+const HostedAiCaptureRequestPanel = dynamic(
+  () => import("@/components/HostedAiCaptureRequestPanel").then((module) => module.HostedAiCaptureRequestPanel),
+  {
+    ssr: false,
+    loading: () => <div className={styles.embeddedConnectionLoading}><Spin /><span>正在加载 AI 前台请求面板</span></div>
+  }
+);
+
+const HostedAiCaptureDeploymentGuide = dynamic(
+  () => import("@/components/HostedAiCaptureDeploymentGuide").then((module) => module.HostedAiCaptureDeploymentGuide),
+  {
+    ssr: false,
+    loading: () => <div className={styles.embeddedConnectionLoading}><Spin /><span>正在加载共享采集服务器控制台</span></div>
   }
 );
 
@@ -206,6 +223,7 @@ export default function HostedTaskPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [dailyDigest, setDailyDigest] = useState(true);
   const [monthlyCompleted, setMonthlyCompleted] = useState(true);
+  const [aiFrontendEnabled, setAiFrontendEnabled] = useState<boolean>();
   const [order, setOrder] = useState<HostedOrder>();
   const [browserConnectionSummary, setBrowserConnectionSummary] = useState<BrowserConnectionSummary>({ total: 0, connected: 0 });
   const [submitting, setSubmitting] = useState(false);
@@ -365,6 +383,14 @@ export default function HostedTaskPage() {
     window.requestAnimationFrame(() => {
       if (anchor) document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
       else window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  function chooseAiFrontend(enabled: boolean) {
+    setAiFrontendEnabled(enabled);
+    if (!enabled) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("setup-ai-frontend")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
@@ -557,7 +583,7 @@ export default function HostedTaskPage() {
         </button>
         <button type="button" aria-controls="role-panel-deployment" aria-pressed={pageAudience === "deployment"} className={pageAudience === "deployment" ? styles.roleSwitchActive : ""} onClick={() => switchAudience("deployment")}>
           <SafetyCertificateOutlined />
-          <span><strong>我是部署人员</strong><small>配置系统发件邮箱和部署安全参数</small></span>
+          <span><strong>我是部署人员</strong><small>配置系统发件邮箱、部署安全参数和 24h 共享采集服务器</small></span>
           {pageAudience === "deployment" ? <CheckCircleFilled /> : <ArrowRightOutlined />}
         </button>
       </nav>
@@ -635,6 +661,18 @@ export default function HostedTaskPage() {
               </div>
               <p><InfoCircleOutlined /> 环境变量新增或修改后不会作用于旧部署。保存后必须重新部署最新的 main，再进入下一步授权邮箱。</p>
             </div>
+            <div className={styles.deploymentKeyGuide} aria-label="邮箱凭据加密密钥获取说明">
+              <div className={styles.deploymentKeyGuideHeader}>
+                <SafetyCertificateOutlined />
+                <div><strong>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY 怎么获得</strong><span>由部署人员在本机生成，不需要向 Gmail、Vercel 或邮箱供应商申请。</span></div>
+              </div>
+              <ol>
+                <li><strong>生成随机值</strong><span>在项目终端运行下面的命令。它会输出 64 位 hex，正好代表 32 字节。</span><code>{`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}</code></li>
+                <li><strong>写入部署环境</strong><span>本机把结果写入被 Git 忽略的 <code>.env.local</code>。Vercel 打开 Project Settings → Environment Variables，变量名填写 <code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code>，变量值粘贴刚生成的 64 位字符串，至少勾选 Production。</span></li>
+                <li><strong>保存并重新部署</strong><span>值的前后不要加引号。Vercel 保存后重新部署最新的 main，本机则重新执行 3027 部署命令。</span></li>
+              </ol>
+              <p><strong>请妥善保存：</strong>不要把真实值发到聊天、截图或 GitHub，也不要随意更换。更换后，之前保存的 SMTP 或 OAuth 凭据将无法解密，必须重新连接系统发件邮箱。</p>
+            </div>
           </section>
 
           <section className={styles.deploymentSection} id="deployment-email">
@@ -683,6 +721,35 @@ export default function HostedTaskPage() {
             </div>
           </section>
 
+          <section className={styles.deploymentSection} id="deployment-ai-capture">
+            <div className={styles.deploymentSectionHeader}><div><h2>部署一台 24h 共享 AI 采集服务器</h2><p>扩展、Windows 伴侣和 AI 测试账号都只安装在部署人员的常开电脑；普通用户不接触这些配置。</p></div><span className={styles.optionalBadge}>部署人员操作</span></div>
+            <SetupGuide
+              title="从零部署照着做"
+              summary="一台 Windows 常开机服务所有普通用户"
+              steps={[
+                "在数据库执行到 20260827_042_v5_deployment_shared_ai_capture.sql。它会把共享执行器与普通用户工作区分开，并为每个请求保存发起人归属。",
+                "在 Vercel 生成并保存 HOSTED_CAPTURE_SETUP_TOKEN。它只用于部署人员打开本区控制台，不能发给普通用户。保存后重新部署。",
+                "在这台 24h Windows 电脑打开 Chrome → 扩展程序 → 开发者模式 → 加载已解压的扩展程序，选择项目中的 browser-extension 目录。",
+                "复制 Chrome 显示的扩展 ID，在这台电脑的伴侣环境中设置 V5_CAPTURE_EXTENSION_ID；再把正式工作台地址设置为 V5_WORKBENCH_BASE_URL。",
+                "在下方输入部署级 Setup Token，先点“生成部署配对码”。然后启动 npm.cmd run capture-companion:start，并在伴侣窗口输入这个一次性配对码。",
+                "只在这台共享电脑的 Chrome 中登录 ChatGPT、豆包、DeepSeek、千问测试账号。验收在线后运行 npm.cmd run capture-companion:autostart，让伴侣随 Windows 启动。"
+              ]}
+              note="这不是运行在 Vercel 容器里的浏览器。Vercel 负责接收和隔离请求，常开 Windows 电脑负责真实页面操作。普通用户只提交请求，不安装扩展、不配对设备、不登录 AI 测试账号。"
+              defaultOpen
+            />
+            <div className={styles.deploymentVariables} aria-label="AI 前台采集部署变量">
+              <div><code>HOSTED_CAPTURE_SETUP_TOKEN</code><span>Vercel：部署人员控制台口令，建议 32 字节随机值</span></div>
+              <div><code>V5_CAPTURE_EXTENSION_ID</code><span>共享电脑：伴侣只信任这一 Chrome 扩展</span></div>
+              <div><code>V5_WORKBENCH_BASE_URL</code><span>共享电脑：正式 HTTPS 工作台地址</span></div>
+              <div><code>V5_CAPTURE_CHROME_PROFILE_DIRECTORY</code><span>共享电脑：专用浏览器档案，可选</span></div>
+            </div>
+            <div className={styles.deploymentCommandGrid}>
+              <div><span>先在前台运行验收</span><code>npm.cmd run capture-companion:start</code></div>
+              <div><span>验收通过后设置开机运行</span><code>npm.cmd run capture-companion:autostart</code></div>
+            </div>
+            {pageAudience === "deployment" ? <HostedAiCaptureDeploymentGuide /> : null}
+          </section>
+
           <section className={styles.deploymentSection} id="deployment-test">
             <div className={styles.deploymentSectionHeader}><div><h2>切换角色，发送真实测试邮件</h2><p>部署人员最后模拟一次普通用户登录，确认邮件从系统发件邮箱送达。</p></div><StepStatusBadge state={senderStatus?.configured ? "active" : "locked"} /></div>
             <SetupGuide
@@ -705,11 +772,12 @@ export default function HostedTaskPage() {
         <aside className={styles.deploymentPassport} aria-label="部署完成清单">
           <SafetyCertificateOutlined />
           <h2>部署完成清单</h2>
-          <p>只看这三项，不需要在多个设置页之间来回找。</p>
+          <p>系统发信是必做项；AI 前台采集按实际需要开启。</p>
           <ol>
             <li><span>1</span><div><strong>安全参数</strong><small>写入 .env.local 并重建 3027</small></div></li>
             <li className={senderStatus?.configured ? styles.deploymentPassportDone : ""}><span>{senderStatus?.configured ? <CheckOutlined /> : "2"}</span><div><strong>系统发件邮箱</strong><small>{senderStatus?.configured ? "已连接" : "等待授权"}</small></div></li>
-            <li><span>3</span><div><strong>普通用户试发</strong><small>收到并打开登录邮件</small></div></li>
+            <li><span>3</span><div><strong>共享 AI 采集服务器</strong><small>扩展、伴侣、部署级配对</small></div></li>
+            <li><span>4</span><div><strong>普通用户试发</strong><small>收到并打开登录邮件</small></div></li>
           </ol>
           <Button block icon={<ReloadOutlined />} loading={senderStatusLoading} onClick={loadSenderStatus}>重新检查发件邮箱</Button>
         </aside>
@@ -739,6 +807,7 @@ export default function HostedTaskPage() {
             <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>04</span><div><h2>确认通知方式并创建委托</h2><p>需要你判断的事和公开 URL，都会发到登录邮箱。</p></div></div><StepStatusBadge state={stepRows[3].state} /></div>
             <SetupGuide title="通知和提交前检查" summary="确认收信邮箱、选择汇总邮件，然后创建委托" defaultOpen={identityReady && currentStep === 4} steps={["确认下方邮箱是你本人可以长期收信的地址。它与登录邮箱一致，如需更换请先退出并换邮箱登录。", "保留“每日 URL 汇总”，当天发布结束后只收一封汇总，不会逐篇打扰。", "保留“月度完成通知”，MonthlyReview 形成后会收到当月结果。", "最后检查右侧“配置通行证”，然后点击“确认委托，开始调研”。"]} note="GEO 策略、代表样文和异常通知是必要邮件，不能关闭；可关闭的只是日报和月度完成提醒。" />
             {!identityReady ? <LockedStep reason="先完成第 1 步登录" nextAction="登录邮箱会自动成为通知邮箱，不需要重复输入。" /> : !canManage ? <LockedStep reason="当前角色只能查看，不能创建或修改托管委托" nextAction="请让工作区管理员或产品负责人完成本步。" /> : <><div className={styles.notificationEmail}><MailOutlined /><div><strong>{identity?.email}</strong><span>登录、重要确认和发布结果使用同一邮箱</span></div><small>已验证</small></div><div className={styles.notificationGrid}><label><span><strong>每日 URL 汇总</strong><small>当日批次结束后发一封</small></span><Switch checked={dailyDigest} onChange={setDailyDigest} /></label><label><span><strong>月度完成通知</strong><small>MonthlyReview 形成后发送</small></span><Switch checked={monthlyCompleted} onChange={setMonthlyCompleted} /></label></div>{order ? <div className={styles.submitBar}><span className={styles.submitHint}>修改渠道、每日上限或通知偏好后，点击保存才会生效。</span><Button className={styles.submitButton} type="primary" size="large" icon={<CheckOutlined />} loading={savingSettings} onClick={saveSettings}>保存渠道与通知设置</Button></div> : <div className={styles.submitBar}><span className={styles.submitHint}>点击即确认这些资料可以用于公开推广。策略和样文仍必须由你本人确认。</span><Button className={styles.submitButton} type="primary" size="large" loading={submitting} disabled={!productInputReady || !materialInputReady || !channelsReady} onClick={submitTask} icon={!submitting ? <ArrowRightOutlined /> : undefined}>确认委托，开始调研</Button></div>}</>}
+            <div className={styles.aiTestDecision}><div className={styles.aiTestDecisionCopy}><span className={styles.aiTestDecisionIcon}><RobotOutlined /></span><div><strong>是否开启 AI 前台测试？</strong><span>可选。点击“是”进入请求面板；共享服务器会自动执行，你不需要安装扩展、配对电脑或登录 AI 账号。</span></div></div><div className={styles.aiTestDecisionActions}><Button type={aiFrontendEnabled === true ? "primary" : "default"} aria-pressed={aiFrontendEnabled === true} onClick={() => chooseAiFrontend(true)}>是，发送请求</Button><Button type={aiFrontendEnabled === false ? "primary" : "default"} aria-pressed={aiFrontendEnabled === false} onClick={() => chooseAiFrontend(false)}>否，暂时跳过</Button></div></div>
           </section>
 
           <section className={styles.section} id="setup-accounts">
@@ -752,6 +821,12 @@ export default function HostedTaskPage() {
             <SetupGuide title="创建委托后，你还需要做什么" summary="只保留两次必要判断，其余默认自动运行" defaultOpen={Boolean(order) && currentStep === 6} steps={["系统先整理官网和文件，完成 GEO 调研。这一阶段可以关闭页面。", "GEO 策略准备好后，邮件会提醒你确认目标用户、核心表达、渠道和内容方向。", "策略通过后会生成一篇代表样文，你再确认一次。", "样文通过且发布账号全部就绪后，系统才会按 MonthlyPlan 生产、排程、发布并回传公开 URL。"]} note="登录失效、平台风控或事实冲突时系统会暂停对应动作，邮件会告诉你原因和恢复方法。" />
             {!order ? <LockedStep reason="创建委托后才能生成真实就绪检查" nextAction="现在请继续完成前面的必填步骤。" /> : <div className={styles.finalReadinessGrid}><div className={`${styles.finalReadinessCard} ${styles.isReady}`}><CheckCircleFilled /><div><strong>调研已就绪</strong><span>委托 {order.orderId} 已创建，资料处理与 GEO 调研已经开始。</span></div></div><div className={`${styles.finalReadinessCard} ${publishReady ? styles.isReady : styles.needsWork}`}>{publishReady ? <CheckCircleFilled /> : <SettingOutlined />}<div><strong>{publishReady ? "发布账号已就绪" : "发布前还有配置要完成"}</strong><span>{publishReady ? "所有已选渠道都有已确认的正式账号。" : `微信公众号：${wechatReady ? "已就绪" : "待配置"}；浏览器渠道：${browserConnectionSummary.connected}/${selectedBrowserChannelCount} 已连接。`}</span></div></div><div className={styles.finalReadinessActions}><Link href={`/hosted/success?orderId=${encodeURIComponent(order.orderId)}`}><Button type="primary" size="large">查看托管状态与调研进度</Button></Link><Button size="large" icon={<ReloadOutlined />} onClick={() => void Promise.all([loadChannels(order.productId), loadBrowserConnectionSummary(order.orderId)])}>重新检查全部状态</Button></div></div>}
           </section>
+
+          {aiFrontendEnabled ? <section className={`${styles.section} ${styles.aiFrontendSection}`} id="setup-ai-frontend">
+            <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={`${styles.sectionNumber} ${styles.optionalSectionNumber}`}><RobotOutlined /></span><div><h2>发送 AI 前台测试请求</h2><p>选择平台并提交，系统会自动把任务交给部署人员维护的 24h 共享服务器。</p></div></div><span className={styles.optionalBadge}>普通用户操作</span></div>
+            <SetupGuide title="你只需要完成三步" summary="不安装、不配对、不提供账号密码" defaultOpen steps={["确认页面显示“共享采集服务器在线”。如果离线，请联系部署人员，不要在自己的电脑安装任何工具。", "选择 ChatGPT、豆包、DeepSeek 或千问。系统会使用共享测试账号打开对应平台。", "点击“发送测试请求”后可以关闭页面；请求和结果只归属于你的登录账号与当前工作区。"]} note="扩展、Windows 伴侣、AI 测试账号和部署级 Setup Token 都由部署人员保管。普通用户永远不需要填写 Cookie、Token 或平台密码。" />
+            {!identityReady ? <LockedStep reason="先完成第 1 步工作邮箱登录" nextAction="登录用于标记请求归属，防止其他工作区看到你的结果。" /> : <HostedAiCaptureRequestPanel productId={order?.productId || selectedProductId || undefined} />}
+          </section> : null}
 
         </div>
 

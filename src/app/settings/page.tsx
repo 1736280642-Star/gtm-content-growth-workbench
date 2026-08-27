@@ -537,169 +537,22 @@ const settingsTabs = [
   { label: "日志", value: "logs" }
 ];
 
-// Phase 0: 采集设备 — 设备配对/在线状态/撤销
 function CaptureDevicesSettings() {
-  const [messageApi, contextHolder] = message.useMessage();
-  const [devices, setDevices] = useState<Array<{
-    deviceId: string;
-    userId: string;
-    status: string;
-    platforms: string[];
-    lastHeartbeatAt?: string;
-    adapterVersion?: string;
-    currentTaskId?: string;
-    lastSuccessfulCaptureAt?: string;
-  }>>([]);
-  const [loading, setLoading] = useState(true);
-  const [pairing, setPairing] = useState<{ pairingCode: string; expiresAt: string }>();
-  const [connections, setConnections] = useState<Array<{
-    connectionId: string;
-    deviceId: string;
-    platform: string;
-    accountAlias: string;
-    browserProfileSlot: string;
-    status: string;
-    isolationPolicy: { mode: string; benchmarkCohort: string };
-    lastVerifiedAt?: string;
-  }>>([]);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [result, connectionResult] = await Promise.all([
-        callJsonApi<{ ok: boolean; data?: { devices?: Array<{ deviceId: string; userId: string; status: string; platforms: string[]; lastHeartbeatAt?: string; adapterVersion?: string; currentTaskId?: string; lastSuccessfulCaptureAt?: string }> } }>("/api/v5/capture-devices", { cache: "no-store" }),
-        callJsonApi<{ ok: boolean; data?: { connections?: Array<{ connectionId: string; deviceId: string; platform: string; accountAlias: string; browserProfileSlot: string; status: string; isolationPolicy: { mode: string; benchmarkCohort: string }; lastVerifiedAt?: string }> } }>("/api/v5/ai-frontend-connections", { cache: "no-store" })
-      ]);
-      if (result.ok) setDevices(result.data?.devices || []);
-      if (connectionResult.ok) setConnections(connectionResult.data?.connections || []);
-    } catch {
-      // 采集设备 API 尚未部署时显示空状态
-      setDevices([]);
-      setConnections([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  async function revokeDevice(deviceId: string) {
-    try {
-      await callJsonApi(`/api/v5/capture-devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
-      messageApi.success("设备已撤销");
-      await refresh();
-    } catch (requestError) {
-      messageApi.error(requestError instanceof Error ? requestError.message : "撤销失败");
-    }
-  }
-
-  async function createPairingCode() {
-    try {
-      const result = await callJsonApi<{ ok: boolean; data?: { pairingCode: string; expiresAt: string } }>("/api/v5/capture-pairing-codes", { method: "POST" });
-      if (!result.data) throw new Error("配对码生成失败");
-      setPairing(result.data);
-    } catch (requestError) {
-      messageApi.error(requestError instanceof Error ? requestError.message : "配对码生成失败");
-    }
-  }
-
-  async function revokeConnection(connectionId: string) {
-    try {
-      await callJsonApi(`/api/v5/ai-frontend-connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" });
-      messageApi.success("AI 账号连接已撤销");
-      await refresh();
-    } catch (requestError) {
-      messageApi.error(requestError instanceof Error ? requestError.message : "撤销连接失败");
-    }
-  }
-
   return (
     <>
-      {contextHolder}
       <PageHeader
-        title="采集设备"
-        subtitle="管理已配对的采集设备。采集设备用于执行 AI 前台回答采集任务，不上传平台凭证。"
-        actions={<Space><Button type="primary" onClick={() => void createPairingCode()}>生成一次性配对码</Button><Button onClick={refresh} loading={loading}>刷新</Button></Space>}
+        title="共享 AI 采集服务器"
+        subtitle="采集设备已经改为部署级共享资源，不再按普通用户或个人电脑配对。"
       />
       <Card className="foundation-panel" bordered={false}>
-        <Table
-          rowKey="deviceId"
-          loading={loading}
-          dataSource={devices}
-          locale={{
-            emptyText: (
-              <ActionEmpty
-                title="暂无采集设备"
-                description="安装浏览器扩展并完成配对后，设备会出现在这里。"
-                action={<Button type="primary" onClick={() => void createPairingCode()}>生成一次性配对码</Button>}
-              />
-            )
-          }}
-          columns={[
-            { title: "设备 ID", dataIndex: "deviceId", width: 180, render: (value: string) => <code>{value.slice(0, 12)}</code> },
-            { title: "登录状态", width: 110, render: () => <Tag color="blue">凭证留在本机</Tag> },
-            { title: "当前任务", dataIndex: "currentTaskId", width: 150, render: (value?: string) => value ? <code>{value.slice(0, 12)}</code> : "空闲" },
-            { title: "最近成功采集", dataIndex: "lastSuccessfulCaptureAt", width: 180, render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "暂无" },
-            { title: "用户", dataIndex: "userId", width: 120 },
-            {
-              title: "状态",
-              dataIndex: "status",
-              width: 100,
-              render: (status: string) => <Tag color={status === "online" ? "green" : "default"}>{status === "online" ? "在线" : "离线"}</Tag>
-            },
-            {
-              title: "支持平台",
-              dataIndex: "platforms",
-              width: 180,
-              render: (platforms: string[]) => platforms?.length ? platforms.map((p) => <Tag key={p}>{p}</Tag>) : <Tag>未配置</Tag>
-            },
-            {
-              title: "最近心跳",
-              dataIndex: "lastHeartbeatAt",
-              width: 160,
-              render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "—"
-            },
-            {
-              title: "适配器版本",
-              dataIndex: "adapterVersion",
-              width: 120,
-              render: (value?: string) => value || "—"
-            },
-            {
-              title: "操作",
-              width: 100,
-              render: (_, record) => (
-                <Button size="small" danger onClick={() => void revokeDevice(record.deviceId)}>
-                  撤销
-                </Button>
-              )
-            }
-          ]}
+        <Alert
+          showIcon
+          type="info"
+          message="请在首页的部署人员板块管理共享采集服务器"
+          description="只有部署人员需要安装 Chrome 扩展、Windows 采集伴侣并登录中立 AI 测试账号。普通用户在首页选择平台后直接发送请求。"
+          action={<Link href="/?role=deployment#deployment-ai-capture"><Button type="primary">打开部署控制台</Button></Link>}
         />
       </Card>
-      <Card className="foundation-panel" bordered={false} title="已绑定 AI 账号" style={{ marginTop: 16 }}>
-        <Table
-          rowKey="connectionId"
-          loading={loading}
-          dataSource={connections}
-          locale={{ emptyText: "尚未绑定 AI 账号；在浏览器扩展中完成设备配对后即可绑定。" }}
-          columns={[
-            { title: "账号连接", dataIndex: "accountAlias", render: (value: string, record) => <Space direction="vertical" size={0}><strong>{value}</strong><Typography.Text type="secondary">{record.platform} · {record.browserProfileSlot}</Typography.Text></Space> },
-            { title: "测试样本", render: (_, record) => <Tag color={record.isolationPolicy.benchmarkCohort === "neutral_benchmark" ? "green" : "blue"}>{record.isolationPolicy.benchmarkCohort === "neutral_benchmark" ? "中立基线" : "真实个性化样本"}</Tag> },
-            { title: "隔离方式", render: (_, record) => record.isolationPolicy.mode === "dedicated_account" ? "专用中立 AI 账号" : record.isolationPolicy.mode === "dedicated_profile" ? "旧版专用 Chrome Profile（需重绑）" : record.isolationPolicy.mode },
-            { title: "状态", dataIndex: "status", render: (value: string) => <Tag color={value === "ready" ? "green" : value === "needs_login" ? "orange" : "gold"}>{value === "ready" ? "可用" : value === "needs_login" ? "需登录" : "执行前校验"}</Tag> },
-            { title: "最近验证", dataIndex: "lastVerifiedAt", render: (value?: string) => value ? new Date(value).toLocaleString("zh-CN") : "尚未完成首轮" },
-            { title: "操作", render: (_, record) => <Button size="small" danger onClick={() => void revokeConnection(record.connectionId)}>撤销</Button> }
-          ]}
-        />
-      </Card>
-      <Modal title="一次性设备配对码" open={Boolean(pairing)} footer={<Button type="primary" onClick={() => setPairing(undefined)}>完成</Button>} onCancel={() => setPairing(undefined)}>
-        <Alert showIcon type="warning" message="配对码仅显示一次，10 分钟后过期" description="在采集扩展中输入配对码。平台登录凭证始终保留在本机，不会上传工作台。" />
-        <Typography.Title level={2} copyable style={{ textAlign: "center", letterSpacing: 3 }}>{pairing?.pairingCode}</Typography.Title>
-        <Typography.Text type="secondary">有效期至：{pairing ? new Date(pairing.expiresAt).toLocaleString("zh-CN") : "-"}</Typography.Text>
-      </Modal>
     </>
   );
 }

@@ -4,37 +4,56 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("AI frontend connections bind tasks to a concrete device and platform", async () => {
-  const [migration, repository, taskRoute] = await Promise.all([
-    read("database/migrations/20260820_038_v5_ai_frontend_connections.sql"),
+test("deployment-shared AI frontend tasks keep requester ownership", async () => {
+  const [migration, repository, hostedRoute] = await Promise.all([
+    read("database/migrations/20260827_042_v5_deployment_shared_ai_capture.sql"),
     read("src/lib/v5/capture-repository.ts"),
-    read("src/app/api/v5/capture-tasks/route.ts")
+    read("src/app/api/v5/hosted/ai-front-test/route.ts")
   ]);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS ai_frontend_connections/);
-  assert.match(migration, /capture_tasks ADD COLUMN IF NOT EXISTS connection_id/);
-  assert.match(repository, /capture_task_connection_device_mismatch/);
-  assert.match(repository, /c\.device_id = \?/);
-  assert.match(taskRoute, /connectionId/);
+  assert.match(migration, /execution_scope/);
+  assert.match(migration, /requested_workspace_id/);
+  assert.match(migration, /requested_user_id/);
+  assert.match(repository, /createDeploymentSharedCaptureTask/);
+  assert.match(repository, /c\.execution_scope = 'deployment_shared'/);
+  assert.match(repository, /requestedWorkspaceId: input\.workspaceId/);
+  assert.match(repository, /requestedUserId: input\.userId/);
+  assert.match(hostedRoute, /requested_workspace_id = \? AND requested_user_id = \?/);
+  assert.match(hostedRoute, /createDeploymentSharedCaptureTask/);
+  assert.doesNotMatch(hostedRoute, /payload\.connectionId/);
 });
 
-test("hosted settings keeps AI frontend retest optional and wakes the extension", async () => {
-  const [page, settingsPage, panel, route, manifest, worker] = await Promise.all([
+test("ordinary users only send requests while deployment personnel manage the shared server", async () => {
+  const [page, settingsPage, panel, requestPanel, setupRoute, deploymentRoute, deploymentGuide, pairingRoute] = await Promise.all([
     read("src/app/page.tsx"),
     read("src/app/hosted/settings/page.tsx"),
     read("src/components/HostedAiFrontendTestPanel.tsx"),
-    read("src/app/api/v5/hosted/ai-front-test/route.ts"),
-    read("browser-extension/manifest.json"),
-    read("browser-extension/src/service-worker.js")
+    read("src/components/HostedAiCaptureRequestPanel.tsx"),
+    read("src/app/api/v5/hosted/ai-capture-setup/route.ts"),
+    read("src/app/api/v5/hosted/ai-capture-deployment/route.ts"),
+    read("src/components/HostedAiCaptureDeploymentGuide.tsx"),
+    read("src/app/api/v5/capture-pairing-codes/route.ts")
   ]);
   assert.doesNotMatch(page, /HostedAiFrontendTestPanel/);
   assert.match(page, /确认委托，开始调研/);
+  assert.match(page, /是否开启 AI 前台测试/);
+  assert.match(page, /setup-ai-frontend/);
+  assert.match(page, /HostedAiCaptureRequestPanel/);
+  assert.match(page, /HostedAiCaptureDeploymentGuide/);
+  assert.match(page, /普通用户不接触这些配置/);
   assert.match(settingsPage, /HostedAiFrontendTestPanel/);
   assert.match(settingsPage, /AI 前台验证（可选）/);
-  assert.match(panel, /\/api\/v5\/hosted\/ai-front-test/);
-  assert.match(panel, /NEXT_PUBLIC_V5_CAPTURE_EXTENSION_ID/);
-  assert.match(route, /createConnectedManualCaptureTask/);
-  assert.match(manifest, /externally_connectable/);
-  assert.match(worker, /onMessageExternal/);
+  assert.match(panel, /HostedAiCaptureRequestPanel/);
+  assert.match(requestPanel, /\/api\/v5\/hosted\/ai-front-test/);
+  assert.match(requestPanel, /\/api\/v5\/hosted\/ai-capture-setup/);
+  assert.doesNotMatch(requestPanel, /NEXT_PUBLIC_V5_CAPTURE_EXTENSION_ID/);
+  assert.match(setupRoute, /requireHostedIdentity/);
+  assert.match(setupRoute, /executionScope: "deployment_shared"/);
+  assert.doesNotMatch(setupRoute, /requester:/);
+  assert.match(deploymentRoute, /requireHostedCaptureSetupToken/);
+  assert.match(deploymentRoute, /executionScope: "deployment_shared"/);
+  assert.match(deploymentGuide, /name="setupToken"/);
+  assert.doesNotMatch(deploymentGuide, /useState\([^)]*setupToken/);
+  assert.match(pairingRoute, /USER_CAPTURE_PAIRING_RETIRED/);
 });
 
 test("extension opens a non-focused capture window without requiring a pre-opened platform tab", async () => {

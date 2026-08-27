@@ -137,6 +137,26 @@
 .credentialSourceActions { display: flex; flex-wrap: wrap; gap: 7px 12px; }
 .credentialSourceGuide > p { display: flex; align-items: flex-start; gap: 7px; margin: 13px 0 0; padding-top: 12px; border-top: 1px solid #d6e3dc; color: #7b5a2e; font-size: 9px; line-height: 1.6; }
 .credentialSourceGuide > p svg { margin-top: 2px; flex: 0 0 auto; }
+.optionalBadge { display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border: 1px solid #b9d8c7; border-radius: 999px; color: #176b52; background: #eef7f2; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.deploymentCommandGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.deploymentCommandGrid > div { min-width: 0; padding: 12px 13px; border: 1px solid #dce4df; border-radius: 8px; background: #f7f9f8; }
+.deploymentCommandGrid span, .deploymentCommandGrid code { display: block; }
+.deploymentCommandGrid span { margin-bottom: 6px; color: #74817a; font-size: 9px; }
+.deploymentCommandGrid code { overflow-wrap: anywhere; color: #26342e; font: 650 10px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.deploymentKeyGuide { margin-top: 12px; padding: 16px; border: 1px solid #cbdad2; border-radius: 9px; background: #f6faf8; }
+.deploymentKeyGuideHeader { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: start; gap: 10px; }
+.deploymentKeyGuideHeader > svg { margin-top: 1px; color: #176b52; font-size: 19px; }
+.deploymentKeyGuideHeader strong, .deploymentKeyGuideHeader span { display: block; }
+.deploymentKeyGuideHeader strong { color: #26342e; font-size: 12px; }
+.deploymentKeyGuideHeader span { margin-top: 4px; color: #63716b; font-size: 10px; line-height: 1.55; }
+.deploymentKeyGuide ol { display: grid; gap: 10px; margin: 14px 0 0 40px; padding: 0; }
+.deploymentKeyGuide li { padding-left: 3px; color: #176b52; font-size: 10px; }
+.deploymentKeyGuide li > strong, .deploymentKeyGuide li > span { display: block; }
+.deploymentKeyGuide li > strong { color: #37443e; font-size: 11px; }
+.deploymentKeyGuide li > span { margin-top: 3px; color: #63716b; line-height: 1.6; }
+.deploymentKeyGuide li code { color: #176b52; font: 650 9px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+.deploymentKeyGuide li > code { display: block; margin-top: 7px; padding: 9px 10px; border: 1px solid #d6e3dc; border-radius: 7px; color: #26342e; background: #fff; }
+.deploymentKeyGuide > p { margin: 14px 0 0 40px; padding-top: 12px; border-top: 1px solid #d6e3dc; color: #7b5a2e; font-size: 10px; line-height: 1.6; }
 .deploymentActionCard { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 15px; border: 1px solid #e1c69f; border-radius: 9px; color: #9a5b13; background: #fdf8f1; }
 .deploymentActionCard > :first-child { justify-self: center; font-size: 21px; }
 .deploymentActionCard strong, .deploymentActionCard span { display: block; }
@@ -812,9 +832,10 @@
   .page, .successPage, .emailPage { padding-top: 22px; }
   .intro { padding-top: 14px; }
   .intro h1 { font-size: 36px; }
-  .roleSwitcher, .deploymentVariables { grid-template-columns: 1fr; }
+  .roleSwitcher, .deploymentVariables, .deploymentCommandGrid { grid-template-columns: 1fr; }
   .deploymentSectionHeader { align-items: flex-start; flex-direction: column; }
   .deploymentSectionHeader .stepStatusBadge { margin-left: 0; }
+  .deploymentKeyGuide ol, .deploymentKeyGuide > p { margin-left: 0; }
   .deploymentActionCard { grid-template-columns: 30px minmax(0, 1fr); }
   .deploymentActionCard a { grid-column: 2; }
   .deploymentActionCard :global(.ant-btn) { width: 100%; }
@@ -853,6 +874,8 @@
   .aiConnectionCard { grid-template-columns: 38px minmax(0, 1fr); }
   .aiConnectionAction { grid-column: 2; }
   .connectionEmpty, .connectionSuccess { align-items: flex-start; grid-template-columns: 1fr; flex-direction: column; }
+  .aiTestDecision { align-items: stretch; flex-direction: column; }
+  .aiTestDecisionActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1132,6 +1155,67 @@
 .notificationGrid strong, .notificationGrid small { display: block; }
 .notificationGrid strong { color: #37443e; font-size: 11px; }
 .notificationGrid small { margin-top: 4px; color: #84908a; font-size: 9px; line-height: 1.45; }
+.aiTestDecision { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 9px; padding: 14px 15px; border: 1px solid #c8ddd2; border-radius: 9px; background: #f1f8f4; }
+.aiTestDecisionCopy { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 11px; }
+.aiTestDecisionIcon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 8px; color: #176b52; background: #dceee5; font-size: 18px; }
+.aiTestDecisionCopy strong, .aiTestDecisionCopy span { display: block; }
+.aiTestDecisionCopy strong { color: #26342e; font-size: 12px; }
+.aiTestDecisionCopy div > span { margin-top: 3px; color: #63716b; font-size: 10px; line-height: 1.5; }
+.aiTestDecisionActions { display: flex; flex: 0 0 auto; gap: 8px; }
+.aiFrontendSection { scroll-margin-top: 20px; }
+.optionalSectionNumber { color: #176b52; background: #e3f0e9; font-size: 16px; }
+.aiRequestPanel { display: grid; gap: 13px; }
+.aiServiceBanner { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 15px; border: 1px solid; border-radius: 9px; }
+.aiServiceBanner > svg { font-size: 19px; }
+.aiServiceBanner strong, .aiServiceBanner span { display: block; }
+.aiServiceBanner strong { color: #26342e; font-size: 12px; }
+.aiServiceBanner span { margin-top: 3px; color: #63716b; font-size: 10px; line-height: 1.5; }
+.aiServiceOnline { border-color: #acd0bd; color: #176b52; background: #eef7f2; }
+.aiServiceOffline { border-color: #e0c39b; color: #9a5b13; background: #fdf8f1; }
+.aiPlatformRequestGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.aiPlatformRequestCard { min-width: 0; padding: 14px; border: 1px solid #dce4df; border-radius: 9px; text-align: left; color: #26342e; background: #fff; cursor: pointer; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.aiPlatformRequestCard:hover:not(:disabled) { border-color: #7db39a; transform: translateY(-1px); }
+.aiPlatformRequestCard.isSelected { border-color: #176b52; box-shadow: inset 0 0 0 1px #176b52; background: #eef7f2; }
+.aiPlatformRequestCard:disabled { cursor: not-allowed; opacity: .58; }
+.aiPlatformRequestCard strong, .aiPlatformRequestCard span, .aiPlatformRequestCard small { display: block; }
+.aiPlatformRequestCard strong { font-size: 12px; }
+.aiPlatformRequestCard span { min-height: 30px; margin-top: 5px; color: #63716b; font-size: 9px; line-height: 1.55; }
+.aiPlatformRequestCard small { margin-top: 9px; color: #176b52; font-size: 8px; font-weight: 700; }
+.aiRequestAction, .aiRequestReceipt { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 3px; }
+.aiRequestAction > span { color: #63716b; font-size: 9px; line-height: 1.5; }
+.aiRequestReceipt { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; padding: 14px; border: 1px solid #acd0bd; border-radius: 9px; color: #176b52; background: #eef7f2; }
+.aiRequestReceipt > svg { font-size: 20px; }
+.aiRequestReceipt strong, .aiRequestReceipt span, .aiRequestReceipt small { display: block; }
+.aiRequestReceipt strong { color: #26342e; font-size: 12px; }
+.aiRequestReceipt span, .aiRequestReceipt small { margin-top: 3px; color: #63716b; font-size: 9px; line-height: 1.5; }
+
+.deploymentCaptureConsole { display: grid; gap: 11px; margin-top: 14px; padding: 16px; border: 1px solid #bfd6ca; border-radius: 10px; background: linear-gradient(135deg, #f7fbf8, #edf6f1); }
+.deploymentCaptureAuth { display: grid; grid-template-columns: minmax(260px, 1fr) auto; align-items: end; gap: 12px; }
+.deploymentCaptureAuth label > span { display: block; margin-bottom: 6px; color: #26342e; font-size: 10px; font-weight: 700; }
+.deploymentCaptureAuth input { width: 100%; height: 40px; padding: 0 12px; border: 1px solid #cbd9d1; border-radius: 7px; outline: 0; color: #26342e; background: #fff; }
+.deploymentCaptureAuth input:focus { border-color: #176b52; box-shadow: 0 0 0 2px rgba(23, 107, 82, .1); }
+.deploymentCaptureAuth > div { display: flex; gap: 8px; }
+.deploymentCaptureTokenNote { margin: 0; color: #6d7973; font-size: 9px; line-height: 1.55; }
+.deploymentPairingResult { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 13px; border: 1px solid #8fbea8; border-radius: 8px; color: #176b52; background: #fff; }
+.deploymentPairingResult > svg { font-size: 19px; }
+.deploymentPairingResult strong, .deploymentPairingResult span { display: block; }
+.deploymentPairingResult strong { font: 750 18px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; }
+.deploymentPairingResult span { margin-top: 4px; color: #63716b; font-size: 9px; line-height: 1.5; }
+.deploymentCaptureStatus { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.deploymentCaptureStatus > div { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 9px; padding: 12px; border: 1px solid #d4dfd9; border-radius: 8px; color: #65736c; background: #fff; }
+.deploymentCaptureStatus strong, .deploymentCaptureStatus small { display: block; }
+.deploymentCaptureStatus strong { color: #26342e; font-size: 10px; }
+.deploymentCaptureStatus small { overflow-wrap: anywhere; margin-top: 4px; color: #63716b; font-size: 8px; line-height: 1.5; }
+.deploymentCaptureReady { border-color: #acd0bd !important; color: #176b52 !important; }
+.deploymentCaptureWarning { border-color: #e0c39b !important; color: #9a5b13 !important; background: #fdf8f1 !important; }
+
+@media (max-width: 760px) {
+  .aiPlatformRequestGrid, .deploymentCaptureStatus { grid-template-columns: 1fr; }
+  .aiServiceBanner, .aiRequestReceipt, .deploymentPairingResult { grid-template-columns: 32px minmax(0, 1fr); }
+  .aiServiceBanner > :global(.ant-btn), .aiRequestReceipt > :global(.ant-btn), .deploymentPairingResult > :global(.ant-btn) { grid-column: 2; justify-self: start; }
+  .aiRequestAction, .deploymentCaptureAuth { align-items: stretch; grid-template-columns: 1fr; flex-direction: column; }
+  .deploymentCaptureAuth > div { display: grid; grid-template-columns: 1fr; }
+}
 
 .accountSetupStack { display: grid; gap: 13px; }
 .platformSetupCard { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px; border: 1px solid #e1c69f; border-radius: 9px; background: #fdf8f1; }

@@ -2,35 +2,54 @@ import { randomUUID } from "node:crypto";
 import type { RowDataPacket } from "mysql2/promise";
 import { v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
 import { observationError, observationOk, readObservationPayload } from "@/lib/v5/observation-api";
-import { createConnectedManualCaptureTask } from "@/lib/v5/capture-repository";
+import { createDeploymentSharedCaptureTask } from "@/lib/v5/capture-repository";
 import { getV5GovernancePool } from "@/lib/v5/knowledge-governance-repository";
 import { ObservationServiceError } from "@/lib/v5/observation-service";
+import type { AiFrontendPlatform } from "@/lib/v5/observation-contracts";
 import { listApprovedGeoMonitoringQuestions } from "@/lib/v5/question-service";
-import { assertWorkspaceProductAccess, requireHostedIdentity, requireHostedRole } from "@/lib/v5/hosted-identity-service";
+import { assertWorkspaceProductAccess, requireHostedIdentity } from "@/lib/v5/hosted-identity-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+const hostedCapturePlatforms = new Set<AiFrontendPlatform>(["chatgpt", "doubao", "deepseek", "qwen"]);
+
+export async function GET(request: Request) {
+  try {
+    const identity = await requireHostedIdentity(request);
+    const taskId = new URL(request.url).searchParams.get("taskId")?.trim();
+    if (!taskId) throw new ObservationServiceError(400, "HOSTED_AI_TEST_TASK_REQUIRED", "缺少 AI 前台测试任务编号。");
+    const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+      `SELECT task_id, platform, status, created_at, completed_at
+       FROM capture_tasks
+       WHERE task_id = ? AND requested_workspace_id = ? AND requested_user_id = ? LIMIT 1`,
+      [taskId, identity.workspaceId, identity.userId]
+    );
+    if (!rows[0]) throw new ObservationServiceError(404, "HOSTED_AI_TEST_TASK_NOT_FOUND", "任务不存在或不属于当前用户。");
+    return observationOk({
+      taskId: String(rows[0].task_id),
+      platform: String(rows[0].platform),
+      status: String(rows[0].status),
+      createdAt: new Date(String(rows[0].created_at)).toISOString(),
+      completedAt: rows[0].completed_at ? new Date(String(rows[0].completed_at)).toISOString() : undefined
+    });
+  } catch (error) {
+    return error instanceof ObservationServiceError
+      ? observationError(error, "HOSTED_AI_TEST_STATUS_FAILED", error.message)
+      : v5GovernanceErrorResponse(error);
+  }
+}
 
 export async function POST(request: Request) {
   try {
     const identity = await requireHostedIdentity(request);
-    requireHostedRole(identity, ["workspace_admin", "product_owner", "operator"]);
     const payload = await readObservationPayload(request);
     const productId = String(payload.productId || "").trim();
-    const connectionId = String(payload.connectionId || "").trim();
+    const platform = String(payload.platform || "").trim() as AiFrontendPlatform;
     const idempotencyKey = String(payload.idempotencyKey || `hosted-ai-test-${randomUUID()}`).trim();
-    if (!productId || !connectionId) {
-      throw new ObservationServiceError(400, "HOSTED_AI_TEST_INPUT_REQUIRED", "请选择推广产品和已绑定的 AI 账号。");
+    if (!productId || !hostedCapturePlatforms.has(platform)) {
+      throw new ObservationServiceError(400, "HOSTED_AI_TEST_INPUT_REQUIRED", "请选择推广产品和 AI 测试平台。");
     }
     await assertWorkspaceProductAccess(identity.workspaceId, productId);
-    const [connections] = await getV5GovernancePool().query<RowDataPacket[]>(
-      `SELECT id FROM publish_account_connection
-       WHERE id = ? AND workspace_id = ? AND authorization_status = 'connected' AND revoked_at IS NULL LIMIT 1`,
-      [connectionId, identity.workspaceId]
-    );
-    if (!connections[0]) {
-      throw new ObservationServiceError(404, "HOSTED_AI_TEST_CONNECTION_NOT_FOUND", "AI 账号连接不存在或不属于当前工作区。");
-    }
 
     const approved = listApprovedGeoMonitoringQuestions();
     if (!approved.length) throw new ObservationServiceError(422, "HOSTED_AI_TEST_QUESTION_UNAVAILABLE", "当前没有经人工确认的 GEO 测试问题。");
@@ -49,19 +68,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const task = await createConnectedManualCaptureTask({
+    const task = await createDeploymentSharedCaptureTask({
+      workspaceId: identity.workspaceId,
+      userId: identity.userId,
       productId,
       questionVersionId: question.currentVersionId,
       question: question.currentVersion.text,
-      connectionId,
+      platform,
       idempotencyKey
     });
     return observationOk({
       taskId: task.taskId,
       status: task.status,
-      connectionId,
+      platform,
       question: question.currentVersion.text,
-      wakeMessage: { type: "JOTO_CAPTURE_POLL", taskId: task.taskId, connectionId }
+      message: "请求已进入部署级 24 小时采集服务器队列。"
     }, 201);
   } catch (error) {
     return error instanceof ObservationServiceError

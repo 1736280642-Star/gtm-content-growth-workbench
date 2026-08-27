@@ -3,6 +3,7 @@ import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import type {
   AiFrontendConnection,
   AiFrontendConnectionStatus,
+  AiFrontendExecutionScope,
   AiFrontendIsolationPolicy,
   AiFrontendPlatform,
   CaptureIsolationAttestation,
@@ -80,6 +81,7 @@ function mapDevice(row: RowDataPacket) {
     deviceId: String(row.device_id),
     workspaceId: String(row.workspace_id),
     userId: String(row.user_id),
+    executionScope: String(row.execution_scope || "user_private") as AiFrontendExecutionScope,
     status: revoked ? "revoked" : heartbeatFresh ? String(row.status || "online") : "offline",
     platforms: parseV5Json<string[]>(row.platforms, []),
     lastHeartbeatAt,
@@ -121,6 +123,7 @@ function mapAiFrontendConnection(row: RowDataPacket): AiFrontendConnection {
   const platform = String(row.platform) as AiFrontendPlatform;
   return {
     connectionId: String(row.connection_id), workspaceId: String(row.workspace_id), userId: String(row.user_id),
+    executionScope: String(row.execution_scope || "user_private") as AiFrontendExecutionScope,
     deviceId: String(row.device_id), platform, accountAlias: String(row.account_alias),
     browserProfileSlot: String(row.browser_profile_slot || "default"),
     status: (row.revoked_at ? "revoked" : String(row.status || "offline")) as AiFrontendConnectionStatus,
@@ -131,10 +134,14 @@ function mapAiFrontendConnection(row: RowDataPacket): AiFrontendConnection {
   };
 }
 
-export async function listAiFrontendConnections(input: { deviceId?: string; includeRevoked?: boolean } = {}) {
+export async function listAiFrontendConnections(input: { deviceId?: string; workspaceId?: string; userId?: string; executionScope?: AiFrontendExecutionScope; platform?: AiFrontendPlatform; includeRevoked?: boolean } = {}) {
   const conditions: string[] = [];
   const params: string[] = [];
   if (input.deviceId) { conditions.push("c.device_id = ?"); params.push(input.deviceId); }
+  if (input.workspaceId) { conditions.push("c.workspace_id = ?"); params.push(input.workspaceId); }
+  if (input.userId) { conditions.push("c.user_id = ?"); params.push(input.userId); }
+  if (input.executionScope) { conditions.push("c.execution_scope = ?"); params.push(input.executionScope); }
+  if (input.platform) { conditions.push("c.platform = ?"); params.push(input.platform); }
   if (!input.includeRevoked) conditions.push("c.revoked_at IS NULL");
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT c.* FROM ai_frontend_connections c ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
@@ -171,15 +178,15 @@ export async function registerAiFrontendConnection(input: {
     const connectionId = existing[0]?.connection_id ? String(existing[0].connection_id) : `ai-connection-${randomUUID()}`;
     if (existing[0]) {
       await connection.query(
-        "UPDATE ai_frontend_connections SET account_alias = ?, status = 'isolation_unverified', isolation_policy = ?, last_error = NULL, revoked_at = NULL WHERE connection_id = ?",
-        [alias, stringifyV5Json(policy), connectionId]
+        "UPDATE ai_frontend_connections SET workspace_id = ?, user_id = ?, execution_scope = ?, account_alias = ?, status = 'isolation_unverified', isolation_policy = ?, last_error = NULL, revoked_at = NULL WHERE connection_id = ?",
+        [String(device.workspace_id), String(device.user_id), String(device.execution_scope || "user_private"), alias, stringifyV5Json(policy), connectionId]
       );
     } else {
       await connection.query(
         `INSERT INTO ai_frontend_connections
-         (connection_id, workspace_id, user_id, device_id, platform, account_alias, browser_profile_slot, status, isolation_policy)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'isolation_unverified', ?)`,
-        [connectionId, String(device.workspace_id), String(device.user_id), input.deviceId, input.platform, alias, browserProfileSlot, stringifyV5Json(policy)]
+         (connection_id, workspace_id, user_id, execution_scope, device_id, platform, account_alias, browser_profile_slot, status, isolation_policy)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'isolation_unverified', ?)`,
+        [connectionId, String(device.workspace_id), String(device.user_id), String(device.execution_scope || "user_private"), input.deviceId, input.platform, alias, browserProfileSlot, stringifyV5Json(policy)]
       );
     }
     const [saved] = await connection.query<RowDataPacket[]>("SELECT * FROM ai_frontend_connections WHERE connection_id = ?", [connectionId]);
@@ -223,23 +230,31 @@ export async function revokeAiFrontendConnection(connectionId: string) {
   });
 }
 
-export async function listCaptureDevices() {
+export async function listCaptureDevices(input: { workspaceId?: string; userId?: string; executionScope?: AiFrontendExecutionScope; includeRevoked?: boolean } = {}) {
+  const conditions: string[] = [];
+  const params: string[] = [];
+  if (input.workspaceId) { conditions.push("d.workspace_id = ?"); params.push(input.workspaceId); }
+  if (input.userId) { conditions.push("d.user_id = ?"); params.push(input.userId); }
+  if (input.executionScope) { conditions.push("d.execution_scope = ?"); params.push(input.executionScope); }
+  if (!input.includeRevoked) conditions.push("d.revoked_at IS NULL");
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT d.*,
        (SELECT t.task_id FROM capture_tasks t WHERE t.device_id = d.device_id AND t.status = 'leased' ORDER BY t.created_at ASC LIMIT 1) AS current_task_id,
        (SELECT MAX(e.created_at) FROM capture_evidence e WHERE e.device_id = d.device_id) AS last_successful_capture_at
-     FROM capture_devices d ORDER BY d.revoked_at IS NOT NULL, d.paired_at DESC`
+     FROM capture_devices d ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+     ORDER BY d.revoked_at IS NOT NULL, d.paired_at DESC`,
+    params
   );
   return rows.map(mapDevice);
 }
 
-export async function createCapturePairingCode(input: { workspaceId: string; userId: string; ttlMinutes?: number }) {
+export async function createCapturePairingCode(input: { workspaceId: string; userId: string; executionScope?: AiFrontendExecutionScope; ttlMinutes?: number }) {
   const pairingCode = randomBytes(6).toString("hex").toUpperCase();
   const codeHash = createHash("sha256").update(pairingCode).digest("hex");
   const ttlMinutes = Math.max(1, Math.min(30, input.ttlMinutes || 10));
   await getV5GovernancePool().query(
-    "INSERT INTO capture_pairing_codes (code_hash, workspace_id, user_id, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))",
-    [codeHash, input.workspaceId, input.userId, ttlMinutes]
+    "INSERT INTO capture_pairing_codes (code_hash, workspace_id, user_id, execution_scope, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))",
+    [codeHash, input.workspaceId, input.userId, input.executionScope || "user_private", ttlMinutes]
   );
   return { pairingCode, expiresAt: new Date(Date.now() + ttlMinutes * 60_000).toISOString() };
 }
@@ -254,6 +269,7 @@ export async function registerCaptureDevice(input: {
   const saved = await withV5GovernanceTransaction(async (connection) => {
     let workspaceId = input.workspaceId;
     let userId = input.userId;
+    let executionScope: AiFrontendExecutionScope = "user_private";
     if (input.pairingCode) {
       const codeHash = createHash("sha256").update(input.pairingCode.trim().toUpperCase()).digest("hex");
       const [codes] = await connection.query<RowDataPacket[]>(
@@ -263,6 +279,7 @@ export async function registerCaptureDevice(input: {
       if (!codes[0]) throw new V5GovernanceRepositoryError("capture_pairing_code_invalid", "配对码无效、已使用或已过期。", 403);
       workspaceId = String(codes[0].workspace_id);
       userId = String(codes[0].user_id);
+      executionScope = String(codes[0].execution_scope || "user_private") as AiFrontendExecutionScope;
       await connection.query("UPDATE capture_pairing_codes SET used_at = NOW() WHERE code_hash = ?", [codeHash]);
     }
     if (!workspaceId || !userId) throw new V5GovernanceRepositoryError("capture_device_identity_required", "需要有效配对码或可信服务端设备身份。", 400);
@@ -274,20 +291,21 @@ export async function registerCaptureDevice(input: {
     if (current?.revoked_at) {
       throw new V5GovernanceRepositoryError("capture_device_revoked", "设备已被撤销，不能重新激活。", 409);
     }
-    if (current && (String(current.workspace_id) !== workspaceId || String(current.user_id) !== userId)) {
+    const deploymentRebind = current && executionScope === "deployment_shared";
+    if (current && !deploymentRebind && (String(current.workspace_id) !== workspaceId || String(current.user_id) !== userId)) {
       throw new V5GovernanceRepositoryError("capture_device_identity_conflict", "设备已绑定到其他工作区或用户。", 409);
     }
     if (current) {
       await connection.query(
-        "UPDATE capture_devices SET platforms = ?, status = 'online', last_heartbeat_at = NOW() WHERE device_id = ?",
-        [stringifyV5Json(input.platforms), input.deviceId]
+        "UPDATE capture_devices SET workspace_id = ?, user_id = ?, execution_scope = ?, platforms = ?, status = 'online', last_heartbeat_at = NOW() WHERE device_id = ?",
+        [workspaceId, userId, executionScope, stringifyV5Json(input.platforms), input.deviceId]
       );
     } else {
       await connection.query(
         `INSERT INTO capture_devices
-         (device_id, workspace_id, user_id, status, platforms, last_heartbeat_at, paired_at)
-         VALUES (?, ?, ?, 'online', ?, NOW(), NOW())`,
-        [input.deviceId, workspaceId, userId, stringifyV5Json(input.platforms)]
+         (device_id, workspace_id, user_id, execution_scope, status, platforms, last_heartbeat_at, paired_at)
+         VALUES (?, ?, ?, ?, 'online', ?, NOW(), NOW())`,
+        [input.deviceId, workspaceId, userId, executionScope, stringifyV5Json(input.platforms)]
       );
     }
     const [saved] = await connection.query<RowDataPacket[]>(
@@ -340,6 +358,8 @@ export async function revokeCaptureDevice(deviceId: string) {
 
 export async function createCaptureTask(input: {
   productId: string;
+  requestedWorkspaceId?: string;
+  requestedUserId?: string;
   targetEntityName?: string;
   question: string;
   questionVersionId?: string;
@@ -377,7 +397,10 @@ export async function createCaptureTask(input: {
       [input.idempotencyKey]
     );
     if (existing[0]) {
-      if (String(existing[0].product_id) !== input.productId || String(existing[0].question) !== input.question || String(existing[0].platform) !== input.platform) {
+      const requesterMismatch = Boolean(input.requestedWorkspaceId || input.requestedUserId)
+        && (String(existing[0].requested_workspace_id || "") !== String(input.requestedWorkspaceId || "")
+          || String(existing[0].requested_user_id || "") !== String(input.requestedUserId || ""));
+      if (requesterMismatch || String(existing[0].product_id) !== input.productId || String(existing[0].question) !== input.question || String(existing[0].platform) !== input.platform) {
         throw new V5GovernanceRepositoryError("idempotency_conflict", "同一幂等键已用于不同采集任务。", 409);
       }
       return { taskId: String(existing[0].task_id), status: String(existing[0].status), replayed: true };
@@ -385,10 +408,10 @@ export async function createCaptureTask(input: {
     const taskId = `capture-task-${randomUUID()}`;
     await connection.query(
       `INSERT INTO capture_tasks
-       (task_id, product_id, target_entity_name, question, question_version_id, monitoring_question_id, published_content_id, source_publish_result_id, connection_id,
+       (task_id, product_id, requested_workspace_id, requested_user_id, target_entity_name, question, question_version_id, monitoring_question_id, published_content_id, source_publish_result_id, connection_id,
         trigger_type, capture_condition, platform, status, attempt_count, idempotency_key, priority, scheduled_for, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NOW())`,
-      [taskId, input.productId, input.targetEntityName || null, input.question, input.questionVersionId || null, input.monitoringQuestionId || null, input.publishedContentId || null,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NOW())`,
+      [taskId, input.productId, input.requestedWorkspaceId || null, input.requestedUserId || null, input.targetEntityName || null, input.question, input.questionVersionId || null, input.monitoringQuestionId || null, input.publishedContentId || null,
         input.sourcePublishResultId || null, resolvedConnectionId || null, input.triggerType || "manual_once",
         stringifyV5Json(input.captureCondition || DEFAULT_CAPTURE_CONDITION), input.platform, input.idempotencyKey, input.priority, input.scheduledFor ? new Date(input.scheduledFor) : null]
     );
@@ -745,6 +768,59 @@ export async function createConnectedManualCaptureTask(input: {
     questionVersionId: input.questionVersionId,
     connectionId: input.connectionId,
     platform: selected.platform,
+    priority: 100,
+    triggerType: "manual_once",
+    captureCondition: DEFAULT_CAPTURE_CONDITION,
+    idempotencyKey: input.idempotencyKey.slice(0, 128)
+  });
+}
+
+export async function createDeploymentSharedCaptureTask(input: {
+  workspaceId: string;
+  userId: string;
+  productId: string;
+  questionVersionId: string;
+  question: string;
+  platform: AiFrontendPlatform;
+  idempotencyKey: string;
+}) {
+  const [connections] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT c.connection_id
+     FROM ai_frontend_connections c
+     JOIN capture_devices d ON d.device_id = c.device_id
+     LEFT JOIN capture_tasks t ON t.connection_id = c.connection_id AND t.status IN ('pending', 'leased')
+     WHERE c.execution_scope = 'deployment_shared' AND c.platform = ?
+       AND c.revoked_at IS NULL AND d.revoked_at IS NULL
+       AND c.status <> 'needs_login'
+     GROUP BY c.connection_id, c.status, c.last_verified_at, d.status, d.last_heartbeat_at, c.created_at
+     ORDER BY (d.last_heartbeat_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)) DESC,
+       (c.status = 'ready') DESC, COUNT(t.task_id) ASC, c.last_verified_at DESC, c.created_at ASC
+     LIMIT 1`,
+    [input.platform]
+  );
+  const connectionId = connections[0]?.connection_id ? String(connections[0].connection_id) : undefined;
+  if (!connectionId) {
+    throw new V5GovernanceRepositoryError(
+      "deployment_capture_platform_unavailable",
+      "部署级 AI 前台采集账号尚未就绪。",
+      503,
+      `请联系部署人员检查 ${input.platform} 账号登录和 24 小时采集服务器。`
+    );
+  }
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT product_id FROM content_matrix_item
+     WHERE product_id = ? AND question_version_id = ? ORDER BY created_at DESC LIMIT 1`,
+    [input.productId, input.questionVersionId]
+  );
+  if (!rows[0]) throw new V5GovernanceRepositoryError("capture_question_product_mismatch", "该正式问题没有绑定当前产品，不能发起前台测试。", 422);
+  return createCaptureTask({
+    productId: input.productId,
+    requestedWorkspaceId: input.workspaceId,
+    requestedUserId: input.userId,
+    question: input.question,
+    questionVersionId: input.questionVersionId,
+    connectionId,
+    platform: input.platform,
     priority: 100,
     triggerType: "manual_once",
     captureCondition: DEFAULT_CAPTURE_CONDITION,

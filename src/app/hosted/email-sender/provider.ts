@@ -44,6 +44,7 @@ const providerByDomain: Record<string, HostedEmailProvider> = {
   "qq.com": "qq",
   "163.com": "163",
   "jotoglobal.com": "aliyun",
+  "jototch.cn": "aliyun",
   "gmail.com": "gmail",
   "googlemail.com": "gmail",
   "outlook.com": "outlook",

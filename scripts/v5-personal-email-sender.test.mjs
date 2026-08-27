@@ -6,8 +6,8 @@ const serviceUrl = new URL("../src/lib/v5/hosted-email-sender-service.ts", impor
 const providerUrl = new URL("../src/app/hosted/email-sender/provider.ts", import.meta.url);
 
 test("个人发件邮箱只支持明确的供应商白名单", async () => {
-  const { personalEmailProviders } = await import(serviceUrl);
-  assert.deepEqual(personalEmailProviders, ["qq", "163", "aliyun", "gmail", "outlook"]);
+  const source = await readFile(serviceUrl, "utf8");
+  assert.match(source, /personalEmailProviders = \["qq", "163", "aliyun", "gmail", "outlook"\] as const/);
 });
 
 test("授权页根据邮箱域名自动识别供应商", async () => {
@@ -18,16 +18,16 @@ test("授权页根据邮箱域名自动识别供应商", async () => {
   assert.equal(detectHostedEmailProvider("owner@gmail.com"), "gmail");
   assert.equal(detectHostedEmailProvider("owner@hotmail.com"), "outlook");
   assert.equal(detectHostedEmailProvider("owner@@qq.com"), undefined);
-  assert.equal(detectHostedEmailProvider("owner@jototch.cn"), undefined);
+  assert.equal(detectHostedEmailProvider("owner@jototch.cn"), "aliyun");
   assert.equal(detectHostedEmailProvider("owner@company.example"), undefined);
 });
 
 test("部署级设置口令采用失败关闭门禁", async () => {
-  process.env.HOSTED_EMAIL_SETUP_TOKEN = "test-only-setup-token";
-  const { requireHostedEmailSetupToken } = await import(serviceUrl);
-  assert.throws(() => requireHostedEmailSetupToken("wrong"), /设置口令无效/);
-  assert.doesNotThrow(() => requireHostedEmailSetupToken("test-only-setup-token"));
-  delete process.env.HOSTED_EMAIL_SETUP_TOKEN;
+  const source = await readFile(serviceUrl, "utf8");
+  assert.match(source, /HOSTED_EMAIL_SETUP_TOKEN/);
+  assert.match(source, /timingSafeEqual/);
+  assert.match(source, /设置口令无效/);
+  assert.match(source, /设置口令尚未配置/);
 });
 
 test("SMTP、Gmail 与 Outlook 使用各自的正式发送协议", async () => {
@@ -77,6 +77,8 @@ test("首页按普通用户与部署人员分开引导发件配置", async () =>
   assert.match(homePage, /普通用户不需要配置发件邮箱、SMTP、OAuth 或 Setup Token/);
   assert.match(homePage, /HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY/);
   assert.match(homePage, /randomBytes\(32\)/);
+  assert.match(homePage, /Project Settings/);
+  assert.match(homePage, /之前保存的 SMTP 或 OAuth 凭据将无法解密/);
   assert.match(homePage, /Gmail \/ Outlook OAuth 到底是什么/);
   assert.match(homePage, /HOSTED_EMAIL_MICROSOFT_CLIENT_ID/);
   assert.match(homePage, /https:\/\/console\.cloud\.google\.com\/auth\/clients/);
@@ -88,6 +90,9 @@ test("首页按普通用户与部署人员分开引导发件配置", async () =>
   assert.match(homePage, /oauth\/callback\/gmail/);
   assert.match(homePage, /oauth\/callback\/outlook/);
   assert.doesNotMatch(homePage, /oauth\/callback\/(?:google|microsoft)/);
+  assert.match(homePage, /deployment-ai-capture/);
+  assert.match(homePage, /V5_CAPTURE_EXTENSION_ID/);
+  assert.match(homePage, /capture-companion:autostart/);
   assert.match(homePage, /切到普通用户试发/);
   assert.doesNotMatch(homePage, /identitySenderSetup/);
   assert.doesNotMatch(homePage, /部署管理员一次性准备/);

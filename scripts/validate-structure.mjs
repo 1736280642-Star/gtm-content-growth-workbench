@@ -112,6 +112,8 @@ const requiredFiles = [
   "database/migrations/20260728_013_v5_managed_source_content.sql",
   // Phase 1: MCP contract & capture devices
   "database/migrations/20260809_017_v5_phase1_mcp_capture.sql",
+  "database/migrations/20260827_042_v5_deployment_shared_ai_capture.sql",
+  "docs/方案与规划/2026-08-27-服务器正式启用前迁移与交接手册.md",
   "src/app/api/v5/products/[productId]/promotion/route.ts",
   "src/app/api/v5/products/[productId]/strategy-pack/route.ts",
   "src/app/api/v5/products/[productId]/strategy-pack/apply/route.ts",
@@ -124,6 +126,9 @@ const requiredFiles = [
   "src/app/api/v5/capture-tasks/route.ts",
   "src/app/api/v5/capture-tasks/[id]/lease/route.ts",
   "src/app/api/v5/capture-evidence/route.ts",
+  "src/app/api/v5/hosted/ai-capture-deployment/route.ts",
+  "src/app/api/v5/hosted/ai-capture-setup/route.ts",
+  "src/app/api/v5/hosted/ai-front-test/route.ts",
   "src/app/api/v5/attribution/route.ts",
   "src/app/api/v5/tasks/responsibility/route.ts",
   "src/app/api/v5/tasks/attention/route.ts",
@@ -131,6 +136,9 @@ const requiredFiles = [
   "src/lib/v5/monthly-overflow-service.ts",
   "src/lib/v5/product-registry-contracts.ts",
   "src/lib/v5/capture-repository.ts",
+  "src/lib/v5/hosted-capture-deployment-service.ts",
+  "src/components/HostedAiCaptureDeploymentGuide.tsx",
+  "src/components/HostedAiCaptureRequestPanel.tsx",
   "src/lib/v5/product-strategy-pack-repository.ts",
   "src/lib/v5/responsibility-read-service.ts",
   "scripts/phase1-mcp-smoke.test.mjs",
@@ -420,8 +428,23 @@ addContentCheck("phase1 capture device heartbeat", "src/app/api/v5/capture-devic
   "heartbeatCaptureDevice"
 ]);
 addContentCheck("capture pairing code API", "src/app/api/v5/capture-pairing-codes/route.ts", [
-  "createCapturePairingCode",
-  "ttlMinutes"
+  "USER_CAPTURE_PAIRING_RETIRED",
+  "普通用户不再配对采集设备"
+]);
+addContentCheck("deployment-shared capture migration", "database/migrations/20260827_042_v5_deployment_shared_ai_capture.sql", [
+  "execution_scope",
+  "requested_workspace_id",
+  "requested_user_id"
+]);
+addContentCheck("deployment-shared capture API", "src/app/api/v5/hosted/ai-capture-deployment/route.ts", [
+  "requireHostedCaptureSetupToken",
+  "deployment_shared",
+  "createCapturePairingCode"
+]);
+addContentCheck("hosted capture request ownership", "src/app/api/v5/hosted/ai-front-test/route.ts", [
+  "createDeploymentSharedCaptureTask",
+  "requested_workspace_id",
+  "requested_user_id"
 ]);
 addContentCheck("phase1 capture tasks API", "src/app/api/v5/capture-tasks/route.ts", [
   "productId",
