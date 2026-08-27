@@ -117,14 +117,21 @@ test("首页按普通用户与部署人员分开引导发件配置", async () =>
 });
 
 test("登录邮件与通知邮件复用统一投递适配器", async () => {
-  const [identity, notification, emailClient] = await Promise.all([
+  const [identity, notification, emailClient, emailSender, homePage] = await Promise.all([
     readFile(new URL("../src/lib/v5/hosted-identity-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/hosted-notification-service.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/lib/v5/hosted-email-client.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/lib/v5/hosted-email-client.ts", import.meta.url), "utf8"),
+    readFile(serviceUrl, "utf8"),
+    readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8")
   ]);
   assert.match(identity, /deliverHostedTransactionalEmail/);
+  assert.match(identity, /delivery_status IN \('sending', 'sent'\)/);
   assert.match(notification, /deliverHostedTransactionalEmail/);
   assert.match(emailClient, /deliverWithPersonalEmailSender/);
+  assert.match(emailSender, /hosted_email_oauth_refresh_unreachable/);
+  assert.match(emailSender, /attempts: 2/);
+  assert.match(homePage, /重新发送登录邮件/);
+  assert.doesNotMatch(homePage, />更换邮箱或重新发送</);
 });
 
 test("3027 部署在启动容器前验证 Worker 镜像入口", async () => {

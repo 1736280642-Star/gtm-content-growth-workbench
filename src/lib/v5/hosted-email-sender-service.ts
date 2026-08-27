@@ -402,11 +402,15 @@ async function refreshAccessToken(provider: "gmail" | "outlook", refreshToken: s
     grant_type: "refresh_token"
   };
   if (provider === "outlook") body.scope = "openid email offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read";
-  const response = await fetch(endpoint, {
+  const response = await fetchEmailProvider(endpoint, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(body),
     cache: "no-store"
+  }, {
+    attempts: 2,
+    failureCode: "hosted_email_oauth_refresh_unreachable",
+    failureMessage: "暂时无法连接邮箱授权服务。"
   });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok || typeof payload.access_token !== "string") {
@@ -421,6 +425,24 @@ async function refreshAccessToken(provider: "gmail" | "outlook", refreshToken: s
     );
   }
   return payload.access_token;
+}
+
+async function fetchEmailProvider(
+  endpoint: string,
+  init: RequestInit,
+  options: { attempts: number; failureCode: string; failureMessage: string }
+) {
+  for (let attempt = 1; attempt <= options.attempts; attempt += 1) {
+    try {
+      return await fetch(endpoint, { ...init, signal: AbortSignal.timeout(15_000) });
+    } catch {
+      if (attempt === options.attempts) {
+        throw repositoryError(options.failureCode, options.failureMessage, 502, "确认部署服务器可以访问邮箱供应商后重试。" );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw repositoryError(options.failureCode, options.failureMessage, 502);
 }
 
 function messageHeaders(input: { idempotencyKey: string }) {
@@ -441,10 +463,14 @@ async function sendWithGmailApi(connection: SenderConnection, credentials: Extra
     disableUrlAccess: true
   });
   const raw = Buffer.isBuffer(compiled.message) ? compiled.message : Buffer.from(String(compiled.message));
-  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+  const response = await fetchEmailProvider("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
     body: JSON.stringify({ raw: raw.toString("base64url") })
+  }, {
+    attempts: 1,
+    failureCode: "hosted_email_delivery_unreachable",
+    failureMessage: "暂时无法连接 Gmail 发信服务。"
   });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) throw repositoryError("hosted_email_delivery_failed", "Gmail 拒绝了投递请求。", 502);

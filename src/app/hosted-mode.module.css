@@ -1140,6 +1140,7 @@
   background: #eef7f2;
 }
 .loginSentCard > :first-child { font-size: 22px; }
+.loginSentActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .loginSentCard strong, .loginSentCard span,
 .notificationEmail strong, .notificationEmail span,
 .embeddedConnectionEmpty strong, .embeddedConnectionEmpty span,
@@ -1300,7 +1301,8 @@
   .inlineLoginForm { grid-template-columns: 1fr; }
   .inlineLoginForm :global(.ant-btn) { width: 100%; }
   .loginSentCard, .notificationEmail, .platformSetupCard { grid-template-columns: auto minmax(0, 1fr); }
-  .loginSentCard :global(.ant-btn), .platformSetupCard :global(.ant-btn), .platformSetupCheck { grid-column: 2; justify-self: start; }
+  .loginSentActions { grid-column: 2; justify-content: flex-start; flex-wrap: wrap; }
+  .platformSetupCard :global(.ant-btn), .platformSetupCheck { grid-column: 2; justify-self: start; }
   .notificationEmail small { grid-column: 2; }
   .notificationGrid { grid-template-columns: 1fr; }
   .credentialSourceGrid, .smtpSourceGrid { grid-template-columns: 1fr; }

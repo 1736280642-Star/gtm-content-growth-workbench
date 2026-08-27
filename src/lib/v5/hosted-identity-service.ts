@@ -49,6 +49,7 @@ export async function requestHostedEmailLogin(rawEmail: string) {
   const [recent] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT id FROM hosted_identity_login_challenge
      WHERE email = ? AND status = 'pending' AND expires_at > NOW()
+       AND delivery_status IN ('sending', 'sent')
        AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
      ORDER BY created_at DESC LIMIT 1`,
     [email]
