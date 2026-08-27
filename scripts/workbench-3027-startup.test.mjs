@@ -23,6 +23,17 @@ test("production deployment remains explicit and separate from daily startup", a
   assert.match(wrapper, /ensure-workbench-3027\.ps1/);
 });
 
+test("Docker environment wrapper forwards deployment setup tokens from project config", async () => {
+  const [environmentWrapper, compose] = await Promise.all([
+    readFile("scripts/docker-compose-with-project-env.mjs", "utf8"),
+    readFile("compose.yaml", "utf8")
+  ]);
+  for (const name of ["HOSTED_EMAIL_SETUP_TOKEN", "HOSTED_CAPTURE_SETUP_TOKEN"]) {
+    assert.match(environmentWrapper, new RegExp(`"${name}"`));
+    assert.ok(compose.includes(name + ": ${" + name + ":-}"));
+  }
+});
+
 test("Windows logon task uses the no-build launcher and ignores duplicate starts", async () => {
   const register = await readFile("scripts/register-workbench-3027-autostart.ps1", "utf8");
   assert.match(register, /ensure-workbench-3027\.ps1/);
