@@ -49,6 +49,16 @@ test("Gmail OAuth 使用 OpenID UserInfo 识别已验证邮箱且不扩大 Gmail
   assert.match(source, /\["openid", "email", "https:\/\/www\.googleapis\.com\/auth\/gmail\.send"\]/);
 });
 
+test("OAuth 回调使用部署访问地址且不把页面重定向异常误报为授权失败", async () => {
+  const source = await readFile(new URL("../src/app/api/v5/hosted/email-sender/oauth/callback/[provider]/route.ts", import.meta.url), "utf8");
+  assert.match(source, /HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL/);
+  assert.match(source, /url\.hostname === "0\.0\.0\.0"/);
+  assert.match(source, /url\.hostname = "127\.0\.0\.1"/);
+  assert.match(source, /reason: safeFailureCode\(error\)/);
+  assert.doesNotMatch(source, /new URL\("\/hosted\/email-sender", request\.url\)/);
+  assert.match(source, /return setupPage\(request, \{ result: "connected", provider: result\.provider \}\);/);
+});
+
 test("授权信息以 AES-256-GCM 密文落库且审计不包含凭据", async () => {
   const [service, migration] = await Promise.all([
     readFile(serviceUrl, "utf8"),
