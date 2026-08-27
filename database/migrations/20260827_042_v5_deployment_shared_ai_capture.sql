@@ -14,6 +14,7 @@ ALTER TABLE ai_frontend_connections
 CREATE INDEX IF NOT EXISTS idx_ai_frontend_connection_scope ON ai_frontend_connections (execution_scope, platform, status, revoked_at);
 
 ALTER TABLE capture_tasks
-  ADD COLUMN IF NOT EXISTS requested_workspace_id VARCHAR(64) NULL AFTER product_id,
+  ADD COLUMN IF NOT EXISTS requested_workspace_id VARCHAR(64) NULL AFTER product_id;
+ALTER TABLE capture_tasks
   ADD COLUMN IF NOT EXISTS requested_user_id VARCHAR(64) NULL AFTER requested_workspace_id;
 CREATE INDEX IF NOT EXISTS idx_capture_task_requester ON capture_tasks (requested_workspace_id, requested_user_id, created_at);
