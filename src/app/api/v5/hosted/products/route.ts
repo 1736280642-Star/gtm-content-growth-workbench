@@ -12,11 +12,13 @@ export async function GET(request: Request) {
     const identity = await requireHostedIdentity(request);
     const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
       `SELECT product.id AS product_id, product.display_name, product.official_url,
-              product.product_category, product.strategy_pack_id
-       FROM hosted_workspace_product access
-       JOIN product_entity product ON product.id = access.product_id
-       WHERE access.workspace_id = ? AND product.status = 'active'
-       ORDER BY product.updated_at DESC`,
+              product.product_category, product.strategy_pack_id,
+              access.product_id AS workspace_product_id
+       FROM product_entity product
+       LEFT JOIN hosted_workspace_product access
+         ON access.product_id = product.id AND access.workspace_id = ?
+       WHERE product.status = 'active'
+       ORDER BY access.product_id IS NULL, product.updated_at DESC`,
       [identity.workspaceId]
     );
     return NextResponse.json({
@@ -26,7 +28,8 @@ export async function GET(request: Request) {
         displayName: String(row.display_name),
         officialUrl: row.official_url ? String(row.official_url) : undefined,
         productCategory: row.product_category ? String(row.product_category) : undefined,
-        strategyPackId: row.strategy_pack_id ? String(row.strategy_pack_id) : undefined
+        strategyPackId: row.strategy_pack_id ? String(row.strategy_pack_id) : undefined,
+        linkedToWorkspace: Boolean(row.workspace_product_id)
       }))
     }, { headers: { "cache-control": "no-store" } });
   } catch (error) {

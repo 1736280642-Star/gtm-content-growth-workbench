@@ -67,6 +67,7 @@ interface HostedProduct {
   officialUrl?: string;
   productCategory?: string;
   strategyPackId?: string;
+  linkedToWorkspace: boolean;
 }
 
 type ChannelCapability = "auto_publish" | "draft_only" | "unsupported";
@@ -210,6 +211,7 @@ export default function HostedTaskPage() {
   const [loginSent, setLoginSent] = useState(false);
   const [products, setProducts] = useState<HostedProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [linkingProductId, setLinkingProductId] = useState<string>();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [isAddingNew, setIsAddingNew] = useState(true);
   const [productName, setProductName] = useState("");
@@ -394,15 +396,32 @@ export default function HostedTaskPage() {
     });
   }
 
-  function selectProduct(product: HostedProduct) {
+  async function selectProduct(product: HostedProduct) {
     if (order) return;
+    setLinkingProductId(product.productId);
     setSelectedProductId(product.productId);
     setIsAddingNew(false);
     setProductName("");
     setOfficialUrl("");
     setFiles([]);
     setError(undefined);
-    void loadChannels(product.productId);
+    try {
+      if (!product.linkedToWorkspace) {
+        const response = await fetch(`/api/v5/hosted/products/${encodeURIComponent(product.productId)}/link`, { method: "POST" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(readApiError(payload, "产品加入当前工作区失败。"));
+        setProducts((current) => current.map((item) => item.productId === product.productId
+          ? { ...item, linkedToWorkspace: true }
+          : item));
+      }
+      await loadChannels(product.productId);
+    } catch (cause) {
+      setSelectedProductId("");
+      setIsAddingNew(true);
+      setError(cause instanceof Error ? cause.message : "产品加入当前工作区失败。请稍后重试。");
+    } finally {
+      setLinkingProductId(undefined);
+    }
   }
 
   function startAddingNew() {
@@ -611,7 +630,7 @@ export default function HostedTaskPage() {
           <section className={styles.section} id="setup-product">
             <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>02</span><div><h2>提供产品资料</h2><p>官网和文件是系统撰写内容时的事实依据。</p></div></div><StepStatusBadge state={stepRows[1].state} /></div>
             <SetupGuide title="怎么选、怎么填" summary="有旧产品直接点选；新产品至少提供官网或一份资料" defaultOpen={identityReady && currentStep === 2} steps={["如果页面中已有你的产品，直接点击产品卡片，无需重复上传资料。", "如果是新产品，点击“新增产品”，填写对外使用的正式名称。", "优先填写产品官网；如官网信息不完整，再上传 PDF、Word、PPT 等公开推广资料。", "检查文件中没有内部密钥、客户隐私或不允许对外的内容。"]} note="最多 10 份文件，单个不超过 20 MB。资料越真实、越聚焦，后续策略和正文越可靠。" />
-            {!identityReady ? <LockedStep reason="先完成第 1 步登录" nextAction="登录后，系统才能读取当前工作区已有的产品。" /> : productsLoading ? <div className={styles.inlineLoading}><Spin size="small" /> 正在读取已有产品</div> : <><div className={styles.productGrid}>{products.map((product) => { const selected = product.productId === selectedProductId; return <button className={`${styles.productCard} ${selected ? styles.isSelected : ""}`} type="button" disabled={Boolean(order)} aria-pressed={selected} key={product.productId} onClick={() => selectProduct(product)}><span className={styles.productIcon}><AppstoreOutlined /></span><span className={styles.productCopy}><strong>{product.displayName}</strong><span>{product.productCategory || product.officialUrl || "已有产品资料"}</span><small className={`${styles.knowledgeBadge} ${styles[product.strategyPackId ? "knowledge-ready" : "knowledge-building"]}`}>{product.strategyPackId ? "策略资料已建立" : "可继续补充资料"}</small></span><span className={styles.selectionMark}>{selected ? <CheckOutlined /> : null}</span></button>; })}<button className={`${styles.productCard} ${styles.addProductCard} ${isAddingNew ? styles.isSelected : ""}`} type="button" disabled={Boolean(order)} aria-pressed={isAddingNew} onClick={startAddingNew}><span className={`${styles.productIcon} ${styles.addProductIcon}`}><PlusOutlined /></span><span className={styles.productCopy}><strong>新增产品</strong><span>填写官网并上传公开推广资料</span></span><span className={styles.selectionMark}>{isAddingNew ? <CheckOutlined /> : null}</span></button></div>{isAddingNew || selectedProduct ? <div className={styles.newProductForm}>{isAddingNew ? <div className={styles.newProductField}><label>产品名称</label><Input disabled={Boolean(order)} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：WorkBuddy" size="large" /></div> : null}<div className={styles.newProductField}><label>产品官网{selectedProduct ? "（有更新时填写）" : ""}</label><Input disabled={Boolean(order)} value={officialUrl} onChange={(event) => setOfficialUrl(event.target.value)} placeholder={selectedProduct?.officialUrl || "https://example.com/product"} prefix={<LinkOutlined />} size="large" /></div><div className={styles.newProductField}><label>产品资料{selectedProduct ? "（可选补充）" : ""}</label><label className={`${styles.dropzone} ${styles.compactDropzone} ${dragging ? styles.isDragging : ""}`} onDragEnter={(event) => { event.preventDefault(); if (!order) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }}><input ref={fileInputRef} disabled={Boolean(order)} type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md" onChange={(event) => event.target.files && addFiles(event.target.files)} /><span className={styles.uploadIcon}><UploadOutlined /></span><strong>{order ? "资料已随委托提交" : "拖入资料，或点击选择"}</strong><span>{order ? "新的补充资料请新建一项委托" : "最多 10 份，单个文件不超过 20 MB"}</span></label>{files.length ? <div className={styles.fileList}>{files.map((file) => <div className={styles.fileItem} key={`${file.name}:${file.size}:${file.lastModified}`}>{materialIcon(file.name)}<span>{file.name}</span><small>{formatSize(file.size)}</small>{!order ? <Button type="text" size="small" icon={<DeleteOutlined />} aria-label={`移除 ${file.name}`} onClick={() => setFiles((current) => current.filter((item) => item !== file))} /> : null}</div>)}</div> : null}</div></div> : null}</>}
+            {!identityReady ? <LockedStep reason="先完成第 1 步登录" nextAction="登录后，系统会同步展示后台已有的产品知识库。" /> : productsLoading ? <div className={styles.inlineLoading}><Spin size="small" /> 正在读取产品知识库</div> : <><div className={styles.productGrid}>{products.map((product) => { const selected = product.productId === selectedProductId; const linking = linkingProductId === product.productId; return <button className={`${styles.productCard} ${selected ? styles.isSelected : ""}`} type="button" disabled={Boolean(order || linkingProductId)} aria-pressed={selected} key={product.productId} onClick={() => void selectProduct(product)}><span className={styles.productIcon}>{linking ? <Spin size="small" /> : <AppstoreOutlined />}</span><span className={styles.productCopy}><strong>{product.displayName}</strong><span>{product.productCategory || product.officialUrl || "已有产品资料"}</span><small className={`${styles.knowledgeBadge} ${styles[product.strategyPackId ? "knowledge-ready" : "knowledge-building"]}`}>{linking ? "正在加入当前工作区" : !product.linkedToWorkspace ? "后台知识库已有 · 点击选用" : product.strategyPackId ? "策略资料已建立" : "可继续补充资料"}</small></span><span className={styles.selectionMark}>{selected && !linking ? <CheckOutlined /> : null}</span></button>; })}<button className={`${styles.productCard} ${styles.addProductCard} ${isAddingNew ? styles.isSelected : ""}`} type="button" disabled={Boolean(order || linkingProductId)} aria-pressed={isAddingNew} onClick={startAddingNew}><span className={`${styles.productIcon} ${styles.addProductIcon}`}><PlusOutlined /></span><span className={styles.productCopy}><strong>新增产品</strong><span>填写官网并上传公开推广资料</span></span><span className={styles.selectionMark}>{isAddingNew ? <CheckOutlined /> : null}</span></button></div>{isAddingNew || selectedProduct ? <div className={styles.newProductForm}>{isAddingNew ? <div className={styles.newProductField}><label>产品名称</label><Input disabled={Boolean(order)} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：WorkBuddy" size="large" /></div> : null}<div className={styles.newProductField}><label>产品官网{selectedProduct ? "（有更新时填写）" : ""}</label><Input disabled={Boolean(order)} value={officialUrl} onChange={(event) => setOfficialUrl(event.target.value)} placeholder={selectedProduct?.officialUrl || "https://example.com/product"} prefix={<LinkOutlined />} size="large" /></div><div className={styles.newProductField}><label>产品资料{selectedProduct ? "（可选补充）" : ""}</label><label className={`${styles.dropzone} ${styles.compactDropzone} ${dragging ? styles.isDragging : ""}`} onDragEnter={(event) => { event.preventDefault(); if (!order) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }}><input ref={fileInputRef} disabled={Boolean(order)} type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md" onChange={(event) => event.target.files && addFiles(event.target.files)} /><span className={styles.uploadIcon}><UploadOutlined /></span><strong>{order ? "资料已随委托提交" : "拖入资料，或点击选择"}</strong><span>{order ? "新的补充资料请新建一项委托" : "最多 10 份，单个文件不超过 20 MB"}</span></label>{files.length ? <div className={styles.fileList}>{files.map((file) => <div className={styles.fileItem} key={`${file.name}:${file.size}:${file.lastModified}`}>{materialIcon(file.name)}<span>{file.name}</span><small>{formatSize(file.size)}</small>{!order ? <Button type="text" size="small" icon={<DeleteOutlined />} aria-label={`移除 ${file.name}`} onClick={() => setFiles((current) => current.filter((item) => item !== file))} /> : null}</div>)}</div> : null}</div></div> : null}</>}
           </section>
 
           <section className={styles.section} id="setup-channels">

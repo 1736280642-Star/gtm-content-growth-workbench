@@ -143,7 +143,12 @@ export async function POST(request: Request) {
             targetChannels: channels.map((item) => item.channel)
           }
         })).product;
-    await linkWorkspaceProduct({ workspaceId: identity.workspaceId, productId: product.productId, userId: identity.userId });
+    await linkWorkspaceProduct({
+      workspaceId: identity.workspaceId,
+      productId: product.productId,
+      userId: identity.userId,
+      actorRole: identity.role
+    });
 
     const availableChannels = await listHostedChannelOptions(product.productId);
     const optionsByKey = new Map(availableChannels.map((item) => [item.channel, item]));

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { RowDataPacket } from "mysql2/promise";
+import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { deliverHostedTransactionalEmail, hostedPublicBaseUrl } from "./hosted-email-client";
 import {
   getV5GovernancePool,
@@ -228,12 +228,33 @@ export function requireHostedRole(context: HostedIdentityContext, allowed: Hoste
   }
 }
 
-export async function linkWorkspaceProduct(input: { workspaceId: string; productId: string; userId: string }) {
-  await getV5GovernancePool().query(
-    `INSERT INTO hosted_workspace_product (workspace_id, product_id, linked_by, linked_at)
-     VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE linked_by = linked_by`,
-    [input.workspaceId, input.productId, input.userId]
-  );
+export async function linkWorkspaceProduct(input: {
+  workspaceId: string;
+  productId: string;
+  userId: string;
+  actorRole: HostedWorkspaceRole;
+}) {
+  return withV5GovernanceTransaction(async (connection) => {
+    const [result] = await connection.query<ResultSetHeader>(
+      `INSERT IGNORE INTO hosted_workspace_product (workspace_id, product_id, linked_by, linked_at)
+       VALUES (?, ?, ?, NOW())`,
+      [input.workspaceId, input.productId, input.userId]
+    );
+    if (result.affectedRows === 1) {
+      await writeV5GovernanceAudit(connection, {
+        actorId: input.userId,
+        actorRole: input.actorRole,
+        actorType: "human",
+        auditReason: "用户在托管入口选择已有产品知识库",
+        eventType: "hosted_workspace_product_linked",
+        objectType: "hosted_workspace_product",
+        objectId: `${input.workspaceId}:${input.productId}`,
+        afterSummary: { workspaceId: input.workspaceId, productId: input.productId },
+        correlationId: input.workspaceId
+      });
+    }
+    return { linked: true, created: result.affectedRows === 1 };
+  });
 }
 
 export async function assertWorkspaceProductAccess(workspaceId: string, productId: string) {
