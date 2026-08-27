@@ -76,6 +76,18 @@ test("首页按普通用户与部署人员分开引导发件配置", async () =>
   assert.match(homePage, /我是部署人员/);
   assert.match(homePage, /普通用户不需要配置发件邮箱、SMTP、OAuth 或 Setup Token/);
   assert.match(homePage, /HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY/);
+  assert.match(homePage, /randomBytes\(32\)/);
+  assert.match(homePage, /Gmail \/ Outlook OAuth 到底是什么/);
+  assert.match(homePage, /HOSTED_EMAIL_MICROSOFT_CLIENT_ID/);
+  assert.match(homePage, /https:\/\/console\.cloud\.google\.com\/auth\/clients/);
+  assert.match(homePage, /https:\/\/console\.cloud\.google\.com\/apis\/library\/gmail\.googleapis\.com/);
+  assert.match(homePage, /https:\/\/entra\.microsoft\.com\/#view\/Microsoft_AAD_RegisteredApps/);
+  assert.match(homePage, /https:\/\/mail\.qq\.com\//);
+  assert.match(homePage, /https:\/\/mail\.163\.com\//);
+  assert.match(homePage, /https:\/\/help\.aliyun\.com\/zh\/document_detail\/444380\.html/);
+  assert.match(homePage, /oauth\/callback\/gmail/);
+  assert.match(homePage, /oauth\/callback\/outlook/);
+  assert.doesNotMatch(homePage, /oauth\/callback\/(?:google|microsoft)/);
   assert.match(homePage, /切到普通用户试发/);
   assert.doesNotMatch(homePage, /identitySenderSetup/);
   assert.doesNotMatch(homePage, /部署管理员一次性准备/);

@@ -105,6 +105,38 @@
 .deploymentVariables code, .deploymentVariables span { display: block; }
 .deploymentVariables code { overflow-wrap: anywhere; color: #176b52; font: 650 10px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .deploymentVariables span { margin-top: 4px; color: #74817a; font-size: 9px; line-height: 1.45; }
+.credentialSourceGuide,
+.smtpSourceGuide { margin-top: 12px; padding: 16px; border: 1px solid #cbdad2; border-radius: 9px; background: #f6faf8; }
+.smtpSourceGuide { margin-bottom: 12px; background: #fff; }
+.credentialSourceGuideHeader { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: start; gap: 10px; }
+.credentialSourceGuideHeader > svg { margin-top: 1px; color: #176b52; font-size: 19px; }
+.credentialSourceGuideHeader strong, .credentialSourceGuideHeader span { display: block; }
+.credentialSourceGuideHeader strong { color: #26342e; font-size: 12px; }
+.credentialSourceGuideHeader span { margin-top: 4px; color: #63716b; font-size: 10px; line-height: 1.55; }
+.credentialSourceGrid,
+.smtpSourceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.credentialSourceGrid article,
+.smtpSourceGrid article { min-width: 0; padding: 14px; border: 1px solid #d6e3dc; border-radius: 8px; background: #fff; }
+.credentialSourceGrid article > strong,
+.smtpSourceGrid article > strong { display: block; color: #26342e; font-size: 11px; }
+.credentialSourceLabel { display: block; margin-bottom: 5px; color: #176b52; font: 700 8px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.credentialSourceGrid dl { display: grid; gap: 9px; margin: 12px 0; }
+.credentialSourceGrid dl > div { min-width: 0; }
+.credentialSourceGrid dt { margin-bottom: 3px; color: #37443e; font-size: 9px; font-weight: 700; }
+.credentialSourceGrid dd,
+.smtpSourceGrid p { margin: 0; color: #63716b; font-size: 9px; line-height: 1.6; }
+.smtpSourceGrid p { margin: 7px 0 12px; }
+.credentialSourceGrid code { overflow-wrap: anywhere; color: #176b52; font: 650 8px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.credentialSourceGrid dd > code { display: block; margin-top: 4px; padding: 6px 7px; border-radius: 5px; color: #26342e; background: #f4f7f5; }
+.credentialSourceGrid a,
+.smtpSourceGrid a { display: inline-flex; align-items: center; gap: 5px; color: #176b52; font-size: 9px; font-weight: 700; line-height: 1.45; }
+.credentialSourceGrid a:hover,
+.smtpSourceGrid a:hover { color: #0e513c; text-decoration: underline; }
+.credentialSourceGrid a:focus-visible,
+.smtpSourceGrid a:focus-visible { outline: 3px solid rgba(41, 103, 163, .2); outline-offset: 3px; }
+.credentialSourceActions { display: flex; flex-wrap: wrap; gap: 7px 12px; }
+.credentialSourceGuide > p { display: flex; align-items: flex-start; gap: 7px; margin: 13px 0 0; padding-top: 12px; border-top: 1px solid #d6e3dc; color: #7b5a2e; font-size: 9px; line-height: 1.6; }
+.credentialSourceGuide > p svg { margin-top: 2px; flex: 0 0 auto; }
 .deploymentActionCard { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 15px; border: 1px solid #e1c69f; border-radius: 9px; color: #9a5b13; background: #fdf8f1; }
 .deploymentActionCard > :first-child { justify-self: center; font-size: 21px; }
 .deploymentActionCard strong, .deploymentActionCard span { display: block; }
@@ -1187,6 +1219,7 @@
   .loginSentCard :global(.ant-btn), .platformSetupCard :global(.ant-btn), .platformSetupCheck { grid-column: 2; justify-self: start; }
   .notificationEmail small { grid-column: 2; }
   .notificationGrid { grid-template-columns: 1fr; }
+  .credentialSourceGrid, .smtpSourceGrid { grid-template-columns: 1fr; }
   .connectionWizardGridEmbedded .connectionChannelList { grid-template-columns: 1fr; }
   .connectionWizardGridEmbedded .connectionChannelItem small { display: block; }
   .finalReadinessActions { align-items: stretch; flex-direction: column; }

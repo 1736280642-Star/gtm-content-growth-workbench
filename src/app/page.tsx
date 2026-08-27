@@ -570,14 +570,14 @@ export default function HostedTaskPage() {
             <div className={styles.deploymentSectionHeader}><div><h2>准备服务端安全参数</h2><p>这一步只在部署机器上完成。普通用户看不到，也不需要填写任何 Token。</p></div><StepStatusBadge state="active" /></div>
             <SetupGuide
               title="照着填，不需要理解代码"
-              summary="打开 .env.local，逐行加入 5 个配置项"
+              summary="打开 .env.local，逐行加入所需配置项"
               defaultOpen
               steps={[
                 "在项目根目录打开被 Git 忽略的 .env.local。不要把真实值写进聊天、截图或代码仓库。",
                 "新增 HOSTED_EMAIL_SETUP_TOKEN，使用密码管理器生成至少 32 位随机值。稍后管理员授权邮箱时，需要在页面输入同一个值。",
-                "新增 HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY，填写独立的 32 字节随机值。这个值只留在服务端，不要填进任何页面。",
+                "新增 HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY。它不是从 Gmail 或 Vercel 领取的，请按下方命令在本机生成独立的 32 字节随机值。",
                 "填写 HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL。本机使用 http://127.0.0.1:3027，线上使用正式 HTTPS 域名。",
-                "如果使用 Gmail，再填写 HOSTED_EMAIL_GOOGLE_CLIENT_ID 和 HOSTED_EMAIL_GOOGLE_CLIENT_SECRET。它们来自你自己的 Google Cloud OAuth Web Client。",
+                "如果使用 Gmail，填写 HOSTED_EMAIL_GOOGLE_CLIENT_ID / HOSTED_EMAIL_GOOGLE_CLIENT_SECRET；如果使用 Outlook，填写对应的 HOSTED_EMAIL_MICROSOFT_CLIENT_ID / CLIENT_SECRET。它们来自部署人员创建的 OAuth Web 应用。",
                 "保存文件后运行 npm.cmd run docker:3027:deploy -- -NoOpen。看到 3027 健康检查通过，再继续下一步。"
               ]}
               note="Setup Token、加密密钥和 Google Client Secret 必须是三个不同的值。Gmail 登录密码或应用专用密码都不能替代它们。"
@@ -585,9 +585,55 @@ export default function HostedTaskPage() {
             <div className={styles.deploymentVariables} aria-label="部署配置清单">
               <div><code>HOSTED_EMAIL_SETUP_TOKEN</code><span>管理员页面核对口令</span></div>
               <div><code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code><span>加密保存邮箱授权</span></div>
-              <div><code>HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL</code><span>Google 授权返回地址</span></div>
+              <div><code>HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL</code><span>OAuth 授权返回域名</span></div>
               <div><code>HOSTED_EMAIL_GOOGLE_CLIENT_ID</code><span>Google OAuth 应用编号</span></div>
               <div><code>HOSTED_EMAIL_GOOGLE_CLIENT_SECRET</code><span>只保存在服务端</span></div>
+              <div><code>HOSTED_EMAIL_MICROSOFT_CLIENT_ID</code><span>Microsoft OAuth 应用编号</span></div>
+              <div><code>HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET</code><span>只保存在服务端</span></div>
+            </div>
+            <div className={styles.credentialSourceGuide} aria-labelledby="credential-source-guide-title">
+              <div className={styles.credentialSourceGuideHeader}>
+                <LinkOutlined />
+                <div><strong id="credential-source-guide-title">每个字段从哪里获得</strong><span>按要使用的邮箱选择对应入口。链接打开的都是供应商官方页面，生成的 Secret 只写入服务端环境变量。</span></div>
+              </div>
+              <div className={styles.credentialSourceGrid}>
+                <article>
+                  <span className={styles.credentialSourceLabel}>工作台自己生成</span>
+                  <strong>Setup Token 与加密密钥</strong>
+                  <dl>
+                    <div><dt><code>HOSTED_EMAIL_SETUP_TOKEN</code></dt><dd>在项目终端运行：<code>{`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`}</code></dd></div>
+                    <div><dt><code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code></dt><dd>在项目终端运行：<code>{`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}</code></dd></div>
+                  </dl>
+                  <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">打开 Vercel Dashboard 写入环境变量 <ArrowRightOutlined /></a>
+                </article>
+                <article>
+                  <span className={styles.credentialSourceLabel}>部署域名</span>
+                  <strong>OAuth 返回域名</strong>
+                  <dl><div><dt><code>HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL</code></dt><dd>打开 Vercel 项目 → Settings → Domains，复制 Production 主域名，只保留 <code>https://域名</code>，末尾不要加斜杠。</dd></div></dl>
+                  <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">打开 Vercel 项目列表 <ArrowRightOutlined /></a>
+                </article>
+                <article>
+                  <span className={styles.credentialSourceLabel}>Gmail / Google Workspace</span>
+                  <strong>Google OAuth Client</strong>
+                  <dl>
+                    <div><dt><code>HOSTED_EMAIL_GOOGLE_CLIENT_ID</code></dt><dd>Google Auth Platform → Clients → Create client → Web application；创建后复制 Client ID。</dd></div>
+                    <div><dt><code>HOSTED_EMAIL_GOOGLE_CLIENT_SECRET</code></dt><dd>在同一个 Web client 详情页复制 Client secret，并立即保存到服务端。</dd></div>
+                    <div><dt>Authorized redirect URI</dt><dd><code>{`<正式域名>/api/v5/hosted/email-sender/oauth/callback/gmail`}</code></dd></div>
+                  </dl>
+                  <div className={styles.credentialSourceActions}><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">打开 Google OAuth Clients <ArrowRightOutlined /></a><a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noreferrer">启用 Gmail API <ArrowRightOutlined /></a></div>
+                </article>
+                <article>
+                  <span className={styles.credentialSourceLabel}>Outlook 个人邮箱</span>
+                  <strong>Microsoft Entra OAuth App</strong>
+                  <dl>
+                    <div><dt><code>HOSTED_EMAIL_MICROSOFT_CLIENT_ID</code></dt><dd>App registrations → New registration；创建后在 Overview 复制 Application (client) ID。</dd></div>
+                    <div><dt><code>HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET</code></dt><dd>Certificates &amp; secrets → New client secret；复制 Value，不是 Secret ID。</dd></div>
+                    <div><dt>Web redirect URI</dt><dd><code>{`<正式域名>/api/v5/hosted/email-sender/oauth/callback/outlook`}</code></dd></div>
+                  </dl>
+                  <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">打开 Microsoft App registrations <ArrowRightOutlined /></a>
+                </article>
+              </div>
+              <p><InfoCircleOutlined /> 环境变量新增或修改后不会作用于旧部署。保存后必须重新部署最新的 main，再进入下一步授权邮箱。</p>
             </div>
           </section>
 
@@ -600,12 +646,36 @@ export default function HostedTaskPage() {
               steps={[
                 "点击下方按钮进入发件邮箱授权页。",
                 "输入准备作为系统发件人的完整邮箱地址，等待页面显示识别结果。",
-                "QQ、163、阿里云企业邮箱填写供应商生成的 SMTP 授权码。Gmail 和 Outlook 点击供应商 OAuth 授权。",
+                "QQ、163、阿里云企业邮箱填写供应商生成的 SMTP 授权码。Gmail 和 Outlook 会跳到 Google / Microsoft 官方页面登录并授权，应用不接触邮箱登录密码。",
                 "在部署级 Setup Token 输入框中，填写 .env.local 里完全相同的 HOSTED_EMAIL_SETUP_TOKEN。",
                 "提交后查看页面顶部。只有显示“当前发件邮箱已连接”，才算完成。"
               ]}
               note="这里连接的是系统发件邮箱，不是普通用户用来接收登录邮件的邮箱。一个部署只需要连接一次。"
             />
+            <SetupGuide
+              title="Gmail / Outlook OAuth 到底是什么"
+              summary="部署人员先登记应用，用户只在供应商官方页面点同意"
+              steps={[
+                "部署人员在 Google Cloud 或 Microsoft Entra 创建 Web OAuth 应用，并只申请发送邮件和识别当前账号所需权限，不申请读取收件箱。",
+                "在供应商后台登记回调地址：Gmail 使用 <正式域名>/api/v5/hosted/email-sender/oauth/callback/gmail；Outlook 使用 <正式域名>/api/v5/hosted/email-sender/oauth/callback/outlook。下方卡片可直接复制核对。",
+                "把 Client ID / Client Secret 写入 Vercel 环境变量并重新部署。Secret 只能保存在服务端，不能放进 NEXT_PUBLIC_ 变量。",
+                "授权时页面会离开工作台，进入 Google / Microsoft 官方登录页。确认账号和权限后点同意，供应商再把浏览器送回工作台。",
+                "工作台只保存可撤销的发送授权，用它发送登录链接和通知；普通用户不会看到 Client Secret，也不需要提供邮箱密码。"
+              ]}
+              note="OAuth 不是 SMTP 授权码。二者是两条不同连接方式：Gmail / Outlook 优先 OAuth，QQ / 163 等使用邮箱后台生成的 SMTP 授权码。"
+            />
+            <div className={styles.smtpSourceGuide} aria-labelledby="smtp-source-guide-title">
+              <div className={styles.credentialSourceGuideHeader}>
+                <MailOutlined />
+                <div><strong id="smtp-source-guide-title">SMTP 授权码直达入口</strong><span>先用准备作为系统发件人的账号登录，再按卡片中的路径操作。授权码不是邮箱登录密码。</span></div>
+              </div>
+              <div className={styles.smtpSourceGrid}>
+                <article><strong>QQ 邮箱</strong><p>登录后打开 设置 → 账号与安全 → 安全设置 → POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV 服务，开启 SMTP 并点击“生成授权码”。</p><a href="https://mail.qq.com/" target="_blank" rel="noreferrer">打开 QQ 邮箱官方网页版 <ArrowRightOutlined /></a></article>
+                <article><strong>163 邮箱</strong><p>登录后打开 设置 → POP3/SMTP/IMAP，开启 IMAP/SMTP 或 POP3/SMTP；按安全验证提示创建“客户端授权密码”。</p><a href="https://mail.163.com/" target="_blank" rel="noreferrer">打开 163 邮箱官方网页版 <ArrowRightOutlined /></a></article>
+                <article><strong>阿里云企业邮箱</strong><p>管理员先允许三方客户端访问；用户再在邮箱设置中开启“三方客户端安全密码”，生成独立密码后填入 SMTP 授权码字段。</p><a href="https://help.aliyun.com/zh/document_detail/444380.html" target="_blank" rel="noreferrer">查看阿里云官方操作说明 <ArrowRightOutlined /></a></article>
+                <article><strong>Gmail / Outlook</strong><p>不生成 SMTP 授权码。部署字段填写完成并重新部署后，点击页面中的 Google / Microsoft OAuth 按钮，在供应商官方授权页完成登录。</p><div className={styles.credentialSourceActions}><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">Google Clients <ArrowRightOutlined /></a><a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">Microsoft Apps <ArrowRightOutlined /></a></div></article>
+              </div>
+            </div>
             <div className={`${styles.deploymentActionCard} ${senderStatus?.configured ? styles.deploymentActionReady : ""}`}>
               {senderStatusLoading ? <Spin size="small" /> : senderStatus?.configured ? <CheckCircleFilled /> : <MailOutlined />}
               <div><strong>{senderStatusLoading ? "正在检查发件邮箱" : senderStatus?.configured ? "发件邮箱已经连接" : "还没有连接发件邮箱"}</strong><span>{senderStatus?.configured ? `${senderStatus.senderHint || "已连接邮箱"} 可以发送系统邮件。` : "完成授权后，所有普通用户共用这一个系统发件邮箱。"}</span></div>
