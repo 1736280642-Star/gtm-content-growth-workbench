@@ -77,9 +77,10 @@ test("hosted mutable order routes require session identity and workspace access"
 });
 
 test("hosted product picker exposes the governed catalog and links only after explicit selection", async () => {
-  const [productsRoute, linkRoute, home] = await Promise.all([
+  const [productsRoute, linkRoute, identityService, home] = await Promise.all([
     read("src/app/api/v5/hosted/products/route.ts"),
     read("src/app/api/v5/hosted/products/[productId]/link/route.ts"),
+    read("src/lib/v5/hosted-identity-service.ts"),
     read("src/app/page.tsx")
   ]);
   assert.match(productsRoute, /FROM product_entity product/);
@@ -88,6 +89,9 @@ test("hosted product picker exposes the governed catalog and links only after ex
   assert.match(linkRoute, /requireHostedRole/);
   assert.match(linkRoute, /getActiveProduct/);
   assert.match(linkRoute, /linkWorkspaceProduct/);
+  assert.match(identityService, /hostedWorkspaceProductAuditObjectId/);
+  assert.match(identityService, /`hwp-\$\{hashV5GovernancePayload\(\{ workspaceId, productId \}\)\.slice\(0, 60\)\}`/);
+  assert.match(identityService, /objectId: hostedWorkspaceProductAuditObjectId\(input\.workspaceId, input\.productId\)/);
   assert.match(home, /后台知识库已有 · 点击选用/);
   assert.match(home, /hosted\/products\/\$\{encodeURIComponent\(product\.productId\)\}\/link/);
 });

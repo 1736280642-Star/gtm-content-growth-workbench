@@ -3,6 +3,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { deliverHostedTransactionalEmail, hostedPublicBaseUrl } from "./hosted-email-client";
 import {
   getV5GovernancePool,
+  hashV5GovernancePayload,
   V5GovernanceRepositoryError,
   withV5GovernanceTransaction,
   writeV5GovernanceAudit
@@ -228,6 +229,10 @@ export function requireHostedRole(context: HostedIdentityContext, allowed: Hoste
   }
 }
 
+export function hostedWorkspaceProductAuditObjectId(workspaceId: string, productId: string) {
+  return `hwp-${hashV5GovernancePayload({ workspaceId, productId }).slice(0, 60)}`;
+}
+
 export async function linkWorkspaceProduct(input: {
   workspaceId: string;
   productId: string;
@@ -248,7 +253,7 @@ export async function linkWorkspaceProduct(input: {
         auditReason: "用户在托管入口选择已有产品知识库",
         eventType: "hosted_workspace_product_linked",
         objectType: "hosted_workspace_product",
-        objectId: `${input.workspaceId}:${input.productId}`,
+        objectId: hostedWorkspaceProductAuditObjectId(input.workspaceId, input.productId),
         afterSummary: { workspaceId: input.workspaceId, productId: input.productId },
         correlationId: input.workspaceId
       });
