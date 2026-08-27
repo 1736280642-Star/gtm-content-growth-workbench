@@ -167,13 +167,36 @@ export async function ensureHostedReviewRequestRecord(input: {
 
 export async function readHostedReviewRequestByToken(token: string) {
   const verified = verifyTokenSignature(token);
+  const tokenHash = hashHostedReviewToken(token);
   const result = await withV5GovernanceTransaction(async (connection) => {
     const [rows] = await connection.query<RowDataPacket[]>(
-      `${reviewSelect} WHERE review.id = ? AND review.token_hash = ? LIMIT 1 FOR UPDATE`,
-      [verified.reviewRequestId, hashHostedReviewToken(token)]
+      `${reviewSelect} WHERE review.id = ? LIMIT 1 FOR UPDATE`,
+      [verified.reviewRequestId]
     );
     const review = rows[0] ? mapReview(rows[0]) : undefined;
     if (!review) throw new V5GovernanceRepositoryError("hosted_review_token_invalid", "审核链接无效或已经撤销。", 404);
+    const storedExpiry = Math.floor(new Date(review.expiresAt).getTime() / 1000);
+    if (review.status === "cancelled" || storedExpiry !== verified.expiresAt) {
+      throw new V5GovernanceRepositoryError("hosted_review_token_invalid", "审核链接无效或已经撤销。", 404);
+    }
+    if (review.status === "pending" && String(rows[0].token_hash) !== tokenHash) {
+      await connection.query(
+        "UPDATE hosted_review_request SET token_hash = ? WHERE id = ? AND status = 'pending'",
+        [tokenHash, review.reviewRequestId]
+      );
+      await writeV5GovernanceAudit(connection, {
+        actorId: "hosted-review-link-verifier",
+        actorRole: "workbench_operator",
+        actorType: "system",
+        auditReason: "有效签名链接与待确认记录的哈希不一致，按请求标识和到期时间安全校准",
+        eventType: "hosted_review_token_hash_reconciled",
+        objectType: "hosted_review_request",
+        objectId: review.reviewRequestId,
+        beforeSummary: { status: review.status, tokenHashMatched: false },
+        afterSummary: { status: review.status, tokenHashMatched: true },
+        correlationId: review.productId
+      });
+    }
     const expired = verified.expiresAt * 1000 < Date.now() || new Date(review.expiresAt).getTime() < Date.now();
     if (expired && review.status === "pending") {
       await connection.query(

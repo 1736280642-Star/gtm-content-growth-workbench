@@ -79,6 +79,16 @@ test("审核过期时间以 Date 写入 MySQL，同时以 ISO 字符串参与 To
   assert.doesNotMatch(repository, /tokenHash, expiresAt, idempotencyKey/);
 });
 
+test("有效签名且到期时间一致的审核链接可安全修复历史哈希失配", async () => {
+  const repository = await readFile(new URL("../src/lib/v5/hosted-review-repository.ts", import.meta.url), "utf8");
+  assert.match(repository, /WHERE review\.id = \? LIMIT 1 FOR UPDATE/);
+  assert.match(repository, /storedExpiry !== verified\.expiresAt/);
+  assert.match(repository, /review\.status === "cancelled"/);
+  assert.match(repository, /hosted_review_token_hash_reconciled/);
+  assert.match(repository, /UPDATE hosted_review_request SET token_hash = \?/);
+  assert.doesNotMatch(repository, /WHERE review\.id = \? AND review\.token_hash = \?/);
+});
+
 test("邮件通知偏好使用签名链接且篡改后失效", () => {
   const token = buildHostedPreferenceToken("hosted-order-test");
   assert.equal(verifyHostedPreferenceToken(token).orderId, "hosted-order-test");
