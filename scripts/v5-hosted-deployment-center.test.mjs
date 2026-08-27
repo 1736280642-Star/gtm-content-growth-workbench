@@ -60,6 +60,15 @@ test("deployment center exposes six guided sections, official sources and saniti
   assert.match(component, /复制当前模板/);
   assert.match(component, /下载 \{activeTemplate\.filename\}/);
   assert.match(component, /所有产品能力默认开启/);
+  for (const captureGuideText of [
+    "chrome:\/\/extensions\/",
+    "edge:\/\/extensions\/",
+    "browser-extension",
+    "JOTO AI Front Test Companion",
+    "capture-companion:start",
+    "capture-companion:autostart",
+    "下载最新 main ZIP"
+  ]) assert.match(component, new RegExp(captureGuideText));
   assert.match(component, /const allDeploymentFeatures: HostedDeploymentFeature\[\]/);
   for (const feature of ["email", "geo", "wechat", "browser_publish", "metrics", "capture"]) {
     assert.match(component, new RegExp(`"${feature}"`));

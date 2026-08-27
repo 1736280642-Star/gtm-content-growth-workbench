@@ -1409,6 +1409,32 @@
 .deploymentAdvanced p { margin: 8px 0 0; color: #63716b; font-size: 9px; line-height: 1.6; }
 .deploymentAdvanced p code { color: #176b52; font: 650 8px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 
+.captureInstallGuide { margin-bottom: 12px; padding: 16px; border: 1px solid #b9d8c7; border-radius: 9px; background: #f5faf7; }
+.captureInstallHeader { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 10px; }
+.captureInstallHeader > svg { margin-top: 1px; color: #176b52; font-size: 20px; }
+.captureInstallHeader strong, .captureInstallHeader span { display: block; }
+.captureInstallHeader strong { color: #26342e; font-size: 12px; }
+.captureInstallHeader span { margin-top: 4px; color: #63716b; font-size: 9px; line-height: 1.55; }
+.captureInstallHeader > b { padding: 4px 7px; border: 1px solid #8fbea8; border-radius: 999px; color: #176b52; background: #fff; font-size: 7px; white-space: nowrap; }
+.captureInstallGuide ol { display: grid; gap: 11px; margin: 15px 0 0 40px; padding: 0; }
+.captureInstallGuide li { padding-left: 3px; color: #176b52; font-size: 9px; }
+.captureInstallGuide li > strong, .captureInstallGuide li > span { display: block; }
+.captureInstallGuide li > strong { color: #26342e; font-size: 10px; }
+.captureInstallGuide li > span { margin-top: 3px; color: #63716b; line-height: 1.6; }
+.captureInstallGuide li code { color: #176b52; font: 650 8px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+.captureInstallActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 14px; }
+.captureInstallActions > a, .captureInstallActions > button { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; min-height: 52px; padding: 9px 10px; border: 1px solid #d4dfd9; border-radius: 7px; color: #26342e; background: #fff; text-align: left; text-decoration: none; cursor: pointer; }
+.captureInstallActions > a:hover, .captureInstallActions > button:hover { border-color: #7fb49c; }
+.captureInstallActions > a:focus-visible, .captureInstallActions > button:focus-visible { outline: 3px solid rgba(23, 107, 82, .16); outline-offset: 2px; }
+.captureInstallActions > a > svg, .captureInstallActions > button > span { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 6px; color: #176b52; background: #eef7f2; font-size: 13px; }
+.captureInstallActions strong, .captureInstallActions small, .captureInstallActions code { display: block; }
+.captureInstallActions strong { font-size: 9px; }
+.captureInstallActions small, .captureInstallActions code { margin-top: 2px; overflow-wrap: anywhere; color: #74817a; font-size: 7px; line-height: 1.4; }
+.captureInstallActions code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.captureInstallGuide > p { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; margin: 13px 0 0; padding-top: 12px; border-top: 1px solid #d6e3dc; color: #63716b; font-size: 9px; line-height: 1.55; }
+.captureInstallGuide > p > svg { margin-top: 2px; color: #176b52; }
+.captureInstallGuide > p strong { color: #26342e; }
+
 .deploymentCheckForm { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px; }
 .deploymentCheckForm label > span { display: block; margin-bottom: 6px; color: #26342e; font-size: 9px; font-weight: 700; }
 .deploymentCheckError { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 11px 12px; border-left: 3px solid #b94b3b; color: #8f3627; background: #fff3f0; font-size: 9px; line-height: 1.5; }
@@ -1454,4 +1480,8 @@
   .deploymentCheckForm, .deploymentHandoff { grid-template-columns: 1fr; }
   .deploymentCheckForm :global(.ant-btn), .deploymentHandoff :global(.ant-btn) { width: 100%; }
   .deploymentHandoff > small { grid-column: 1; }
+  .captureInstallHeader { grid-template-columns: 28px minmax(0, 1fr); }
+  .captureInstallHeader > b { grid-column: 2; justify-self: start; }
+  .captureInstallGuide ol { margin-left: 22px; }
+  .captureInstallActions { grid-template-columns: 1fr; }
 }
