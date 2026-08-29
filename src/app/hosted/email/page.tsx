@@ -21,6 +21,11 @@ interface PublishResult {
   publicUrl?: string;
   publishedAt?: string;
   failureReason?: string;
+  responsibility?: "system" | "external" | "user";
+  userActionRequired?: boolean;
+  nextAction?: string;
+  nextAttemptAt?: string;
+  attemptCount?: number;
 }
 
 interface DailyBatch {
@@ -75,6 +80,7 @@ export default function HostedEmailResultPage() {
   }, [load]);
 
   const latest = batches[0];
+  const actionRequiredCount = latest?.results.filter((item) => item.userActionRequired || item.responsibility === "user").length || 0;
   if (loading) return <div className={styles.reviewLoading}><Spin /><span>正在读取正式发布结果</span></div>;
 
   return (
@@ -93,9 +99,9 @@ export default function HostedEmailResultPage() {
           <div className={styles.mailChrome}><div className={styles.mailChromeBrand}><i>邮</i> JOTO GTM <span>每日发布结果</span></div><span>{latest.businessDate} · {latest.status === "closed" ? "批次已关闭" : "仍在收集中"}</span></div>
           <article className={styles.mailBody}>
             <header className={styles.mailMeta}><h2>今日计划 {latest.plannedCount} 篇，已获得 {latest.publishedCount} 个公开结果</h2><div className={styles.mailSender}><span className={styles.senderAvatar}>J</span><div><strong>JOTO GTM · 自动结果通知</strong><span>每个当日批次只发送一次</span></div></div></header>
-            <div className={styles.mailConclusion}><strong>{latest.status === "closed" ? <CheckCircleFilled /> : <ClockCircleOutlined />} 先看结论</strong><p>已发布 {latest.publishedCount} 篇，平台审核或顺延 {latest.pendingCount} 篇，未完成 {latest.failedCount} 篇。系统只把完成初次可访问检查的地址计为公开 URL。</p></div>
-            <section className={styles.mailSection}><h3>公开结果与状态</h3><div className={styles.resultList}>{latest.results.map((result) => <div className={styles.resultRow} key={result.taskId}><div className={styles.resultIdentity}><strong>{result.title}</strong><span>{result.publishedAt ? new Date(result.publishedAt).toLocaleString("zh-CN") : resultLabels[result.status]}</span></div><span className={styles.resultChannel}>{channelLabels[result.channel] || result.channel}</span>{result.publicUrl ? <a className={styles.resultLink} href={result.publicUrl} target="_blank" rel="noreferrer"><LinkOutlined /> 查看公开文章</a> : <span className={styles.resultState}>{resultLabels[result.status]}</span>}</div>)}</div></section>
-            <footer className={styles.mailFooter}>平台审核中的内容会继续由系统跟踪；没有需要你判断的异常时，不会追加操作邮件。</footer>
+            <div className={styles.mailConclusion}><strong>{latest.status === "closed" ? <CheckCircleFilled /> : <ClockCircleOutlined />} 先看结论</strong><p>已发布 {latest.publishedCount} 篇，平台审核或顺延 {latest.pendingCount} 篇，未完成 {latest.failedCount} 篇。{actionRequiredCount ? `其中 ${actionRequiredCount} 篇需要你处理，其余任务由系统继续处理。` : "当前没有需要你操作的异常。"}系统只把完成初次可访问检查的地址计为公开 URL。</p>{actionRequiredCount ? <Link href={`/hosted/success?orderId=${encodeURIComponent(orderId)}`}><Button type="primary">查看处理入口</Button></Link> : null}</div>
+            <section className={styles.mailSection}><h3>公开结果与状态</h3><div className={styles.resultList}>{latest.results.map((result) => <div className={styles.resultRow} key={result.taskId}><div className={styles.resultIdentity}><strong>{result.title}</strong><span>{result.publishedAt ? new Date(result.publishedAt).toLocaleString("zh-CN") : result.userActionRequired || result.responsibility === "user" ? "需你处理" : result.responsibility === "system" ? "系统自动处理中" : result.responsibility === "external" ? "等待平台结果" : resultLabels[result.status]}</span>{result.failureReason ? <span>原因：{result.failureReason}</span> : null}{result.nextAction && !result.publicUrl ? <span>下一步：{result.nextAction}</span> : null}</div><span className={styles.resultChannel}>{channelLabels[result.channel] || result.channel}</span>{result.publicUrl ? <a className={styles.resultLink} href={result.publicUrl} target="_blank" rel="noreferrer"><LinkOutlined /> 查看公开文章</a> : <span className={styles.resultState}>{result.userActionRequired || result.responsibility === "user" ? "需你处理" : result.responsibility === "system" ? "自动处理" : resultLabels[result.status]}</span>}</div>)}</div></section>
+            <footer className={styles.mailFooter}>{actionRequiredCount ? "请只处理标记为“需你处理”的项目；系统自动处理中和等待平台结果的项目无需操作。" : "平台审核和顺延内容会继续由系统跟踪，不需要你逐篇处理。"}</footer>
           </article>
         </section>
       ) : null}

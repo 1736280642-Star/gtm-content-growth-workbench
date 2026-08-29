@@ -17,6 +17,11 @@ export interface HostedDailyPublishResult {
   publicUrl?: string;
   publishedAt?: string;
   failureReason?: string;
+  responsibility?: "system" | "external" | "user";
+  userActionRequired?: boolean;
+  nextAction?: string;
+  nextAttemptAt?: string;
+  attemptCount?: number;
 }
 
 export interface HostedDailyPublishBatchView {

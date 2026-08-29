@@ -65,10 +65,10 @@ const statusCopy: Record<HostedStatus, { label: string; title: string; descripti
   preparing: { label: "准备中", title: "系统已经接手，下一次会通过邮件联系你。", description: "现在正在整理资料并完成 GEO 调研。策略准备好后，会发送一封需要你确认的邮件。" },
   pending_strategy_review: { label: "待确认策略", title: "GEO 策略已经准备好。", description: "打开邮件中的安全链接确认策略；通过后系统会立即生成代表样文。" },
   pending_sample_review: { label: "待确认样文", title: "代表样文已经准备好。", description: "确认样文后，产品会进入正式托管发布状态。" },
-  running: { label: "托管发布中", title: "系统正在按当月计划自动发布。", description: "没有异常时不需要每天操作；当日批次关闭后会收到公开 URL 汇总。" },
+  running: { label: "托管发布中", title: "系统正在按本轮计划自动发布。", description: "没有异常时不需要每天操作；当日批次关闭后会收到公开 URL 汇总。" },
   action_required: { label: "需要你处理", title: "有一项问题无法由系统自动判断。", description: "处理完成后系统会从当前阶段继续，不需要重新提交。" },
-  paused: { label: "已暂停", title: "这项推广当前已暂停。", description: "恢复后会继续执行当月剩余任务，不会创建新的计划周期。" },
-  completed: { label: "本月已完成", title: "本月托管任务已经完成。", description: "公开结果已经汇总，下一月建议将在 MonthlyReview 后生成。" }
+  paused: { label: "已暂停", title: "这项推广当前已暂停。", description: "恢复后会继续执行本轮剩余任务，不会创建新的计划周期。" },
+  completed: { label: "本轮已完成", title: "本轮托管任务已经完成。", description: "公开结果已经汇总，下一轮建议将在复盘完成后生成。" }
 };
 
 function readError(payload: unknown, fallback: string) {
@@ -192,7 +192,7 @@ export default function HostedSuccessPage() {
             <div className={`${styles.timelineItem} ${order.status === "preparing" ? styles.isActive : styles.isDone}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>资料处理与 GEO 调研</strong><span>系统整理官网与文件，并生成受治理的推广策略</span></div><span className={styles.timelineTime}>{order.status === "preparing" ? "进行中" : "已完成"}</span></div>
             <div className={`${styles.timelineItem} ${order.status === "pending_strategy_review" ? styles.isActive : ["pending_sample_review", "running", "completed"].includes(order.status) ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>确认 GEO 策略</strong><span>邮件链接直达目标用户、核心表达、渠道和内容方向</span></div><span className={styles.timelineTime}>{order.status === "pending_strategy_review" ? "等你确认" : "随后"}</span></div>
             <div className={`${styles.timelineItem} ${order.status === "pending_sample_review" ? styles.isActive : ["running", "completed"].includes(order.status) ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>确认代表样文</strong><span>样文通过后才进入正式批量生产</span></div><span className={styles.timelineTime}>{order.status === "pending_sample_review" ? "等你确认" : "随后"}</span></div>
-            <div className={`${styles.timelineItem} ${order.status === "running" ? styles.isActive : order.status === "completed" ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>托管发布与 URL 回传</strong><span>按渠道每日安全上限执行，当日批次关闭后发送一封汇总邮件</span></div><span className={styles.timelineTime}>{order.status === "running" ? "自动运行" : "本月内"}</span></div>
+            <div className={`${styles.timelineItem} ${order.status === "running" ? styles.isActive : order.status === "completed" ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>托管发布与 URL 回传</strong><span>按渠道每日安全上限执行，当日批次关闭后发送一封汇总邮件</span></div><span className={styles.timelineTime}>{order.status === "running" ? "自动运行" : "本轮内"}</span></div>
           </div>
           {latestBatch ? <div className={styles.recentResults}><div><strong>最近公开结果</strong><span>{latestBatch.businessDate} · {latestBatch.publishedCount} 个公开 URL</span></div>{latestBatch.results.filter((item) => item.publicUrl).slice(0, 3).map((item) => <a href={item.publicUrl} target="_blank" rel="noreferrer" key={item.taskId}>{item.title} <ArrowRightOutlined /></a>)}</div> : null}
         </section>
@@ -200,7 +200,7 @@ export default function HostedSuccessPage() {
         <aside className={styles.successSide}>
           <div className={styles.mailNotice}><strong><MailOutlined /> 下一步会发送到邮箱</strong><span>{order.contactEmail} · {order.contactEmailVerified ? "已通过邮件链接验证" : "首次打开确认链接后完成验证"}<br />{nextAction?.description}</span></div>
           {order.lastError ? <div className={styles.sideNote}><strong>需要处理的问题</strong><span>{order.lastError.message}</span></div> : <div className={styles.sideNote}><strong>现在需要做什么？</strong><span>{order.status === "preparing" ? "可以关闭页面。调研完成后再通过邮件确认策略。" : nextAction?.description}</span></div>}
-          <div className={styles.sideNote}><strong>系统会自行完成</strong><span>内容生产、月度排程、渠道发布、失败重试、公开 URL 回填和初次可访问检查。</span></div>
+          <div className={styles.sideNote}><strong>系统会自行完成</strong><span>内容生产、本轮排程、渠道发布、失败重试、公开 URL 回填和初次可访问检查。</span></div>
         </aside>
       </div>
 

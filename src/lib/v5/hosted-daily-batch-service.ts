@@ -13,6 +13,7 @@ import { enqueueHostedNotification } from "./hosted-notification-service";
 import { getV5GovernancePool } from "./knowledge-governance-repository";
 import { bindHostedPromotionOrderMonthlyPlan, readHostedPromotionOrderRecord } from "./hosted-managed-repository";
 import { V5GovernanceServiceError } from "./knowledge-governance-service";
+import { classifyPublishResponsibility, type Responsibility } from "./responsibility";
 
 export type { HostedDailyPublishBatchView, HostedDailyPublishResult } from "./hosted-daily-batch-repository";
 
@@ -73,6 +74,79 @@ function resultStatus(row: RowDataPacket): HostedDailyPublishResult["status"] {
   return "deferred";
 }
 
+function persistedResponsibility(value: unknown): Responsibility | undefined {
+  return ["system", "external", "user"].includes(String(value)) ? String(value) as Responsibility : undefined;
+}
+
+function hostedSafeMessage(value: unknown, fallback: string) {
+  const compact = String(value || "")
+    .replace(/\r?\n\s*at\s+[^\n]+/gi, "")
+    .replace(/\b(token|api[_ -]?key|secret|password|cookie|authorization)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[已隐藏]")
+    .replace(/([?&](?:token|key|secret|password)=)[^&#\s]+/gi, "$1[已隐藏]")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (compact || fallback).slice(0, 300);
+}
+
+export function resolveHostedDailyResultGuidance(input: {
+  status: HostedDailyPublishResult["status"];
+  publishStatus?: string;
+  responsibility?: Responsibility;
+  userActionRequired?: boolean;
+  nextAutomaticAction?: string;
+  nextAttemptAt?: string;
+  attemptCount?: number;
+}) {
+  if (input.status === "published") {
+    return { responsibility: "system" as const, userActionRequired: false };
+  }
+  if (input.userActionRequired === true || input.responsibility === "user") {
+    return {
+      responsibility: "user" as const,
+      userActionRequired: true,
+      nextAction: "请打开托管结果查看原因并完成当前处理。",
+      attemptCount: input.attemptCount || 0
+    };
+  }
+  if (input.status === "platform_review") {
+    return {
+      responsibility: "external" as const,
+      userActionRequired: false,
+      nextAction: "等待平台审核；系统会在公开 URL 出现后自动补发结果。"
+    };
+  }
+  const classified = classifyPublishResponsibility(
+    input.publishStatus === "manual_takeover" ? "manual_takeover_required" : input.publishStatus || input.status,
+    input.attemptCount || 0
+  );
+  const responsibility = input.responsibility || classified.responsibility;
+  const userActionRequired = classified.userActionRequired;
+  if (userActionRequired) {
+    return {
+      responsibility: "user" as const,
+      userActionRequired: true,
+      nextAction: "请打开托管结果查看原因并完成当前处理。",
+      attemptCount: input.attemptCount || 0
+    };
+  }
+  if (responsibility === "external") {
+    return {
+      responsibility,
+      userActionRequired: false,
+      nextAction: "正在等待平台结果，系统会继续跟踪。",
+      nextAttemptAt: input.nextAttemptAt,
+      attemptCount: input.attemptCount || 0
+    };
+  }
+  return {
+    responsibility: "system" as const,
+    userActionRequired: false,
+    nextAction: input.nextAutomaticAction || classified.nextAutomaticAction || "系统将自动重试或顺延，无需你操作。",
+    nextAttemptAt: input.nextAttemptAt,
+    attemptCount: input.attemptCount || 0
+  };
+}
+
 async function findMonthlyPlanId(productId: string, month: string) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT plan.id FROM monthly_plan plan
@@ -108,6 +182,8 @@ export async function reconcileHostedDailyPublishBatch(orderId: string, requeste
   }));
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT item.id AS task_id, item.title, item.channel, item.status AS item_status,
+            item.responsibility, item.user_action_required, item.next_automatic_action,
+            item.next_attempt_at, item.attempt_count,
             result.status AS publish_status, result.public_url, result.published_at,
             result.failure_reason, result.first_public_observed_at
      FROM content_matrix_item item
@@ -121,6 +197,15 @@ export async function reconcileHostedDailyPublishBatch(orderId: string, requeste
   if (!selectedRows.length) return undefined;
   const results = selectedRows.map<HostedDailyPublishResult>((row) => {
     const status = resultStatus(row);
+    const guidance = resolveHostedDailyResultGuidance({
+      status,
+      publishStatus: String(row.publish_status || row.item_status || ""),
+      responsibility: persistedResponsibility(row.responsibility),
+      userActionRequired: Boolean(row.user_action_required),
+      nextAutomaticAction: row.next_automatic_action ? hostedSafeMessage(row.next_automatic_action, "系统将自动重试或顺延，无需你操作。") : undefined,
+      nextAttemptAt: iso(row.next_attempt_at),
+      attemptCount: Number(row.attempt_count || 0)
+    });
     return {
       taskId: String(row.task_id),
       title: String(row.title),
@@ -128,7 +213,8 @@ export async function reconcileHostedDailyPublishBatch(orderId: string, requeste
       status,
       publicUrl: status === "published" ? String(row.public_url) : undefined,
       publishedAt: status === "published" ? iso(row.published_at) : undefined,
-      failureReason: status === "failed" ? String(row.failure_reason || "发布未完成。") : undefined
+      failureReason: status === "failed" ? hostedSafeMessage(row.failure_reason, "发布未完成。") : undefined,
+      ...guidance
     };
   });
   const publishedCount = results.filter((item) => item.status === "published").length;
@@ -158,12 +244,26 @@ export async function reconcileHostedDailyPublishBatch(orderId: string, requeste
   });
   if (batch.status === "closed" && !batch.digestOutboxId && order.notificationPreferences.dailyDigest) {
     const summary = `今日计划 ${batch.plannedCount} 篇，已发布 ${batch.publishedCount} 篇，${batch.pendingCount} 篇审核或顺延，${batch.failedCount} 篇未完成。`;
+    const userActionRequired = results.some((item) => item.userActionRequired);
+    const accountActionRequired = results.some((item) => item.userActionRequired && /授权|登录|验证|账号|auth/i.test(`${item.failureReason || ""} ${item.nextAction || ""}`));
     const notification = await enqueueHostedNotification({
       orderId,
       eventType: "daily_batch_closed",
       recipientEmail: order.contactEmail,
       dedupeKey: `daily_batch_closed:${id}`,
-      payload: { productName: order.productName, businessDate, subject: `${order.productName} 今日发布结果`, summary, results }
+      payload: {
+        productName: order.productName,
+        businessDate,
+        subject: `${userActionRequired ? "【需要你处理】" : ""}${order.productName} 今日发布结果`,
+        summary,
+        results,
+        ...(userActionRequired ? {
+          actionPath: accountActionRequired
+            ? `/hosted/settings?orderId=${encodeURIComponent(order.orderId)}`
+            : `/hosted/email?orderId=${encodeURIComponent(order.orderId)}`,
+          actionLabel: accountActionRequired ? "处理账号连接" : "查看并处理"
+        } : {})
+      }
     });
     await attachHostedDailyBatchDigest({ batchId: id, outboxId: notification.outbox.id, actorId: "hosted-daily-batch-reconciler" });
   }

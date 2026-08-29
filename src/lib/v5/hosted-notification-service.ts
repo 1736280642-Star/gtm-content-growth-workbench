@@ -134,6 +134,29 @@ async function readReview(reviewRequestId: string): Promise<HostedReviewRequestR
   };
 }
 
+function safeStringList(value: unknown, limit = 5) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).slice(0, limit)
+    : [];
+}
+
+function safeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function dailyResultLabel(item: Record<string, unknown>) {
+  if (item.userActionRequired === true || item.responsibility === "user") return "需你处理";
+  if (item.responsibility === "system" && item.status !== "published") return "系统自动处理中";
+  if (item.responsibility === "external") return "等待平台结果";
+  const statusLabels: Record<string, string> = {
+    published: "已公开",
+    platform_review: "平台审核中",
+    failed: "未完成",
+    deferred: "已顺延"
+  };
+  return statusLabels[String(item.status || "deferred")] || "待处理";
+}
+
 async function renderNotification(outbox: OutboxRecord) {
   if (outbox.eventType === "strategy_review_required" || outbox.eventType === "sample_review_required") {
     if (!outbox.reviewRequestId) throw new V5GovernanceRepositoryError("hosted_review_reference_missing", "审核通知缺少审核请求。", 500);
@@ -162,29 +185,34 @@ async function renderNotification(outbox: OutboxRecord) {
   if (outbox.eventType === "daily_batch_closed" || outbox.eventType === "daily_batch_delta") {
     const summary = String(outbox.payload.summary || "当日发布批次已经关闭。" );
     const results = Array.isArray(outbox.payload.results) ? outbox.payload.results as Array<Record<string, unknown>> : [];
-    const statusLabels: Record<string, string> = {
-      published: "已公开",
-      platform_review: "平台审核中",
-      failed: "未完成",
-      deferred: "已顺延"
-    };
     const channelNames: Record<string, string> = { wechat: "微信公众号", zhihu: "知乎", csdn: "CSDN", juejin: "掘金" };
     const lines = results.map((item) => {
-      const status = String(item.status || "deferred");
       const url = typeof item.publicUrl === "string" && /^https?:\/\//i.test(item.publicUrl) ? item.publicUrl : undefined;
       const channel = String(item.channel || "");
-      return `- ${String(item.title || "未命名内容")}｜${channelNames[channel] || "未知渠道"}｜${statusLabels[status] || "待处理"}${url ? `｜${url}` : ""}`;
+      const reason = typeof item.failureReason === "string" && item.failureReason.trim() ? item.failureReason.trim() : undefined;
+      const nextAction = typeof item.nextAction === "string" && item.nextAction.trim() ? item.nextAction.trim() : undefined;
+      return `- ${String(item.title || "未命名内容")}｜${channelNames[channel] || "未知渠道"}｜${dailyResultLabel(item)}${url ? `｜${url}` : ""}${reason ? `\n  原因：${reason}` : ""}${nextAction && !url ? `\n  下一步：${nextAction}` : ""}`;
     });
     const htmlRows = results.map((item) => {
-      const status = String(item.status || "deferred");
       const channel = String(item.channel || "");
       const url = typeof item.publicUrl === "string" && /^https?:\/\//i.test(item.publicUrl) ? item.publicUrl : undefined;
-      return `<li><strong>${escapeHtml(item.title || "未命名内容")}</strong> · ${escapeHtml(channelNames[channel] || "未知渠道")} · ${escapeHtml(statusLabels[status] || "待处理")}${url ? ` · <a href="${escapeHtml(url)}">查看公开文章</a>` : ""}</li>`;
+      const reason = typeof item.failureReason === "string" && item.failureReason.trim() ? item.failureReason.trim() : undefined;
+      const nextAction = typeof item.nextAction === "string" && item.nextAction.trim() ? item.nextAction.trim() : undefined;
+      return `<li style="margin-bottom:12px"><strong>${escapeHtml(item.title || "未命名内容")}</strong> · ${escapeHtml(channelNames[channel] || "未知渠道")} · ${escapeHtml(dailyResultLabel(item))}${url ? ` · <a href="${escapeHtml(url)}">查看公开文章</a>` : ""}${reason ? `<br><span style="color:#8a3b12">原因：${escapeHtml(reason)}</span>` : ""}${nextAction && !url ? `<br><span style="color:#66736d">下一步：${escapeHtml(nextAction)}</span>` : ""}</li>`;
     }).join("");
+    const actionPath = typeof outbox.payload.actionPath === "string" && outbox.payload.actionPath.startsWith("/hosted/")
+      ? outbox.payload.actionPath
+      : undefined;
+    const actionUrl = actionPath ? `${publicBaseUrl()}${actionPath}` : undefined;
+    const actionLabel = String(outbox.payload.actionLabel || "查看并处理");
+    const userActionCount = results.filter((item) => item.userActionRequired === true || item.responsibility === "user").length;
+    const guidance = userActionCount
+      ? `其中 ${userActionCount} 篇需要你处理；其余异常由系统自动重试或继续等待平台结果。`
+      : "当前没有需要你操作的异常；系统会继续处理顺延任务并跟踪平台结果。";
     return withPreferenceFooter(outbox, {
       subject: String(outbox.payload.subject || `${productName} 今日发布结果`),
-      text: `${summary}\n\n${lines.join("\n")}`,
-      html: `<p>${escapeHtml(summary)}</p><ul>${htmlRows}</ul>`
+      text: `${summary}\n${guidance}\n\n${lines.join("\n")}${actionUrl ? `\n\n${actionLabel}：${actionUrl}` : ""}`,
+      html: `<p>${escapeHtml(summary)}</p><p>${escapeHtml(guidance)}</p><ul>${htmlRows}</ul>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}">${escapeHtml(actionLabel)}</a></p>` : ""}`
     });
   }
   const actionPath = typeof outbox.payload.actionPath === "string" && outbox.payload.actionPath.startsWith("/hosted/")
@@ -193,10 +221,44 @@ async function renderNotification(outbox: OutboxRecord) {
   const actionUrl = actionPath ? `${publicBaseUrl()}${actionPath}` : undefined;
   const subject = String(outbox.payload.subject || `${productName} 的托管状态更新`);
   const summary = String(outbox.payload.summary || "托管状态已经更新，请进入工作台查看。" );
+  if (outbox.eventType === "monthly_completed") {
+    const monthly = safeRecord(outbox.payload.monthlySummary);
+    if (!Object.keys(monthly).length) {
+      return withPreferenceFooter(outbox, {
+        subject,
+        text: `${summary}${actionUrl ? `\n\n查看本轮结果：${actionUrl}` : ""}`,
+        html: `<p>${escapeHtml(summary)}</p>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}">查看本轮结果</a></p>` : ""}`
+      });
+    }
+    const metrics = safeRecord(monthly.metrics);
+    const conclusions = safeStringList(monthly.conclusions, 4);
+    const problems = safeStringList(monthly.problems, 4);
+    const recommendations = Array.isArray(monthly.recommendations)
+      ? monthly.recommendations.map(safeRecord).filter((item) => item.title).slice(0, 4)
+      : [];
+    const month = String(monthly.month || "本轮次");
+    const metricLines = [
+      `计划内容：${Number(metrics.plannedContent || 0)} 篇`,
+      `已获得公开结果：${Number(metrics.publishedContent || 0)} 篇`,
+      `72 小时稳定公开：${Number(metrics.stablePublishedContent || 0)} 篇`,
+      `有效 AI 测试：${Number(metrics.successfulCaptureCount || 0)} 次`
+    ];
+    const textSection = (title: string, items: string[]) => items.length ? `\n\n${title}\n${items.map((item) => `- ${item}`).join("\n")}` : "";
+    const recommendationLines = recommendations.map((item) => `${String(item.title)}${item.rationale ? `：${String(item.rationale)}` : ""}`);
+    const text = `${summary}\n\n轮次：${month}\n${metricLines.map((item) => `- ${item}`).join("\n")}${textSection("本轮结论", conclusions)}${textSection("确认的问题", problems.length ? problems : ["本轮没有确认需要你立即处理的问题。"])}`
+      + `${textSection("下一轮建议", recommendationLines.length ? recommendationLines : ["维持当前节奏，继续积累可核验的发布与 AI 测试证据。"])}`
+      + `\n\n下一轮建议仅作为后续计划候选，不会自动修改配额。${actionUrl ? `\n\n查看本轮结果：${actionUrl}` : ""}`;
+    const htmlList = (title: string, items: string[]) => `<h3>${escapeHtml(title)}</h3><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+    const html = `<p>${escapeHtml(summary)}</p>${htmlList(`轮次：${month}`, metricLines)}${conclusions.length ? htmlList("本轮结论", conclusions) : ""}`
+      + `${htmlList("确认的问题", problems.length ? problems : ["本轮没有确认需要你立即处理的问题。"])}`
+      + `${htmlList("下一轮建议", recommendationLines.length ? recommendationLines : ["维持当前节奏，继续积累可核验的发布与 AI 测试证据。"])}`
+      + `<p style="color:#66736d">下一轮建议仅作为后续计划候选，不会自动修改配额。</p>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}">查看本轮结果</a></p>` : ""}`;
+    return withPreferenceFooter(outbox, { subject, text, html });
+  }
   return withPreferenceFooter(outbox, {
     subject,
     text: `${summary}${actionUrl ? `\n\n立即处理：${actionUrl}` : ""}`,
-    html: `<p>${escapeHtml(summary)}</p>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}">${outbox.eventType === "monthly_completed" ? "查看本月结果" : "立即处理"}</a></p>` : ""}`
+    html: `<p>${escapeHtml(summary)}</p>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}">立即处理</a></p>` : ""}`
   });
 }
 

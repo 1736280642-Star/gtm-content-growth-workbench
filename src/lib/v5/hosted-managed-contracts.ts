@@ -127,8 +127,8 @@ export function compileHostedOrderNextAction(order: HostedPromotionOrderRecord):
   if (order.status === "running" || order.status === "completed") {
     return {
       type: "view_results",
-      label: order.status === "completed" ? "查看本月结果" : "查看最近发布结果",
-      description: order.status === "completed" ? "本月托管周期已经完成。" : "系统正在按当月计划自动发布。"
+      label: order.status === "completed" ? "查看本轮结果" : "查看最近发布结果",
+      description: order.status === "completed" ? "本轮托管任务已经完成。" : "系统正在按本轮计划自动发布。"
     };
   }
   return { type: "wait", label: "等待系统完成调研", description: "完成后会通过邮件发送确认链接。" };

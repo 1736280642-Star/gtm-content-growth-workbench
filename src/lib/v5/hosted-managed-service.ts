@@ -4,6 +4,7 @@ import { readProductSampleArticles } from "./product-sample-article-service";
 import { getActiveProduct } from "./product-registry-service";
 import type {
   CreateHostedPromotionOrderInput,
+  HostedPromotionOrderRecord,
   HostedOrderStatus
 } from "./hosted-managed-contracts";
 import { compileHostedOrderNextAction } from "./hosted-managed-contracts";
@@ -17,6 +18,7 @@ import { listHostedChannelOptions } from "./hosted-channel-service";
 import { enqueueHostedNotification } from "./hosted-notification-service";
 import { getV5GovernancePool } from "./knowledge-governance-repository";
 import type { RowDataPacket } from "mysql2/promise";
+import { getMonthlyReview } from "./monthly-review-service";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -118,6 +120,90 @@ async function isMonthlyExecutionComplete(order: NonNullable<Awaited<ReturnType<
     && Number(rows[0].remaining || 0) === 0);
 }
 
+function uniqueStrings(values: Array<string | undefined>, limit = 4) {
+  return [...new Set(values.map((item) => item?.trim()).filter((item): item is string => Boolean(item)))].slice(0, limit);
+}
+
+function percent(value: number | null | undefined) {
+  return value === null || value === undefined ? undefined : `${Math.round(value * 100)}%`;
+}
+
+export async function buildHostedMonthlyCompletionSummary(order: HostedPromotionOrderRecord) {
+  const fallback = {
+    month: "本轮次",
+    metrics: { plannedContent: 0, publishedContent: 0, stablePublishedContent: 0, successfulCaptureCount: 0 },
+    conclusions: ["本轮计划内的发布任务已经全部收口。"],
+    problems: [] as string[],
+    recommendations: [] as Array<{ title: string; rationale?: string }>,
+    dataStatus: "partial"
+  };
+  if (!order.currentMonthlyPlanId) return fallback;
+  let rows: RowDataPacket[];
+  try {
+    [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+      `SELECT plan.plan_month,
+              COUNT(item.id) AS planned_content,
+              SUM(CASE WHEN result.status = 'published' AND result.public_url IS NOT NULL
+                        AND result.first_public_observed_at IS NOT NULL THEN 1 ELSE 0 END) AS published_content,
+              SUM(CASE WHEN item.status = 'cancelled' THEN 1 ELSE 0 END) AS deferred_content
+       FROM monthly_plan plan
+       LEFT JOIN content_matrix_item item ON item.monthly_plan_id = plan.id AND item.product_id = ?
+       LEFT JOIN content_publish_result result ON result.matrix_item_id = item.id
+       WHERE plan.id = ?
+       GROUP BY plan.id, plan.plan_month`,
+      [order.productId, order.currentMonthlyPlanId]
+    );
+  } catch {
+    return fallback;
+  }
+  if (!rows[0]) return fallback;
+  const month = String(rows[0].plan_month);
+  const plannedContent = Number(rows[0].planned_content || 0);
+  const publishedContent = Number(rows[0].published_content || 0);
+  const deferredContent = Number(rows[0].deferred_content || 0);
+  const publicationConclusion = `本轮计划 ${plannedContent} 篇，已获得 ${publishedContent} 个通过初次可访问检查的公开结果${deferredContent ? `，${deferredContent} 篇取消或顺延` : ""}。`;
+  const baseSummary = {
+    month,
+    metrics: { plannedContent, publishedContent, stablePublishedContent: 0, successfulCaptureCount: 0 },
+    conclusions: [publicationConclusion],
+    problems: [] as string[],
+    recommendations: [] as Array<{ title: string; rationale?: string }>,
+    dataStatus: "partial"
+  };
+  try {
+    const review = await getMonthlyReview(month);
+    const optimization = review.productOptimizations.find((item) => item.productId === order.productId);
+    const signals = optimization?.signals;
+    const mentionRate = percent(signals?.targetMentionRate);
+    const citationRate = percent(signals?.ownedCitationRate);
+    const relationshipRate = percent(signals?.relationshipAccuracyRate);
+    const conclusions = uniqueStrings([
+      publicationConclusion,
+      signals ? `${signals.successfulCaptureCount}/${signals.captureTaskCount} 次 AI 前台测试成功完成。` : undefined,
+      mentionRate ? `AI 前台测试中的目标实体提及率为 ${mentionRate}${citationRate ? `，自有来源引用率为 ${citationRate}` : ""}。` : undefined,
+      relationshipRate ? `产品关系表达准确率为 ${relationshipRate}。` : undefined
+    ]);
+    const problems = uniqueStrings(optimization?.gaps.map((item) => item.reason) || []);
+    const recommendations = optimization?.actions.slice(0, 4).map((item) => ({ title: item.title, rationale: item.rationale }))
+      || [];
+    return {
+      month,
+      metrics: {
+        plannedContent,
+        publishedContent,
+        stablePublishedContent: signals?.stablePublishedContentCount ?? 0,
+        successfulCaptureCount: signals?.successfulCaptureCount ?? 0
+      },
+      conclusions: conclusions.length ? conclusions : fallback.conclusions,
+      problems,
+      recommendations,
+      dataStatus: review.source === "pending_config" || !optimization || optimization.status === "collecting" ? "partial" : "complete"
+    };
+  } catch {
+    return baseSummary;
+  }
+}
+
 async function enqueueHostedStateNotification(order: NonNullable<Awaited<ReturnType<typeof readHostedPromotionOrderRecord>>>) {
   if (order.status === "action_required") {
     await enqueueHostedNotification({
@@ -136,15 +222,18 @@ async function enqueueHostedStateNotification(order: NonNullable<Awaited<ReturnT
     });
   }
   if (order.status === "completed" && order.notificationPreferences.monthlyCompleted) {
+    const monthlySummary = await buildHostedMonthlyCompletionSummary(order);
+    if (monthlySummary.dataStatus !== "complete") return;
     await enqueueHostedNotification({
       orderId: order.orderId,
       eventType: "monthly_completed",
       recipientEmail: order.contactEmail,
       payload: {
         productName: order.productName,
-        subject: `${order.productName} 本月 GEO 托管已完成`,
-        summary: "本月计划内的发布任务已经全部收口。你可以直接查看文章链接；系统会继续按月度周期准备下一阶段。",
-        actionPath: `/hosted/email?orderId=${encodeURIComponent(order.orderId)}`
+        subject: `${order.productName} 本轮 GEO 托管结果已生成`,
+        summary: "本轮计划内的发布任务已经全部收口。你可以直接查看文章链接；系统会继续准备下一轮候选方案。",
+        actionPath: `/hosted/email?orderId=${encodeURIComponent(order.orderId)}`,
+        monthlySummary
       },
       dedupeKey: `hosted-monthly-completed:${order.orderId}:${order.currentMonthlyPlanId || order.rowVersion}`
     });
@@ -194,7 +283,17 @@ export async function getHostedPromotionOrder(orderId: string) {
 export async function reconcileHostedPromotionOrders(limit = 50) {
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
     `SELECT id FROM hosted_promotion_order
-     WHERE status NOT IN ('paused', 'completed') ORDER BY updated_at LIMIT ?`,
+     WHERE status NOT IN ('paused', 'completed')
+        OR (status = 'completed'
+            AND current_monthly_plan_id IS NOT NULL
+            AND JSON_UNQUOTE(JSON_EXTRACT(notification_preferences_json, '$.monthlyCompleted')) = 'true'
+            AND NOT EXISTS (
+              SELECT 1 FROM hosted_notification_outbox notification
+              WHERE notification.order_id = hosted_promotion_order.id
+                AND notification.event_type = 'monthly_completed'
+                AND notification.status <> 'cancelled'
+            ))
+     ORDER BY updated_at LIMIT ?`,
     [Math.max(1, Math.min(200, limit))]
   );
   const results: Array<{ orderId: string; status: string; errorCode?: string }> = [];

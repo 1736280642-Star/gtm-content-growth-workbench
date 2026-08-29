@@ -4,7 +4,7 @@ import test from "node:test";
 
 process.env.HOSTED_REVIEW_LINK_SECRET = "hosted-managed-mode-test-secret";
 
-const [{ compileHostedOrderNextAction, deriveHostedChannelAuthorizationPhase }, { buildHostedReviewExpiry, buildHostedReviewToken, hashHostedReviewToken }, { dispatchHostedNotifications }, { allHostedChannelCapsReached }, { buildHostedPreferenceToken, verifyHostedPreferenceToken }] = await Promise.all([
+const [{ compileHostedOrderNextAction, deriveHostedChannelAuthorizationPhase }, { buildHostedReviewExpiry, buildHostedReviewToken, hashHostedReviewToken }, { dispatchHostedNotifications }, { allHostedChannelCapsReached, resolveHostedDailyResultGuidance }, { buildHostedPreferenceToken, verifyHostedPreferenceToken }] = await Promise.all([
   import("../src/lib/v5/hosted-managed-contracts.ts"),
   import("../src/lib/v5/hosted-review-repository.ts"),
   import("../src/lib/v5/hosted-notification-service.ts"),
@@ -155,6 +155,43 @@ test("多渠道批次不会因单一渠道先到上限而提前关闭", () => {
     firstChannelOnly[0],
     { ...firstChannelOnly[1], status: "published", publicUrl: "https://example.com/b" }
   ]), true);
+});
+
+test("每日结果使用统一责任模型区分自动处理与用户处理", () => {
+  const autoRetry = resolveHostedDailyResultGuidance({ status: "failed", publishStatus: "failed", attemptCount: 1 });
+  assert.equal(autoRetry.responsibility, "system");
+  assert.equal(autoRetry.userActionRequired, false);
+  assert.match(autoRetry.nextAction, /自动重试/);
+
+  const exhausted = resolveHostedDailyResultGuidance({ status: "failed", publishStatus: "failed", attemptCount: 3 });
+  assert.equal(exhausted.responsibility, "user");
+  assert.equal(exhausted.userActionRequired, true);
+
+  const platformReview = resolveHostedDailyResultGuidance({ status: "platform_review", publishStatus: "published" });
+  assert.equal(platformReview.responsibility, "external");
+  assert.equal(platformReview.userActionRequired, false);
+
+  const explicitTakeover = resolveHostedDailyResultGuidance({ status: "platform_review", responsibility: "user", userActionRequired: true });
+  assert.equal(explicitTakeover.responsibility, "user");
+  assert.equal(explicitTakeover.userActionRequired, true);
+});
+
+test("结果邮件呈现失败原因、唯一处理入口和真实 MonthlyReview 摘要", async () => {
+  const [dailyService, managedService, notificationService] = await Promise.all([
+    readFile(new URL("../src/lib/v5/hosted-daily-batch-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/hosted-managed-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/hosted-notification-service.ts", import.meta.url), "utf8")
+  ]);
+  assert.match(dailyService, /item\.user_action_required/);
+  assert.match(dailyService, /failureReason/);
+  assert.match(dailyService, /actionLabel/);
+  assert.match(managedService, /getMonthlyReview\(month\)/);
+  assert.match(managedService, /review\.productOptimizations\.find/);
+  assert.match(managedService, /monthlySummary\.dataStatus !== "complete"/);
+  assert.match(managedService, /notification\.event_type = 'monthly_completed'/);
+  assert.match(notificationService, /本轮结论/);
+  assert.match(notificationService, /确认的问题/);
+  assert.match(notificationService, /下一轮建议仅作为后续计划候选/);
 });
 
 test("托管 Worker 已接入生产 Supervisor", async () => {
