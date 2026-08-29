@@ -170,7 +170,6 @@ function ReturningOperationsHome({
   return (
     <main className={styles.operationsHome}>
       <section className={styles.operationsHero}>
-        <div><span className={styles.receiptKicker}>DAILY OPERATIONS</span><h2>欢迎回来，今天只处理真正需要你判断的事。</h2><p>数据库、AI、邮箱和执行器属于一次性部署配置；新批次默认复用上次的产品、渠道和通知设置。</p></div>
         <div className={styles.operationsHeroActions}><Button type="primary" size="large" icon={<PlusOutlined />} onClick={onStartNew}>发起新的推广批次</Button><Button size="large" icon={<SettingOutlined />} onClick={onOpenDeployment}>部署设置与 API Key</Button></div>
       </section>
       <section className={styles.operationsCurrent}>
@@ -688,7 +687,7 @@ export default function HostedTaskPage() {
   const isOperationsHome = pageAudience === "user" && Boolean(identity) && userHomeMode === "operations" && recentOrders.length > 0;
 
   return (
-    <div className={`${styles.page} ${pageAudience === "deployment" ? styles.deploymentReadablePage : ""}`}>
+    <div className={`${styles.page} ${pageAudience === "deployment" ? styles.deploymentReadablePage : ""} ${isOperationsHome ? styles.operationsReadablePage : ""}`}>
       <section className={`${styles.intro} ${isOperationsHome ? styles.operationsIntro : ""}`}>
         <div><div className={styles.kicker}>{isOperationsHome ? "JOTO / MANAGED OPERATIONS" : "JOTO / GUIDED MANAGED SETUP"}</div><h1>{pageAudience === "deployment" ? (senderStatus?.configured ? "邮箱链路已连接，继续完成整体验收" : "现在处理：完整部署初始化") : isOperationsHome ? "从这里开始您的品牌GEO推广" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
         {pageAudience !== "deployment" ? <aside className={styles.introAside}>{isOperationsHome ? <><strong>{orderStatusLabels[recentOrders[0]?.status] || "当前批次运行中"}</strong><span>首页只展示当前批次、真正需要判断的事项和最近结果。</span><small>一次性部署配置已收起</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside> : null}

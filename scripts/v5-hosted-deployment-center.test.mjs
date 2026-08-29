@@ -29,9 +29,10 @@ test("deployment readiness reports names only and honors selected features", () 
 });
 
 test("deployment center exposes five guided sections with AI and GEO first", async () => {
-  const [component, page, envExample, localEnvExample, route, aiConfigRoute, aiConfigService, ordersRoute] = await Promise.all([
+  const [component, page, styles, envExample, localEnvExample, route, aiConfigRoute, aiConfigService, ordersRoute] = await Promise.all([
     readFile(new URL("../src/components/HostedDeploymentCenter.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted-mode.module.css", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
     readFile(new URL("../.env.local.example", import.meta.url), "utf8"),
     readFile(new URL("../src/app/api/v5/hosted/deployment-readiness/route.ts", import.meta.url), "utf8"),
@@ -103,7 +104,10 @@ test("deployment center exposes five guided sections with AI and GEO first", asy
   assert.match(page, /orders\.slice\(0, 1\)\.map/);
   assert.match(ordersRoute, /listHostedPromotionOrderRecords\(identity\.workspaceId, 1\)/);
   assert.match(page, /发起新的推广批次/);
-  assert.match(page, /新批次默认复用上次的产品、渠道和通知设置/);
+  assert.match(styles, /\.operationsHeroActions \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)[^}]*width: 100%/s);
+  assert.match(styles, /\.operationsReadablePage \.roleSwitcher button strong \{ font-size: 19\.5px; \}/);
+  assert.match(styles, /\.operationsReadablePage \.roleSwitcher button small \{ font-size: 15px; \}/);
+  assert.match(styles, /\.operationsReadablePage \.operationsSectionTitle strong \{ font-size: 30px; \}/);
   assert.match(envExample, /WECHATSYNC_BRIDGE_TOKEN=/);
   assert.match(envExample, /WECHAT_MP_APP_ID=/);
   assert.match(localEnvExample, /HOSTED_CAPTURE_SETUP_TOKEN=/);

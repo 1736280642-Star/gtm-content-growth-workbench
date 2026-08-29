@@ -1500,11 +1500,10 @@
 .deploymentCheckForm code { color: #176b52; font: 650 .92em/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .deploymentExistingToken { display: grid; gap: 7px; }
 .deploymentExistingToken small { color: #74817a; font-size: 8px; line-height: 1.5; }
-.operationsHome { display: grid; gap: 18px; max-width: 1320px; margin: 0 auto; padding: 0 24px 48px; }
-.operationsHero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 28px; border: 1px solid #cbdad2; border-radius: 18px; background: linear-gradient(135deg, #f3faf6, #fff); }
-.operationsHero h2 { max-width: 760px; margin: 7px 0 0; color: #17251f; font-size: clamp(24px, 3vw, 42px); line-height: 1.18; }
-.operationsHero p { max-width: 760px; margin: 10px 0 0; color: #63716b; font-size: 15px; line-height: 1.7; }
-.operationsHeroActions { display: grid; gap: 10px; min-width: 220px; }
+.operationsHome { display: grid; gap: 18px; width: 100%; margin: 0 auto; padding: 0 0 48px; }
+.operationsHero { padding: 18px 0 0; }
+.operationsHeroActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.operationsHeroActions :global(.ant-btn) { width: 100%; }
 .operationsCurrent, .operationsHistory { padding: 24px; border: 1px solid #d6e1db; border-radius: 16px; background: #fff; }
 .operationsSectionTitle { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .operationsSectionTitle strong, .operationsSectionTitle span { display: block; }
@@ -1572,20 +1571,41 @@
 .deploymentDocsLink:hover { text-decoration: underline; }
 
 /* The deployment hero is a single live status statement; supporting guidance starts below. */
-.deploymentReadablePage { padding-top: 12px; }
+.deploymentReadablePage,
+.operationsReadablePage { padding-top: 12px; }
+.operationsReadablePage .intro {
+  align-items: start;
+  padding: 8px 0 20px;
+}
 .deploymentReadablePage .intro {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   padding: 8px 0 20px;
 }
-.deploymentReadablePage .intro h1 {
+.deploymentReadablePage .intro h1,
+.operationsReadablePage .intro h1 {
   max-width: none;
   margin: 8px 0 0;
   font-size: clamp(32px, 4vw, 52px);
   line-height: 1;
 }
-.deploymentReadablePage .roleSwitcher button strong { font-size: 19.5px; }
-.deploymentReadablePage .roleSwitcher button small { font-size: 15px; }
+.deploymentReadablePage .roleSwitcher button strong,
+.operationsReadablePage .roleSwitcher button strong { font-size: 19.5px; }
+.deploymentReadablePage .roleSwitcher button small,
+.operationsReadablePage .roleSwitcher button small { font-size: 15px; }
+.operationsReadablePage .operationsHeroActions :global(.ant-btn) { min-height: 52px; font-size: 16px; }
+.operationsReadablePage .operationsSectionTitle strong { font-size: 30px; }
+.operationsReadablePage .operationsSectionTitle span { font-size: 19.5px; }
+.operationsReadablePage .operationsSectionTitle > b { font-size: 18px; }
+.operationsReadablePage .operationsCurrentGrid article > span,
+.operationsReadablePage .operationsCurrentGrid article > small { font-size: 18px; }
+.operationsReadablePage .operationsCurrentGrid article > strong { font-size: 27px; }
+.operationsReadablePage .operationsCurrentActions :global(.ant-btn) { font-size: 16px; }
+.operationsReadablePage .operationsHistory a span > strong { font-size: 22.5px; }
+.operationsReadablePage .operationsHistory a span > small { font-size: 16.5px; }
+.operationsReadablePage .operationsHistory a > b { font-size: 18px; }
+.operationsReadablePage .operationsRule { font-size: 19.5px; }
+.operationsReadablePage .operationsRule > svg { font-size: 27px; }
 .deploymentReadablePage .deploymentWorkspace { grid-template-columns: minmax(0, 1fr) 340px; }
 .deploymentReadablePage .deploymentScopeIntro strong { font-size: 22.5px; }
 .deploymentReadablePage .deploymentScopeIntro span { font-size: 15px; }
@@ -1688,13 +1708,15 @@
   .deploymentFieldGrid, .deploymentReadinessGroups { grid-template-columns: 1fr; }
   .deploymentEnvField { grid-template-columns: minmax(180px, .7fr) minmax(260px, 1.3fr); }
   .deploymentEnvFieldHelp { grid-column: 1 / -1; }
-  .operationsHero, .operationsCurrentGrid { grid-template-columns: 1fr; }
-  .operationsHeroActions { min-width: 0; }
+  .operationsCurrentGrid { grid-template-columns: 1fr; }
+  .operationsHeroActions { min-width: 0; width: 100%; }
 }
 
 @media (max-width: 620px) {
-  .operationsHome { padding-inline: 12px; }
-  .operationsHero, .operationsCurrent, .operationsHistory { padding: 18px; }
+  .operationsHome { padding-inline: 0; }
+  .operationsHero { padding: 18px 0 0; }
+  .operationsCurrent, .operationsHistory { padding: 18px; }
+  .operationsHeroActions { grid-template-columns: 1fr; }
   .operationsSectionTitle { align-items: stretch; flex-direction: column; }
   .operationsSectionTitle > b { align-self: flex-start; }
   .operationsCurrentActions { display: grid; }
