@@ -201,6 +201,10 @@ test("phase 2D schema freezes contracts, feedback and expression calibration", a
   assert.match(compilerService, /input\.mode === "batch" && String\(row\.strategy_status\) !== "production_ready"/);
   assert.match(compilerService, /input\.mode === "batch" && !row\.calibration_version_id/);
   assert.match(compilerService, /\[taskId, taskId, taskId\]/);
+  assert.match(compilerService, /definition\.lengthRange/);
+  assert.match(compilerService, /explicitArtifacts\(sampleStandard\.requiredArtifacts\)/);
+  assert.match(compilerService, /coreFixedExpressions/);
+  assert.doesNotMatch(compilerService, /requiredArtifacts: \[\]/);
   assert.match(generation, /JSON\.stringify\(modelContract\)/);
   assert.match(generation, /repairRound <= 1/);
   assert.doesNotMatch(generation, /markdown\.includes\(item\.originalQuote\)/);
@@ -248,7 +252,7 @@ test("product sample requests enqueue durable work and recover orphaned operatio
   assert.match(repository, /row\.recovery_of_operation_id/);
   assert.match(repository, /singleArticleRequestHash\(String\(row\.task_id\), currentTaskVersion\)/);
   assert.match(sampleService, /enqueueProductSampleArticles/);
-  assert.match(sampleService, /for \(const strategy of strategyRows\)/);
+  assert.match(sampleService, /for \(const strategy of selectedStrategies\)/);
   assert.match(sampleRoute, /status: 202/);
   assert.match(applyRoute, /enqueueProductSampleArticles/);
   assert.match(worker, /recoverStaleProductSampleOperations/);

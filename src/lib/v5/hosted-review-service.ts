@@ -91,19 +91,36 @@ function strategySummary(order: HostedPromotionOrderRecord, plan: Record<string,
   const expression = plan?.expressionDirection && typeof plan.expressionDirection === "object"
     ? plan.expressionDirection as Record<string, unknown>
     : {};
+  const core = plan?.coreExpressions && typeof plan.coreExpressions === "object"
+    ? plan.coreExpressions as Record<string, unknown>
+    : {};
+  const legacyFixed = plan?.fixedExpression && typeof plan.fixedExpression === "object"
+    ? plan.fixedExpression as Record<string, unknown>
+    : {};
   const portfolio = Array.isArray(plan?.articleTypePortfolio) ? plan.articleTypePortfolio as Array<Record<string, unknown>> : [];
   const strings = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+  const legacyExpression = String(legacyFixed.text || "").trim();
+  const legacyParts = legacyExpression.split(/[；\n]/).map((item) => item.trim()).filter(Boolean);
   return {
-    targetAudience: strings(positioning.targetAudience).slice(0, 4),
-    promotionPurpose: String(positioning.promotionPurpose || "帮助目标用户理解产品适用场景与采用方式。"),
-    keyMessages: strings(expression.keyMessages).slice(0, 4),
-    channels: order.channels.map((item) => item.channel),
-    articleDirections: portfolio.slice(0, 6).map((item) => ({
-      portfolioItemId: String(item.portfolioItemId || ""),
-      name: String(item.name || "内容方向"),
-      direction: String(item.definition || item.contentGoal || item.recommendationReason || "覆盖目标用户的真实问题。")
-    })),
-    prohibitedClaims: strings(positioning.prohibitedClaims).slice(0, 5)
+    coreExpressions: {
+      productIdentity: String(core.productIdentity || legacyParts[0] || legacyExpression || order.productName),
+      entityRelationship: String(core.entityRelationship || legacyParts.slice(1).join("；") || legacyExpression),
+      fixedExpression: String(core.fixedExpression || ""),
+      ctaLabel: String(core.ctaLabel || ""),
+      ctaUrl: String(core.ctaUrl || "")
+    },
+    automaticStrategy: {
+      targetAudience: strings(positioning.targetAudience).slice(0, 4),
+      promotionPurpose: String(positioning.promotionPurpose || "帮助目标用户理解产品适用场景与采用方式。"),
+      keyMessages: strings(expression.keyMessages).slice(0, 4),
+      channels: order.channels.map((item) => item.channel),
+      articleDirections: portfolio.slice(0, 6).map((item) => ({
+        portfolioItemId: String(item.portfolioItemId || ""),
+        name: String(item.name || "内容方向"),
+        direction: String(item.definition || item.contentGoal || item.recommendationReason || "覆盖目标用户的真实问题。")
+      })),
+      prohibitedClaims: strings(positioning.prohibitedClaims).slice(0, 5)
+    }
   };
 }
 

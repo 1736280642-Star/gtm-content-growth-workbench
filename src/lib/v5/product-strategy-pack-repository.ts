@@ -468,11 +468,6 @@ export async function updatePendingProductStrategyContent(input: {
     if (!storedPlan || storedPlan.contractVersion !== productGeoStrategyContractVersion) {
       throw new V5GovernanceRepositoryError("strategy_pack_incomplete", "策略包内容不完整，不能直接编辑。", 409);
     }
-    const storedIds = storedPlan.articleTypePortfolio.map((item) => item.portfolioItemId).sort();
-    const editedIds = [...new Set(input.edit.articleDirections.map((item) => item.portfolioItemId))].sort();
-    if (JSON.stringify(storedIds) !== JSON.stringify(editedIds)) {
-      throw new V5GovernanceRepositoryError("strategy_article_directions_incomplete", "内容方向已经变化，请刷新后重新编辑。", 409);
-    }
     const nextPlan = applyProductStrategyHumanEdit(storedPlan, input.edit);
     try {
       assertProductGeoStrategyContentPlanV2(nextPlan);
@@ -484,22 +479,6 @@ export async function updatePendingProductStrategyContent(input: {
       );
     }
     const nextHash = hashV5GovernancePayload(nextPlan);
-    for (const item of nextPlan.articleTypePortfolio) {
-      await connection.query(
-        `UPDATE product_strategy_article_type_versions
-         SET article_type_id = ?, article_type_version_id = ?, name = ?, definition_json = ?, definition_hash = ?, updated_at = NOW()
-         WHERE strategy_pack_id = ? AND portfolio_item_id = ? AND status = 'draft'`,
-        [
-          item.articleTypeId || null,
-          item.articleTypeVersionId,
-          item.name,
-          stringifyV5Json(item),
-          item.definitionHash,
-          input.strategyPackId,
-          item.portfolioItemId
-        ]
-      );
-    }
     await connection.query(
       `UPDATE product_strategy_packs
        SET content_plan_json = ?, content_plan_hash = ?, row_version = row_version + 1, updated_at = NOW()
@@ -515,10 +494,8 @@ export async function updatePendingProductStrategyContent(input: {
       afterSummary: {
         contentPlanHash: nextHash,
         rowVersion: Number(pack.row_version || 1) + 1,
-        targetAudienceCount: input.edit.targetAudience.length,
-        keyMessageCount: input.edit.keyMessages.length,
-        articleDirectionCount: input.edit.articleDirections.length,
-        prohibitedClaimCount: input.edit.prohibitedClaims.length
+        editedFields: ["productIdentity", "entityRelationship", "fixedExpression", "ctaLabel", "ctaUrl"],
+        automaticStrategyPreserved: true
       },
       correlationId: input.productId
     });

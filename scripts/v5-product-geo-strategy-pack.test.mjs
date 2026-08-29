@@ -108,7 +108,7 @@ test("compiles the internal research synthesis into the user-facing strategy V2 
   assert.equal(plan.synthesis.blueprintVersionId, "blueprint-1");
 });
 
-test("human strategy edits update visible copy and frozen article type definitions without model regeneration", () => {
+test("human strategy edits only update core expressions and preserve automatic strategy orchestration", () => {
   const plan = contracts.compileProductGeoStrategyContentPlan({
     project: sampleProject(),
     blueprint: sampleBlueprint(),
@@ -117,26 +117,57 @@ test("human strategy edits update visible copy and frozen article type definitio
   });
   const originalGenerated = plan.articleTypePortfolio.find((item) => item.origin === "generated");
   const edited = contracts.applyProductStrategyHumanEdit(plan, {
-    promotionPurpose: "人工改写后的推广目标。",
-    targetAudience: ["企业技术负责人", "业务负责人"],
-    keyMessages: ["先解释适用场景", "再说明人工边界"],
-    articleDirections: plan.articleTypePortfolio.map((item, index) => ({
-      portfolioItemId: item.portfolioItemId,
-      name: `人工方向 ${index + 1}`,
-      direction: `人工直接填写的写作方向 ${index + 1}。`
-    })),
-    prohibitedClaims: ["不得作绝对化承诺"]
+    productIdentity: "JOTO 是产品的实施服务方。",
+    entityRelationship: "产品方提供产品底座，JOTO 提供实施与运营服务。",
+    fixedExpression: "先核对业务场景和责任边界。",
+    ctaLabel: "了解实施服务",
+    ctaUrl: "https://example.com/service"
   });
   const editedGenerated = edited.articleTypePortfolio.find((item) => item.origin === "generated");
-  assert.equal(edited.productPositioning.promotionPurpose, "人工改写后的推广目标。");
-  assert.equal(edited.productPositioning.expressionFocus, "人工改写后的推广目标。");
-  assert.deepEqual(edited.productPositioning.targetAudience, ["企业技术负责人", "业务负责人"]);
-  assert.deepEqual(edited.expressionDirection.keyMessages, ["先解释适用场景", "再说明人工边界"]);
-  assert.equal(edited.articleTypePortfolio[0].definition, "人工直接填写的写作方向 1。");
-  assert.notEqual(editedGenerated.definitionHash, originalGenerated.definitionHash);
-  assert.notEqual(editedGenerated.articleTypeVersionId, originalGenerated.articleTypeVersionId);
-  assert.ok(editedGenerated.raw.humanEdited);
+  assert.deepEqual(edited.coreExpressions, {
+    productIdentity: "JOTO 是产品的实施服务方。",
+    entityRelationship: "产品方提供产品底座，JOTO 提供实施与运营服务。",
+    fixedExpression: "先核对业务场景和责任边界。",
+    ctaLabel: "了解实施服务",
+    ctaUrl: "https://example.com/service",
+    channels: plan.channelPriorities.map((item) => item.channel)
+  });
+  assert.deepEqual(edited.productPositioning, plan.productPositioning);
+  assert.deepEqual(edited.expressionDirection, plan.expressionDirection);
+  assert.deepEqual(edited.articleTypePortfolio, plan.articleTypePortfolio);
+  assert.equal(editedGenerated.definitionHash, originalGenerated.definitionHash);
+  assert.equal(editedGenerated.articleTypeVersionId, originalGenerated.articleTypeVersionId);
   contracts.assertProductGeoStrategyContentPlanV2(edited);
+});
+
+test("product-specific sample standards are frozen into article type versions without becoming human orchestration fields", () => {
+  const sampleStandard = {
+    articleIntent: "帮助用户完成实施判断。",
+    titleRequirements: ["标题包含真实问题"],
+    openingRequirements: ["先给出判断框架"],
+    argumentOrder: ["问题", "步骤", "边界"],
+    requiredArtifacts: ["table", "list"],
+    entityRequirements: ["区分产品方与服务方"],
+    evidenceRequirements: ["事实必须有正式证据"],
+    headingRules: ["一个一级标题"],
+    toneRules: ["克制"],
+    prohibitedPatterns: ["虚构案例"],
+    qualityChecks: ["包含核对表"]
+  };
+  const baseline = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(), blueprint: sampleBlueprint(), sourceSnapshotId: "source-snapshot-1", synthesisModel: "zhipu"
+  });
+  const target = baseline.articleTypePortfolio[0];
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint: sampleBlueprint(),
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu",
+    sampleStandards: { [target.name]: sampleStandard }
+  });
+  assert.deepEqual(plan.articleTypePortfolio[0].sampleStandard, sampleStandard);
+  assert.notEqual(plan.articleTypePortfolio[0].definitionHash, target.definitionHash);
+  assert.notEqual(plan.articleTypePortfolio[0].articleTypeVersionId, target.articleTypeVersionId);
 });
 
 test("maps the live blueprint field names without losing opportunities, evidence gaps, or expression direction", () => {

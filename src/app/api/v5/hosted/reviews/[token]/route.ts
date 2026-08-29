@@ -33,32 +33,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ to
     const body = await request.json().catch(() => ({}));
     const edit = body.edit && typeof body.edit === "object" ? body.edit as Record<string, unknown> : undefined;
     if (!Number.isInteger(body.expectedVersion) || !edit
-      || typeof edit.promotionPurpose !== "string"
-      || !Array.isArray(edit.targetAudience)
-      || !Array.isArray(edit.keyMessages)
-      || !Array.isArray(edit.articleDirections)
-      || !Array.isArray(edit.prohibitedClaims)) {
+      || typeof edit.productIdentity !== "string"
+      || typeof edit.entityRelationship !== "string"
+      || typeof edit.fixedExpression !== "string"
+      || typeof edit.ctaLabel !== "string"
+      || typeof edit.ctaUrl !== "string") {
       throw new V5GovernanceServiceError("hosted_strategy_edit_invalid", "策略编辑内容不完整，请刷新后重试。", 400);
     }
-    const articleDirections = edit.articleDirections.map((item) => {
-      const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
-      return {
-        portfolioItemId: typeof record.portfolioItemId === "string" ? record.portfolioItemId : "",
-        name: typeof record.name === "string" ? record.name : "",
-        direction: typeof record.direction === "string" ? record.direction : ""
-      };
-    });
     return NextResponse.json({
       ok: true,
       ...(await editHostedStrategyReview({
         token,
         expectedVersion: body.expectedVersion,
         edit: {
-          promotionPurpose: edit.promotionPurpose,
-          targetAudience: edit.targetAudience.filter((item): item is string => typeof item === "string"),
-          keyMessages: edit.keyMessages.filter((item): item is string => typeof item === "string"),
-          articleDirections,
-          prohibitedClaims: edit.prohibitedClaims.filter((item): item is string => typeof item === "string")
+          productIdentity: edit.productIdentity,
+          entityRelationship: edit.entityRelationship,
+          fixedExpression: edit.fixedExpression,
+          ctaLabel: edit.ctaLabel,
+          ctaUrl: edit.ctaUrl
         }
       }))
     });

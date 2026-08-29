@@ -4,7 +4,12 @@ import { listProductsWithGeoOverview } from "./product-registry-service";
 import { compileProductStrategyPack } from "./product-strategy-pack-repository";
 import { readCurrentProductStrategyPack } from "./product-strategy-pack-repository";
 import { readLatestProductFixedExpression } from "./product-strategy-pack-repository";
-import { compileProductGeoStrategyContentPlan, type ProductFixedExpressionRule } from "./product-strategy-pack-contracts";
+import {
+  compileProductGeoStrategyContentPlan,
+  type ProductArticleSampleStandard,
+  type ProductCoreExpressionRule,
+  type ProductFixedExpressionRule
+} from "./product-strategy-pack-contracts";
 import { readProductWebsiteCoverageProfile } from "./website-coverage-repository";
 
 export async function reconcilePromotedProductAutomation(input: { actor: V5GovernanceActor }) {
@@ -37,7 +42,32 @@ export async function reconcilePromotedProductAutomation(input: { actor: V5Gover
       && typeof currentStrategy.contentPlan.fixedExpression === "object"
       ? currentStrategy.contentPlan.fixedExpression as ProductFixedExpressionRule
       : undefined;
+    const currentCoreExpressions = currentStrategy?.contentPlan
+      && "coreExpressions" in currentStrategy.contentPlan
+      && currentStrategy.contentPlan.coreExpressions
+      && typeof currentStrategy.contentPlan.coreExpressions === "object"
+      ? currentStrategy.contentPlan.coreExpressions as ProductCoreExpressionRule
+      : undefined;
     const inheritedFixedExpression = currentFixedExpression || await readLatestProductFixedExpression(product.productId);
+    const legacyParts = inheritedFixedExpression?.text.split(/[；\n]/).map((item) => item.trim()).filter(Boolean) || [];
+    const inferredRelationship = product.entityRelationship || legacyParts.slice(1).join("；") || inheritedFixedExpression?.text || "";
+    const inheritedCoreExpressions = currentCoreExpressions || (inferredRelationship ? {
+      productIdentity: legacyParts[0] || product.displayName,
+      entityRelationship: inferredRelationship,
+      fixedExpression: "",
+      ctaLabel: "",
+      ctaUrl: "",
+      channels: state.workspace.project.targetChannels
+    } : undefined);
+    const inheritedSampleStandards = currentStrategy?.contentPlan
+      && "articleTypePortfolio" in currentStrategy.contentPlan
+      && Array.isArray(currentStrategy.contentPlan.articleTypePortfolio)
+      ? Object.fromEntries(currentStrategy.contentPlan.articleTypePortfolio.flatMap((item) => (
+          item.sampleStandard
+            ? [[item.name, item.sampleStandard as ProductArticleSampleStandard]]
+            : []
+        )))
+      : undefined;
     const websiteCoverageProfile = await readProductWebsiteCoverageProfile(product.productId);
     const compiled = await compileProductStrategyPack({
       productId: product.productId,
@@ -59,6 +89,8 @@ export async function reconcilePromotedProductAutomation(input: { actor: V5Gover
           researchRunId: blueprint.runId
         },
         fixedExpression: inheritedFixedExpression,
+        coreExpressions: inheritedCoreExpressions,
+        sampleStandards: inheritedSampleStandards,
         websiteCoverageProfile
       }),
       actor: input.actor

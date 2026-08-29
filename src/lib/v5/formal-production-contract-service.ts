@@ -81,6 +81,11 @@ function artifactsFrom(values: string[]): ProductionArtifact[] {
   ];
 }
 
+function explicitArtifacts(value: unknown): ProductionArtifact[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is ProductionArtifact => ["table", "list", "state_flow", "code_block"].includes(String(item)));
+}
+
 function expressionStrings(value: unknown) {
   if (typeof value === "string") return value.trim() ? [value.trim()] : [];
   if (Array.isArray(value)) return value.flatMap(expressionStrings);
@@ -143,14 +148,19 @@ function evidenceSnapshot(pack: RagFinalEvidencePack): ProductionContractSnapsho
 
 function contentTypeRule(row: StrategyRow, context: FormalGenerationContext): ContentTypeRuleSnapshot {
   const definition = parseV5Json<Record<string, unknown>>(row.article_type_definition_json, {});
+  const sampleStandard = definition.sampleStandard && typeof definition.sampleStandard === "object"
+    ? definition.sampleStandard as Record<string, unknown>
+    : {};
   const modules = Array.isArray(definition.structureModules) ? definition.structureModules : [];
   const requiredSections = modules.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const value = item as Record<string, unknown>;
     return value.required === false ? [] : [String(value.key || value.label || "").trim()].filter(Boolean);
   });
-  const length = definition.length && typeof definition.length === "object"
-    ? definition.length as Record<string, unknown>
+  const length = definition.lengthRange && typeof definition.lengthRange === "object"
+    ? definition.lengthRange as Record<string, unknown>
+    : definition.length && typeof definition.length === "object"
+      ? definition.length as Record<string, unknown>
     : {};
   const minLength = Number(length.min || definition.minLength || 800);
   const maxLength = Number(length.max || definition.maxLength || 3000);
@@ -160,6 +170,7 @@ function contentTypeRule(row: StrategyRow, context: FormalGenerationContext): Co
     ...expressionStrings(definition.style),
     ...expressionStrings(definition.evidencePreferences),
     ...modules.flatMap((item) => expressionStrings(item)),
+    ...expressionStrings(sampleStandard),
     context.systemPrompt,
     context.userPromptTemplate
   ].filter(Boolean);
@@ -170,7 +181,10 @@ function contentTypeRule(row: StrategyRow, context: FormalGenerationContext): Co
     minLength: Number.isInteger(minLength) && minLength > 0 ? minLength : 800,
     maxLength: Number.isInteger(maxLength) && maxLength >= minLength ? maxLength : 3000,
     requiredSections,
-    requiredArtifacts: artifactsFrom(directives),
+    requiredArtifacts: Array.from(new Set([
+      ...explicitArtifacts(sampleStandard.requiredArtifacts),
+      ...artifactsFrom(directives)
+    ])),
     requiredEvidenceRoles: [],
     promptDirectives: directives
   };
@@ -272,12 +286,27 @@ export async function compileFormalProductionContract(input: {
     fixedExpressionChannels,
     taskChannel
   );
+  const coreExpressionConfig = parseV5Json<Record<string, unknown>>(JSON.stringify(plan.coreExpressions || {}), {});
+  const coreExpressionChannels = expressionStrings(coreExpressionConfig.channels);
+  const coreExpressionsApply = !coreExpressionChannels.length || coreExpressionChannels.includes(taskChannel);
+  const coreFixedExpressions = coreExpressionsApply
+    ? [
+        { text: String(coreExpressionConfig.productIdentity || "").trim(), positions: ["body" as const], channel: taskChannel },
+        { text: String(coreExpressionConfig.entityRelationship || "").trim(), positions: ["body" as const], channel: taskChannel },
+        { text: String(coreExpressionConfig.fixedExpression || "").trim(), positions: ["body" as const], channel: taskChannel },
+        {
+          text: [String(coreExpressionConfig.ctaLabel || "").trim(), String(coreExpressionConfig.ctaUrl || "").trim()]
+            .filter(Boolean).join("："),
+          positions: ["ending" as const],
+          channel: taskChannel
+        }
+      ].filter((item, index, items) => item.text && items.findIndex((candidate) => candidate.text === item.text) === index)
+    : [];
   const compiledContentTypeRule = contentTypeRule(row, input.context);
   const sampleContentTypeRule = input.mode === "sample"
     ? {
         ...compiledContentTypeRule,
         requiredSections: [],
-        requiredArtifacts: [],
         promptDirectives: [
           ...compiledContentTypeRule.promptDirectives,
           "文章类型定义用于确定叙事方向，不要求按模块名称逐节填充。围绕读者问题形成一条自然主线。",
@@ -343,9 +372,11 @@ export async function compileFormalProductionContract(input: {
       calibrationDirectives: [...calibrationDirectives, ...acceptedSampleReference, ...sampleRevisionDirectives]
     },
     promotionProfiles: [],
-    fixedExpressions: fixedExpression.text && fixedExpression.appliesToChannel
-      ? [{ text: fixedExpression.text, positions: fixedExpressionPositions, channel: taskChannel }]
-      : [],
+    fixedExpressions: coreFixedExpressions.length
+      ? coreFixedExpressions
+      : fixedExpression.text && fixedExpression.appliesToChannel
+        ? [{ text: fixedExpression.text, positions: fixedExpressionPositions, channel: taskChannel }]
+        : [],
     requiredCoreClaimIds: selectRequiredCoreClaimIds(input.pack),
     entityIdentity: {
       productId: String(row.product_id),

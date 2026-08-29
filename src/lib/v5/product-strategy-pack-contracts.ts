@@ -25,6 +25,29 @@ export interface ProductFixedExpressionRule {
   channels: string[];
 }
 
+export interface ProductCoreExpressionRule {
+  productIdentity: string;
+  entityRelationship: string;
+  fixedExpression: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  channels: string[];
+}
+
+export interface ProductArticleSampleStandard {
+  articleIntent: string;
+  titleRequirements: string[];
+  openingRequirements: string[];
+  argumentOrder: string[];
+  requiredArtifacts: Array<"table" | "list" | "state_flow" | "code_block">;
+  entityRequirements: string[];
+  evidenceRequirements: string[];
+  headingRules: string[];
+  toneRules: string[];
+  prohibitedPatterns: string[];
+  qualityChecks: string[];
+}
+
 export interface ProductGeoStrategyOpportunity {
   opportunityId: string;
   title: string;
@@ -68,6 +91,7 @@ export interface ProductGeoArticleTypePortfolioItem {
   websiteCoverageDisposition?: "new_content" | "refresh_existing" | "hold";
   coveredWebsiteTopic?: WebsiteCoverageTopic;
   proposedMonthlyShare: number;
+  sampleStandard?: ProductArticleSampleStandard;
   baseArticleTypeId?: string;
   baseArticleTypeVersionId?: string;
   definitionHash: string;
@@ -99,6 +123,7 @@ export interface ProductGeoStrategyContentPlanV2 {
     languages: string[];
   };
   fixedExpression?: ProductFixedExpressionRule;
+  coreExpressions?: ProductCoreExpressionRule;
   geoOpportunities: ProductGeoStrategyOpportunity[];
   articleTypePortfolio: ProductGeoArticleTypePortfolioItem[];
   evidencePolicy: {
@@ -140,85 +165,30 @@ export interface ProductGeoStrategyContentPlanV2 {
   };
 }
 
-export interface ProductStrategyHumanEditDirection {
-  portfolioItemId: string;
-  name: string;
-  direction: string;
-}
-
 export interface ProductStrategyHumanEditInput {
-  promotionPurpose: string;
-  targetAudience: string[];
-  keyMessages: string[];
-  articleDirections: ProductStrategyHumanEditDirection[];
-  prohibitedClaims: string[];
-}
-
-function humanEditedArticleType(
-  item: ProductGeoArticleTypePortfolioItem,
-  edit: ProductStrategyHumanEditDirection
-): ProductGeoArticleTypePortfolioItem {
-  const nextItem: ProductGeoArticleTypePortfolioItem = {
-    ...item,
-    name: edit.name,
-    definition: edit.direction,
-    contentGoal: edit.direction,
-    recommendationReason: edit.direction,
-    raw: { ...item.raw, humanEdited: true }
-  };
-  const definitionPayload: Record<string, unknown> = { ...nextItem };
-  delete definitionPayload.articleTypeId;
-  delete definitionPayload.articleTypeVersionId;
-  delete definitionPayload.definitionHash;
-  const definitionHash = createHash("sha256").update(JSON.stringify(definitionPayload)).digest("hex");
-  return {
-    ...nextItem,
-    articleTypeId: item.origin === "generated"
-      ? `product-article-type-${definitionHash.slice(0, 24)}`
-      : item.articleTypeId,
-    articleTypeVersionId: `strategy-article-type-version-${definitionHash.slice(0, 32)}`,
-    definitionHash
-  };
+  productIdentity: string;
+  entityRelationship: string;
+  fixedExpression: string;
+  ctaLabel: string;
+  ctaUrl: string;
 }
 
 export function applyProductStrategyHumanEdit(
   plan: ProductGeoStrategyContentPlanV2,
   edit: ProductStrategyHumanEditInput
 ): ProductGeoStrategyContentPlanV2 {
-  const editByPortfolioItemId = new Map(edit.articleDirections.map((item) => [item.portfolioItemId, item]));
-  const changedArticleTypeIds = new Map<string, string>();
-  const articleTypePortfolio = plan.articleTypePortfolio.map((item) => {
-    const direction = editByPortfolioItemId.get(item.portfolioItemId);
-    if (!direction) return item;
-    const nextItem = humanEditedArticleType(item, direction);
-    if (item.articleTypeId && nextItem.articleTypeId && item.articleTypeId !== nextItem.articleTypeId) {
-      changedArticleTypeIds.set(item.articleTypeId, nextItem.articleTypeId);
-    }
-    return nextItem;
-  });
   return {
     ...plan,
-    productPositioning: {
-      ...plan.productPositioning,
-      promotionPurpose: edit.promotionPurpose,
-      expressionFocus: edit.promotionPurpose,
-      targetAudience: edit.targetAudience,
-      prohibitedClaims: edit.prohibitedClaims
-    },
-    expressionDirection: {
-      ...plan.expressionDirection,
-      keyMessages: edit.keyMessages,
-      emphasisOrder: edit.keyMessages
-    },
-    articleTypePortfolio,
-    channelPriorities: plan.channelPriorities.map((priority) => ({
-      ...priority,
-      suitableArticleTypeIds: priority.suitableArticleTypeIds.map((id) => changedArticleTypeIds.get(id) || id)
-    })),
-    recommendedMonthlyMix: plan.recommendedMonthlyMix.map((mix) => ({
-      ...mix,
-      articleTypeId: changedArticleTypeIds.get(mix.articleTypeId) || mix.articleTypeId
-    }))
+    coreExpressions: {
+      productIdentity: edit.productIdentity,
+      entityRelationship: edit.entityRelationship,
+      fixedExpression: edit.fixedExpression,
+      ctaLabel: edit.ctaLabel,
+      ctaUrl: edit.ctaUrl,
+      channels: plan.coreExpressions?.channels.length
+        ? plan.coreExpressions.channels
+        : plan.channelPriorities.map((item) => item.channel)
+    }
   };
 }
 
@@ -808,6 +778,8 @@ export function compileProductGeoStrategyContentPlan(input: {
   entityRelationship?: string;
   governanceBinding: ProductGeoStrategyContentPlanV2["governanceBinding"];
   fixedExpression?: ProductFixedExpressionRule;
+  coreExpressions?: ProductCoreExpressionRule;
+  sampleStandards?: Record<string, ProductArticleSampleStandard>;
   websiteCoverageProfile?: ProductWebsiteCoverageProfile;
 }): ProductGeoStrategyContentPlanV2 {
   const { project, blueprint } = input;
@@ -861,9 +833,11 @@ export function compileProductGeoStrategyContentPlan(input: {
       unsuitableQuestions: item.unsuitableQuestions.map((question) => subjectText(question, input.productName)),
       contentGoal: subjectText(item.contentGoal, input.productName),
       recommendationReason: subjectText(item.recommendationReason, input.productName),
-      questionClusterIds: item.questionClusterIds.map((question) => subjectText(question, input.productName))
+      questionClusterIds: item.questionClusterIds.map((question) => subjectText(question, input.productName)),
+      sampleStandard: input.sampleStandards?.[item.portfolioItemId]
+        || input.sampleStandards?.[subjectText(item.name, input.productName)]
     };
-    if (item.origin === "matched") return normalized;
+    if (item.origin === "matched" && !normalized.sampleStandard) return normalized;
     const definitionHash = createHash("sha256").update(JSON.stringify({
       ...normalized,
       articleTypeId: undefined,
@@ -891,7 +865,7 @@ export function compileProductGeoStrategyContentPlan(input: {
       suitableQuestions: adjusted.suitableQuestions.map((question) => serviceAwareQuestion(question, input.productName, provider)),
       questionClusterIds: adjusted.questionClusterIds.map((question) => serviceAwareQuestion(question, input.productName, provider))
     };
-    if (relationshipAware.origin === "matched") return relationshipAware;
+    if (relationshipAware.origin === "matched" && !relationshipAware.sampleStandard) return relationshipAware;
     const definitionHash = createHash("sha256").update(JSON.stringify({
       ...relationshipAware,
       articleTypeId: undefined,
@@ -934,6 +908,7 @@ export function compileProductGeoStrategyContentPlan(input: {
       languages: [...project.languages]
     },
     fixedExpression: input.fixedExpression,
+    coreExpressions: input.coreExpressions,
     geoOpportunities: relationshipAwareOpportunities,
     articleTypePortfolio: coverageAwarePortfolio,
     evidencePolicy: {
@@ -1013,6 +988,20 @@ export function assertProductGeoStrategyContentPlanV2(plan: ProductGeoStrategyCo
   }
   if (!plan.expressionDirection.keyMessages.length || !plan.expressionDirection.emphasisOrder.length || !plan.expressionDirection.tone.length) {
     throw new Error("product_strategy_expression_direction_incomplete");
+  }
+  if (plan.coreExpressions) {
+    if (!plan.coreExpressions.productIdentity.trim() || !plan.coreExpressions.entityRelationship.trim()) {
+      throw new Error("product_strategy_core_expression_incomplete");
+    }
+    if (!plan.coreExpressions.channels.length || plan.coreExpressions.channels.some((channel) => !channel.trim())) {
+      throw new Error("product_strategy_core_expression_channels_invalid");
+    }
+    if (plan.coreExpressions.ctaUrl && !/^https?:\/\/[^\s]+$/i.test(plan.coreExpressions.ctaUrl)) {
+      throw new Error("product_strategy_core_expression_cta_url_invalid");
+    }
+    if (plan.coreExpressions.ctaUrl && !plan.coreExpressions.ctaLabel.trim()) {
+      throw new Error("product_strategy_core_expression_cta_label_missing");
+    }
   }
   if (plan.articleTypePortfolio.length < 2 || plan.articleTypePortfolio.length > 6) {
     throw new Error("product_strategy_article_type_portfolio_invalid");

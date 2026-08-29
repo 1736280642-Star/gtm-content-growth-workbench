@@ -12,16 +12,26 @@ import {
 import { Button, Input, Spin } from "antd";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import styles from "../../../hosted-mode.module.css";
 
 interface StrategySummary {
-  targetAudience: string[];
-  promotionPurpose: string;
-  keyMessages: string[];
-  channels: string[];
-  articleDirections: Array<{ portfolioItemId: string; name: string; direction: string }>;
-  prohibitedClaims: string[];
+  coreExpressions: {
+    productIdentity: string;
+    entityRelationship: string;
+    fixedExpression: string;
+    ctaLabel: string;
+    ctaUrl: string;
+  };
+  automaticStrategy: {
+    targetAudience: string[];
+    promotionPurpose: string;
+    keyMessages: string[];
+    channels: string[];
+    articleDirections: Array<{ portfolioItemId: string; name: string; direction: string }>;
+    prohibitedClaims: string[];
+  };
 }
 
 interface ReviewPayload {
@@ -33,21 +43,81 @@ interface ReviewPayload {
 
 const channelLabels: Record<string, string> = { wechat: "微信公众号", zhihu: "知乎", csdn: "CSDN", juejin: "掘金" };
 
-type EditableStrategy = Omit<StrategySummary, "channels">;
+type EditableStrategy = StrategySummary["coreExpressions"];
 
 function editableStrategy(strategy: ReviewPayload["strategy"]): EditableStrategy | undefined {
   if (!strategy) return undefined;
-  const { channels: _channels, ...editable } = strategy.summary;
-  return editable;
-}
-
-function lines(value: string) {
-  return value.split(/\r?\n/);
+  return strategy.summary.coreExpressions;
 }
 
 function readError(payload: unknown, fallback: string) {
   const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   return String(record.message || fallback);
+}
+
+function inlineMarkdown(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => (
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={`${index}-${part}`}>{part.slice(2, -2)}</strong>
+      : part
+  ));
+}
+
+function SampleMarkdown({ markdown, title }: { markdown: string; title: string }) {
+  const source = markdown.replace(/\r/g, "").split("\n");
+  const nodes: ReactNode[] = [];
+  for (let index = 0; index < source.length;) {
+    const line = source[index].trim();
+    if (!line) { index += 1; continue; }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const text = heading[2].trim();
+      if (!(heading[1] === "#" && text === title)) {
+        nodes.push(heading[1].length <= 2
+          ? <h3 key={`heading-${index}`}>{inlineMarkdown(text)}</h3>
+          : <h4 key={`heading-${index}`}>{inlineMarkdown(text)}</h4>);
+      }
+      index += 1;
+      continue;
+    }
+    if (line.includes("|") && source[index + 1]?.trim().match(/^\|?\s*:?-{3,}/)) {
+      const rows: string[][] = [];
+      const parseRow = (value: string) => value.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+      const headers = parseRow(line);
+      index += 2;
+      while (index < source.length && source[index].includes("|")) {
+        rows.push(parseRow(source[index]));
+        index += 1;
+      }
+      nodes.push(<div className={styles.sampleTableWrap} key={`table-${index}`}><table><thead><tr>{headers.map((cell, cellIndex) => <th key={cellIndex}>{inlineMarkdown(cell)}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{inlineMarkdown(cell)}</td>)}</tr>)}</tbody></table></div>);
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < source.length && /^[-*]\s+/.test(source[index].trim())) {
+        items.push(source[index].trim().replace(/^[-*]\s+/, ""));
+        index += 1;
+      }
+      nodes.push(<ul key={`list-${index}`}>{items.map((item, itemIndex) => <li key={itemIndex}>{inlineMarkdown(item)}</li>)}</ul>);
+      continue;
+    }
+    if (/^>\s?/.test(line)) {
+      nodes.push(<blockquote key={`quote-${index}`}>{inlineMarkdown(line.replace(/^>\s?/, ""))}</blockquote>);
+      index += 1;
+      continue;
+    }
+    const paragraph: string[] = [];
+    while (index < source.length && source[index].trim()
+      && !/^(#{1,3})\s+/.test(source[index].trim())
+      && !/^[-*]\s+/.test(source[index].trim())
+      && !/^>\s?/.test(source[index].trim())
+      && !(source[index].includes("|") && source[index + 1]?.trim().match(/^\|?\s*:?-{3,}/))) {
+      paragraph.push(source[index].trim());
+      index += 1;
+    }
+    nodes.push(<p key={`paragraph-${index}`}>{inlineMarkdown(paragraph.join(" "))}</p>);
+  }
+  return <article>{nodes}</article>;
 }
 
 export default function HostedReviewPage() {
@@ -105,7 +175,7 @@ export default function HostedReviewPage() {
       setData((current) => current ? { ...current, strategy } : current);
       setStrategyDraft(editable);
       setSavedStrategyDraft(editable);
-      setSaveMessage("人工修改已写入当前候选策略，没有重新调研或调用模型。");
+      setSaveMessage("三项核心表达已写入当前候选策略；系统生成的受众、文章类型和内容编排保持不变。");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "策略保存失败，请刷新后重试。");
     } finally {
@@ -116,7 +186,7 @@ export default function HostedReviewPage() {
   async function decide(decision: "approve" | "changes_requested") {
     if (data?.review.gateType === "strategy" && decision === "approve"
       && JSON.stringify(strategyDraft) !== JSON.stringify(savedStrategyDraft)) {
-      return setError("还有未保存的策略修改，请先点击“保存人工修改”。");
+      return setError("还有未保存的核心表达，请先点击“保存核心表达”。");
     }
     if (decision === "changes_requested" && !comment.trim()) return setError("请用一句话写下希望修改的地方。");
     setSubmitting(true);
@@ -151,53 +221,51 @@ export default function HostedReviewPage() {
   return (
     <div className={styles.reviewPage}>
       <section className={styles.reviewHero}>
-        <div><div className={styles.kicker}>ONE DECISION · {isStrategy ? "STRATEGY" : "SAMPLE"}</div><h1>{isStrategy ? `确认 ${data.order.productName} 的推广方向` : `确认 ${data.order.productName} 的代表样文`}</h1><p>{isStrategy ? "只检查系统是否理解了产品、用户和推广边界。具体排程与指标不需要你处理。" : "只检查这篇文章是否符合你希望系统持续使用的表达方式。"}</p></div>
+        <div><div className={styles.kicker}>ONE DECISION · {isStrategy ? "STRATEGY" : "SAMPLE"}</div><h1>{isStrategy ? `确认 ${data.order.productName} 的核心表达` : `确认 ${data.order.productName} 的代表样文`}</h1><p>{isStrategy ? "你只需要确认产品身份、实体关系和固定表达。受众、文章类型与内容编排由系统自动完成。" : "只检查这篇文章是否符合你希望系统持续使用的表达方式。"}</p></div>
         <aside><SafetyCertificateOutlined /><strong>安全邮件链接</strong><span><ClockCircleOutlined /> {new Date(data.review.expiresAt).toLocaleString("zh-CN")} 前有效</span></aside>
       </section>
 
       {isStrategy && data.strategy ? (
         <div className={styles.reviewGrid}>
           <main className={styles.decisionCard}>
-            <div className={styles.decisionHeader}><span>直接修改策略文字</span><small>保存只更新当前候选策略，不会重新调研</small></div>
+            <div className={styles.decisionHeader}><span>只确认三项核心表达</span><small>系统策略保持自动生成，不需要人工编排</small></div>
             {strategyDraft ? <>
               <section className={styles.decisionSection}>
-                <h2>推广目标</h2>
-                <Input.TextArea value={strategyDraft.promotionPurpose} rows={4} maxLength={1000} showCount onChange={(event) => setStrategyDraft((current) => current ? { ...current, promotionPurpose: event.target.value } : current)} />
+                <h2>1. 产品身份表达</h2>
+                <small className={styles.editHint}>系统在正文中提到产品与服务方时，以这句话为准</small>
+                <Input.TextArea value={strategyDraft.productIdentity} rows={3} maxLength={500} showCount onChange={(event) => setStrategyDraft((current) => current ? { ...current, productIdentity: event.target.value } : current)} />
               </section>
               <section className={styles.decisionSection}>
-                <h2>主要面向</h2>
-                <small className={styles.editHint}>每行填写一个目标用户</small>
-                <Input.TextArea value={strategyDraft.targetAudience.join("\n")} rows={4} maxLength={2000} onChange={(event) => setStrategyDraft((current) => current ? { ...current, targetAudience: lines(event.target.value) } : current)} />
+                <h2>2. 实体关系与责任边界</h2>
+                <small className={styles.editHint}>说明产品方、服务方分别是谁，以及各自负责什么</small>
+                <Input.TextArea value={strategyDraft.entityRelationship} rows={4} maxLength={800} showCount onChange={(event) => setStrategyDraft((current) => current ? { ...current, entityRelationship: event.target.value } : current)} />
               </section>
               <section className={styles.decisionSection}>
-                <h2>重点表达</h2>
-                <small className={styles.editHint}>每行填写一条，保存后会进入样文生成约束</small>
-                <Input.TextArea value={strategyDraft.keyMessages.join("\n")} rows={7} maxLength={6000} onChange={(event) => setStrategyDraft((current) => current ? { ...current, keyMessages: lines(event.target.value) } : current)} />
-              </section>
-              <section className={styles.decisionSection}>
-                <h2>内容方向</h2>
-                <div className={styles.directionEditorList}>{strategyDraft.articleDirections.map((item) => <article key={item.portfolioItemId}>
-                  <label>方向名称</label>
-                  <Input value={item.name} maxLength={120} onChange={(event) => setStrategyDraft((current) => current ? { ...current, articleDirections: current.articleDirections.map((direction) => direction.portfolioItemId === item.portfolioItemId ? { ...direction, name: event.target.value } : direction) } : current)} />
-                  <label>写作方向</label>
-                  <Input.TextArea value={item.direction} rows={4} maxLength={1200} showCount onChange={(event) => setStrategyDraft((current) => current ? { ...current, articleDirections: current.articleDirections.map((direction) => direction.portfolioItemId === item.portfolioItemId ? { ...direction, direction: event.target.value } : direction) } : current)} />
-                </article>)}</div>
-              </section>
-              <section className={styles.decisionSection}>
-                <h2>禁止表述</h2>
-                <small className={styles.editHint}>每行填写一条；可以留空</small>
-                <Input.TextArea value={strategyDraft.prohibitedClaims.join("\n")} rows={5} maxLength={10000} onChange={(event) => setStrategyDraft((current) => current ? { ...current, prohibitedClaims: lines(event.target.value) } : current)} />
+                <h2>3. 固定表达或 CTA</h2>
+                <small className={styles.editHint}>固定表达与 CTA 均可留空；填写后会按系统确定的位置逐字应用</small>
+                <label className={styles.fieldLabel}>固定表达</label>
+                <Input.TextArea value={strategyDraft.fixedExpression} rows={3} maxLength={500} showCount onChange={(event) => setStrategyDraft((current) => current ? { ...current, fixedExpression: event.target.value } : current)} />
+                <div className={styles.inlineFieldGrid}>
+                  <div><label className={styles.fieldLabel}>CTA 文字</label><Input value={strategyDraft.ctaLabel} maxLength={160} onChange={(event) => setStrategyDraft((current) => current ? { ...current, ctaLabel: event.target.value } : current)} /></div>
+                  <div><label className={styles.fieldLabel}>CTA 链接</label><Input value={strategyDraft.ctaUrl} maxLength={500} placeholder="https://" onChange={(event) => setStrategyDraft((current) => current ? { ...current, ctaUrl: event.target.value } : current)} /></div>
+                </div>
               </section>
             </> : null}
-            <section className={styles.decisionSection}><h2>推广渠道</h2><div className={styles.reviewTags}>{data.strategy.summary.channels.map((item) => <span key={item}>{channelLabels[item] || item}</span>)}</div></section>
+            <details className={styles.automaticStrategyDetails}>
+              <summary>查看系统自动生成的策略摘要（只读）</summary>
+              <section className={styles.decisionSection}><h2>推广目标</h2><p>{data.strategy.summary.automaticStrategy.promotionPurpose}</p></section>
+              <section className={styles.decisionSection}><h2>目标用户</h2><p>{data.strategy.summary.automaticStrategy.targetAudience.join("、") || "由系统按选题判断"}</p></section>
+              <section className={styles.decisionSection}><h2>系统内容方向</h2><ul>{data.strategy.summary.automaticStrategy.articleDirections.map((item) => <li key={item.portfolioItemId}><strong>{item.name}</strong>：{item.direction}</li>)}</ul></section>
+              <section className={styles.decisionSection}><h2>推广渠道</h2><div className={styles.reviewTags}>{data.strategy.summary.automaticStrategy.channels.map((item) => <span key={item}>{channelLabels[item] || item}</span>)}</div></section>
+            </details>
           </main>
-          <aside className={styles.decisionAside}><strong>保存与确认分开</strong><span>“保存人工修改”只更新文字。</span><span>“确认策略”才会进入样文生成。</span><span>推广渠道请在托管设置中调整。</span></aside>
+          <aside className={styles.decisionAside}><strong>不用编排策略</strong><span>受众、文章类型、标题结构和渠道规则由系统生成。</span><span>“保存核心表达”只更新这三类文字。</span><span>“确认策略”才会进入样文生成。</span></aside>
         </div>
       ) : null}
 
       {!isStrategy && data.sample ? (
         <div className={styles.sampleReviewGrid}>
-          <main className={styles.samplePaper}><div className={styles.sampleMeta}><span>{channelLabels[data.sample.channel] || data.sample.channel}</span><span>{data.sample.articleTypeName}</span></div><h2>{data.sample.title}</h2><article>{data.sample.markdown}</article></main>
+          <main className={styles.samplePaper}><div className={styles.sampleMeta}><span>{channelLabels[data.sample.channel] || data.sample.channel}</span><span>{data.sample.articleTypeName}</span></div><h2>{data.sample.title}</h2><SampleMarkdown markdown={data.sample.markdown} title={data.sample.title} /></main>
           <aside className={styles.decisionAside}><strong>重点检查三件事</strong><span>产品事实是否准确。</span><span>语气是否可以长期复用。</span><span>是否存在不希望公开的表述。</span></aside>
         </div>
       ) : null}
@@ -206,7 +274,7 @@ export default function HostedReviewPage() {
       {saveMessage ? <div className={styles.strategySaveSuccess} role="status"><CheckCircleFilled /><span>{saveMessage}</span></div> : null}
       {error ? <div className={styles.formError} role="alert"><strong>暂时不能提交</strong><span>{error}</span></div> : null}
       <div className={styles.reviewActions}>
-        {isStrategy ? <Button type="primary" size="large" icon={<SaveOutlined />} loading={saving} disabled={JSON.stringify(strategyDraft) === JSON.stringify(savedStrategyDraft)} onClick={() => void saveStrategy()}>保存人工修改</Button> : null}
+        {isStrategy ? <Button type="primary" size="large" icon={<SaveOutlined />} loading={saving} disabled={JSON.stringify(strategyDraft) === JSON.stringify(savedStrategyDraft)} onClick={() => void saveStrategy()}>保存核心表达</Button> : null}
         <Button type={isStrategy ? "default" : "primary"} size="large" icon={<CheckOutlined />} loading={submitting} disabled={isStrategy && JSON.stringify(strategyDraft) !== JSON.stringify(savedStrategyDraft)} onClick={() => decide("approve")}>{isStrategy ? "确认策略，生成样文" : "确认样文，开始托管"}</Button>
         {showRevision ? <Button size="large" icon={<EditOutlined />} loading={submitting} onClick={() => decide("changes_requested")}>{isStrategy ? "提交并重新调研" : "提交修改意见"}</Button> : <Button size="large" icon={<EditOutlined />} onClick={() => setShowRevision(true)}>{isStrategy ? "需要重新调研" : "需要修改"}</Button>}
       </div>

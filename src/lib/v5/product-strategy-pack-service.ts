@@ -91,18 +91,6 @@ export async function decideProductGeoStrategyPack(input: {
   return applyProductStrategyPack(input);
 }
 
-function cleanStrategyStrings(values: string[], field: string, maxItems: number, maxLength: number, required = true) {
-  const cleaned = [...new Set(values.map((item) => item.trim()).filter(Boolean))];
-  if ((required && !cleaned.length) || cleaned.length > maxItems || cleaned.some((item) => item.length > maxLength)) {
-    throw new V5GovernanceServiceError(
-      "invalid_contract",
-      `${field} 必须包含 ${required ? `1-${maxItems}` : `0-${maxItems}`} 项，每项不超过 ${maxLength} 个字符。`,
-      400
-    );
-  }
-  return cleaned;
-}
-
 export async function editPendingProductGeoStrategyPack(input: {
   productId: string;
   strategyPackId: string;
@@ -115,30 +103,29 @@ export async function editPendingProductGeoStrategyPack(input: {
   assertText(input.strategyPackId, "strategyPackId", 64);
   assertText(input.idempotencyKey, "idempotencyKey", 128);
   assertText(input.actor.auditReason, "auditReason", 500);
-  assertText(input.edit.promotionPurpose, "promotionPurpose", 1000);
+  assertText(input.edit.productIdentity, "productIdentity", 500);
+  assertText(input.edit.entityRelationship, "entityRelationship", 800);
   if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
     throw new V5GovernanceServiceError("invalid_contract", "expectedVersion 必须是正整数。", 400);
   }
-  if (input.edit.articleDirections.length < 2 || input.edit.articleDirections.length > 6) {
-    throw new V5GovernanceServiceError("invalid_contract", "内容方向必须保留 2-6 项。", 400);
+  const fixedExpression = input.edit.fixedExpression.trim();
+  const ctaLabel = input.edit.ctaLabel.trim();
+  const ctaUrl = input.edit.ctaUrl.trim();
+  if (fixedExpression.length > 500 || ctaLabel.length > 160 || ctaUrl.length > 500) {
+    throw new V5GovernanceServiceError("invalid_contract", "固定表达或 CTA 内容过长。", 400);
   }
-  const portfolioItemIds = new Set<string>();
-  const articleDirections = input.edit.articleDirections.map((item) => {
-    assertText(item.portfolioItemId, "articleDirection.portfolioItemId", 64);
-    assertText(item.name, "articleDirection.name", 120);
-    assertText(item.direction, "articleDirection.direction", 1200);
-    if (portfolioItemIds.has(item.portfolioItemId)) {
-      throw new V5GovernanceServiceError("invalid_contract", "内容方向存在重复项。", 400);
-    }
-    portfolioItemIds.add(item.portfolioItemId);
-    return { portfolioItemId: item.portfolioItemId.trim(), name: item.name.trim(), direction: item.direction.trim() };
-  });
+  if (ctaUrl && !/^https?:\/\/[^\s]+$/i.test(ctaUrl)) {
+    throw new V5GovernanceServiceError("invalid_contract", "CTA 链接必须是完整的 http(s) 地址。", 400);
+  }
+  if (ctaUrl && !ctaLabel) {
+    throw new V5GovernanceServiceError("invalid_contract", "填写 CTA 链接时必须同时填写 CTA 文字。", 400);
+  }
   const edit = {
-    promotionPurpose: input.edit.promotionPurpose.trim(),
-    targetAudience: cleanStrategyStrings(input.edit.targetAudience, "targetAudience", 20, 100),
-    keyMessages: cleanStrategyStrings(input.edit.keyMessages, "keyMessages", 12, 500),
-    articleDirections,
-    prohibitedClaims: cleanStrategyStrings(input.edit.prohibitedClaims, "prohibitedClaims", 20, 500, false)
+    productIdentity: input.edit.productIdentity.trim(),
+    entityRelationship: input.edit.entityRelationship.trim(),
+    fixedExpression,
+    ctaLabel,
+    ctaUrl
   };
   assertHumanStrategyActor(input.actor);
   return updatePendingProductStrategyContent({ ...input, edit });

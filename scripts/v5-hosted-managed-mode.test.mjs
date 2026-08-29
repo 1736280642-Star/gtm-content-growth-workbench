@@ -269,9 +269,14 @@ test("策略邮件允许人工直接编辑并保存当前候选包，不必重�
     readFile(new URL("../src/lib/v5/product-strategy-pack-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/v5/product-strategy-pack-repository.ts", import.meta.url), "utf8")
   ]);
-  assert.match(reviewPage, /保存人工修改/);
+  assert.match(reviewPage, /保存核心表达/);
+  assert.match(reviewPage, /产品身份表达/);
+  assert.match(reviewPage, /实体关系与责任边界/);
+  assert.match(reviewPage, /固定表达或 CTA/);
+  assert.doesNotMatch(reviewRoute, /articleDirections/);
+  assert.doesNotMatch(reviewRoute, /targetAudience/);
   assert.match(reviewPage, /method: "PATCH"/);
-  assert.match(reviewPage, /还有未保存的策略修改/);
+  assert.match(reviewPage, /还有未保存的核心表达/);
   assert.match(reviewRoute, /export async function PATCH/);
   assert.match(reviewService, /editHostedStrategyReview/);
   assert.match(strategyService, /editPendingProductGeoStrategyPack/);
