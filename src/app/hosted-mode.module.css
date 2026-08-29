@@ -49,6 +49,26 @@
 .introAside span { color: #63716b; font-size: 13px; line-height: 1.55; }
 .introAside small { color: #84908a; font-size: 11px; }
 
+.operationsIntro {
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.operationsIntro h1 {
+  max-width: none;
+  white-space: nowrap;
+}
+
+.operationsIntro .introAside {
+  min-width: max-content;
+}
+
+.operationsIntro .introAside > strong,
+.operationsIntro .introAside > span,
+.operationsIntro .introAside > small {
+  display: block;
+  white-space: nowrap;
+}
+
 .roleSwitcher {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -839,6 +859,11 @@
   .page, .successPage, .emailPage { padding-top: 22px; }
   .intro { padding-top: 14px; }
   .intro h1 { font-size: 36px; }
+  .operationsIntro h1 { overflow: hidden; font-size: clamp(20px, 5.6vw, 36px); text-overflow: ellipsis; }
+  .operationsIntro .introAside { width: 100%; min-width: 0; overflow: hidden; }
+  .operationsIntro .introAside > strong,
+  .operationsIntro .introAside > span,
+  .operationsIntro .introAside > small { overflow: hidden; text-overflow: ellipsis; }
   .roleSwitcher, .deploymentVariables, .deploymentCommandGrid { grid-template-columns: 1fr; }
   .deploymentSectionHeader { align-items: flex-start; flex-direction: column; }
   .deploymentSectionHeader .stepStatusBadge { margin-left: 0; }
