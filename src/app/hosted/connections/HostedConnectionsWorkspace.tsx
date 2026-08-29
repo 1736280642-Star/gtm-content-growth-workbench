@@ -88,7 +88,9 @@ export function HostedConnectionsWorkspace({
   const [error, setError] = useState("");
   const [executorNodes, setExecutorNodes] = useState<ExecutorNode[]>([]);
   const [pairingCode, setPairingCode] = useState("");
+  const [sessionStatusUrl, setSessionStatusUrl] = useState("");
   const eventSourceRef = useRef<EventSource>();
+  const autoConfirmingSessionRef = useRef("");
 
   const load = useCallback(async (targetOrderId: string) => {
     setLoading(true);
@@ -149,11 +151,9 @@ export function HostedConnectionsWorkspace({
     };
     const events = ["window_opened", "waiting_for_login", "manual_takeover_required", "account_detected", "permission_checked", "connected", "terminal"];
     for (const event of events) source.addEventListener(event, () => void refresh());
-    source.onerror = () => {
-      source.close();
-      window.setTimeout(() => void refresh(), 1500);
-    };
-    return () => source.close();
+    source.onerror = () => void refresh();
+    const refreshTimer = window.setInterval(() => void refresh(), 2000);
+    return () => { window.clearInterval(refreshTimer); source.close(); };
   }, [activeSessionId, activeSessionStatus, load, orderId]);
 
   const current = useMemo(() => channels.find((item) => item.channel === activeChannel), [activeChannel, channels]);
@@ -175,10 +175,7 @@ export function HostedConnectionsWorkspace({
       if (!response.ok) throw new Error(readError(payload, "账号连接会话创建失败。"));
       setActiveChannel(channel);
       setActiveSession(payload.session as AuthorizationSession);
-      if (payload.launchUrl) {
-        if (executorType === "desktop_connector") window.location.href = String(payload.launchUrl);
-        else window.open(String(payload.launchUrl), `joto-${channel}-authorization`, "popup,width=1280,height=820");
-      }
+      setSessionStatusUrl(payload.launchUrl ? String(payload.launchUrl) : "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "账号连接会话创建失败。请稍后重试。");
     } finally {
@@ -201,16 +198,16 @@ export function HostedConnectionsWorkspace({
     } finally { setWorking(false); }
   }
 
-  async function confirmAccount() {
-    if (!activeSession?.detectedAccount) return;
+  const confirmAccount = useCallback(async (targetSession = activeSession, automatic = false) => {
+    if (!targetSession?.detectedAccount) return;
     setWorking(true);
     setError("");
     try {
-      const idempotencyKey = `confirm-publish-account-${crypto.randomUUID()}`;
-      const response = await fetch(`/api/v5/hosted/authorization-sessions/${encodeURIComponent(activeSession.id)}/confirm`, {
+      const idempotencyKey = `confirm-publish-account-${targetSession.id}-${targetSession.rowVersion}`;
+      const response = await fetch(`/api/v5/hosted/authorization-sessions/${encodeURIComponent(targetSession.id)}/confirm`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-idempotency-key": idempotencyKey },
-        body: JSON.stringify({ expectedVersion: activeSession.rowVersion, idempotencyKey })
+        body: JSON.stringify({ expectedVersion: targetSession.rowVersion, idempotencyKey })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(readError(payload, "账号确认失败。"));
@@ -218,14 +215,26 @@ export function HostedConnectionsWorkspace({
       const latest = await fetch(`/api/v5/hosted/orders/${encodeURIComponent(orderId)}/channel-connections`, { cache: "no-store" }).then((response) => response.json());
       const next = (latest.channels as ChannelState[]).find((item) => !item.connection);
       if (next) setActiveChannel(next.channel);
-      setActiveSession(undefined);
+      const nextSession = next?.session && !["confirmed", "failed", "expired", "cancelled"].includes(next.session.status)
+        ? next.session
+        : undefined;
+      setActiveSession(nextSession);
+      setSessionStatusUrl(nextSession ? `/hosted/browser-session/${encodeURIComponent(nextSession.id)}` : "");
       onConnectionsChanged?.();
     } catch (cause) {
+      if (automatic) autoConfirmingSessionRef.current = "";
       setError(cause instanceof Error ? cause.message : "账号确认失败。请刷新后重试。");
     } finally {
       setWorking(false);
     }
-  }
+  }, [activeSession, load, onConnectionsChanged, orderId]);
+
+  useEffect(() => {
+    if (activeSession?.status !== "account_detected" || !activeSession.detectedAccount) return;
+    if (autoConfirmingSessionRef.current === activeSession.id) return;
+    autoConfirmingSessionRef.current = activeSession.id;
+    void confirmAccount(activeSession, true);
+  }, [activeSession, confirmAccount]);
 
   if (loading) return <div className={embedded ? styles.embeddedConnectionLoading : styles.reviewLoading}><Spin /><span>正在读取发布账号连接</span></div>;
   if (!order) return <div className={embedded ? styles.embeddedConnectionError : styles.reviewError}><strong>无法打开账号连接向导</strong><span>{error}</span>{!embedded ? <Link href="/"><Button>返回工作台</Button></Link> : null}</div>;
@@ -241,8 +250,8 @@ export function HostedConnectionsWorkspace({
         <Link href={`/hosted/settings?orderId=${encodeURIComponent(orderId)}`}><Button type="text" icon={<ArrowLeftOutlined />}>返回托管设置</Button></Link>
         <div className={styles.kicker}>PUBLISH ACCOUNT CONNECTIONS</div>
         <h1>连接发布账号</h1>
-        <p>{order.productName} · 已完成 {connectedCount}/{channels.length}。每个账号都与当前工作区隔离，确认后自动进入下一个渠道。</p>
-      </header> : <div className={styles.embeddedConnectionIntro}><strong>逐个完成平台登录与账号确认</strong><span>{order.productName} · 已完成 {connectedCount}/{channels.length}。确认后会自动跳到下一个未连接渠道。</span></div>}
+        <p>{order.productName} · 已完成 {connectedCount}/{channels.length}。每个账号都与当前工作区隔离，登录完成后系统会自动识别并连接。</p>
+      </header> : <div className={styles.embeddedConnectionIntro}><strong>逐个完成平台登录</strong><span>{order.productName} · 已完成 {connectedCount}/{channels.length}。登录完成后返回本页即可看到连接结果。</span></div>}
 
       <div className={`${styles.connectionWizardGrid} ${embedded ? styles.connectionWizardGridEmbedded : ""}`}>
         <aside className={styles.connectionChannelList}>
@@ -278,10 +287,11 @@ export function HostedConnectionsWorkspace({
                 <Avatar size={56} src={account.publicAvatarUrl}>{account.publicDisplayName.slice(0, 1)}</Avatar>
                 <div><strong>{account.publicDisplayName}</strong><small>{account.providerAccountRef}</small>{account.publicProfileUrl ? <a href={account.publicProfileUrl} target="_blank" rel="noreferrer">查看公开主页</a> : null}</div>
               </div>
-              <div className={styles.authorizationActions}><Button type="primary" size="large" icon={<CheckOutlined />} loading={working} onClick={confirmAccount}>确认用于 {order.productName}</Button><Button size="large" onClick={() => activeChannel && startConnection(activeChannel)}>切换其他账号</Button></div>
+              <div className={styles.authorizationActions}><Button type="primary" size="large" icon={<CheckOutlined />} loading={working} onClick={() => void confirmAccount()}>确认用于 {order.productName}</Button><Button size="large" onClick={() => activeChannel && startConnection(activeChannel)}>切换其他账号</Button></div>
             </> : <>
               <div className={styles.connectionWaiting}><LoadingOutlined spin /><div><strong>{session.status === "manual_takeover_required" ? "需要你完成安全验证" : "等待平台登录完成"}</strong><span>{session.status === "created" ? "云端执行节点正在排队；分配后会自动打开安全浏览器。" : session.status === "manual_takeover_required" ? "请在安全浏览器中完成验证码、手机确认或平台安全挑战。" : "登录成功后页面会自动识别账号，不需要手动刷新。"}</span></div></div>
               <div className={styles.authorizationCallout}><SafetyCertificateOutlined /> 登录凭据不会进入工作台数据库、Git、日志或邮件。</div>
+              {sessionStatusUrl ? <Link href={sessionStatusUrl} target="_blank"><Button type="link">登录窗口没有打开？查看连接状态</Button></Link> : null}
             </>}
           </>}
           {error ? <div className={styles.formError}><strong>当前步骤未完成</strong><span>{error}</span></div> : null}

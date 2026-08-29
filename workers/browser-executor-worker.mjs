@@ -10,7 +10,7 @@ const runnerUrl = String(process.env.JOTO_PUBLISH_RUNNER_URL || "http://127.0.0.
 const runnerToken = String(process.env.JOTO_PUBLISH_RUNNER_TOKEN || process.env.WECHATSYNC_BRIDGE_TOKEN || "").trim();
 const executorType = process.env.PUBLISH_EXECUTOR_TYPE === "desktop_connector" ? "desktop_connector" : "cloud_browser";
 const supportedChannels = ["zhihu", "csdn", "juejin"];
-const adapterVersion = "2026-08-21-v1";
+const adapterVersion = "2026-08-29-v2";
 let nodeToken = String(process.env.PUBLISH_EXECUTOR_NODE_TOKEN || "").trim();
 let nodeId = "";
 const statePath = String(process.env.PUBLISH_EXECUTOR_STATE_PATH || "/app/runtime/browser-executor-node.json").trim();
@@ -113,7 +113,7 @@ async function authorize(job) {
       { message: String(opened.payload.message || "安全浏览器已打开"), ...(interactiveUrl ? { interactiveUrl } : {}) }
     );
     const deadline = Date.now() + 14 * 60_000;
-    let identityUnavailableCount = 0;
+    let lastReportedStatus = "";
     while (Date.now() < deadline) {
       await api("/api/v5/publish-executors/heartbeat", { method: "POST", body: JSON.stringify({ adapterVersion, supportedChannels }) });
       const identified = await runner("/auth/identify", { platform, profileRef });
@@ -123,15 +123,19 @@ async function authorize(job) {
         return;
       }
       const status = String(identified.payload.status || "");
-      if (status === "manual_takeover_required") await emit(authorizationSessionId, "manual_takeover_required", { message: String(identified.payload.message || "需要人工安全验证") });
-      else if (status === "account_identity_unavailable") {
-        identityUnavailableCount += 1;
-        if (identityUnavailableCount >= 3) {
-          await emit(authorizationSessionId, "failed", { failureCode: status, message: String(identified.payload.message || "无法识别真实账号") });
-          await complete(job, false, {}, status, String(identified.payload.message || "无法识别真实账号"));
-          return;
+      if (status === "failed") {
+        await emit(authorizationSessionId, "failed", { failureCode: String(identified.payload.failureCode || "account_check_failed"), message: String(identified.payload.message || "账号检查页面不可用") });
+        await complete(job, false, {}, String(identified.payload.failureCode || "account_check_failed"), String(identified.payload.message || "账号检查页面不可用"));
+        return;
+      }
+      if (status !== lastReportedStatus) {
+        if (status === "manual_takeover_required") {
+          await emit(authorizationSessionId, "manual_takeover_required", { message: String(identified.payload.message || "需要人工安全验证") });
+        } else {
+          await emit(authorizationSessionId, "waiting_for_login", { message: String(identified.payload.message || "等待用户登录并识别公开账号") });
         }
-      } else await emit(authorizationSessionId, "waiting_for_login", { message: String(identified.payload.message || "等待用户登录") });
+        lastReportedStatus = status;
+      }
       await delay(3000);
     }
     await emit(authorizationSessionId, "failed", { failureCode: "authorization_timed_out", message: "账号登录等待超时" });

@@ -79,6 +79,208 @@ def payload():
 
 
 class RunnerContractTest(unittest.TestCase):
+    def test_platform_login_and_account_urls_are_separated(self):
+        expected = {
+            "csdn": (
+                "https://passport.csdn.net/login",
+                "https://mp.csdn.net/mp_blog/manage/article",
+            ),
+            "juejin": (
+                "https://juejin.cn/login",
+                "https://juejin.cn/creator/home",
+            ),
+            "zhihu": (
+                "https://www.zhihu.com/signin",
+                "https://www.zhihu.com/creator",
+            ),
+        }
+        for platform, (login_url, account_url) in expected.items():
+            with self.subTest(platform=platform):
+                self.assertEqual(PLATFORM_CONFIG[platform]["login_url"], login_url)
+                self.assertEqual(PLATFORM_CONFIG[platform]["account_url"], account_url)
+                self.assertNotEqual(login_url, account_url)
+        self.assertEqual(
+            PLATFORM_CONFIG["juejin"]["manager_url"],
+            "https://juejin.cn/creator/content/article/essays?status=all",
+        )
+
+    def test_open_auth_uses_each_platform_official_login_url(self):
+        class Element:
+            text = ""
+
+        class Tab:
+            title = ""
+
+            def __init__(self):
+                self.url = ""
+                self.opened_url = ""
+
+            def get(self, url):
+                self.url = url
+                self.opened_url = url
+
+            def ele(self, selector, timeout=1):
+                return Element() if selector == "tag:body" else None
+
+        class Browser:
+            def __init__(self, tab):
+                self.tab = tab
+
+            def new_tab(self, **_kwargs):
+                return self.tab
+
+        from unittest.mock import patch
+
+        for platform in PLATFORM_CONFIG:
+            with self.subTest(platform=platform):
+                tab = Tab()
+                profile_ref = f"login-route-{platform}"
+                with patch("joto_arcs_runner.platforms._browser", return_value=Browser(tab)):
+                    result = BrowserPublisher().open_auth(platform, profile_ref)
+                self.assertEqual(result["status"], "waiting_for_user")
+                self.assertEqual(tab.opened_url, PLATFORM_CONFIG[platform]["login_url"])
+
+    def test_auth_check_rejects_a_404_account_page(self):
+        class Element:
+            text = "404 page not found"
+
+        class Tab:
+            title = "404 - Not Found"
+
+            def __init__(self):
+                self.url = ""
+                self.opened_url = ""
+
+            def get(self, url):
+                self.url = url
+                self.opened_url = url
+
+            def ele(self, selector, timeout=1):
+                return Element() if selector == "tag:body" else None
+
+            def close(self):
+                return None
+
+        class Browser:
+            def __init__(self, tab):
+                self.tab = tab
+
+            def new_tab(self, **_kwargs):
+                return self.tab
+
+        from unittest.mock import patch
+
+        tab = Tab()
+        with patch("joto_arcs_runner.platforms._browser", return_value=Browser(tab)):
+            result = BrowserPublisher().check_auth("juejin", "account-route-juejin")
+        self.assertEqual(tab.opened_url, PLATFORM_CONFIG["juejin"]["account_url"])
+        self.assertFalse(result["authenticated"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["failureCode"], "platform_account_page_unavailable")
+
+    def test_csdn_identification_uses_public_profile_slug_when_nickname_is_delayed(self):
+        class Element:
+            def __init__(self, text="", attributes=None):
+                self.text = text
+                self.attributes = attributes or {}
+
+            def attr(self, name):
+                return self.attributes.get(name, "")
+
+        class Tab:
+            title = "内容管理-CSDN创作中心"
+
+            def __init__(self):
+                self.url = ""
+                self.background = False
+
+            def get(self, url):
+                self.url = url
+
+            def ele(self, selector, timeout=1):
+                if selector == "tag:body":
+                    return Element("内容管理 退出")
+                if "blog.csdn.net" in selector:
+                    return Element(attributes={"href": "https://blog.csdn.net/Kari11"})
+                return None
+
+            def close(self):
+                return None
+
+        class Browser:
+            def __init__(self, tab):
+                self.tab = tab
+
+            def new_tab(self, *, background=False):
+                self.tab.background = background
+                return self.tab
+
+        from unittest.mock import patch
+
+        tab = Tab()
+        with patch("joto_arcs_runner.platforms._browser", return_value=Browser(tab)):
+            result = BrowserPublisher().identify_account("csdn", "csdn-public-profile")
+        self.assertTrue(tab.background)
+        self.assertTrue(result["identified"])
+        self.assertEqual(result["account"]["publicDisplayName"], "Kari11")
+        self.assertEqual(result["account"]["publicProfileUrl"], "https://blog.csdn.net/Kari11")
+
+    def test_zhihu_identification_uses_header_profile_and_public_member_name(self):
+        class Element:
+            def __init__(self, text="", attributes=None):
+                self.text = text
+                self.attributes = attributes or {}
+
+            def attr(self, name):
+                return self.attributes.get(name, "")
+
+        class Tab:
+            title = "创作中心 - 知乎"
+
+            def __init__(self):
+                self.url = ""
+                self.background = False
+                self.member_slug = ""
+
+            def get(self, url):
+                self.url = url
+
+            def ele(self, selector, timeout=1):
+                if selector == "tag:body":
+                    return Element("创作中心")
+                if selector == "css:a.AppHeader-profileAvatar[href*='/people/']":
+                    return Element(attributes={"href": "https://www.zhihu.com/people/xhwwwww"})
+                if selector == "css:a.AppHeader-profileAvatar img":
+                    return Element(attributes={"src": "https://pic1.zhimg.com/header.jpg"})
+                return None
+
+            def run_js(self, _script, args, timeout=None):
+                self.member_slug = args["slug"]
+                return {"name": "洸予", "avatarUrl": "https://pic1.zhimg.com/public.jpg"}
+
+            def close(self):
+                return None
+
+        class Browser:
+            def __init__(self, tab):
+                self.tab = tab
+
+            def new_tab(self, *, background=False):
+                self.tab.background = background
+                return self.tab
+
+        from unittest.mock import patch
+
+        tab = Tab()
+        with patch("joto_arcs_runner.platforms._browser", return_value=Browser(tab)):
+            result = BrowserPublisher().identify_account("zhihu", "zhihu-header-profile")
+        self.assertTrue(tab.background)
+        self.assertEqual(tab.member_slug, "xhwwwww")
+        self.assertTrue(result["identified"])
+        self.assertEqual(result["account"]["publicDisplayName"], "洸予")
+        self.assertEqual(result["account"]["publicProfileUrl"], "https://www.zhihu.com/people/xhwwwww")
+        self.assertEqual(result["account"]["publicAvatarUrl"], "https://pic1.zhimg.com/public.jpg")
+
     def test_open_auth_only_opens_a_dedicated_login_window(self):
         with tempfile.TemporaryDirectory() as directory:
             publisher = FakePublisher()
@@ -694,7 +896,7 @@ class RunnerContractTest(unittest.TestCase):
                 return None
 
         class Browser:
-            def new_tab(self):
+            def new_tab(self, **_kwargs):
                 return FailingTab()
 
             def quit(self):

@@ -7,6 +7,7 @@ $probeScript = Join-Path $scriptDir "probe-channel-publish-companions.mjs"
 $bridgeScript = Join-Path $scriptDir "wechatsync-bridge.mjs"
 $runnerScript = Join-Path $projectRoot "arcs-runner\run.py"
 $runnerPython = Join-Path $projectRoot "arcs-runner\.venv\Scripts\python.exe"
+$projectEnvLauncher = Join-Path $scriptDir "run-with-project-env.mjs"
 $localDataRoot = [Environment]::GetFolderPath("LocalApplicationData")
 $stateRoot = Join-Path $localDataRoot "JotoPublishRunner"
 $logRoot = Join-Path $stateRoot "logs"
@@ -82,7 +83,7 @@ try {
     if (-not (Test-Path -LiteralPath $runnerPython -PathType Leaf)) {
       throw "Arcs Runner dependencies are not prepared. Run: uv sync --project arcs-runner"
     }
-    $started += Start-HiddenCompanion -Name "arcs-runner" -Executable $runnerPython -Arguments @("-X", "utf8", $runnerScript)
+    $started += Start-HiddenCompanion -Name "arcs-runner" -Executable $node -Arguments @($projectEnvLauncher, $runnerPython, "-X", "utf8", $runnerScript)
   } else {
     Write-Host "[channels] Arcs Runner is already ready; reusing it."
   }

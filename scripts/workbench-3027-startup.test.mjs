@@ -45,8 +45,9 @@ test("Windows logon task uses the no-build launcher and ignores duplicate starts
 });
 
 test("channel publishing companions are loopback-only, hidden, idempotent, and keep secrets out of output", async () => {
-  const [launcher, probe, common, development] = await Promise.all([
+  const [launcher, projectEnvLauncher, probe, common, development] = await Promise.all([
     readFile("scripts/ensure-channel-publish-companions.ps1", "utf8"),
+    readFile("scripts/run-with-project-env.mjs", "utf8"),
     readFile("scripts/probe-channel-publish-companions.mjs", "utf8"),
     readFile("scripts/workbench-3027-common.ps1", "utf8"),
     readFile("scripts/start-dev-3027.ps1", "utf8")
@@ -56,6 +57,10 @@ test("channel publishing companions are loopback-only, hidden, idempotent, and k
   assert.match(launcher, /-WindowStyle Hidden/);
   assert.match(launcher, /RedirectStandardOutput/);
   assert.match(launcher, /JotoPublishRunner/);
+  assert.match(launcher, /run-with-project-env\.mjs/);
+  assert.match(projectEnvLauncher, /loadProjectEnv\(\)/);
+  assert.match(projectEnvLauncher, /env: process\.env/);
+  assert.doesNotMatch(projectEnvLauncher, /console\.log\([^)]*(TOKEN|SECRET|PASSWORD)/i);
   assert.match(probe, /LOOPBACK_HOSTS/);
   assert.match(probe, /JOTO_PUBLISH_RUNNER_TOKEN/);
   assert.match(probe, /bridgeTokenConfigured: Boolean/);

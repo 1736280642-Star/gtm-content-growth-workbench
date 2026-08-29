@@ -16,6 +16,8 @@ from urllib.request import Request, urlopen
 PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
     "csdn": {
         "auth_url": "https://mp.csdn.net/mp_blog/manage/article",
+        "login_url": "https://passport.csdn.net/login",
+        "account_url": "https://mp.csdn.net/mp_blog/manage/article",
         "editor_url": "https://editor.csdn.net/md/?not_checkout=1",
         "editor_hosts": ["editor.csdn.net"],
         "manager_url": "https://mp.csdn.net/mp_blog/manage/article",
@@ -36,14 +38,21 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         "public_pattern": r"https://blog\.csdn\.net/[^/]+/article/details/\d+",
         "article_id_pattern": r"(?:article/details/|articleId=)(\d+)",
         "account_name": ["css:.user-name", "css:.user-info .name", "css:[class*='userName']"],
-        "account_link": ["xpath://a[contains(@href,'blog.csdn.net/')][1]", "css:a.user-name"],
-        "account_avatar": ["css:.user-avatar img", "css:img.avatar"],
+        "account_link": [
+            "css:a.csdn-profile-avatar[href*='blog.csdn.net/']",
+            "css:a.hasAvatar[href*='blog.csdn.net/']",
+            "xpath://a[contains(@href,'blog.csdn.net/') and string-length(substring-after(@href,'blog.csdn.net/')) > 0][1]",
+            "css:a.user-name",
+        ],
+        "account_avatar": ["css:a.csdn-profile-avatar img", "css:.user-avatar img", "css:img.avatar"],
     },
     "juejin": {
-        "auth_url": "https://juejin.cn/creator/content/article",
+        "auth_url": "https://juejin.cn/creator/home",
+        "login_url": "https://juejin.cn/login",
+        "account_url": "https://juejin.cn/creator/home",
         "editor_url": "https://juejin.cn/editor/drafts/new?v=2",
         "editor_hosts": ["juejin.cn"],
-        "manager_url": "https://juejin.cn/creator/content/article",
+        "manager_url": "https://juejin.cn/creator/content/article/essays?status=all",
         "login_markers": ["login", "passport"],
         "title": ["xpath://input[contains(@placeholder,'输入文章标题')]", "css:input.title-input"],
         "content": ["css:.bytemd-editor textarea", "css:.CodeMirror textarea", "xpath://textarea"],
@@ -64,10 +73,12 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         "article_id_pattern": r"(?:post/|drafts/)([A-Za-z0-9]+)",
         "account_name": ["css:.user-name", "css:[class*='user-name']", "css:[class*='username']"],
         "account_link": ["xpath://a[contains(@href,'/user/')][1]", "css:a.user-name"],
-        "account_avatar": ["css:img.avatar", "css:[class*='avatar'] img"],
+        "account_avatar": ["css:img.avatar", "css:img.avatar-img", "css:[class*='avatar'] img"],
     },
     "zhihu": {
         "auth_url": "https://www.zhihu.com/creator",
+        "login_url": "https://www.zhihu.com/signin",
+        "account_url": "https://www.zhihu.com/creator",
         "editor_url": "https://zhuanlan.zhihu.com/write",
         "editor_hosts": ["zhuanlan.zhihu.com"],
         "manager_url": "https://www.zhihu.com/creator/manage/creation/article",
@@ -83,12 +94,17 @@ PLATFORM_CONFIG: dict[str, dict[str, Any]] = {
         "public_pattern": r"https://zhuanlan\.zhihu\.com/p/\d+",
         "article_id_pattern": r"/p/(\d+)",
         "account_name": ["css:.AppHeader-profile .Popover", "css:[class*='Creator'] [class*='name']", "css:[class*='Profile'] [class*='name']"],
-        "account_link": ["xpath://a[contains(@href,'/people/')][1]", "css:.AppHeader-profile a"],
-        "account_avatar": ["css:.AppHeader-profile img", "css:img.Avatar"],
+        "account_link": [
+            "css:a.AppHeader-profileAvatar[href*='/people/']",
+            "xpath://a[contains(@class,'AppHeader-profileAvatar') and contains(@href,'/people/')][1]",
+            "css:.AppHeader-profile a[href*='/people/']",
+        ],
+        "account_avatar": ["css:a.AppHeader-profileAvatar img", "css:.AppHeader-profile img", "css:img.Avatar"],
     },
 }
 
 CHALLENGE_MARKERS = ["验证码", "安全验证", "手机号验证", "手机确认", "captcha", "security challenge", "滑块"]
+ERROR_PAGE_MARKERS = ["page not found", "页面不存在", "网页不存在", "页面未找到", "找不到页面"]
 PLATFORM_LOCKS: dict[str, threading.Lock] = {}
 PLATFORM_BROWSERS: dict[str, Any] = {}
 PLATFORM_AUTH_TABS: dict[str, Any] = {}
@@ -146,6 +162,8 @@ def profile_dir(platform: str, profile_ref: str | None = None) -> Path:
 
 def _config(platform: str) -> dict[str, Any]:
     config = dict(PLATFORM_CONFIG[platform])
+    config.setdefault("login_url", config["auth_url"])
+    config.setdefault("account_url", config["auth_url"])
     config.setdefault("selector_version", "2026-07-29-v1")
     config.setdefault("category_option", [])
     config.setdefault("category_selected", [])
@@ -157,6 +175,11 @@ def _config(platform: str) -> dict[str, Any]:
         value = json.loads(raw)
         if isinstance(value, dict):
             config.update(value)
+            if "auth_url" in value:
+                if "login_url" not in value:
+                    config["login_url"] = value["auth_url"]
+                if "account_url" not in value:
+                    config["account_url"] = value["auth_url"]
     return config
 
 
@@ -267,6 +290,87 @@ def _first_displayed(tab, selectors: list[str], timeout: float = 2):
 def _body_text(tab) -> str:
     body = tab.ele("tag:body", timeout=1)
     return str(body.text if body else "")
+
+
+def _element_public_text(element) -> str:
+    if not element:
+        return ""
+    text = str(getattr(element, "text", "") or "").strip()
+    if text:
+        return text
+    for attribute in ("aria-label", "title", "alt"):
+        try:
+            value = str(element.attr(attribute) or "").strip()
+        except (AttributeError, TypeError):
+            value = ""
+        if value:
+            return value
+    return ""
+
+
+def _page_failure_code(tab) -> str | None:
+    url = str(getattr(tab, "url", "") or "").strip().lower()
+    try:
+        title = str(getattr(tab, "title", "") or "").strip().lower()
+    except Exception:
+        title = ""
+    body_head = _body_text(tab).strip().lower()[:1200]
+    if url.startswith(("chrome-error://", "edge-error://")):
+        return "browser_error_page"
+    if re.search(r"(^|\D)404(\D|$)", title) or re.match(r"^\s*404(?:\s|$)", body_head):
+        return "http_404_page"
+    if any(marker in title or marker in body_head for marker in ERROR_PAGE_MARKERS):
+        return "platform_error_page"
+    return None
+
+
+def _public_account_snapshot(platform: str, config: dict[str, Any], tab) -> tuple[str, str, str]:
+    name_element = _first(tab, config.get("account_name") or [], timeout=2)
+    link_element = _first(tab, config.get("account_link") or [], timeout=1)
+    avatar_element = _first(tab, config.get("account_avatar") or [], timeout=1)
+    display_name = _element_public_text(name_element)
+    if display_name in {"-", "--", "加载中"}:
+        display_name = ""
+    profile_url = str(link_element.attr("href") or "").strip() if link_element else ""
+    profile_url = urljoin(config["account_url"], profile_url) if profile_url else ""
+    avatar_url = str(avatar_element.attr("src") or "").strip() if avatar_element else ""
+    avatar_url = urljoin(config["account_url"], avatar_url) if avatar_url else ""
+    if platform == "csdn" and not display_name and profile_url:
+        parsed = urlparse(profile_url)
+        public_slug = unquote(parsed.path.strip("/").split("/")[0])
+        if parsed.hostname == "blog.csdn.net" and re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", public_slug):
+            display_name = public_slug
+    if platform == "zhihu" and profile_url:
+        parsed = urlparse(profile_url)
+        path_parts = parsed.path.strip("/").split("/")
+        public_slug = unquote(path_parts[1]) if len(path_parts) == 2 and path_parts[0] == "people" else ""
+        if parsed.hostname in {"zhihu.com", "www.zhihu.com"} and re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", public_slug):
+            try:
+                member = tab.run_js(
+                    """async function(input) {
+                      const response = await fetch('/api/v4/members/' + encodeURIComponent(input.slug), {
+                        credentials: 'include'
+                      });
+                      if (!response.ok) return {};
+                      const value = await response.json().catch(() => ({}));
+                      return {
+                        name: String(value.name || '').slice(0, 160),
+                        avatarUrl: String(value.avatar_url || '').slice(0, 1000)
+                      };
+                    }""",
+                    {"slug": public_slug},
+                    timeout=10,
+                )
+            except Exception:
+                member = {}
+            if isinstance(member, dict):
+                display_name = str(member.get("name") or display_name or "").strip()
+                public_avatar = str(member.get("avatarUrl") or "").strip()
+                if public_avatar.startswith("https://"):
+                    avatar_url = public_avatar
+            if not display_name:
+                display_name = public_slug
+    return display_name, profile_url, avatar_url
 
 
 TOAST_SELECTORS = [
@@ -838,8 +942,17 @@ class BrowserPublisher:
                     PLATFORM_AUTH_TABS.pop(key, None)
             try:
                 tab = browser.new_tab()
-                tab.get(config["auth_url"])
+                tab.get(config["login_url"])
                 PLATFORM_AUTH_TABS[key] = tab
+                page_failure = _page_failure_code(tab)
+                if page_failure:
+                    return {
+                        "ok": False,
+                        "status": "failed",
+                        "failureCode": "platform_login_page_unavailable",
+                        "message": f"{platform} 官方登录页面当前不可用。",
+                        "nextAction": "检查平台官方登录地址后重新发起账号连接；不要在错误页继续等待。",
+                    }
                 if has_security_challenge(_body_text(tab)):
                     return {
                         "ok": True,
@@ -851,7 +964,7 @@ class BrowserPublisher:
                     "ok": True,
                     "status": "waiting_for_user",
                     "message": f"{platform} 专用登录窗口已打开。",
-                    "nextAction": "请完成登录后回到工作台点击“我已完成登录”。",
+                    "nextAction": "请完成登录后回到工作台；系统会自动识别并连接当前账号。",
                 }
             except Exception as error:
                 return {
@@ -865,14 +978,25 @@ class BrowserPublisher:
         config = _config(platform)
         with _profile_lock(platform, profile_ref):
             browser = _browser(platform, profile_ref)
-            tab = browser.new_tab()
+            tab = browser.new_tab(background=True)
             try:
-                tab.get(config["auth_url"])
+                tab.get(config["account_url"])
                 url = str(tab.url)
                 text = _body_text(tab)
+                page_failure = _page_failure_code(tab)
+                if page_failure:
+                    return {
+                        "authenticated": False,
+                        "status": "failed",
+                        "failureCode": "platform_account_page_unavailable",
+                        "message": f"{platform} 账号检查页面当前不可用。",
+                        "nextAction": "更新平台账号检查地址后重试；系统不会把错误页判定为已登录。",
+                    }
                 if has_security_challenge(text):
                     return {"authenticated": False, "status": "manual_takeover_required", "message": f"{platform} 出现安全挑战。", "nextAction": "请在专用浏览器 profile 中人工完成验证。"}
-                logged_in = not any(marker.lower() in url.lower() for marker in config["login_markers"])
+                on_login_page = any(marker.lower() in url.lower() for marker in config["login_markers"])
+                account_name, _, _ = _public_account_snapshot(platform, config, tab)
+                logged_in = not on_login_page and bool(account_name)
                 return {
                     "authenticated": logged_in,
                     "status": "ready" if logged_in else "auth_required",
@@ -887,7 +1011,7 @@ class BrowserPublisher:
                     "status": "failed",
                     "message": f"{platform} 浏览器登录态检查失败：{type(error).__name__}。",
                     "failureCode": "adapter_failed",
-                    "nextAction": "检查专用浏览器是否可启动、profile 是否被占用以及 auth_url 页面结构；修复后只重跑预检查。",
+                    "nextAction": "检查专用浏览器是否可启动、profile 是否被占用以及账号检查页结构；修复后只重跑预检查。",
                 }
             finally:
                 tab.close()
@@ -897,25 +1021,25 @@ class BrowserPublisher:
         config = _config(platform)
         with _profile_lock(platform, profile_ref):
             browser = _browser(platform, profile_ref)
-            tab = browser.new_tab()
+            tab = browser.new_tab(background=True)
             try:
-                tab.get(config["auth_url"])
+                tab.get(config["account_url"])
                 url = str(tab.url)
                 text = _body_text(tab)
+                page_failure = _page_failure_code(tab)
+                if page_failure:
+                    return {
+                        "identified": False,
+                        "status": "failed",
+                        "failureCode": "platform_account_page_unavailable",
+                        "message": f"{platform} 账号检查页面当前不可用。",
+                        "nextAction": "更新平台账号检查地址后重试；系统不会从错误页识别账号。",
+                    }
                 if has_security_challenge(text):
                     return {"identified": False, "status": "manual_takeover_required", "message": f"{platform} 出现安全挑战。"}
                 if any(marker.lower() in url.lower() for marker in config["login_markers"]):
                     return {"identified": False, "status": "auth_required", "message": f"{platform} 尚未登录。"}
-                name_element = _first(tab, config.get("account_name") or [], timeout=2)
-                link_element = _first(tab, config.get("account_link") or [], timeout=1)
-                avatar_element = _first(tab, config.get("account_avatar") or [], timeout=1)
-                display_name = str(getattr(name_element, "text", "") or "").strip()
-                if not display_name and name_element:
-                    display_name = str(name_element.attr("aria-label") or name_element.attr("title") or name_element.attr("alt") or "").strip()
-                profile_url = str(link_element.attr("href") or "").strip() if link_element else ""
-                profile_url = urljoin(config["auth_url"], profile_url) if profile_url else ""
-                avatar_url = str(avatar_element.attr("src") or "").strip() if avatar_element else ""
-                avatar_url = urljoin(config["auth_url"], avatar_url) if avatar_url else ""
+                display_name, profile_url, avatar_url = _public_account_snapshot(platform, config, tab)
                 if not display_name:
                     return {
                         "identified": False,
