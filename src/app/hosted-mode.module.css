@@ -1472,6 +1472,92 @@
 .deploymentDocsLink { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: #176b52; font-size: 8px; font-weight: 700; text-decoration: none; }
 .deploymentDocsLink:hover { text-decoration: underline; }
 
+/* The first-deployment guide is read while configuring external systems.
+   Keep its hero title unchanged, but raise all operational copy by roughly 50%. */
+.deploymentReadablePage .introAside strong { font-size: 22.5px; }
+.deploymentReadablePage .introAside span { font-size: 19.5px; }
+.deploymentReadablePage .introAside small { font-size: 16.5px; }
+.deploymentReadablePage .roleSwitcher button strong { font-size: 19.5px; }
+.deploymentReadablePage .roleSwitcher button small { font-size: 15px; }
+.deploymentReadablePage .deploymentWorkspace { grid-template-columns: minmax(0, 1fr) 340px; }
+.deploymentReadablePage .deploymentScopeIntro strong { font-size: 22.5px; }
+.deploymentReadablePage .deploymentScopeIntro span { font-size: 15px; }
+.deploymentReadablePage .deploymentScopeIntro > span { font-size: 13.5px; }
+.deploymentReadablePage .deploymentModeGrid button > strong { font-size: 16.5px; }
+.deploymentReadablePage .deploymentModeGrid button > small { font-size: 12px; }
+.deploymentReadablePage .deploymentFeatureGrid button > strong { font-size: 15px; }
+.deploymentReadablePage .deploymentFeatureGrid button > small,
+.deploymentReadablePage .deploymentFeatureGrid button > b { font-size: 12px; }
+.deploymentReadablePage .deploymentStepHeader > span { font-size: 16.5px; }
+.deploymentReadablePage .deploymentStepHeader p { font-size: 15px; }
+.deploymentReadablePage .deploymentStepHeader > b { font-size: 12px; }
+.deploymentReadablePage .deploymentLocationNotice strong,
+.deploymentReadablePage .deploymentSafetyGate strong { font-size: 16.5px; }
+.deploymentReadablePage .deploymentLocationNotice span,
+.deploymentReadablePage .deploymentSafetyGate span { font-size: 13.5px; }
+.deploymentReadablePage .deploymentFieldTop code { font-size: 13.5px; }
+.deploymentReadablePage .deploymentFieldTop span { font-size: 10.5px; }
+.deploymentReadablePage .deploymentFieldCard > strong { font-size: 16.5px; }
+.deploymentReadablePage .deploymentFieldCard > p { font-size: 13.5px; }
+.deploymentReadablePage .deploymentFieldCard dt,
+.deploymentReadablePage .deploymentFieldCard dd,
+.deploymentReadablePage .deploymentFieldCard pre,
+.deploymentReadablePage .deploymentFieldCard > a { font-size: 12px; }
+.deploymentReadablePage .deploymentTemplateHeader strong { font-size: 16.5px; }
+.deploymentReadablePage .deploymentTemplateHeader span,
+.deploymentReadablePage .deploymentTemplateHeader button { font-size: 12px; }
+.deploymentReadablePage .deploymentTemplateCode,
+.deploymentReadablePage .deploymentSkipped { font-size: 13.5px; }
+.deploymentReadablePage .deploymentOauthCallbacks strong { font-size: 15px; }
+.deploymentReadablePage .deploymentOauthCallbacks code { font-size: 12px; }
+.deploymentReadablePage .deploymentTopology strong { font-size: 15px; }
+.deploymentReadablePage .deploymentTopology span { font-size: 12px; }
+.deploymentReadablePage .deploymentAdvanced > summary strong { font-size: 15px; }
+.deploymentReadablePage .deploymentAdvanced > summary small { font-size: 12px; }
+.deploymentReadablePage .deploymentAdvanced p { font-size: 13.5px; }
+.deploymentReadablePage .deploymentAdvanced p code { font-size: 12px; }
+.deploymentReadablePage .captureInstallHeader strong { font-size: 18px; }
+.deploymentReadablePage .captureInstallHeader span { font-size: 13.5px; }
+.deploymentReadablePage .captureInstallHeader > b { font-size: 10.5px; }
+.deploymentReadablePage .captureInstallGuide li { font-size: 13.5px; }
+.deploymentReadablePage .captureInstallGuide li > strong { font-size: 15px; }
+.deploymentReadablePage .captureInstallGuide li code { font-size: 12px; }
+.deploymentReadablePage .captureInstallActions strong { font-size: 13.5px; }
+.deploymentReadablePage .captureInstallActions small,
+.deploymentReadablePage .captureInstallActions code { font-size: 10.5px; }
+.deploymentReadablePage .captureInstallGuide > p { font-size: 13.5px; }
+.deploymentReadablePage .deploymentCheckForm label > span,
+.deploymentReadablePage .deploymentCheckError { font-size: 13.5px; }
+.deploymentReadablePage .deploymentReadinessSummary > span { font-size: 19.5px; }
+.deploymentReadablePage .deploymentReadinessSummary strong { font-size: 16.5px; }
+.deploymentReadablePage .deploymentReadinessSummary div > span { font-size: 12px; }
+.deploymentReadablePage .deploymentReadinessGroups strong { font-size: 15px; }
+.deploymentReadablePage .deploymentReadinessGroups small,
+.deploymentReadablePage .deploymentReadinessGroups ul { font-size: 12px; }
+.deploymentReadablePage .deploymentHandoff strong { font-size: 16.5px; }
+.deploymentReadablePage .deploymentHandoff span { font-size: 13.5px; }
+.deploymentReadablePage .deploymentHandoff > small,
+.deploymentReadablePage .deploymentDocsLink { font-size: 12px; }
+.deploymentReadablePage .deploymentActionCard strong { font-size: 18px; }
+.deploymentReadablePage .deploymentActionCard span { font-size: 15px; }
+.deploymentReadablePage .deploymentPassport > p { font-size: 15px; }
+.deploymentReadablePage .deploymentPassport li > span { font-size: 13.5px; }
+.deploymentReadablePage .deploymentPassport li strong { font-size: 15px; }
+.deploymentReadablePage .deploymentPassport li small { font-size: 12px; }
+.deploymentReadablePage .embeddedConnectionEmpty strong,
+.deploymentReadablePage .embeddedConnectionError strong { font-size: 18px; }
+.deploymentReadablePage .embeddedConnectionEmpty span,
+.deploymentReadablePage .embeddedConnectionError span { font-size: 15px; }
+.deploymentReadablePage .deploymentCaptureAuth label > span { font-size: 15px; }
+.deploymentReadablePage .deploymentCaptureAuth input { font-size: 16px; }
+.deploymentReadablePage .deploymentCaptureTokenNote,
+.deploymentReadablePage .deploymentPairingResult span { font-size: 13.5px; }
+.deploymentReadablePage .deploymentCaptureStatus strong { font-size: 15px; }
+.deploymentReadablePage .deploymentCaptureStatus small { font-size: 12px; }
+.deploymentReadablePage .deploymentWorkspace :global(.ant-btn),
+.deploymentReadablePage .deploymentWorkspace :global(.ant-input),
+.deploymentReadablePage .deploymentWorkspace :global(.ant-input-password) { font-size: 16px; }
+
 @media (max-width: 980px) {
   .deploymentModeGrid, .deploymentFeatureGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .deploymentFieldGrid, .deploymentReadinessGroups { grid-template-columns: 1fr; }
