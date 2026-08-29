@@ -42,10 +42,10 @@ test("deployment center exposes six guided sections, official sources and saniti
 
   for (const heading of [
     "准备运行环境和数据库",
-    "连接 AI 与 GEO 服务",
-    "配置邮箱登录与安全链接",
+    "填写 AI 与 GEO 凭证",
+    "选择系统发件邮箱",
     "启动自动发布执行器",
-    "配置发布渠道与增强能力",
+    "填写渠道必需信息",
     "检查配置并完成交接"
   ]) assert.match(component, new RegExp(heading));
 
@@ -63,8 +63,17 @@ test("deployment center exposes six guided sections, official sources and saniti
   assert.match(component, /所有产品能力默认开启/);
   assert.match(component, /本地 Docker/);
   assert.match(component, /服务器部署/);
-  assert.match(component, /直接粘贴全部 AI Provider 配置/);
-  assert.match(component, /识别、加密并立即启用/);
+  assert.match(component, /复制 \.env\.local/);
+  assert.match(component, /EnvFieldForm/);
+  assert.match(component, /crypto\.getRandomValues/);
+  assert.match(component, /已自动处理 10 项安全值/);
+  assert.match(component, /首次部署无需再填写检查口令/);
+  assert.match(component, /预览会隐藏敏感值/);
+  assert.match(component, /还不能生成业务文件/);
+  assert.match(component, /businessTemplateBlocked/);
+  assert.match(component, /values\.GEO_RESEARCH_QWEN_API_KEY \|\| values\.DASHSCOPE_API_KEY/);
+  assert.match(component, /GEO_RESEARCH_DOUBAO_API_KEY/);
+  assert.doesNotMatch(component, /setSetupToken/);
   assert.doesNotMatch(component, /Vercel 托管|id: "vercel"|id: "private"/);
   for (const captureGuideText of [
     "chrome:\/\/extensions\/",

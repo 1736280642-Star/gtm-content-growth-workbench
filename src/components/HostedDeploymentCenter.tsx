@@ -47,17 +47,17 @@ interface HostedDeploymentCenterProps {
   onSwitchToUserTest: () => void;
 }
 
-type Requirement = "required" | "conditional" | "optional" | "default" | "generated";
+type Requirement = "required" | "optional";
 
-interface ConfigField {
+interface EnvInputField {
   name: string;
   title: string;
   description: string;
   requirement: Requirement;
-  location: string;
   source: string;
   sourceUrl?: string;
-  example?: string;
+  placeholder?: string;
+  secret?: boolean;
 }
 
 interface ReadinessResult {
@@ -75,20 +75,9 @@ interface ReadinessResult {
   sender?: SenderSetupStatus;
 }
 
-interface AiConfigSaveResult {
-  ready: boolean;
-  configured: string[];
-  missingRequired: string[];
-  ignored: string[];
-  updatedAt?: string;
-}
-
 const requirementLabels: Record<Requirement, string> = {
   required: "必填",
-  conditional: "条件必填",
-  optional: "可选",
-  default: "有默认值",
-  generated: "自行生成"
+  optional: "选填"
 };
 
 const deploymentModes: Array<{ id: HostedDeploymentMode; title: string; description: string; icon: ReactNode }> = [
@@ -105,61 +94,51 @@ const allDeploymentFeatures: HostedDeploymentFeature[] = [
   "capture"
 ];
 
-const runtimeDockerFields: ConfigField[] = [
-  { name: "MYSQL_PASSWORD", title: "业务数据库密码", description: "Workbench 连接 MySQL 使用。首次建库后不要随意更换。", requirement: "required", location: "项目根 .env", source: "由部署脚本自动生成，或使用密码管理器生成独立随机值。", example: "replace-with-a-long-random-password" },
-  { name: "MYSQL_ROOT_PASSWORD", title: "MySQL root 密码", description: "只用于数据库初始化和运维，必须与业务密码不同。", requirement: "required", location: "项目根 .env", source: "由部署脚本自动生成，或使用密码管理器生成另一条随机值。", example: "replace-with-a-different-random-password" },
-  { name: "MYSQL_DATABASE / MYSQL_USER", title: "数据库名与业务用户", description: "默认值已能直接运行，新部署通常不用修改。", requirement: "default", location: "项目根 .env", source: "复制仓库 .env.example 的默认值。", example: "MYSQL_DATABASE=joto_workbench\nMYSQL_USER=joto" },
-  { name: "OPENSEARCH_*", title: "OpenSearch 端口与内存", description: "正式 RAG 使用。只有端口冲突或资源不足时才调整。", requirement: "default", location: "项目根 .env", source: "复制仓库默认值，建议部署机至少分配 1 GB JVM 内存。", example: "OPENSEARCH_EXPOSE_PORT=9200\nOPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g" }
+const requiredAiFields: EnvInputField[] = [
+  { name: "DASHSCOPE_API_KEY", title: "阿里云百炼 API Key", description: "用于 Qwen 内容生成和默认 Embedding。", requirement: "required", secret: true, source: "阿里云百炼控制台创建 API Key。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key", placeholder: "粘贴百炼 API Key" },
+  { name: "GEO_RESEARCH_ZHIPU_API_KEY", title: "智谱 GEO API Key", description: "用于 GEO 联网搜索、证据整合和语义编排。", requirement: "required", secret: true, source: "智谱开放平台创建 API Key。", sourceUrl: "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys", placeholder: "粘贴智谱 API Key" }
 ];
 
-const runtimeServerFields: ConfigField[] = [
-  { name: "MYSQL_PASSWORD", title: "业务数据库密码", description: "Workbench 容器连接 MySQL 使用。首次建库后不要随意更换。", requirement: "required", location: "服务器项目根 .env", source: "使用密码管理器生成独立长随机值。" },
-  { name: "MYSQL_ROOT_PASSWORD", title: "MySQL root 密码", description: "只用于数据库初始化和运维，必须与业务密码不同。", requirement: "required", location: "服务器项目根 .env", source: "生成另一条独立长随机值。" },
-  { name: "HOSTED_PUBLIC_BASE_URL", title: "服务器 HTTPS 域名", description: "用于登录邮件、审核链接和扩展回传，必须能被用户访问。", requirement: "required", location: "服务器 .env.local", source: "使用已解析到服务器并完成 HTTPS 反向代理的域名。", example: "https://workbench.your-domain.example" },
-  { name: "MYSQL_DATABASE / MYSQL_USER / OPENSEARCH_*", title: "数据库与检索默认项", description: "沿用仓库默认值即可；只在端口冲突或容量规划需要时修改。", requirement: "default", location: "服务器项目根 .env", source: "复制仓库 .env.example 的已填默认值。" }
+const requiredChannelFields: EnvInputField[] = [
+  { name: "WECHAT_MP_APP_ID", title: "微信公众号 AppID", description: "用于识别公众号并调用官方草稿接口。", requirement: "required", source: "微信公众平台 → 设置与开发 → 基本配置。", sourceUrl: "https://mp.weixin.qq.com/", placeholder: "粘贴 AppID" },
+  { name: "WECHAT_MP_APP_SECRET", title: "微信公众号 AppSecret", description: "只进入最终 .env.local，不写入浏览器存储。", requirement: "required", secret: true, source: "微信公众平台同一页面生成或重置。", sourceUrl: "https://mp.weixin.qq.com/", placeholder: "粘贴 AppSecret" },
+  { name: "V5_CAPTURE_EXTENSION_ID", title: "共享采集扩展 ID", description: "只在部署人员维护的 24 小时 Windows 电脑获取。", requirement: "required", source: "加载扩展后，在 Chrome 扩展管理页复制 ID。", sourceUrl: "https://github.com/1736280642-Star/gtm-content-growth-workbench/archive/refs/heads/main.zip", placeholder: "粘贴扩展 ID" }
 ];
 
-const aiFields: ConfigField[] = [
-  { name: "DASHSCOPE_API_KEY", title: "阿里云百炼 API Key", description: "用于 Qwen 内容生成和默认 Embedding，是完整内容链路的核心凭证。", requirement: "required", location: "首页部署人员 → AI 配置入口", source: "阿里云百炼控制台 → API Key → 创建 API Key。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key", example: "DASHSCOPE_API_KEY=sk-your-dashscope-key" },
-  { name: "QWEN_MODEL", title: "内容生成模型", description: "默认 qwen-plus。只有经过成本和质量验收后才修改。", requirement: "default", location: "部署机 .env.local", source: "使用仓库推荐默认值。", example: "qwen-plus" },
-  { name: "QWEN_EMBEDDING_MODEL", title: "向量模型", description: "默认 text-embedding-v3，正式 RAG 使用。", requirement: "default", location: "部署机 .env.local", source: "使用仓库推荐默认值。", example: "text-embedding-v3" },
-  { name: "GEO_RESEARCH_ZHIPU_API_KEY", title: "智谱 GEO 编排 Key", description: "智谱负责 GEO 语义综合和编排，启用完整 GEO 调研时必填。", requirement: "required", location: "首页部署人员 → AI 配置入口", source: "智谱开放平台 → API Keys → 创建 API Key。", sourceUrl: "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys", example: "GEO_RESEARCH_ZHIPU_API_KEY=你的智谱Key" },
-  { name: "GEO_RESEARCH_DOUBAO_API_KEY / MODEL", title: "豆包事实搜索", description: "需要把事实搜索扩展到豆包时填写；不启用豆包可留空。", requirement: "optional", location: "部署机 .env.local", source: "火山方舟 → 系统管理 → API Key 管理；模型值填写已开通的推理接入点。", sourceUrl: "https://console.volcengine.com/ark" },
-  { name: "GEO_RESEARCH_QWEN_API_KEY", title: "独立 Qwen GEO Key", description: "留空时复用 DASHSCOPE_API_KEY，只有需要供应商隔离或独立计费时单独创建。", requirement: "optional", location: "部署机 .env.local", source: "与 DASHSCOPE_API_KEY 使用同一百炼入口。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key" }
+const serverPublicUrlField: EnvInputField = {
+  name: "HOSTED_PUBLIC_BASE_URL",
+  title: "用户访问的 HTTPS 地址",
+  description: "服务器部署必须填写可从公网访问的 HTTPS 域名；OAuth 回调和伴侣地址会自动复用。",
+  requirement: "required",
+  source: "使用已经解析到服务器并完成 HTTPS 反向代理的域名。",
+  placeholder: "https://workbench.your-domain.example"
+};
+
+const optionalProviderFields: EnvInputField[] = [
+  { name: "DEEPSEEK_API_KEY", title: "DeepSeek API Key", description: "只有需要切换或增加 DeepSeek 时填写。", requirement: "optional", secret: true, source: "DeepSeek 开放平台 API Keys。", sourceUrl: "https://platform.deepseek.com/api_keys", placeholder: "选填" },
+  { name: "DOUBAO_API_KEY", title: "豆包 / 火山方舟 API Key", description: "只有启用豆包生成或事实搜索时填写。", requirement: "optional", secret: true, source: "火山方舟 → 系统管理 → API Key 管理。", sourceUrl: "https://console.volcengine.com/ark", placeholder: "选填" },
+  { name: "DOUBAO_MODEL", title: "豆包推理接入点", description: "填写已开通的 Endpoint ID；未启用豆包则留空。", requirement: "optional", source: "火山方舟在线推理页面。", sourceUrl: "https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint", placeholder: "例如 ep-..." },
+  { name: "GEO_RESEARCH_QWEN_API_KEY", title: "独立 Qwen GEO Key", description: "留空时自动复用百炼 Key，仅供应商隔离或独立计费时填写。", requirement: "optional", secret: true, source: "与百炼 API Key 使用相同入口。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key", placeholder: "选填" }
 ];
 
-const emailFields: ConfigField[] = [
-  { name: "HOSTED_PUBLIC_BASE_URL", title: "用户访问地址", description: "生成登录、审核和偏好设置链接。本地验收用 3027，服务器使用 HTTPS 域名。", requirement: "required", location: "部署机 .env.local", source: "本地 Docker 填 http://127.0.0.1:3027；服务器填反向代理后的 HTTPS 域名。", example: "http://127.0.0.1:3027" },
-  { name: "HOSTED_REVIEW_LINK_SECRET", title: "安全链接签名密钥", description: "防止审核链接和设置链接被伪造。", requirement: "generated", location: "部署机 .env.local", source: "在部署机生成 32 字节随机值。", example: "node -e \"console.log(require('crypto').randomBytes(32).toString('base64url'))\"" },
-  { name: "HOSTED_EMAIL_SETUP_TOKEN", title: "部署级 Setup Token", description: "保护发件邮箱和部署检查入口，普通用户不需要知道。", requirement: "generated", location: "部署机 .env.local", source: "在部署机生成独立的 32 字节随机值。", example: "node -e \"console.log(require('crypto').randomBytes(32).toString('base64url'))\"" },
-  { name: "HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY", title: "邮箱凭证加密密钥", description: "加密保存 SMTP 或 OAuth 凭证。更换后必须重新连接邮箱。", requirement: "generated", location: "部署机 .env.local", source: "在部署机生成 32 字节随机值，输出为 64 位 hex。", example: "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"" },
-  { name: "HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL", title: "OAuth 返回地址", description: "只有 Gmail 或 Outlook OAuth 需要。填写域名，不带末尾斜杠。", requirement: "conditional", location: "部署机 .env.local", source: "本机验收使用 http://127.0.0.1:3027；服务器使用正式 HTTPS 域名。" },
-  { name: "HOSTED_EMAIL_GOOGLE_CLIENT_ID / SECRET", title: "Google OAuth 应用", description: "Gmail 发件授权需要。Secret 只能保存在服务端。", requirement: "conditional", location: "部署机 .env.local", source: "Google Auth Platform → Clients → Create client → Web application。", sourceUrl: "https://console.cloud.google.com/auth/clients" },
-  { name: "HOSTED_EMAIL_MICROSOFT_CLIENT_ID / SECRET", title: "Microsoft OAuth 应用", description: "Outlook 发件授权需要。复制 Secret Value，不是 Secret ID。", requirement: "conditional", location: "部署机 .env.local", source: "Microsoft Entra → App registrations → New registration。", sourceUrl: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" },
-  { name: "HOSTED_EMAIL_DELIVERY_URL / TOKEN", title: "统一邮件中继", description: "只有选择外部邮件服务而不使用个人发件邮箱时填写。", requirement: "optional", location: "部署机 .env.local", source: "由企业邮件中继或邮件 API 服务管理员提供。" }
+const optionalEmailFields: EnvInputField[] = [
+  { name: "HOSTED_EMAIL_GOOGLE_CLIENT_ID", title: "Google OAuth Client ID", description: "只有用 Gmail 作为系统发件邮箱时填写。", requirement: "optional", source: "Google Auth Platform → Clients。", sourceUrl: "https://console.cloud.google.com/auth/clients", placeholder: "选填" },
+  { name: "HOSTED_EMAIL_GOOGLE_CLIENT_SECRET", title: "Google OAuth Client Secret", description: "与上方 Client ID 成对使用。", requirement: "optional", secret: true, source: "同一个 Google OAuth Client 中获取。", sourceUrl: "https://console.cloud.google.com/auth/clients", placeholder: "选填" },
+  { name: "HOSTED_EMAIL_MICROSOFT_CLIENT_ID", title: "Microsoft OAuth Client ID", description: "只有用 Outlook 作为系统发件邮箱时填写。", requirement: "optional", source: "Microsoft Entra 应用注册。", sourceUrl: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade", placeholder: "选填" },
+  { name: "HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET", title: "Microsoft OAuth Client Secret", description: "填写 Secret Value，而不是 Secret ID。", requirement: "optional", secret: true, source: "Microsoft Entra 应用的 Certificates & secrets。", sourceUrl: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade", placeholder: "选填" },
+  { name: "HOSTED_EMAIL_DELIVERY_URL", title: "企业邮件中继 URL", description: "只有不用个人发件邮箱、改用企业邮件 API 时填写。", requirement: "optional", source: "由企业邮件服务管理员提供。", placeholder: "选填" },
+  { name: "HOSTED_EMAIL_DELIVERY_TOKEN", title: "企业邮件中继 Token", description: "与中继 URL 成对填写。", requirement: "optional", secret: true, source: "由同一企业邮件服务管理员提供。", placeholder: "选填" }
 ];
 
-const publishFields: ConfigField[] = [
-  { name: "PUBLISH_EXECUTOR_REGISTRATION_SECRET", title: "执行节点注册密钥", description: "浏览器执行节点首次注册时使用，不能发给普通用户。", requirement: "conditional", location: "部署机 .env.local", source: "部署人员自行生成 32 字节随机值。", example: "node -e \"console.log(require('crypto').randomBytes(32).toString('base64url'))\"" },
-  { name: "JOTO_PUBLISH_RUNNER_TOKEN", title: "发布 Runner Token", description: "Workbench 与发布 Runner 相互鉴权，双方填写完全相同的值。", requirement: "conditional", location: "部署机 .env.local 与 Runner", source: "部署人员自行生成另一条 32 字节随机值。" },
-  { name: "JOTO_PUBLISH_RUNNER_URL", title: "发布 Runner 地址", description: "Docker 内已有默认地址；只有 Runner 与 Workbench 分机部署时才需要修改。", requirement: "default", location: "部署机 .env.local", source: "同机部署使用仓库默认值。", example: "http://host.docker.internal:9530" },
-  { name: "WECHATSYNC_BRIDGE_TOKEN", title: "旧版 Bridge Token", description: "只在启用本机 Wechatsync Bridge 时填写，必须与 Bridge 进程一致。", requirement: "conditional", location: ".env.local 与 Bridge 本机", source: "部署人员自行生成，不从第三方平台获取。" },
-  { name: "DIRECT_PUBLISH_ENABLED / DIRECT_PUBLISH_MOCK", title: "真实发布安全开关", description: "首次部署保持关闭和模拟。模拟验收通过后才允许开启真实写入。", requirement: "default", location: "部署机 .env.local", source: "使用安全默认值。", example: "DIRECT_PUBLISH_ENABLED=false\nDIRECT_PUBLISH_MOCK=true" }
-];
-
-const channelFields: ConfigField[] = [
-  { name: "WECHAT_MP_APP_ID", title: "微信公众号 AppID", description: "选择微信公众号发布时必填，用于识别公众号和调用官方接口。", requirement: "conditional", location: "部署机 .env.local", source: "微信公众平台 → 设置与开发 → 基本配置。", sourceUrl: "https://mp.weixin.qq.com/" },
-  { name: "WECHAT_MP_APP_SECRET", title: "微信公众号 AppSecret", description: "只保存在服务端。重置后旧值会立即失效。", requirement: "conditional", location: "部署机 .env.local", source: "微信公众平台同一基本配置页面生成或重置。", sourceUrl: "https://mp.weixin.qq.com/" },
-  { name: "WECHAT_MP_THUMB_MEDIA_ID / IMAGE_PATH", title: "公众号封面来源", description: "自动创建草稿时二选一。已有永久素材填 media_id，本机部署也可填图片路径。", requirement: "conditional", location: ".env.local", source: "从公众号素材库获取 media_id，或使用部署机上的合规封面文件。" },
-  { name: "知乎 / CSDN / 掘金账号", title: "浏览器渠道账号", description: "普通用户只在平台官方页面登录，工作台不要求在前端填写密码或 Cookie。", requirement: "conditional", location: "普通用户第 5 步", source: "在工作台点击连接后跳转到平台官方登录页。" }
-];
-
-const optionalFields: ConfigField[] = [
-  { name: "CONTENT_METRICS_RUNNER_TOKEN", title: "指标 Runner Token", description: "启用自动指标回收时必填，Workbench 与指标 Runner 使用同一随机值。", requirement: "conditional", location: "部署机 .env.local", source: "部署人员自行生成 32 字节随机值。" },
-  { name: "HOSTED_CAPTURE_SETUP_TOKEN", title: "AI 共享采集部署口令", description: "保护部署人员的采集服务器控制台。", requirement: "conditional", location: "部署机 .env.local", source: "部署人员自行生成，不能发给普通用户。" },
-  { name: "V5_CAPTURE_EXTENSION_ID / V5_WORKBENCH_BASE_URL", title: "采集伴侣绑定", description: "只填写在常开 Windows 电脑，不能放在普通用户浏览器。", requirement: "conditional", location: "共享 Windows 电脑", source: "扩展 ID 来自 Chrome 扩展程序页；Base URL 使用正式工作台域名。" },
-  { name: "WECHAT_VISUAL_IMAGE_*", title: "AI 配图服务", description: "需要自动生成微信公众号封面候选时才配置。", requirement: "optional", location: "部署机 .env.local", source: "从所选 OpenAI-compatible Images API 服务商获取 Base URL、API Key 和模型名。" },
-  { name: "SITE_AUDIT_RENDERER_URL / TOKEN", title: "网站渲染服务", description: "只有需要审计大量客户端渲染页面时填写，留空会安全地标记为未验证。", requirement: "optional", location: "部署机 .env.local", source: "由自建或企业浏览器渲染服务提供。" }
+const optionalEnhancementFields: EnvInputField[] = [
+  { name: "WECHAT_MP_THUMB_MEDIA_ID", title: "公众号永久封面 media_id", description: "与本地图片路径二选一；已有素材库封面时填写。", requirement: "optional", source: "微信公众号素材库。", sourceUrl: "https://mp.weixin.qq.com/", placeholder: "选填，二选一" },
+  { name: "WECHAT_MP_THUMB_IMAGE_PATH", title: "公众号本地封面路径", description: "与 media_id 二选一；填写部署机上可读取的图片路径。", requirement: "optional", source: "由部署人员准备合规封面文件，无需外部密钥。", placeholder: "选填，二选一" },
+  { name: "XCRAWL_API_KEY", title: "XCrawl 抓取 API Key", description: "需要增强官网和博客抓取时填写。", requirement: "optional", secret: true, source: "XCrawl 服务控制台。", sourceUrl: "https://www.xcrawl.com/", placeholder: "选填" },
+  { name: "WECHAT_VISUAL_IMAGE_BASE_URL", title: "AI 配图 Base URL", description: "只有启用 OpenAI-compatible 封面生成时填写。", requirement: "optional", source: "由所选图片模型服务商提供。", placeholder: "选填" },
+  { name: "WECHAT_VISUAL_IMAGE_API_KEY", title: "AI 配图 API Key", description: "与配图 Base URL 和模型成组填写。", requirement: "optional", secret: true, source: "由所选图片模型服务商提供。", placeholder: "选填" },
+  { name: "WECHAT_VISUAL_IMAGE_MODEL", title: "AI 配图模型", description: "填写服务商支持的图片模型名。", requirement: "optional", source: "由所选图片模型服务商提供。", placeholder: "选填" },
+  { name: "SITE_AUDIT_RENDERER_URL", title: "网站 Renderer URL", description: "只有需要审计大量客户端渲染页面时填写。", requirement: "optional", source: "由自建或企业浏览器渲染服务提供。", placeholder: "选填" },
+  { name: "SITE_AUDIT_RENDERER_TOKEN", title: "网站 Renderer Token", description: "与 Renderer URL 成对填写。", requirement: "optional", secret: true, source: "由同一渲染服务提供。", placeholder: "选填" }
 ];
 
 function StepHeader({ number, title, description, state = "active" }: { number: number; title: string; description: string; state?: "active" | "done" | "optional" }) {
@@ -172,94 +151,165 @@ function StepHeader({ number, title, description, state = "active" }: { number: 
   );
 }
 
-function FieldGrid({ fields }: { fields: ConfigField[] }) {
+function EnvFieldForm({ fields, values, onChange }: { fields: EnvInputField[]; values: Record<string, string>; onChange: (name: string, value: string) => void }) {
   return (
-    <div className={styles.deploymentFieldGrid}>
+    <div className={styles.deploymentEnvFieldList}>
       {fields.map((field) => (
-        <article className={styles.deploymentFieldCard} key={field.name}>
-          <div className={styles.deploymentFieldTop}><code>{field.name}</code><span className={styles[`requirement-${field.requirement}`]}>{requirementLabels[field.requirement]}</span></div>
-          <strong>{field.title}</strong>
-          <p>{field.description}</p>
-          <dl>
-            <div><dt>填写位置</dt><dd>{field.location}</dd></div>
-            <div><dt>值从哪里来</dt><dd>{field.source}</dd></div>
-          </dl>
-          {field.example ? <pre>{field.example}</pre> : null}
-          {field.sourceUrl ? <a href={field.sourceUrl} target="_blank" rel="noreferrer">打开官方获取入口 <ArrowRightOutlined /></a> : null}
-        </article>
+        <label className={styles.deploymentEnvField} key={field.name}>
+          <span className={styles.deploymentEnvFieldHeading}><span><strong>{field.title}</strong><code>{field.name}</code></span><b className={styles[`requirement-${field.requirement}`]}>{requirementLabels[field.requirement]}</b></span>
+          <span className={styles.deploymentEnvFieldInput}>{field.secret
+            ? <Input.Password value={values[field.name] || ""} onChange={(event) => onChange(field.name, event.target.value)} placeholder={field.placeholder} autoComplete="off" required={field.requirement === "required"} />
+            : <Input value={values[field.name] || ""} onChange={(event) => onChange(field.name, event.target.value)} placeholder={field.placeholder} autoComplete="off" required={field.requirement === "required"} />}</span>
+          <span className={styles.deploymentEnvFieldHelp}><span>{field.description}</span><small>{field.source}</small>{field.sourceUrl ? <a href={field.sourceUrl} target="_blank" rel="noreferrer">打开获取页面 <ArrowRightOutlined /></a> : null}</span>
+        </label>
       ))}
     </div>
   );
 }
 
-function buildTemplates(mode: HostedDeploymentMode, features: HostedDeploymentFeature[]) {
-  const selected = new Set(features);
-  const baseUrl = mode === "server" ? "https://workbench.your-domain.example" : "http://127.0.0.1:3027";
+type GeneratedSecrets = Record<
+  | "MYSQL_PASSWORD"
+  | "MYSQL_ROOT_PASSWORD"
+  | "HOSTED_REVIEW_LINK_SECRET"
+  | "HOSTED_EMAIL_SETUP_TOKEN"
+  | "HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY"
+  | "PUBLISH_EXECUTOR_REGISTRATION_SECRET"
+  | "JOTO_PUBLISH_RUNNER_TOKEN"
+  | "WECHATSYNC_BRIDGE_TOKEN"
+  | "CONTENT_METRICS_RUNNER_TOKEN"
+  | "HOSTED_CAPTURE_SETUP_TOKEN",
+  string
+>;
+
+const secretFieldNames = new Set([
+  ...requiredAiFields.filter((field) => field.secret).map((field) => field.name),
+  ...requiredChannelFields.filter((field) => field.secret).map((field) => field.name),
+  ...optionalProviderFields.filter((field) => field.secret).map((field) => field.name),
+  ...optionalEmailFields.filter((field) => field.secret).map((field) => field.name),
+  ...optionalEnhancementFields.filter((field) => field.secret).map((field) => field.name),
+  "MYSQL_PASSWORD",
+  "MYSQL_ROOT_PASSWORD",
+  "HOSTED_REVIEW_LINK_SECRET",
+  "HOSTED_EMAIL_SETUP_TOKEN",
+  "HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY",
+  "PUBLISH_EXECUTOR_REGISTRATION_SECRET",
+  "JOTO_PUBLISH_RUNNER_TOKEN",
+  "WECHATSYNC_BRIDGE_TOKEN",
+  "CONTENT_METRICS_RUNNER_TOKEN",
+  "HOSTED_CAPTURE_SETUP_TOKEN"
+]);
+
+function randomHex(bytes = 32) {
+  const buffer = new Uint8Array(bytes);
+  crypto.getRandomValues(buffer);
+  return Array.from(buffer, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function generateSecrets(): GeneratedSecrets {
+  return {
+    MYSQL_PASSWORD: randomHex(),
+    MYSQL_ROOT_PASSWORD: randomHex(),
+    HOSTED_REVIEW_LINK_SECRET: randomHex(),
+    HOSTED_EMAIL_SETUP_TOKEN: randomHex(),
+    HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY: randomHex(),
+    PUBLISH_EXECUTOR_REGISTRATION_SECRET: randomHex(),
+    JOTO_PUBLISH_RUNNER_TOKEN: randomHex(),
+    WECHATSYNC_BRIDGE_TOKEN: randomHex(),
+    CONTENT_METRICS_RUNNER_TOKEN: randomHex(),
+    HOSTED_CAPTURE_SETUP_TOKEN: randomHex()
+  };
+}
+
+function envValue(value: string | undefined) {
+  return String(value || "").replace(/[\r\n]/g, "").trim();
+}
+
+function maskTemplate(content: string) {
+  return content.split("\n").map((line) => {
+    const separator = line.indexOf("=");
+    if (separator < 1 || !secretFieldNames.has(line.slice(0, separator))) return line;
+    return `${line.slice(0, separator)}=••••••••`;
+  }).join("\n");
+}
+
+function buildTemplates(mode: HostedDeploymentMode, values: Record<string, string>, generated: GeneratedSecrets) {
+  const baseUrl = mode === "server" ? envValue(values.HOSTED_PUBLIC_BASE_URL) : "http://127.0.0.1:3027";
   const infrastructure = [
     `# ${mode === "server" ? "服务器" : "本地"} Docker：保存为项目根 .env，不要提交 Git`,
-    "# 【默认】下列值已填好，无端口冲突时不要修改",
+    "# 默认值与两条不同的数据库密码均已自动生成",
     "DEPLOYMENT_PROFILE=full",
     "WORKBENCH_PORT=3027",
     "MYSQL_DATABASE=joto_workbench",
     "MYSQL_USER=joto",
     "OPENSEARCH_EXPOSE_PORT=9200",
     "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g",
-    "",
-    "# 【必填】替换为两条不同的长随机密码",
-    "MYSQL_PASSWORD=",
-    "MYSQL_ROOT_PASSWORD="
+    `MYSQL_PASSWORD=${generated.MYSQL_PASSWORD}`,
+    `MYSQL_ROOT_PASSWORD=${generated.MYSQL_ROOT_PASSWORD}`
   ];
   const business = [
     `# ${mode === "server" ? "服务器" : "本地"} Docker：保存为 .env.local，不要提交 Git`,
-    "# 【默认】本地地址已填好；服务器模板已换成 HTTPS 域名占位符",
+    "# 默认值、32 字节密钥和同端配对 Token 均由页面自动生成",
+    `WORKBENCH_BASE_URL=${baseUrl}`,
     `HOSTED_PUBLIC_BASE_URL=${baseUrl}`,
     `HOSTED_EMAIL_OAUTH_REDIRECT_BASE_URL=${baseUrl}`,
     `V5_WORKBENCH_BASE_URL=${baseUrl}`,
+    "WORKBENCH_STORAGE=mysql",
     "QWEN_MODEL=qwen-plus",
     "QWEN_EMBEDDING_MODEL=text-embedding-v3",
+    "QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "QWEN_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
     "RAG_EMBEDDING_PROVIDER=qwen_embedding",
     "DIRECT_PUBLISH_ENABLED=false",
     "DIRECT_PUBLISH_MOCK=true",
-    "",
-    "# 【必填】密钥和 Token 保持空值，由部署人员填写真实值"
-  ];
-  if (selected.has("geo")) business.push(
-    "DASHSCOPE_API_KEY=",
-    "GEO_RESEARCH_ZHIPU_API_KEY=",
-    "GEO_RESEARCH_ZHIPU_MODEL=glm-4-air"
-  );
-  if (selected.has("email")) business.push(
-    "HOSTED_REVIEW_LINK_SECRET=",
-    "HOSTED_EMAIL_SETUP_TOKEN=",
-    "HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY="
-  );
-  if (selected.has("wechat")) business.push(
-    "WECHAT_MP_APP_ID=",
-    "WECHAT_MP_APP_SECRET="
-  );
-  if (selected.has("browser_publish")) business.push(
-    "PUBLISH_EXECUTOR_REGISTRATION_SECRET=",
-    "JOTO_PUBLISH_RUNNER_TOKEN=",
+    "PUBLISH_DEFAULT_EXECUTOR_TYPE=cloud_browser",
+    "PUBLISH_EXECUTOR_API_BASE_URL=http://workbench-web:3027",
     "JOTO_PUBLISH_RUNNER_URL=http://host.docker.internal:9530",
-    "WECHATSYNC_BRIDGE_TOKEN="
-  );
-  if (selected.has("metrics")) business.push("CONTENT_METRICS_RUNNER_TOKEN=");
-  if (selected.has("capture")) business.push(
-    "HOSTED_CAPTURE_SETUP_TOKEN=",
-    "V5_CAPTURE_EXTENSION_ID=",
+    "V5_CAPTURE_RUNNER_URL=http://host.docker.internal:17321",
     "",
-    "# 【选填】只填实际启用的供应商或增强服务",
-    "GEO_RESEARCH_DOUBAO_API_KEY=",
-    "HOSTED_EMAIL_GOOGLE_CLIENT_ID=",
-    "HOSTED_EMAIL_GOOGLE_CLIENT_SECRET=",
-    "HOSTED_EMAIL_MICROSOFT_CLIENT_ID=",
-    "HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET=",
-    "SITE_AUDIT_RENDERER_URL=",
-    "SITE_AUDIT_RENDERER_TOKEN="
-  );
+    "# 必填：只需从对应服务商取得",
+    `DASHSCOPE_API_KEY=${envValue(values.DASHSCOPE_API_KEY)}`,
+    `GEO_RESEARCH_ZHIPU_API_KEY=${envValue(values.GEO_RESEARCH_ZHIPU_API_KEY)}`,
+    "GEO_RESEARCH_ZHIPU_MODEL=glm-4-air",
+    `WECHAT_MP_APP_ID=${envValue(values.WECHAT_MP_APP_ID)}`,
+    `WECHAT_MP_APP_SECRET=${envValue(values.WECHAT_MP_APP_SECRET)}`,
+    `V5_CAPTURE_EXTENSION_ID=${envValue(values.V5_CAPTURE_EXTENSION_ID)}`,
+    "",
+    "# 系统自动生成：无需人工创建或配对",
+    `HOSTED_REVIEW_LINK_SECRET=${generated.HOSTED_REVIEW_LINK_SECRET}`,
+    `HOSTED_EMAIL_SETUP_TOKEN=${generated.HOSTED_EMAIL_SETUP_TOKEN}`,
+    `HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY=${generated.HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY}`,
+    `PUBLISH_EXECUTOR_REGISTRATION_SECRET=${generated.PUBLISH_EXECUTOR_REGISTRATION_SECRET}`,
+    `JOTO_PUBLISH_RUNNER_TOKEN=${generated.JOTO_PUBLISH_RUNNER_TOKEN}`,
+    `WECHATSYNC_BRIDGE_TOKEN=${generated.WECHATSYNC_BRIDGE_TOKEN}`,
+    `CONTENT_METRICS_RUNNER_TOKEN=${generated.CONTENT_METRICS_RUNNER_TOKEN}`,
+    `HOSTED_CAPTURE_SETUP_TOKEN=${generated.HOSTED_CAPTURE_SETUP_TOKEN}`,
+    "",
+    "# 选填：不启用对应能力时保持空值",
+    `DEEPSEEK_API_KEY=${envValue(values.DEEPSEEK_API_KEY)}`,
+    `DEEPSEEK_MODEL=${values.DEEPSEEK_API_KEY ? "deepseek-chat" : ""}`,
+    `DOUBAO_API_KEY=${envValue(values.DOUBAO_API_KEY)}`,
+    `DOUBAO_MODEL=${envValue(values.DOUBAO_MODEL)}`,
+    `GEO_RESEARCH_QWEN_API_KEY=${envValue(values.GEO_RESEARCH_QWEN_API_KEY || values.DASHSCOPE_API_KEY)}`,
+    `GEO_RESEARCH_DOUBAO_API_KEY=${envValue(values.DOUBAO_API_KEY)}`,
+    `GEO_RESEARCH_DOUBAO_MODEL=${envValue(values.DOUBAO_MODEL)}`,
+    `HOSTED_EMAIL_GOOGLE_CLIENT_ID=${envValue(values.HOSTED_EMAIL_GOOGLE_CLIENT_ID)}`,
+    `HOSTED_EMAIL_GOOGLE_CLIENT_SECRET=${envValue(values.HOSTED_EMAIL_GOOGLE_CLIENT_SECRET)}`,
+    `HOSTED_EMAIL_MICROSOFT_CLIENT_ID=${envValue(values.HOSTED_EMAIL_MICROSOFT_CLIENT_ID)}`,
+    `HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET=${envValue(values.HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET)}`,
+    `HOSTED_EMAIL_DELIVERY_URL=${envValue(values.HOSTED_EMAIL_DELIVERY_URL)}`,
+    `HOSTED_EMAIL_DELIVERY_TOKEN=${envValue(values.HOSTED_EMAIL_DELIVERY_TOKEN)}`,
+    `WECHAT_MP_THUMB_MEDIA_ID=${envValue(values.WECHAT_MP_THUMB_MEDIA_ID)}`,
+    `WECHAT_MP_THUMB_IMAGE_PATH=${envValue(values.WECHAT_MP_THUMB_IMAGE_PATH)}`,
+    `XCRAWL_API_KEY=${envValue(values.XCRAWL_API_KEY)}`,
+    `WECHAT_VISUAL_IMAGE_BASE_URL=${envValue(values.WECHAT_VISUAL_IMAGE_BASE_URL)}`,
+    `WECHAT_VISUAL_IMAGE_API_KEY=${envValue(values.WECHAT_VISUAL_IMAGE_API_KEY)}`,
+    `WECHAT_VISUAL_IMAGE_MODEL=${envValue(values.WECHAT_VISUAL_IMAGE_MODEL)}`,
+    `SITE_AUDIT_RENDERER_URL=${envValue(values.SITE_AUDIT_RENDERER_URL)}`,
+    `SITE_AUDIT_RENDERER_TOKEN=${envValue(values.SITE_AUDIT_RENDERER_TOKEN)}`
+  ];
   return [
-    { id: "infrastructure", label: "Docker 基础 .env", filename: ".env.example", content: infrastructure.join("\n") + "\n" },
-    { id: "business", label: "业务 .env.local", filename: ".env.local.example", content: business.join("\n") + "\n" }
+    { id: "business", label: "复制 .env.local", filename: ".env.local", content: business.join("\n") + "\n" },
+    { id: "infrastructure", label: "复制项目根 .env", filename: ".env", content: infrastructure.join("\n") + "\n" }
   ];
 }
 
@@ -272,26 +322,45 @@ function readApiMessage(payload: unknown, fallback: string) {
 export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onReloadSenderStatus, onSwitchToUserTest }: HostedDeploymentCenterProps) {
   const [mode, setMode] = useState<HostedDeploymentMode>("docker");
   const features = allDeploymentFeatures;
-  const templates = useMemo(() => buildTemplates(mode, allDeploymentFeatures), [mode]);
-  const [templateId, setTemplateId] = useState("infrastructure");
+  const [envValues, setEnvValues] = useState<Record<string, string>>({});
+  const [generatedSecrets, setGeneratedSecrets] = useState<GeneratedSecrets>(() => generateSecrets());
+  const templates = useMemo(() => buildTemplates(mode, envValues, generatedSecrets), [mode, envValues, generatedSecrets]);
+  const [templateId, setTemplateId] = useState("business");
   const activeTemplate = templates.find((template) => template.id === templateId) || templates[0];
   const [copied, setCopied] = useState(false);
-  const [setupToken, setSetupToken] = useState("");
-  const [aiConfigText, setAiConfigText] = useState("");
-  const [savingAiConfig, setSavingAiConfig] = useState(false);
-  const [aiConfigError, setAiConfigError] = useState<string>();
-  const [aiConfigResult, setAiConfigResult] = useState<AiConfigSaveResult>();
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string>();
   const [readiness, setReadiness] = useState<ReadinessResult>();
+  const [readinessTokenOverride, setReadinessTokenOverride] = useState("");
+  const setupToken = generatedSecrets.HOSTED_EMAIL_SETUP_TOKEN;
+  const readinessToken = readinessTokenOverride.trim() || setupToken;
+  const requiredFields = useMemo(
+    () => [...(mode === "server" ? [serverPublicUrlField] : []), ...requiredAiFields, ...requiredChannelFields],
+    [mode]
+  );
+  const missingRequiredFields = requiredFields.filter((field) => !envValue(envValues[field.name]));
+  const businessTemplateBlocked = activeTemplate.id === "business" && missingRequiredFields.length > 0;
+
+  function updateEnvValue(name: string, value: string) {
+    setEnvValues((current) => ({ ...current, [name]: value }));
+    setReadiness(undefined);
+  }
+
+  function regenerateGeneratedSecrets() {
+    setGeneratedSecrets(generateSecrets());
+    setReadiness(undefined);
+    setCheckError(undefined);
+  }
 
   async function copyTemplate() {
+    if (businessTemplateBlocked) return;
     await navigator.clipboard.writeText(activeTemplate.content);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   }
 
   function downloadTemplate() {
+    if (businessTemplateBlocked) return;
     const blob = new Blob([activeTemplate.content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -309,7 +378,7 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
       const response = await fetch("/api/v5/hosted/deployment-readiness", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode, features, setupToken })
+        body: JSON.stringify({ mode, features, setupToken: readinessToken })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(readApiMessage(payload, "部署检查失败。"));
@@ -321,29 +390,6 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
     }
   }
 
-  async function saveAiConfig() {
-    setSavingAiConfig(true);
-    setAiConfigError(undefined);
-    setAiConfigResult(undefined);
-    try {
-      const response = await fetch("/api/v5/hosted/deployment-ai-config", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ setupToken, configText: aiConfigText })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(readApiMessage(payload, "AI Provider 配置保存失败。"));
-      setAiConfigResult(payload as AiConfigSaveResult);
-      setAiConfigText("");
-      setReadiness(undefined);
-    } catch (error) {
-      setAiConfigError(error instanceof Error ? error.message : "AI Provider 配置保存失败。请检查服务端日志。");
-    } finally {
-      setSavingAiConfig(false);
-    }
-  }
-
-  const runtimeFields = mode === "server" ? runtimeServerFields : runtimeDockerFields;
   return (
     <div className={styles.deploymentWorkspace}>
       <main className={styles.deploymentMain}>
@@ -359,43 +405,37 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
 
         <section className={styles.deploymentSection} id="deployment-runtime">
           <StepHeader number={1} title="准备运行环境和数据库" description="先把基础设施跑通，再添加业务密钥。Docker 的 .env 与业务 .env.local 不是同一个文件。" />
-          <div className={styles.deploymentLocationNotice}><DatabaseOutlined /><div><strong>Docker 会分层读取两个配置文件</strong><span>{mode === "server" ? "服务器项目根 .env 管 MySQL、端口和镜像；.env.local 管业务密钥和 HTTPS 域名。修改后重建 Web 容器。" : "项目根 .env 管 MySQL、端口和镜像；.env.local 管 AI、邮箱、GEO 和发布密钥。启动脚本会把允许的业务变量安全传入容器。"}</span></div></div>
-          <FieldGrid fields={runtimeFields} />
+          <div className={styles.deploymentLocationNotice}><DatabaseOutlined /><div><strong>数据库密码和所有内部安全密钥已经自动生成</strong><span>两条 MySQL 密码彼此不同；邮箱、审核、发布、指标和共享采集 Token 均为独立 32 字节随机值。默认端口、数据库名和模型参数直接进入复制结果，不再要求你逐项确认。</span></div></div>
+          {mode === "server" ? <EnvFieldForm fields={[serverPublicUrlField]} values={envValues} onChange={updateEnvValue} /> : null}
+          <div className={styles.deploymentGeneratedSummary}><SafetyCertificateOutlined /><div><strong>已自动处理 10 项安全值</strong><span>无需运行命令，也无需人工维护相同配对值。只有在尚未使用这份配置时才能重新生成。</span></div><Button icon={<ReloadOutlined />} onClick={regenerateGeneratedSecrets}>重新生成全部随机值</Button></div>
           <div className={styles.deploymentTemplatePanel}>
             <div className={styles.deploymentTemplateHeader}>
-              <div><strong>按当前部署方式生成的全能力脱敏模板</strong><span>模板只有占位符。请在部署环境中替换，不要把真实值上传 GitHub。</span></div>
+              <div><strong>实时生成的可部署配置</strong><span>默认项和自动密钥已经写入；预览会隐藏敏感值，复制或下载的文件包含真实值。</span></div>
               <div>{templates.map((template) => <button type="button" key={template.id} className={template.id === activeTemplate.id ? styles.deploymentTemplateTabActive : ""} onClick={() => setTemplateId(template.id)}>{template.label}</button>)}</div>
             </div>
-            <pre className={styles.deploymentTemplateCode}>{activeTemplate.content}</pre>
-            <div className={styles.deploymentTemplateActions}><Button icon={copied ? <CheckOutlined /> : <CopyOutlined />} onClick={copyTemplate}>{copied ? "已复制" : "复制当前模板"}</Button><Button icon={<DownloadOutlined />} onClick={downloadTemplate}>下载 {activeTemplate.filename}</Button></div>
+            {businessTemplateBlocked ? <div className={styles.deploymentTemplateMissing} role="status"><InfoCircleOutlined /><span><strong>还不能生成业务文件</strong><small>请先填写：{missingRequiredFields.map((field) => field.title).join("、")}</small></span></div> : null}
+            <pre className={styles.deploymentTemplateCode}>{maskTemplate(activeTemplate.content)}</pre>
+            <div className={styles.deploymentTemplateActions}><Button icon={copied ? <CheckOutlined /> : <CopyOutlined />} disabled={businessTemplateBlocked} onClick={copyTemplate}>{copied ? "已复制" : "复制当前模板"}</Button><Button icon={<DownloadOutlined />} disabled={businessTemplateBlocked} onClick={downloadTemplate}>下载 {activeTemplate.filename}</Button></div>
           </div>
         </section>
 
         <section className={styles.deploymentSection} id="deployment-ai-geo">
-          <StepHeader number={2} title="连接 AI 与 GEO 服务" description="默认用 Qwen 生成和 Embedding，用智谱完成 GEO 语义综合。豆包和独立 Qwen 搜索按需配置。" />
-          <div className={styles.deploymentAiPaste}>
-            <div className={styles.deploymentAiPasteIntro}>
-              <div><strong>直接粘贴全部 AI Provider 配置</strong><span>系统按变量名自动识别，加密写入 Web 与 Worker 共用的持久卷；不会写入浏览器、URL、日志或 Git。</span></div>
-              <b>保存后立即读取</b>
-            </div>
-            <div className={styles.deploymentAiPasteGrid}>
-              <label><span>部署级 Setup Token</span><Input.Password value={setupToken} onChange={(event) => setSetupToken(event.target.value)} placeholder="HOSTED_EMAIL_SETUP_TOKEN" autoComplete="off" /></label>
-              <label><span>Provider 配置（每行 KEY=value）</span><Input.TextArea value={aiConfigText} onChange={(event) => setAiConfigText(event.target.value)} autoSize={{ minRows: 5, maxRows: 12 }} placeholder={"DASHSCOPE_API_KEY=你的百炼Key\nGEO_RESEARCH_ZHIPU_API_KEY=你的智谱Key\n# 可继续粘贴 DeepSeek、豆包或独立 Qwen 配置"} /></label>
-            </div>
-            <div className={styles.deploymentAiPasteActions}>
-              <Button type="primary" icon={<SafetyCertificateOutlined />} loading={savingAiConfig} disabled={!setupToken.trim() || !aiConfigText.trim()} onClick={saveAiConfig}>识别、加密并立即启用</Button>
-              <span>Qwen 模型、Embedding 模型、智谱模型和 RAG Provider 会自动使用仓库默认值。</span>
-            </div>
-            {aiConfigError ? <div className={styles.deploymentCheckError} role="alert"><InfoCircleOutlined /><span>{aiConfigError}</span></div> : null}
-            {aiConfigResult ? <div className={`${styles.deploymentAiPasteResult} ${aiConfigResult.ready ? styles.readinessGroupReady : ""}`}><CheckCircleFilled /><div><strong>{aiConfigResult.ready ? "AI 与 GEO 必填配置已经生效" : "已保存，仍有必填项未配置"}</strong><span>已识别 {aiConfigResult.configured.length} 项{aiConfigResult.missingRequired.length ? `；缺少 ${aiConfigResult.missingRequired.join("、")}` : "；Web 与后台 Worker 将读取同一份配置"}{aiConfigResult.ignored.length ? `。已忽略非 AI 字段：${aiConfigResult.ignored.join("、")}` : ""}</span></div></div> : null}
-          </div>
-          <FieldGrid fields={aiFields} />
+          <StepHeader number={2} title="填写 AI 与 GEO 凭证" description="只需粘贴两条必填 Key。Qwen 模型、Embedding 模型、Base URL 和智谱参数全部使用安全默认值。" />
+          <EnvFieldForm fields={requiredAiFields} values={envValues} onChange={updateEnvValue} />
+          <details className={styles.deploymentAdvanced}>
+            <summary><SettingOutlined /><span><strong>选填：增加其他 AI Provider</strong><small>不启用 DeepSeek、豆包或独立 Qwen 时完全不用填写</small></span></summary>
+            <div><EnvFieldForm fields={optionalProviderFields} values={envValues} onChange={updateEnvValue} /></div>
+          </details>
         </section>
 
         <section className={styles.deploymentSection} id="deployment-email">
-          <StepHeader number={3} title="配置邮箱登录与安全链接" description="先配置服务端安全参数，再连接一个系统发件邮箱。普通用户只负责接收邮件。" state={senderStatus?.configured ? "done" : "active"} />
+          <StepHeader number={3} title="选择系统发件邮箱" description="审核密钥、Setup Token 和凭证加密密钥已经自动生成；这里只在使用 Gmail、Outlook 或企业邮件中继时填写对应字段。" state={senderStatus?.configured ? "done" : "active"} />
           <>
-            <FieldGrid fields={emailFields} />
+            <div className={styles.deploymentGeneratedSummary}><LockOutlined /><div><strong>3 条邮箱安全密钥已自动写入 .env.local</strong><span>SMTP 用户无需填写 OAuth 字段；Gmail、Outlook 或企业邮件中继只填写下方对应的一组。</span></div></div>
+            <details className={styles.deploymentAdvanced}>
+              <summary><SettingOutlined /><span><strong>选填：Gmail、Outlook 或企业邮件中继</strong><small>QQ、163 或普通企业 SMTP 用户跳过</small></span></summary>
+              <div><EnvFieldForm fields={optionalEmailFields} values={envValues} onChange={updateEnvValue} /></div>
+            </details>
             <div className={styles.deploymentOauthCallbacks}>
               <strong>OAuth 回调地址必须逐字匹配</strong>
               <code>{`https://你的域名/api/v5/hosted/email-sender/oauth/callback/gmail`}</code>
@@ -410,19 +450,19 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
         </section>
 
         <section className={styles.deploymentSection} id="deployment-publish-runtime">
-          <StepHeader number={4} title="启动自动发布执行器" description="Docker Workbench 负责任务编排，Runner 或 Desktop Connector 负责真实浏览器操作。" />
+          <StepHeader number={4} title="启动自动发布执行器" description="注册密钥、Runner Token 和 Bridge Token 已自动生成，并在同一份配置中复用正确的配对值。" />
           <>
             <div className={styles.deploymentTopology}>
               <div><CloudServerOutlined /><strong>Docker Workbench</strong><span>接收任务、隔离工作区、保存发布账本</span></div><ArrowRightOutlined /><div><SafetyCertificateOutlined /><strong>Runner Token</strong><span>只允许受信执行器领取任务</span></div><ArrowRightOutlined /><div><LaptopOutlined /><strong>常开执行器</strong><span>打开真实平台页面并等待用户完成安全挑战</span></div>
             </div>
-            <FieldGrid fields={publishFields} />
+            <div className={styles.deploymentGeneratedSummary}><SafetyCertificateOutlined /><div><strong>发布与指标鉴权无需填写</strong><span>Workbench、Runner、Bridge 和指标服务会从 Compose 读取同一个对应 Token，不再人工复制两遍。</span></div></div>
             <div className={styles.deploymentSafetyGate}><LockOutlined /><div><strong>首次部署不得直接开启真实发布</strong><span>保持 DIRECT_PUBLISH_ENABLED=false、DIRECT_PUBLISH_MOCK=true。先完成账号识别和模拟发布，再由部署人员明确切换。</span></div></div>
           </>
         </section>
 
         <section className={styles.deploymentSection} id="deployment-channels">
-          <StepHeader number={5} title="配置发布渠道与增强能力" description="公众号凭证由部署人员设置，浏览器渠道账号由普通用户本人登录。密码和 Cookie 不进入托管前端。" />
-          <FieldGrid fields={channelFields} />
+          <StepHeader number={5} title="填写渠道必需信息" description="只填写公众号官方凭证和共享采集扩展 ID。知乎、CSDN、掘金仍在官方页面登录，不填写 Cookie。" />
+          <EnvFieldForm fields={requiredChannelFields} values={envValues} onChange={updateEnvValue} />
           <details className={styles.deploymentAdvanced}>
             <summary><SafetyCertificateOutlined /><span><strong>旧版私有 Bridge 高级配置</strong><small>只有已确认风险并由企业自己维护时才展开</small></span></summary>
             <div><p><strong>推荐方式：</strong>让普通用户通过 Connector 在知乎、CSDN、掘金官方页面登录。验证码、扫码和风控确认必须由账号本人完成。</p><p><strong>不要默认使用：</strong><code>ZHIHU_COOKIE</code>、<code>CSDN_COOKIE</code>、<code>JUEJIN_COOKIE</code> 属于易失效敏感凭证，只能保存在受控部署机的 <code>.env.local</code>，不能进入前端、聊天、文档或 GitHub。</p></div>
@@ -449,7 +489,10 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
                 </div>
                 <p><InfoCircleOutlined /><span><strong>不要混淆：</strong>浏览器扩展负责打开和采集 AI 官方页面；浏览器伴侣（本机 Runner）负责领取任务、鉴权和回传。两者必须同时在线，关闭伴侣窗口后扩展不能领取新任务。</span></p>
               </div>
-              <FieldGrid fields={optionalFields} />
+              <details className={styles.deploymentAdvanced}>
+                <summary><SettingOutlined /><span><strong>选填：封面、抓取、配图和网站渲染</strong><small>不启用对应增强能力时全部留空</small></span></summary>
+                <div><EnvFieldForm fields={optionalEnhancementFields} values={envValues} onChange={updateEnvValue} /></div>
+              </details>
               <HostedAiCaptureDeploymentGuide />
             </div>
           </details>
@@ -457,10 +500,15 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
 
         <section className={styles.deploymentSection} id="deployment-acceptance">
           <StepHeader number={6} title="检查配置并完成交接" description="服务端只返回是否配置和缺失变量名，不返回任何 Secret、Token、API Key 或密码。" />
+          <div className={styles.deploymentGeneratedSummary}><CheckCircleFilled /><div><strong>首次部署无需再填写检查口令</strong><span>保存上方两个文件并重启 Docker 后，页面会自动使用本次生成的 Setup Token 发起检查。</span></div></div>
           <div className={styles.deploymentCheckForm}>
-            <label><span>部署级 Setup Token</span><Input.Password value={setupToken} onChange={(event) => setSetupToken(event.target.value)} placeholder="填写 HOSTED_EMAIL_SETUP_TOKEN" /></label>
-            <Button type="primary" icon={<ReloadOutlined />} loading={checking} disabled={!setupToken.trim()} onClick={checkReadiness}>检查当前部署</Button>
+            <div><strong>现在做什么</strong><span>将 <code>.env</code> 与 <code>.env.local</code> 保存到项目根目录，执行 Docker 重建后再点击右侧按钮。</span></div>
+            <Button type="primary" icon={<ReloadOutlined />} loading={checking} disabled={!readinessToken} onClick={checkReadiness}>检查当前部署</Button>
           </div>
+          <details className={styles.deploymentAdvanced}>
+            <summary><LockOutlined /><span><strong>已经部署过或刷新过这个页面？</strong><small>只有检查旧环境时，才需要粘贴旧 .env.local 中的 HOSTED_EMAIL_SETUP_TOKEN</small></span></summary>
+            <div className={styles.deploymentExistingToken}><Input.Password value={readinessTokenOverride} onChange={(event) => { setReadinessTokenOverride(event.target.value); setReadiness(undefined); }} placeholder="旧环境的 HOSTED_EMAIL_SETUP_TOKEN" autoComplete="off" /><small>留空时自动使用本次生成值。口令只随本次检查请求发送，不写入浏览器存储。</small></div>
+          </details>
           {checkError ? <div className={styles.deploymentCheckError} role="alert"><InfoCircleOutlined /><span>{checkError}</span></div> : null}
           {readiness ? <div className={styles.deploymentReadinessResult}>
             <div className={styles.deploymentReadinessSummary}><span className={readiness.configurationReady ? styles.deploymentReadinessReady : styles.deploymentReadinessPending}>{readiness.readyGroups}/{readiness.totalGroups}</span><div><strong>{readiness.configurationReady ? "环境变量已经齐全" : "还有配置没有完成"}</strong><span>环境变量齐全不等于真实链路通过。每组下方的人工验收仍需逐项完成。</span></div></div>
