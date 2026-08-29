@@ -28,7 +28,7 @@ test("deployment readiness reports names only and honors selected features", () 
   assert.equal(JSON.stringify(result).includes(secret), false);
 });
 
-test("deployment center exposes six guided sections, official sources and sanitized templates", async () => {
+test("deployment center exposes five guided sections with AI and GEO first", async () => {
   const [component, page, envExample, localEnvExample, route, aiConfigRoute, aiConfigService, ordersRoute] = await Promise.all([
     readFile(new URL("../src/components/HostedDeploymentCenter.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8"),
@@ -41,13 +41,20 @@ test("deployment center exposes six guided sections, official sources and saniti
   ]);
 
   for (const heading of [
-    "准备运行环境和数据库",
     "填写 AI 与 GEO 凭证",
     "选择系统发件邮箱",
     "启动自动发布执行器",
     "填写渠道必需信息",
     "检查配置并完成交接"
   ]) assert.match(component, new RegExp(heading));
+  assert.doesNotMatch(component, /准备运行环境和数据库|deployment-runtime/);
+  for (const [number, heading] of [
+    [1, "填写 AI 与 GEO 凭证"],
+    [2, "选择系统发件邮箱"],
+    [3, "启动自动发布执行器"],
+    [4, "填写渠道必需信息"],
+    [5, "检查配置并完成交接"]
+  ]) assert.match(component, new RegExp(`number=\\{${number}\\} title="${heading}"`));
 
   for (const source of [
     "help.aliyun.com/zh/model-studio/get-api-key",
@@ -58,21 +65,11 @@ test("deployment center exposes six guided sections, official sources and saniti
     "entra.microsoft.com"
   ]) assert.match(component, new RegExp(source.replaceAll(".", "\\.")));
 
-  assert.match(component, /复制当前模板/);
-  assert.match(component, /下载 \{activeTemplate\.filename\}/);
   assert.match(component, /所有产品能力默认开启/);
   assert.match(component, /本地 Docker/);
   assert.match(component, /服务器部署/);
-  assert.match(component, /复制 \.env\.local/);
   assert.match(component, /EnvFieldForm/);
-  assert.match(component, /crypto\.getRandomValues/);
-  assert.match(component, /已自动处理 10 项安全值/);
-  assert.match(component, /首次部署无需再填写检查口令/);
-  assert.match(component, /预览会隐藏敏感值/);
-  assert.match(component, /还不能生成业务文件/);
-  assert.match(component, /businessTemplateBlocked/);
-  assert.match(component, /values\.GEO_RESEARCH_QWEN_API_KEY \|\| values\.DASHSCOPE_API_KEY/);
-  assert.match(component, /GEO_RESEARCH_DOUBAO_API_KEY/);
+  assert.doesNotMatch(component, /复制当前模板|实时生成的可部署配置|businessTemplateBlocked/);
   assert.doesNotMatch(component, /setSetupToken/);
   assert.doesNotMatch(component, /Vercel 托管|id: "vercel"|id: "private"/);
   for (const captureGuideText of [
