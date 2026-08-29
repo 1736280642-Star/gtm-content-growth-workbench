@@ -31,7 +31,7 @@ function field(formData: FormData, name: string) {
 export async function GET(request: Request) {
   try {
     const identity = await requireHostedIdentity(request);
-    const orders = await listHostedPromotionOrderRecords(identity.workspaceId, 8);
+    const orders = await listHostedPromotionOrderRecords(identity.workspaceId, 1);
     return NextResponse.json(
       { ok: true, orders },
       { headers: { "cache-control": "no-store" } }

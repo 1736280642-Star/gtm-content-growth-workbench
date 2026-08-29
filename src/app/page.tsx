@@ -182,8 +182,8 @@ function ReturningOperationsHome({
         </div>
       </section>
       <section className={styles.operationsHistory}>
-        <div className={styles.operationsSectionTitle}><div><strong>最近批次</strong><span>历史记录不会覆盖；每个批次继续使用日历月作为计划与复盘周期。</span></div></div>
-        <div>{orders.map((item) => <Link key={item.orderId} href={`/hosted/success?orderId=${encodeURIComponent(item.orderId)}`}><span><strong>{item.productName}</strong><small>{item.updatedAt ? new Date(item.updatedAt).toLocaleDateString("zh-CN") : item.orderId}</small></span><b>{orderStatusLabels[item.status] || item.status}</b><ArrowRightOutlined /></Link>)}</div>
+        <div className={styles.operationsSectionTitle}><div><strong>最近批次</strong><span>页面只保留最近一次；历史记录继续保存在后台审计中。</span></div></div>
+        <div>{orders.slice(0, 1).map((item) => <Link key={item.orderId} href={`/hosted/success?orderId=${encodeURIComponent(item.orderId)}`}><span><strong>{item.productName}</strong><small>{item.updatedAt ? new Date(item.updatedAt).toLocaleDateString("zh-CN") : item.orderId}</small></span><b>{orderStatusLabels[item.status] || item.status}</b><ArrowRightOutlined /></Link>)}</div>
       </section>
       <div className={styles.operationsRule}><SafetyCertificateOutlined /><span><strong>哪些设置以后不用重复？</strong>MySQL、OpenSearch、安全 Token、邮箱、发布执行器和共享采集服务器只在首次部署或故障恢复时处理。AI Key 可由部署人员随时从首页更新；普通用户的新批次只确认产品变化、渠道和本月目标。</span></div>
     </main>

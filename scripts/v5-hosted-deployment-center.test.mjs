@@ -99,6 +99,8 @@ test("deployment center exposes six guided sections, official sources and saniti
   assert.doesNotMatch(component, /toggleFeature|setFeatures|deploymentFeatureGrid/);
   assert.match(page, /HostedDeploymentCenter/);
   assert.match(page, /ReturningOperationsHome/);
+  assert.match(page, /orders\.slice\(0, 1\)\.map/);
+  assert.match(ordersRoute, /listHostedPromotionOrderRecords\(identity\.workspaceId, 1\)/);
   assert.match(page, /发起新的推广批次/);
   assert.match(page, /新批次默认复用上次的产品、渠道和通知设置/);
   assert.match(envExample, /WECHATSYNC_BRIDGE_TOKEN=/);
