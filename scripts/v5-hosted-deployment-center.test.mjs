@@ -28,7 +28,7 @@ test("deployment readiness reports names only and honors selected features", () 
   assert.equal(JSON.stringify(result).includes(secret), false);
 });
 
-test("deployment center exposes five guided sections with AI and GEO first", async () => {
+test("deployment center exposes only the three manual guided sections", async () => {
   const [component, page, styles, envExample, localEnvExample, route, aiConfigRoute, aiConfigService, ordersRoute] = await Promise.all([
     readFile(new URL("../src/components/HostedDeploymentCenter.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8"),
@@ -43,27 +43,21 @@ test("deployment center exposes five guided sections with AI and GEO first", asy
 
   for (const heading of [
     "填写 AI 与 GEO 凭证",
-    "选择系统发件邮箱",
-    "启动自动发布执行器",
     "填写渠道必需信息",
     "检查配置并完成交接"
   ]) assert.match(component, new RegExp(heading));
-  assert.doesNotMatch(component, /准备运行环境和数据库|deployment-runtime/);
+  assert.doesNotMatch(component, /准备运行环境和数据库|deployment-runtime|选择系统发件邮箱|启动自动发布执行器|deployment-email|deployment-publish-runtime|optionalEmailFields|邮箱与安全链接|重新检查发件邮箱/);
   for (const [number, heading] of [
     [1, "填写 AI 与 GEO 凭证"],
-    [2, "选择系统发件邮箱"],
-    [3, "启动自动发布执行器"],
-    [4, "填写渠道必需信息"],
-    [5, "检查配置并完成交接"]
+    [2, "填写渠道必需信息"],
+    [3, "检查配置并完成交接"]
   ]) assert.match(component, new RegExp(`number=\\{${number}\\} title="${heading}"`));
 
   for (const source of [
     "help.aliyun.com/zh/model-studio/get-api-key",
     "open.bigmodel.cn/usercenter/proj-mgmt/apikeys",
     "console.volcengine.com/ark",
-    "mp.weixin.qq.com",
-    "console.cloud.google.com/auth/clients",
-    "entra.microsoft.com"
+    "mp.weixin.qq.com"
   ]) assert.match(component, new RegExp(source.replaceAll(".", "\\.")));
 
   assert.match(component, /所有产品能力默认开启/);
@@ -98,8 +92,8 @@ test("deployment center exposes five guided sections with AI and GEO first", asy
   assert.match(page, /HostedDeploymentCenter/);
   assert.match(page, /邮箱链路已连接，继续完成整体验收/);
   assert.match(page, /现在处理：完整部署初始化/);
-  assert.match(page, /pageAudience !== "deployment" \? <aside/);
-  assert.doesNotMatch(page, /一次走完首次部署，之后只交给用户使用。|从数据库、AI、邮箱到自动发布|部署人员操作，普通用户不接触密钥/);
+  assert.match(page, /isOperationsHome \? <aside/);
+  assert.doesNotMatch(page, /当前进度：第|调研已经开始；发布账号可以在正式发布前继续补齐。|一次走完首次部署，之后只交给用户使用。|从数据库、AI、邮箱到自动发布|部署人员操作，普通用户不接触密钥/);
   assert.match(page, /ReturningOperationsHome/);
   assert.match(page, /orders\.slice\(0, 1\)\.map/);
   assert.match(ordersRoute, /listHostedPromotionOrderRecords\(identity\.workspaceId, 1\)/);
@@ -108,6 +102,9 @@ test("deployment center exposes five guided sections with AI and GEO first", asy
   assert.match(styles, /\.operationsReadablePage \.roleSwitcher button strong \{ font-size: 19\.5px; \}/);
   assert.match(styles, /\.operationsReadablePage \.roleSwitcher button small \{ font-size: 15px; \}/);
   assert.match(styles, /\.operationsReadablePage \.operationsSectionTitle strong \{ font-size: 30px; \}/);
+  assert.match(styles, /\.userSetupReadablePage \.intro h1,[\s\S]*white-space: nowrap;/);
+  assert.match(styles, /\.userSetupReadablePage \.roleSwitcher button strong,[\s\S]*font-size: 19\.5px;/);
+  assert.match(styles, /\.userSetupReadablePage \.sectionTitle h2 \{ font-size: 27px; \}/);
   assert.match(envExample, /WECHATSYNC_BRIDGE_TOKEN=/);
   assert.match(envExample, /WECHAT_MP_APP_ID=/);
   assert.match(localEnvExample, /HOSTED_CAPTURE_SETUP_TOKEN=/);

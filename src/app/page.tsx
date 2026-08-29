@@ -254,7 +254,6 @@ export default function HostedTaskPage() {
   const [userHomeMode, setUserHomeMode] = useState<UserHomeMode>("setup");
   const [recentOrders, setRecentOrders] = useState<HostedOrder[]>([]);
   const [senderStatus, setSenderStatus] = useState<SenderSetupStatus>();
-  const [senderStatusLoading, setSenderStatusLoading] = useState(true);
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
   const [identity, setIdentity] = useState<HostedIdentity>();
   const [loginEmail, setLoginEmail] = useState("");
@@ -286,7 +285,6 @@ export default function HostedTaskPage() {
   const [error, setError] = useState<string>();
 
   const loadSenderStatus = useCallback(async () => {
-    setSenderStatusLoading(true);
     try {
       const response = await fetch("/api/v5/hosted/email-sender", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
@@ -294,8 +292,6 @@ export default function HostedTaskPage() {
       setSenderStatus(payload.sender as SenderSetupStatus);
     } catch {
       setSenderStatus(undefined);
-    } finally {
-      setSenderStatusLoading(false);
     }
   }, []);
 
@@ -687,10 +683,10 @@ export default function HostedTaskPage() {
   const isOperationsHome = pageAudience === "user" && Boolean(identity) && userHomeMode === "operations" && recentOrders.length > 0;
 
   return (
-    <div className={`${styles.page} ${pageAudience === "deployment" ? styles.deploymentReadablePage : ""} ${isOperationsHome ? styles.operationsReadablePage : ""}`}>
+    <div className={`${styles.page} ${pageAudience === "deployment" ? styles.deploymentReadablePage : ""} ${pageAudience === "user" && !isOperationsHome ? styles.userSetupReadablePage : ""} ${isOperationsHome ? styles.operationsReadablePage : ""}`}>
       <section className={`${styles.intro} ${isOperationsHome ? styles.operationsIntro : ""}`}>
         <div><div className={styles.kicker}>{isOperationsHome ? "JOTO / MANAGED OPERATIONS" : "JOTO / GUIDED MANAGED SETUP"}</div><h1>{pageAudience === "deployment" ? (senderStatus?.configured ? "邮箱链路已连接，继续完成整体验收" : "现在处理：完整部署初始化") : isOperationsHome ? "从这里开始您的品牌GEO推广" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
-        {pageAudience !== "deployment" ? <aside className={styles.introAside}>{isOperationsHome ? <><strong>{orderStatusLabels[recentOrders[0]?.status] || "当前批次运行中"}</strong><span>首页只展示当前批次、真正需要判断的事项和最近结果。</span><small>一次性部署配置已收起</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside> : null}
+        {isOperationsHome ? <aside className={styles.introAside}><strong>{orderStatusLabels[recentOrders[0]?.status] || "当前批次运行中"}</strong><span>首页只展示当前批次、真正需要判断的事项和最近结果。</span><small>一次性部署配置已收起</small></aside> : null}
       </section>
 
       <nav className={styles.roleSwitcher} aria-label="选择当前操作角色">
@@ -701,7 +697,7 @@ export default function HostedTaskPage() {
         </button>
         <button type="button" aria-controls="role-panel-deployment" aria-pressed={pageAudience === "deployment"} className={pageAudience === "deployment" ? styles.roleSwitchActive : ""} onClick={() => switchAudience("deployment")}>
           <SafetyCertificateOutlined />
-          <span><strong>我是部署人员</strong><small>配置数据库、AI、邮箱、发布执行器和共享采集服务器</small></span>
+          <span><strong>我是部署人员</strong><small>配置 AI、渠道账号和共享采集服务器</small></span>
           {pageAudience === "deployment" ? <CheckCircleFilled /> : <ArrowRightOutlined />}
         </button>
       </nav>
@@ -710,9 +706,6 @@ export default function HostedTaskPage() {
 
       <div id="role-panel-deployment" hidden={pageAudience !== "deployment"}>
         {pageAudience === "deployment" ? <HostedDeploymentCenter
-          senderStatus={senderStatus}
-          senderStatusLoading={senderStatusLoading}
-          onReloadSenderStatus={loadSenderStatus}
           onSwitchToUserTest={() => switchAudience("user", "setup-identity")}
         /> : null}
       </div>

@@ -3,7 +3,6 @@
 import {
   ArrowRightOutlined,
   CheckCircleFilled,
-  CheckOutlined,
   ChromeOutlined,
   CloudServerOutlined,
   DownloadOutlined,
@@ -11,7 +10,6 @@ import {
   LaptopOutlined,
   LinkOutlined,
   LockOutlined,
-  MailOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -19,7 +17,6 @@ import {
 } from "@ant-design/icons";
 import { Button, Input, Spin } from "antd";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import type { HostedDeploymentFeature, HostedDeploymentMode } from "@/lib/v5/hosted-deployment-readiness";
 import styles from "@/app/hosted-mode.module.css";
@@ -32,16 +29,7 @@ const HostedAiCaptureDeploymentGuide = dynamic(
   }
 );
 
-interface SenderSetupStatus {
-  configured: boolean;
-  provider?: string;
-  senderHint?: string;
-}
-
 interface HostedDeploymentCenterProps {
-  senderStatus?: SenderSetupStatus;
-  senderStatusLoading: boolean;
-  onReloadSenderStatus: () => void;
   onSwitchToUserTest: () => void;
 }
 
@@ -70,7 +58,6 @@ interface ReadinessResult {
     manualChecks: string[];
   }>;
   safety: { directPublishEnabled: boolean; directPublishMock: boolean };
-  sender?: SenderSetupStatus;
 }
 
 const requirementLabels: Record<Requirement, string> = {
@@ -108,15 +95,6 @@ const optionalProviderFields: EnvInputField[] = [
   { name: "DOUBAO_API_KEY", title: "豆包 / 火山方舟 API Key", description: "只有启用豆包生成或事实搜索时填写。", requirement: "optional", secret: true, source: "火山方舟 → 系统管理 → API Key 管理。", sourceUrl: "https://console.volcengine.com/ark", placeholder: "选填" },
   { name: "DOUBAO_MODEL", title: "豆包推理接入点", description: "填写已开通的 Endpoint ID；未启用豆包则留空。", requirement: "optional", source: "火山方舟在线推理页面。", sourceUrl: "https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint", placeholder: "例如 ep-..." },
   { name: "GEO_RESEARCH_QWEN_API_KEY", title: "独立 Qwen GEO Key", description: "留空时自动复用百炼 Key，仅供应商隔离或独立计费时填写。", requirement: "optional", secret: true, source: "与百炼 API Key 使用相同入口。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key", placeholder: "选填" }
-];
-
-const optionalEmailFields: EnvInputField[] = [
-  { name: "HOSTED_EMAIL_GOOGLE_CLIENT_ID", title: "Google OAuth Client ID", description: "只有用 Gmail 作为系统发件邮箱时填写。", requirement: "optional", source: "Google Auth Platform → Clients。", sourceUrl: "https://console.cloud.google.com/auth/clients", placeholder: "选填" },
-  { name: "HOSTED_EMAIL_GOOGLE_CLIENT_SECRET", title: "Google OAuth Client Secret", description: "与上方 Client ID 成对使用。", requirement: "optional", secret: true, source: "同一个 Google OAuth Client 中获取。", sourceUrl: "https://console.cloud.google.com/auth/clients", placeholder: "选填" },
-  { name: "HOSTED_EMAIL_MICROSOFT_CLIENT_ID", title: "Microsoft OAuth Client ID", description: "只有用 Outlook 作为系统发件邮箱时填写。", requirement: "optional", source: "Microsoft Entra 应用注册。", sourceUrl: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade", placeholder: "选填" },
-  { name: "HOSTED_EMAIL_MICROSOFT_CLIENT_SECRET", title: "Microsoft OAuth Client Secret", description: "填写 Secret Value，而不是 Secret ID。", requirement: "optional", secret: true, source: "Microsoft Entra 应用的 Certificates & secrets。", sourceUrl: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade", placeholder: "选填" },
-  { name: "HOSTED_EMAIL_DELIVERY_URL", title: "企业邮件中继 URL", description: "只有不用个人发件邮箱、改用企业邮件 API 时填写。", requirement: "optional", source: "由企业邮件服务管理员提供。", placeholder: "选填" },
-  { name: "HOSTED_EMAIL_DELIVERY_TOKEN", title: "企业邮件中继 Token", description: "与中继 URL 成对填写。", requirement: "optional", secret: true, source: "由同一企业邮件服务管理员提供。", placeholder: "选填" }
 ];
 
 const optionalEnhancementFields: EnvInputField[] = [
@@ -162,7 +140,7 @@ function readApiMessage(payload: unknown, fallback: string) {
   return String(record.message || nested.message || fallback);
 }
 
-export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onReloadSenderStatus, onSwitchToUserTest }: HostedDeploymentCenterProps) {
+export function HostedDeploymentCenter({ onSwitchToUserTest }: HostedDeploymentCenterProps) {
   const [mode, setMode] = useState<HostedDeploymentMode>("docker");
   const features = allDeploymentFeatures;
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
@@ -202,8 +180,8 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
       <main className={styles.deploymentMain}>
         <section className={styles.deploymentScope} aria-labelledby="deployment-scope-title">
           <div className={styles.deploymentScopeIntro}>
-            <div><strong id="deployment-scope-title">只需选择部署方式，所有产品能力默认开启</strong><span>邮箱、AI 与 GEO、微信公众号、浏览器渠道、指标回收和 AI 前台采集全部进入配置与验收清单。</span></div>
-            <span>全部能力已开启 · {features.length + 1} 个检查组</span>
+            <div><strong id="deployment-scope-title">只需选择部署方式，所有产品能力默认开启</strong><span>这里只展示仍需部署人员填写或验收的配置。</span></div>
+            <span>3 个用户操作步骤</span>
           </div>
           <div className={styles.deploymentModeGrid}>
             {deploymentModes.map((item) => <button type="button" key={item.id} aria-pressed={mode === item.id} className={mode === item.id ? styles.deploymentChoiceActive : ""} onClick={() => { setMode(item.id); setReadiness(undefined); }}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.description}</small>{mode === item.id ? <CheckCircleFilled /> : null}</button>)}
@@ -219,40 +197,8 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
           </details>
         </section>
 
-        <section className={styles.deploymentSection} id="deployment-email">
-          <StepHeader number={2} title="选择系统发件邮箱" description="审核密钥、Setup Token 和凭证加密密钥已经自动生成；这里只在使用 Gmail、Outlook 或企业邮件中继时填写对应字段。" state={senderStatus?.configured ? "done" : "active"} />
-          <>
-            <div className={styles.deploymentGeneratedSummary}><LockOutlined /><div><strong>3 条邮箱安全密钥已自动写入 .env.local</strong><span>SMTP 用户无需填写 OAuth 字段；Gmail、Outlook 或企业邮件中继只填写下方对应的一组。</span></div></div>
-            <details className={styles.deploymentAdvanced}>
-              <summary><SettingOutlined /><span><strong>选填：Gmail、Outlook 或企业邮件中继</strong><small>QQ、163 或普通企业 SMTP 用户跳过</small></span></summary>
-              <div><EnvFieldForm fields={optionalEmailFields} values={envValues} onChange={updateEnvValue} /></div>
-            </details>
-            <div className={styles.deploymentOauthCallbacks}>
-              <strong>OAuth 回调地址必须逐字匹配</strong>
-              <code>{`https://你的域名/api/v5/hosted/email-sender/oauth/callback/gmail`}</code>
-              <code>{`https://你的域名/api/v5/hosted/email-sender/oauth/callback/outlook`}</code>
-            </div>
-            <div className={`${styles.deploymentActionCard} ${senderStatus?.configured ? styles.deploymentActionReady : ""}`}>
-              {senderStatusLoading ? <Spin size="small" /> : senderStatus?.configured ? <CheckCircleFilled /> : <MailOutlined />}
-              <div><strong>{senderStatusLoading ? "正在检查发件邮箱" : senderStatus?.configured ? "发件邮箱已经连接" : "安全参数保存后，继续连接发件邮箱"}</strong><span>{senderStatus?.configured ? `${senderStatus.senderHint || "已连接邮箱"} 可以发送系统邮件。` : "系统会自动识别 Gmail、Outlook、QQ、163 和常见企业邮箱。"}</span></div>
-              <Link href="/hosted/email-sender"><Button type={senderStatus?.configured ? "default" : "primary"}>{senderStatus?.configured ? "检查或更换邮箱" : "连接系统发件邮箱"}</Button></Link>
-            </div>
-          </>
-        </section>
-
-        <section className={styles.deploymentSection} id="deployment-publish-runtime">
-          <StepHeader number={3} title="启动自动发布执行器" description="注册密钥、Runner Token 和 Bridge Token 已自动生成，并在同一份配置中复用正确的配对值。" />
-          <>
-            <div className={styles.deploymentTopology}>
-              <div><CloudServerOutlined /><strong>Docker Workbench</strong><span>接收任务、隔离工作区、保存发布账本</span></div><ArrowRightOutlined /><div><SafetyCertificateOutlined /><strong>Runner Token</strong><span>只允许受信执行器领取任务</span></div><ArrowRightOutlined /><div><LaptopOutlined /><strong>常开执行器</strong><span>打开真实平台页面并等待用户完成安全挑战</span></div>
-            </div>
-            <div className={styles.deploymentGeneratedSummary}><SafetyCertificateOutlined /><div><strong>发布与指标鉴权无需填写</strong><span>Workbench、Runner、Bridge 和指标服务会从 Compose 读取同一个对应 Token，不再人工复制两遍。</span></div></div>
-            <div className={styles.deploymentSafetyGate}><LockOutlined /><div><strong>首次部署不得直接开启真实发布</strong><span>保持 DIRECT_PUBLISH_ENABLED=false、DIRECT_PUBLISH_MOCK=true。先完成账号识别和模拟发布，再由部署人员明确切换。</span></div></div>
-          </>
-        </section>
-
         <section className={styles.deploymentSection} id="deployment-channels">
-          <StepHeader number={4} title="填写渠道必需信息" description="只填写公众号官方凭证和共享采集扩展 ID。知乎、CSDN、掘金仍在官方页面登录，不填写 Cookie。" />
+          <StepHeader number={2} title="填写渠道必需信息" description="只填写公众号官方凭证和共享采集扩展 ID。知乎、CSDN、掘金仍在官方页面登录，不填写 Cookie。" />
           <EnvFieldForm fields={requiredChannelFields} values={envValues} onChange={updateEnvValue} />
           <details className={styles.deploymentAdvanced}>
             <summary><SafetyCertificateOutlined /><span><strong>旧版私有 Bridge 高级配置</strong><small>只有已确认风险并由企业自己维护时才展开</small></span></summary>
@@ -290,7 +236,7 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
         </section>
 
         <section className={styles.deploymentSection} id="deployment-acceptance">
-          <StepHeader number={5} title="检查配置并完成交接" description="服务端只返回是否配置和缺失变量名，不返回任何 Secret、Token、API Key 或密码。" />
+          <StepHeader number={3} title="检查配置并完成交接" description="服务端只返回是否配置和缺失变量名，不返回任何 Secret、Token、API Key 或密码。" />
           <div className={styles.deploymentCheckForm}>
             <div><strong>现在做什么</strong><span>粘贴当前部署使用的 Setup Token，再检查数据库、AI、邮箱和发布链路。</span></div>
             <Button type="primary" icon={<ReloadOutlined />} loading={checking} disabled={!readinessToken} onClick={checkReadiness}>检查当前部署</Button>
@@ -307,8 +253,7 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
           </div> : null}
           <div className={styles.deploymentHandoff}>
             <div><strong>最后做一次真实用户验收</strong><span>部署人员切到普通用户，发送登录邮件、打开一次性链接、创建委托并检查账号连接入口。</span></div>
-            <Button type="primary" size="large" icon={<UserOutlined />} disabled={!senderStatus?.configured} onClick={onSwitchToUserTest}>切到普通用户试跑</Button>
-            {!senderStatus?.configured ? <small>先完成系统发件邮箱连接，才能验证邮件登录。</small> : null}
+            <Button type="primary" size="large" icon={<UserOutlined />} onClick={onSwitchToUserTest}>切到普通用户试跑</Button>
           </div>
         </section>
       </main>
@@ -316,15 +261,12 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
       <aside className={styles.deploymentPassport} aria-label="部署完成清单">
         <SafetyCertificateOutlined />
         <h2>部署完成清单</h2>
-        <p>{mode === "server" ? "服务器上的 AI、邮箱、发布与渠道能力分项验收。" : "本地业务能力按顺序配置与验收。"}</p>
+        <p>{mode === "server" ? "服务器上的 AI、渠道与整体能力分项验收。" : "本地业务能力按顺序配置与验收。"}</p>
         <ol>
           <li><span>1</span><div><strong>AI 与 GEO</strong><small>Qwen、Embedding、智谱</small></div></li>
-          <li className={senderStatus?.configured ? styles.deploymentPassportDone : ""}><span>{senderStatus?.configured ? <CheckOutlined /> : "2"}</span><div><strong>邮箱与安全链接</strong><small>{senderStatus?.configured ? "发件邮箱已连接" : "等待配置"}</small></div></li>
-          <li><span>3</span><div><strong>发布执行器</strong><small>Runner、Token、模拟发布</small></div></li>
-          <li><span>4</span><div><strong>渠道账号</strong><small>公众号与浏览器连接</small></div></li>
-          <li><span>5</span><div><strong>总体验收</strong><small>{readiness ? `${readiness.readyGroups}/${readiness.totalGroups} 组变量齐全` : "等待检查"}</small></div></li>
+          <li><span>2</span><div><strong>渠道账号</strong><small>公众号与浏览器连接</small></div></li>
+          <li><span>3</span><div><strong>总体验收</strong><small>{readiness ? `${readiness.readyGroups}/${readiness.totalGroups} 组变量齐全` : "等待检查"}</small></div></li>
         </ol>
-        <Button block icon={<ReloadOutlined />} loading={senderStatusLoading} onClick={onReloadSenderStatus}>重新检查发件邮箱</Button>
         <a className={styles.deploymentDocsLink} href="https://github.com/1736280642-Star/gtm-content-growth-workbench/blob/main/.env.local.example" target="_blank" rel="noreferrer"><LinkOutlined /> 查看仓库完整 .env.local.example</a>
       </aside>
     </div>

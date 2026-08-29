@@ -1572,27 +1572,68 @@
 
 /* The deployment hero is a single live status statement; supporting guidance starts below. */
 .deploymentReadablePage,
-.operationsReadablePage { padding-top: 12px; }
+.userSetupReadablePage,
+.operationsReadablePage { padding-top: 0; }
 .operationsReadablePage .intro {
   align-items: start;
-  padding: 8px 0 20px;
+  padding: 0 0 20px;
 }
-.deploymentReadablePage .intro {
+.deploymentReadablePage .intro,
+.userSetupReadablePage .intro {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  padding: 8px 0 20px;
+  padding: 0 0 20px;
 }
 .deploymentReadablePage .intro h1,
+.userSetupReadablePage .intro h1,
 .operationsReadablePage .intro h1 {
   max-width: none;
   margin: 8px 0 0;
   font-size: clamp(32px, 4vw, 52px);
   line-height: 1;
+  white-space: nowrap;
 }
 .deploymentReadablePage .roleSwitcher button strong,
+.userSetupReadablePage .roleSwitcher button strong,
 .operationsReadablePage .roleSwitcher button strong { font-size: 19.5px; }
 .deploymentReadablePage .roleSwitcher button small,
+.userSetupReadablePage .roleSwitcher button small,
 .operationsReadablePage .roleSwitcher button small { font-size: 15px; }
+.userSetupReadablePage .sectionNumber { font-size: 16.5px; }
+.userSetupReadablePage .sectionTitle h2 { font-size: 27px; }
+.userSetupReadablePage .sectionTitle p { font-size: 18px; }
+.userSetupReadablePage .stepStatusBadge { font-size: 13.5px; }
+.userSetupReadablePage .setupGuide > summary strong { font-size: 16.5px; }
+.userSetupReadablePage .setupGuide > summary small,
+.userSetupReadablePage .setupGuide > summary b { font-size: 13.5px; }
+.userSetupReadablePage .setupGuideBody li { font-size: 16.5px; }
+.userSetupReadablePage .setupGuideBody p { font-size: 15px; }
+.userSetupReadablePage .accountIdentity strong { font-size: 19.5px; }
+.userSetupReadablePage .accountIdentity span { font-size: 16.5px; }
+.userSetupReadablePage .accountRow button { font-size: 18px; }
+.userSetupReadablePage .choiceCopy strong,
+.userSetupReadablePage .productCopy strong { font-size: 19.5px; }
+.userSetupReadablePage .choiceCopy span,
+.userSetupReadablePage .productCopy > span { font-size: 16.5px; }
+.userSetupReadablePage .knowledgeBadge { font-size: 15px; }
+.userSetupReadablePage .notificationEmail strong,
+.userSetupReadablePage .notificationGrid strong,
+.userSetupReadablePage .platformSetupCopy strong,
+.userSetupReadablePage .finalReadinessCard strong { font-size: 16.5px; }
+.userSetupReadablePage .notificationEmail span,
+.userSetupReadablePage .notificationGrid small,
+.userSetupReadablePage .platformSetupCopy span,
+.userSetupReadablePage .finalReadinessCard span { font-size: 15px; }
+.userSetupReadablePage .receiptHeader h2 { font-size: 30px; }
+.userSetupReadablePage .receiptHeader p { font-size: 18px; }
+.userSetupReadablePage .setupPassportStep strong { font-size: 15px; }
+.userSetupReadablePage .setupPassportStep small { font-size: 12px; }
+.userSetupReadablePage .receiptRow { font-size: 18px; }
+.userSetupReadablePage .receiptNote { font-size: 16.5px; }
+.userSetupReadablePage .receiptFooter { font-size: 15px; }
+.userSetupReadablePage :global(.ant-btn),
+.userSetupReadablePage :global(.ant-input),
+.userSetupReadablePage :global(.ant-input-password) { font-size: 16px; }
 .operationsReadablePage .operationsHeroActions :global(.ant-btn) { min-height: 52px; font-size: 16px; }
 .operationsReadablePage .operationsSectionTitle strong { font-size: 30px; }
 .operationsReadablePage .operationsSectionTitle span { font-size: 19.5px; }
@@ -1703,7 +1744,11 @@
 .deploymentReadablePage .deploymentWorkspace :global(.ant-input-password) { font-size: 16px; }
 
 @media (max-width: 980px) {
-  .deploymentReadablePage .intro { grid-template-columns: 1fr; }
+  .deploymentReadablePage .intro,
+  .userSetupReadablePage .intro { grid-template-columns: 1fr; }
+  .deploymentReadablePage .intro h1,
+  .userSetupReadablePage .intro h1,
+  .operationsReadablePage .intro h1 { white-space: normal; }
   .deploymentModeGrid, .deploymentFeatureGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .deploymentFieldGrid, .deploymentReadinessGroups { grid-template-columns: 1fr; }
   .deploymentEnvField { grid-template-columns: minmax(180px, .7fr) minmax(260px, 1.3fr); }
