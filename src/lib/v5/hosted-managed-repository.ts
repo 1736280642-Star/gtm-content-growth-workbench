@@ -115,6 +115,16 @@ export async function readHostedPromotionOrderRecord(orderId: string) {
   return rows[0] ? mapOrder(rows[0]) : undefined;
 }
 
+export async function listHostedPromotionOrderRecords(workspaceId: string, limit = 8) {
+  const safeLimit = Math.max(1, Math.min(30, Math.floor(limit)));
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `${orderSelect} WHERE order_row.workspace_id = ?
+     ORDER BY CASE WHEN order_row.status = 'completed' THEN 1 ELSE 0 END, order_row.updated_at DESC LIMIT ?`,
+    [workspaceId, safeLimit]
+  );
+  return rows.map(mapOrder);
+}
+
 export async function bindHostedPromotionOrderMonthlyPlan(input: {
   orderId: string;
   monthlyPlanId: string;

@@ -1,5 +1,7 @@
 export type RuntimeCapabilityStatus = "ready" | "pending_config";
 
+import { getDeploymentRuntimeValue } from "./v5/deployment-ai-config";
+
 export interface RuntimeCapability {
   key: string;
   label: string;
@@ -11,7 +13,7 @@ export interface RuntimeCapability {
 }
 
 function hasEnv(name: string) {
-  return Boolean(process.env[name]?.trim());
+  return Boolean(getDeploymentRuntimeValue(name));
 }
 
 function createCapability(input: Omit<RuntimeCapability, "status" | "missingEnv">): RuntimeCapability {

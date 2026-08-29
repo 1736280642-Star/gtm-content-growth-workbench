@@ -1,4 +1,5 @@
 import { getRuntimeConfigStatus } from "./runtime-config";
+import { getDeploymentRuntimeValue } from "./v5/deployment-ai-config";
 import type { KnowledgeEmbeddingModelProvider } from "./types";
 
 export interface EmbeddingProviderRequest {
@@ -60,9 +61,9 @@ export async function callEmbeddingProvider(request: EmbeddingProviderRequest): 
     };
   }
 
-  const apiKey = process.env[env.apiKey];
-  const model = process.env[env.model];
-  const baseUrl = (process.env[env.baseUrl] || env.defaultBaseUrl || "").replace(/\/$/, "");
+  const apiKey = getDeploymentRuntimeValue(env.apiKey);
+  const model = getDeploymentRuntimeValue(env.model);
+  const baseUrl = (getDeploymentRuntimeValue(env.baseUrl) || env.defaultBaseUrl || "").replace(/\/$/, "");
 
   if (!apiKey || !model || !baseUrl) {
     const missing = [

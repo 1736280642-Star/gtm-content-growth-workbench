@@ -102,6 +102,9 @@ interface HostedOrder {
     acceptedSourceCount: number;
     importStatus: string;
   };
+  currentActionType?: string;
+  lastError?: { code: string; message: string };
+  updatedAt?: string;
 }
 
 interface ChannelPresentation {
@@ -123,6 +126,7 @@ interface SenderSetupStatus {
 type IdentityStatus = "checking" | "anonymous" | "authenticated";
 type StepState = "done" | "active" | "locked" | "waiting";
 type PageAudience = "user" | "deployment";
+type UserHomeMode = "setup" | "operations";
 
 const channelPresentation: Record<string, ChannelPresentation> = {
   wechat: { label: "微信公众号", icon: <WechatOutlined /> },
@@ -139,6 +143,52 @@ const roleLabels: Record<HostedIdentity["role"], string> = {
   viewer: "查看者"
 };
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+
+const orderStatusLabels: Record<string, string> = {
+  preparing: "正在准备调研",
+  strategy_review: "等待策略确认",
+  sample_review: "等待样文确认",
+  ready_to_publish: "等待发布",
+  running: "本月执行中",
+  action_required: "需要你处理",
+  paused: "已暂停",
+  completed: "本轮已完成"
+};
+
+function ReturningOperationsHome({
+  identity,
+  orders,
+  onStartNew,
+  onOpenDeployment
+}: {
+  identity: HostedIdentity;
+  orders: HostedOrder[];
+  onStartNew: () => void;
+  onOpenDeployment: () => void;
+}) {
+  const current = orders[0];
+  return (
+    <main className={styles.operationsHome}>
+      <section className={styles.operationsHero}>
+        <div><span className={styles.receiptKicker}>DAILY OPERATIONS</span><h2>欢迎回来，今天只处理真正需要你判断的事。</h2><p>数据库、AI、邮箱和执行器属于一次性部署配置；新批次默认复用上次的产品、渠道和通知设置。</p></div>
+        <div className={styles.operationsHeroActions}><Button type="primary" size="large" icon={<PlusOutlined />} onClick={onStartNew}>发起新的推广批次</Button><Button size="large" icon={<SettingOutlined />} onClick={onOpenDeployment}>部署设置与 API Key</Button></div>
+      </section>
+      <section className={styles.operationsCurrent}>
+        <div className={styles.operationsSectionTitle}><div><strong>当前批次</strong><span>{identity.email} · {roleLabels[identity.role]}</span></div><b>{orderStatusLabels[current.status] || current.status}</b></div>
+        <div className={styles.operationsCurrentGrid}>
+          <article><span>推广产品</span><strong>{current.productName}</strong><small>{current.channels.map((item) => channelPresentation[item.channel]?.label || item.channel).join("、") || "渠道待确认"}</small></article>
+          <article><span>当前动作</span><strong>{current.lastError?.message || (current.currentActionType ? "有一项流程正在等待完成" : "系统正在按 MonthlyPlan 自动推进")}</strong><small>{current.updatedAt ? `最近更新：${new Date(current.updatedAt).toLocaleString("zh-CN")}` : "状态会自动更新"}</small></article>
+          <div className={styles.operationsCurrentActions}><Link href={`/hosted/success?orderId=${encodeURIComponent(current.orderId)}`}><Button type="primary">查看状态与下一步</Button></Link><Link href={`/hosted/email?orderId=${encodeURIComponent(current.orderId)}`}><Button>查看邮件与结果</Button></Link><Link href={`/?orderId=${encodeURIComponent(current.orderId)}`}><Button>修改本批次设置</Button></Link></div>
+        </div>
+      </section>
+      <section className={styles.operationsHistory}>
+        <div className={styles.operationsSectionTitle}><div><strong>最近批次</strong><span>历史记录不会覆盖；每个批次继续使用日历月作为计划与复盘周期。</span></div></div>
+        <div>{orders.map((item) => <Link key={item.orderId} href={`/hosted/success?orderId=${encodeURIComponent(item.orderId)}`}><span><strong>{item.productName}</strong><small>{item.updatedAt ? new Date(item.updatedAt).toLocaleDateString("zh-CN") : item.orderId}</small></span><b>{orderStatusLabels[item.status] || item.status}</b><ArrowRightOutlined /></Link>)}</div>
+      </section>
+      <div className={styles.operationsRule}><SafetyCertificateOutlined /><span><strong>哪些设置以后不用重复？</strong>MySQL、OpenSearch、安全 Token、邮箱、发布执行器和共享采集服务器只在首次部署或故障恢复时处理。AI Key 可由部署人员随时从首页更新；普通用户的新批次只确认产品变化、渠道和本月目标。</span></div>
+    </main>
+  );
+}
 
 function formatSize(size: number) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
@@ -202,6 +252,8 @@ function StepStatusBadge({ state }: { state: StepState }) {
 export default function HostedTaskPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pageAudience, setPageAudience] = useState<PageAudience>("user");
+  const [userHomeMode, setUserHomeMode] = useState<UserHomeMode>("setup");
+  const [recentOrders, setRecentOrders] = useState<HostedOrder[]>([]);
   const [senderStatus, setSenderStatus] = useState<SenderSetupStatus>();
   const [senderStatusLoading, setSenderStatusLoading] = useState(true);
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
@@ -314,6 +366,11 @@ export default function HostedTaskPage() {
         if (!productsResponse.ok) throw new Error(readApiError(productsPayload, "产品读取失败。"));
         return Array.isArray(productsPayload.products) ? productsPayload.products as HostedProduct[] : [];
       });
+      const ordersPromise = fetch("/api/v5/hosted/orders", { cache: "no-store" }).then(async (ordersResponse) => {
+        const ordersPayload = await ordersResponse.json().catch(() => ({}));
+        if (!ordersResponse.ok) throw new Error(readApiError(ordersPayload, "历史托管任务读取失败。"));
+        return Array.isArray(ordersPayload.orders) ? ordersPayload.orders as HostedOrder[] : [];
+      });
       const orderPromise = targetOrderId
         ? fetch(`/api/v5/hosted/orders/${encodeURIComponent(targetOrderId)}`, { cache: "no-store" }).then(async (orderResponse) => {
             const orderPayload = await orderResponse.json();
@@ -321,11 +378,13 @@ export default function HostedTaskPage() {
             return orderPayload.order as HostedOrder;
           })
         : Promise.resolve(undefined);
-      const [items, existingOrder] = await Promise.all([productsPromise, orderPromise]);
+      const [items, orders, existingOrder] = await Promise.all([productsPromise, ordersPromise, orderPromise]);
       if (!active) return;
       setProducts(items);
+      setRecentOrders(orders);
       setProductsLoading(false);
       if (existingOrder) {
+        setUserHomeMode("setup");
         setOrder(existingOrder);
         setSelectedProductId(existingOrder.productId);
         setIsAddingNew(false);
@@ -334,7 +393,11 @@ export default function HostedTaskPage() {
         setDailyDigest(existingOrder.notificationPreferences?.dailyDigest !== false);
         setMonthlyCompleted(existingOrder.notificationPreferences?.monthlyCompleted !== false);
         await Promise.all([loadChannels(existingOrder.productId), loadBrowserConnectionSummary(existingOrder.orderId)]);
+      } else if (orders.length) {
+        setUserHomeMode("operations");
+        setChannelsLoading(false);
       } else {
+        setUserHomeMode("setup");
         await loadChannels();
       }
     }).catch((cause) => {
@@ -477,12 +540,46 @@ export default function HostedTaskPage() {
     setIdentity(undefined);
     setIdentityStatus("anonymous");
     setOrder(undefined);
+    setRecentOrders([]);
+    setUserHomeMode("setup");
     setProducts([]);
     setSelectedProductId("");
     setSelectedChannels([]);
     setBrowserConnectionSummary({ total: 0, connected: 0 });
     setLoginSent(false);
     setNotice("已安全退出。如需继续，请重新使用工作邮箱登录。");
+  }
+
+  function startNewBatch() {
+    const previous = recentOrders[0];
+    setUserHomeMode("setup");
+    setOrder(undefined);
+    setProductName("");
+    setOfficialUrl("");
+    setFiles([]);
+    setBrowserConnectionSummary({ total: 0, connected: 0 });
+    setError(undefined);
+    setNotice("已复用上一批次的常用设置。请只检查产品资料变化、渠道和本月目标后提交。");
+    if (previous) {
+      setSelectedProductId(previous.productId);
+      setIsAddingNew(false);
+      setSelectedChannels(previous.channels.map((item) => item.channel));
+      setCustomCaps(previous.dailyCaps || {});
+      setDailyDigest(previous.notificationPreferences?.dailyDigest !== false);
+      setMonthlyCompleted(previous.notificationPreferences?.monthlyCompleted !== false);
+      void loadChannels(previous.productId);
+    } else {
+      setSelectedProductId("");
+      setIsAddingNew(true);
+      setSelectedChannels([]);
+      setCustomCaps({});
+      void loadChannels();
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("orderId");
+    url.hash = "setup-product";
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    window.requestAnimationFrame(() => document.getElementById("setup-product")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   async function persistOrderSettings(targetOrder: HostedOrder) {
@@ -524,6 +621,7 @@ export default function HostedTaskPage() {
       if (!response.ok) throw new Error(readApiError(payload, "托管任务提交失败。"));
       let nextOrder = payload.order as HostedOrder;
       setOrder(nextOrder);
+      setRecentOrders((current) => [nextOrder, ...current.filter((item) => item.orderId !== nextOrder.orderId)].slice(0, 8));
       setSelectedProductId(nextOrder.productId);
       setIsAddingNew(false);
       window.history.replaceState(null, "", `/?orderId=${encodeURIComponent(nextOrder.orderId)}`);
@@ -587,12 +685,13 @@ export default function HostedTaskPage() {
     : selectedProduct
       ? (files.length || officialUrl ? `${files.length} 份新文件${officialUrl ? " + 官网" : ""}` : "沿用已治理资料")
       : `${files.length} 份文件${officialUrl ? " + 官网" : ""}`;
+  const isOperationsHome = pageAudience === "user" && Boolean(identity) && userHomeMode === "operations" && recentOrders.length > 0;
 
   return (
     <div className={`${styles.page} ${pageAudience === "deployment" ? styles.deploymentReadablePage : ""}`}>
       <section className={styles.intro}>
-        <div><div className={styles.kicker}>JOTO / GUIDED MANAGED SETUP</div><h1>{pageAudience === "deployment" ? "一次走完首次部署，之后只交给用户使用。" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
-        <aside className={styles.introAside}>{pageAudience === "deployment" ? <><strong>{senderStatus?.configured ? "邮箱链路已连接，继续完成整体验收" : "现在处理：完整部署初始化"}</strong><span>从数据库、AI、邮箱到自动发布，所有能力默认开启并进入必填清单和脱敏模板。</span><small>部署人员操作，普通用户不接触密钥</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside>
+        <div><div className={styles.kicker}>{isOperationsHome ? "JOTO / MANAGED OPERATIONS" : "JOTO / GUIDED MANAGED SETUP"}</div><h1>{pageAudience === "deployment" ? "一次走完首次部署，之后只交给用户使用。" : isOperationsHome ? "本月进度、待确认事项和新批次，从这里开始。" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
+        <aside className={styles.introAside}>{pageAudience === "deployment" ? <><strong>{senderStatus?.configured ? "邮箱链路已连接，继续完成整体验收" : "现在处理：完整部署初始化"}</strong><span>从数据库、AI、邮箱到自动发布，所有能力默认开启并进入必填清单和脱敏模板。</span><small>部署人员操作，普通用户不接触密钥</small></> : isOperationsHome ? <><strong>{orderStatusLabels[recentOrders[0]?.status] || "当前批次运行中"}</strong><span>首页只展示当前批次、真正需要判断的事项和最近结果。</span><small>一次性部署配置已收起</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside>
       </section>
 
       <nav className={styles.roleSwitcher} aria-label="选择当前操作角色">
@@ -619,7 +718,8 @@ export default function HostedTaskPage() {
         /> : null}
       </div>
 
-      <div id="role-panel-user" className={styles.workspace} hidden={pageAudience !== "user"}>
+      <div id="role-panel-user" hidden={pageAudience !== "user"}>
+        {isOperationsHome && identity ? <ReturningOperationsHome identity={identity} orders={recentOrders} onStartNew={startNewBatch} onOpenDeployment={() => switchAudience("deployment", "deployment-ai-geo")} /> : <div className={styles.workspace}>
         <div className={styles.formColumn}>
           <section className={styles.section} id="setup-identity">
             <div className={styles.sectionHeader}><div className={styles.sectionTitle}><span className={styles.sectionNumber}>01</span><div><h2>用工作邮箱登录</h2><p>不设密码，邮件里的一次性链接就是登录凭证。</p></div></div><StepStatusBadge state={stepRows[0].state} /></div>
@@ -671,6 +771,7 @@ export default function HostedTaskPage() {
           <div className={styles.receiptBody}><div className={styles.setupPassportSteps}>{stepRows.map((step) => <a href={`#setup-${["identity", "product", "channels", "notifications", "accounts", "ready"][step.number - 1]}`} className={`${styles.setupPassportStep} ${styles[`passport-${step.state}`]}`} key={step.number}><span>{step.state === "done" ? <CheckOutlined /> : step.number}</span><strong>{step.label}</strong><small>{step.state === "done" ? "已完成" : step.number === currentStep ? "现在处理" : step.state === "waiting" ? "发布前完成" : "等待前置"}</small></a>)}</div><div className={styles.receiptSection}><dl><div className={styles.receiptRow}><dt>登录账号</dt><dd>{identity?.email || "尚未登录"}</dd></div><div className={styles.receiptRow}><dt>推广产品</dt><dd>{displayProductName}</dd></div><div className={styles.receiptRow}><dt>产品资料</dt><dd className={styles.wrap}>{materialLabel || "尚未添加"}</dd></div><div className={styles.receiptRow}><dt>推广渠道</dt><dd className={styles.wrap}>{selectedChannelLabels.length ? selectedChannelLabels.join("、") : "尚未选择"}</dd></div></dl></div><div className={styles.receiptSection}><div className={styles.readinessStampGrid}><div className={researchReady ? styles.readinessReady : styles.readinessWaiting}><span>{researchReady ? <CheckOutlined /> : <LockOutlined />}</span><strong>调研就绪</strong><small>{researchReady ? "已开始" : "完成 1-4 步"}</small></div><div className={publishReady ? styles.readinessReady : styles.readinessWaiting}><span>{publishReady ? <CheckOutlined /> : <LockOutlined />}</span><strong>发布就绪</strong><small>{publishReady ? "账号已齐" : "完成第 5 步"}</small></div></div></div><div className={styles.receiptSection}><div className={styles.receiptNote}><strong>你只保留核心判断</strong><br />策略确认一次、代表样文确认一次。正常运行后不需要每天操作。</div></div></div>
           <div className={styles.receiptFooter}>执行周期：当前日历月 · 日期只是 MonthlyPlan 下的执行视图</div>
         </aside>
+      </div>}
       </div>
     </div>
   );

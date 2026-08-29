@@ -1,3 +1,5 @@
+import { getDeploymentRuntimeEnvironment } from "./deployment-ai-config";
+
 export type HostedDeploymentMode = "docker" | "server";
 
 export type HostedDeploymentFeature =
@@ -75,7 +77,7 @@ export function evaluateHostedDeploymentReadiness(input: {
   features: HostedDeploymentFeature[];
   environment?: NodeJS.ProcessEnv;
 }) {
-  const environment = input.environment || process.env;
+  const environment = input.environment || getDeploymentRuntimeEnvironment();
   const runtimeRequired = MODE_REQUIREMENTS[input.mode];
   const groups: HostedDeploymentReadinessGroup[] = [
     {

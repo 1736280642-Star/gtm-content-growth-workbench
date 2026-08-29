@@ -5,6 +5,7 @@ import { v5GovernanceErrorResponse } from "@/lib/v5/knowledge-governance-api";
 import { listHostedChannelOptions } from "@/lib/v5/hosted-channel-service";
 import type { HostedChannelPreference, HostedMaterialSummary } from "@/lib/v5/hosted-managed-contracts";
 import { createHostedPromotionOrder } from "@/lib/v5/hosted-managed-service";
+import { listHostedPromotionOrderRecords } from "@/lib/v5/hosted-managed-repository";
 import { V5GovernanceServiceError } from "@/lib/v5/knowledge-governance-service";
 import { getActiveProduct, onboardProductForGeoResearch } from "@/lib/v5/product-registry-service";
 import { importManagedSources, type ManagedSourceInput } from "@/lib/v5/rag/managed-source-import-service";
@@ -25,6 +26,19 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 function field(formData: FormData, name: string) {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";
+}
+
+export async function GET(request: Request) {
+  try {
+    const identity = await requireHostedIdentity(request);
+    const orders = await listHostedPromotionOrderRecords(identity.workspaceId, 8);
+    return NextResponse.json(
+      { ok: true, orders },
+      { headers: { "cache-control": "no-store" } }
+    );
+  } catch (error) {
+    return v5GovernanceErrorResponse(error);
+  }
 }
 
 function readChannels(value: string): HostedChannelPreference[] {

@@ -29,12 +29,15 @@ test("deployment readiness reports names only and honors selected features", () 
 });
 
 test("deployment center exposes six guided sections, official sources and sanitized templates", async () => {
-  const [component, page, envExample, localEnvExample, route] = await Promise.all([
+  const [component, page, envExample, localEnvExample, route, aiConfigRoute, aiConfigService, ordersRoute] = await Promise.all([
     readFile(new URL("../src/components/HostedDeploymentCenter.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
     readFile(new URL("../.env.local.example", import.meta.url), "utf8"),
-    readFile(new URL("../src/app/api/v5/hosted/deployment-readiness/route.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/app/api/v5/hosted/deployment-readiness/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/hosted/deployment-ai-config/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/deployment-ai-config.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/hosted/orders/route.ts", import.meta.url), "utf8")
   ]);
 
   for (const heading of [
@@ -60,6 +63,8 @@ test("deployment center exposes six guided sections, official sources and saniti
   assert.match(component, /所有产品能力默认开启/);
   assert.match(component, /本地 Docker/);
   assert.match(component, /服务器部署/);
+  assert.match(component, /直接粘贴全部 AI Provider 配置/);
+  assert.match(component, /识别、加密并立即启用/);
   assert.doesNotMatch(component, /Vercel 托管|id: "vercel"|id: "private"/);
   for (const captureGuideText of [
     "chrome:\/\/extensions\/",
@@ -84,6 +89,9 @@ test("deployment center exposes six guided sections, official sources and saniti
   }
   assert.doesNotMatch(component, /toggleFeature|setFeatures|deploymentFeatureGrid/);
   assert.match(page, /HostedDeploymentCenter/);
+  assert.match(page, /ReturningOperationsHome/);
+  assert.match(page, /发起新的推广批次/);
+  assert.match(page, /新批次默认复用上次的产品、渠道和通知设置/);
   assert.match(envExample, /WECHATSYNC_BRIDGE_TOKEN=/);
   assert.match(envExample, /WECHAT_MP_APP_ID=/);
   assert.match(localEnvExample, /HOSTED_CAPTURE_SETUP_TOKEN=/);
@@ -95,4 +103,12 @@ test("deployment center exposes six guided sections, official sources and saniti
   assert.doesNotMatch(localEnvExample, /127\.0\.0\.1:3050/);
   assert.match(route, /timingSafeEqual/);
   assert.doesNotMatch(route, /process\.env\[[^\]]+\].*(?:json|NextResponse)/);
+  assert.match(aiConfigRoute, /requireHostedEmailSetupToken/);
+  assert.doesNotMatch(aiConfigRoute, /configText.*NextResponse/);
+  assert.match(aiConfigService, /aes-256-gcm/);
+  assert.match(aiConfigService, /worker-status/);
+  assert.match(aiConfigService, /DASHSCOPE_API_KEY/);
+  assert.match(aiConfigService, /GEO_RESEARCH_ZHIPU_API_KEY/);
+  assert.match(ordersRoute, /export async function GET/);
+  assert.match(ordersRoute, /listHostedPromotionOrderRecords/);
 });

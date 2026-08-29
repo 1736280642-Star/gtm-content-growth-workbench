@@ -5,6 +5,7 @@ import type { ModelAnswerObservation, GeoResearchResultPack } from "./geo-resear
 import { buildGeoResearchResultPack } from "./geo-research-result-pack";
 
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
+import { getDeploymentRuntimeValue } from "./deployment-ai-config";
 import {
   combineMultiSearchEvidencePacks,
   getMultiSearchProviderReadiness,
@@ -432,9 +433,9 @@ export function parseStructuredOutput(outputText: string) {
 }
 
 function assertProviderConfig() {
-  const apiKey = process.env.GEO_RESEARCH_ZHIPU_API_KEY?.trim();
-  const model = process.env.GEO_RESEARCH_ZHIPU_MODEL?.trim();
-  const baseUrl = (process.env.GEO_RESEARCH_ZHIPU_BASE_URL?.trim() || "https://open.bigmodel.cn/api/paas/v4").replace(/\/+$/, "");
+  const apiKey = getDeploymentRuntimeValue("GEO_RESEARCH_ZHIPU_API_KEY");
+  const model = getDeploymentRuntimeValue("GEO_RESEARCH_ZHIPU_MODEL");
+  const baseUrl = (getDeploymentRuntimeValue("GEO_RESEARCH_ZHIPU_BASE_URL") || "https://open.bigmodel.cn/api/paas/v4").replace(/\/+$/, "");
   const searchEngine = process.env.GEO_RESEARCH_ZHIPU_SEARCH_ENGINE?.trim() || "search_pro";
   const requestedCount = Number(process.env.GEO_RESEARCH_ZHIPU_SEARCH_COUNT || 10);
   const searchRecency = process.env.GEO_RESEARCH_ZHIPU_SEARCH_RECENCY?.trim() || "noLimit";

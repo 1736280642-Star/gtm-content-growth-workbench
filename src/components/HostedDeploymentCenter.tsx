@@ -75,6 +75,14 @@ interface ReadinessResult {
   sender?: SenderSetupStatus;
 }
 
+interface AiConfigSaveResult {
+  ready: boolean;
+  configured: string[];
+  missingRequired: string[];
+  ignored: string[];
+  updatedAt?: string;
+}
+
 const requirementLabels: Record<Requirement, string> = {
   required: "必填",
   conditional: "条件必填",
@@ -112,10 +120,10 @@ const runtimeServerFields: ConfigField[] = [
 ];
 
 const aiFields: ConfigField[] = [
-  { name: "DASHSCOPE_API_KEY", title: "阿里云百炼 API Key", description: "用于 Qwen 内容生成和默认 Embedding，是完整内容链路的核心凭证。", requirement: "required", location: "部署机 .env.local", source: "阿里云百炼控制台 → API Key → 创建 API Key。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key", example: "sk-your-dashscope-key" },
+  { name: "DASHSCOPE_API_KEY", title: "阿里云百炼 API Key", description: "用于 Qwen 内容生成和默认 Embedding，是完整内容链路的核心凭证。", requirement: "required", location: "首页部署人员 → AI 配置入口", source: "阿里云百炼控制台 → API Key → 创建 API Key。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key", example: "DASHSCOPE_API_KEY=sk-your-dashscope-key" },
   { name: "QWEN_MODEL", title: "内容生成模型", description: "默认 qwen-plus。只有经过成本和质量验收后才修改。", requirement: "default", location: "部署机 .env.local", source: "使用仓库推荐默认值。", example: "qwen-plus" },
   { name: "QWEN_EMBEDDING_MODEL", title: "向量模型", description: "默认 text-embedding-v3，正式 RAG 使用。", requirement: "default", location: "部署机 .env.local", source: "使用仓库推荐默认值。", example: "text-embedding-v3" },
-  { name: "GEO_RESEARCH_ZHIPU_API_KEY", title: "智谱 GEO 编排 Key", description: "智谱负责 GEO 语义综合和编排，启用完整 GEO 调研时必填。", requirement: "required", location: "部署机 .env.local", source: "智谱开放平台 → API Keys → 创建 API Key。", sourceUrl: "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys" },
+  { name: "GEO_RESEARCH_ZHIPU_API_KEY", title: "智谱 GEO 编排 Key", description: "智谱负责 GEO 语义综合和编排，启用完整 GEO 调研时必填。", requirement: "required", location: "首页部署人员 → AI 配置入口", source: "智谱开放平台 → API Keys → 创建 API Key。", sourceUrl: "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys", example: "GEO_RESEARCH_ZHIPU_API_KEY=你的智谱Key" },
   { name: "GEO_RESEARCH_DOUBAO_API_KEY / MODEL", title: "豆包事实搜索", description: "需要把事实搜索扩展到豆包时填写；不启用豆包可留空。", requirement: "optional", location: "部署机 .env.local", source: "火山方舟 → 系统管理 → API Key 管理；模型值填写已开通的推理接入点。", sourceUrl: "https://console.volcengine.com/ark" },
   { name: "GEO_RESEARCH_QWEN_API_KEY", title: "独立 Qwen GEO Key", description: "留空时复用 DASHSCOPE_API_KEY，只有需要供应商隔离或独立计费时单独创建。", requirement: "optional", location: "部署机 .env.local", source: "与 DASHSCOPE_API_KEY 使用同一百炼入口。", sourceUrl: "https://help.aliyun.com/zh/model-studio/get-api-key" }
 ];
@@ -269,6 +277,10 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
   const activeTemplate = templates.find((template) => template.id === templateId) || templates[0];
   const [copied, setCopied] = useState(false);
   const [setupToken, setSetupToken] = useState("");
+  const [aiConfigText, setAiConfigText] = useState("");
+  const [savingAiConfig, setSavingAiConfig] = useState(false);
+  const [aiConfigError, setAiConfigError] = useState<string>();
+  const [aiConfigResult, setAiConfigResult] = useState<AiConfigSaveResult>();
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string>();
   const [readiness, setReadiness] = useState<ReadinessResult>();
@@ -309,6 +321,28 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
     }
   }
 
+  async function saveAiConfig() {
+    setSavingAiConfig(true);
+    setAiConfigError(undefined);
+    setAiConfigResult(undefined);
+    try {
+      const response = await fetch("/api/v5/hosted/deployment-ai-config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ setupToken, configText: aiConfigText })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readApiMessage(payload, "AI Provider 配置保存失败。"));
+      setAiConfigResult(payload as AiConfigSaveResult);
+      setAiConfigText("");
+      setReadiness(undefined);
+    } catch (error) {
+      setAiConfigError(error instanceof Error ? error.message : "AI Provider 配置保存失败。请检查服务端日志。");
+    } finally {
+      setSavingAiConfig(false);
+    }
+  }
+
   const runtimeFields = mode === "server" ? runtimeServerFields : runtimeDockerFields;
   return (
     <div className={styles.deploymentWorkspace}>
@@ -339,6 +373,22 @@ export function HostedDeploymentCenter({ senderStatus, senderStatusLoading, onRe
 
         <section className={styles.deploymentSection} id="deployment-ai-geo">
           <StepHeader number={2} title="连接 AI 与 GEO 服务" description="默认用 Qwen 生成和 Embedding，用智谱完成 GEO 语义综合。豆包和独立 Qwen 搜索按需配置。" />
+          <div className={styles.deploymentAiPaste}>
+            <div className={styles.deploymentAiPasteIntro}>
+              <div><strong>直接粘贴全部 AI Provider 配置</strong><span>系统按变量名自动识别，加密写入 Web 与 Worker 共用的持久卷；不会写入浏览器、URL、日志或 Git。</span></div>
+              <b>保存后立即读取</b>
+            </div>
+            <div className={styles.deploymentAiPasteGrid}>
+              <label><span>部署级 Setup Token</span><Input.Password value={setupToken} onChange={(event) => setSetupToken(event.target.value)} placeholder="HOSTED_EMAIL_SETUP_TOKEN" autoComplete="off" /></label>
+              <label><span>Provider 配置（每行 KEY=value）</span><Input.TextArea value={aiConfigText} onChange={(event) => setAiConfigText(event.target.value)} autoSize={{ minRows: 5, maxRows: 12 }} placeholder={"DASHSCOPE_API_KEY=你的百炼Key\nGEO_RESEARCH_ZHIPU_API_KEY=你的智谱Key\n# 可继续粘贴 DeepSeek、豆包或独立 Qwen 配置"} /></label>
+            </div>
+            <div className={styles.deploymentAiPasteActions}>
+              <Button type="primary" icon={<SafetyCertificateOutlined />} loading={savingAiConfig} disabled={!setupToken.trim() || !aiConfigText.trim()} onClick={saveAiConfig}>识别、加密并立即启用</Button>
+              <span>Qwen 模型、Embedding 模型、智谱模型和 RAG Provider 会自动使用仓库默认值。</span>
+            </div>
+            {aiConfigError ? <div className={styles.deploymentCheckError} role="alert"><InfoCircleOutlined /><span>{aiConfigError}</span></div> : null}
+            {aiConfigResult ? <div className={`${styles.deploymentAiPasteResult} ${aiConfigResult.ready ? styles.readinessGroupReady : ""}`}><CheckCircleFilled /><div><strong>{aiConfigResult.ready ? "AI 与 GEO 必填配置已经生效" : "已保存，仍有必填项未配置"}</strong><span>已识别 {aiConfigResult.configured.length} 项{aiConfigResult.missingRequired.length ? `；缺少 ${aiConfigResult.missingRequired.join("、")}` : "；Web 与后台 Worker 将读取同一份配置"}{aiConfigResult.ignored.length ? `。已忽略非 AI 字段：${aiConfigResult.ignored.join("、")}` : ""}</span></div></div> : null}
+          </div>
           <FieldGrid fields={aiFields} />
         </section>
 

@@ -14,6 +14,7 @@ GEOForge-*.html
 UTF8
 .env
 .env.local
+runtime/worker-status/deployment-ai-config.enc.json
 publish-extension/runtime-config.js
 data/workbench-state.json
 data/workbench-smoke-state.json

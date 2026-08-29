@@ -11,6 +11,7 @@ import type { ModelAnswerObservation } from "./geo-research-result-contracts";
 import type { ProbeSetSnapshot } from "./geo-probe-contracts";
 import { getActiveGeoChannelRulePack, matchChannelForHost } from "./geo-channel-rule-pack";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
+import { getDeploymentRuntimeValue } from "./deployment-ai-config";
 
 interface ProviderConfig {
   provider: GeoSearchProviderKey;
@@ -70,9 +71,9 @@ function configs(): ProviderConfig[] {
   return [
     {
       provider: "zhipu",
-      apiKey: process.env.GEO_RESEARCH_ZHIPU_API_KEY?.trim(),
-      model: process.env.GEO_RESEARCH_ZHIPU_MODEL?.trim(),
-      baseUrl: (process.env.GEO_RESEARCH_ZHIPU_BASE_URL?.trim() || "https://open.bigmodel.cn/api/paas/v4").replace(/\/+$/, ""),
+      apiKey: getDeploymentRuntimeValue("GEO_RESEARCH_ZHIPU_API_KEY"),
+      model: getDeploymentRuntimeValue("GEO_RESEARCH_ZHIPU_MODEL"),
+      baseUrl: (getDeploymentRuntimeValue("GEO_RESEARCH_ZHIPU_BASE_URL") || "https://open.bigmodel.cn/api/paas/v4").replace(/\/+$/, ""),
       searchEngine: process.env.GEO_RESEARCH_ZHIPU_SEARCH_ENGINE?.trim() || "search_pro",
       searchCount: boundedInteger(process.env.GEO_RESEARCH_ZHIPU_SEARCH_COUNT, 10, 1, 50),
       searchRecency: process.env.GEO_RESEARCH_ZHIPU_SEARCH_RECENCY?.trim() || "noLimit",
@@ -80,15 +81,15 @@ function configs(): ProviderConfig[] {
     },
     {
       provider: "doubao",
-      apiKey: (process.env.GEO_RESEARCH_DOUBAO_API_KEY || process.env.DOUBAO_API_KEY)?.trim(),
-      model: (process.env.GEO_RESEARCH_DOUBAO_MODEL || process.env.DOUBAO_MODEL)?.trim(),
-      baseUrl: (process.env.GEO_RESEARCH_DOUBAO_BASE_URL?.trim() || process.env.DOUBAO_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3").replace(/\/+$/, "")
+      apiKey: getDeploymentRuntimeValue("GEO_RESEARCH_DOUBAO_API_KEY") || getDeploymentRuntimeValue("DOUBAO_API_KEY"),
+      model: getDeploymentRuntimeValue("GEO_RESEARCH_DOUBAO_MODEL") || getDeploymentRuntimeValue("DOUBAO_MODEL"),
+      baseUrl: (getDeploymentRuntimeValue("GEO_RESEARCH_DOUBAO_BASE_URL") || getDeploymentRuntimeValue("DOUBAO_BASE_URL") || "https://ark.cn-beijing.volces.com/api/v3").replace(/\/+$/, "")
     },
     {
       provider: "qwen",
-      apiKey: (process.env.GEO_RESEARCH_QWEN_API_KEY || process.env.DASHSCOPE_API_KEY)?.trim(),
-      model: (process.env.GEO_RESEARCH_QWEN_MODEL || process.env.QWEN_MODEL)?.trim(),
-      baseUrl: (process.env.GEO_RESEARCH_QWEN_BASE_URL?.trim() || process.env.QWEN_BASE_URL?.trim() || "https://dashscope.aliyuncs.com/compatible-mode/v1").replace(/\/+$/, "")
+      apiKey: getDeploymentRuntimeValue("GEO_RESEARCH_QWEN_API_KEY") || getDeploymentRuntimeValue("DASHSCOPE_API_KEY"),
+      model: getDeploymentRuntimeValue("GEO_RESEARCH_QWEN_MODEL") || getDeploymentRuntimeValue("QWEN_MODEL"),
+      baseUrl: (getDeploymentRuntimeValue("GEO_RESEARCH_QWEN_BASE_URL") || getDeploymentRuntimeValue("QWEN_BASE_URL") || "https://dashscope.aliyuncs.com/compatible-mode/v1").replace(/\/+$/, "")
     }
   ];
 }

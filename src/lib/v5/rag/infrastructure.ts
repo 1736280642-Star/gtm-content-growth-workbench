@@ -1,4 +1,5 @@
 import type { RagInfrastructureStatus } from "./contracts";
+import { getDeploymentRuntimeValue } from "../deployment-ai-config";
 
 const mysqlConfig = ["MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"] as const;
 const openSearchUrlConfig = ["OPENSEARCH_URL"] as const;
@@ -11,7 +12,7 @@ const embeddingProviders = {
 } as const;
 
 function missing(names: readonly string[]) {
-  return names.filter((name) => !process.env[name]?.trim());
+  return names.filter((name) => !getDeploymentRuntimeValue(name));
 }
 
 export function getOpenSearchAuthMode(): OpenSearchAuthMode {
@@ -53,7 +54,7 @@ export function getRagInfrastructureStatus(): RagInfrastructureStatus {
   const embeddingMissing = providerConfig
     ? missing([providerConfig.apiKey, providerConfig.model])
     : ["RAG_EMBEDDING_PROVIDER"];
-  const embeddingModel = providerConfig ? process.env[providerConfig.model]?.trim() : undefined;
+  const embeddingModel = providerConfig ? getDeploymentRuntimeValue(providerConfig.model) : undefined;
   const status: RagInfrastructureStatus = {
     status: mysqlMissing.length === 0 && openSearchMissing.length === 0 && embeddingMissing.length === 0 ? "ready" : "pending_config",
     mysql: { status: mysqlMissing.length ? "pending_config" : "ready", missingConfig: mysqlMissing },

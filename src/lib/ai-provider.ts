@@ -1,4 +1,5 @@
 import { getRuntimeConfigStatus } from "./runtime-config";
+import { getDeploymentRuntimeValue } from "./v5/deployment-ai-config";
 
 export type AiProviderKey = "qwen" | "deepseek" | "doubao" | "zhipu";
 
@@ -96,9 +97,9 @@ export async function callAiProvider(request: AiProviderRequest): Promise<AiProv
     };
   }
 
-  const apiKey = process.env[env.apiKey];
-  const model = process.env[env.model];
-  const baseUrl = (process.env[env.baseUrl] || env.defaultBaseUrl).replace(/\/$/, "");
+  const apiKey = getDeploymentRuntimeValue(env.apiKey);
+  const model = getDeploymentRuntimeValue(env.model);
+  const baseUrl = (getDeploymentRuntimeValue(env.baseUrl) || env.defaultBaseUrl).replace(/\/$/, "");
   const timeoutMs = Number.isFinite(request.timeoutMs)
     ? Math.max(1_000, Math.min(Number(request.timeoutMs), 300_000))
     : defaultProviderTimeoutMs;
