@@ -108,6 +108,37 @@ test("compiles the internal research synthesis into the user-facing strategy V2 
   assert.equal(plan.synthesis.blueprintVersionId, "blueprint-1");
 });
 
+test("human strategy edits update visible copy and frozen article type definitions without model regeneration", () => {
+  const plan = contracts.compileProductGeoStrategyContentPlan({
+    project: sampleProject(),
+    blueprint: sampleBlueprint(),
+    sourceSnapshotId: "source-snapshot-1",
+    synthesisModel: "zhipu"
+  });
+  const originalGenerated = plan.articleTypePortfolio.find((item) => item.origin === "generated");
+  const edited = contracts.applyProductStrategyHumanEdit(plan, {
+    promotionPurpose: "人工改写后的推广目标。",
+    targetAudience: ["企业技术负责人", "业务负责人"],
+    keyMessages: ["先解释适用场景", "再说明人工边界"],
+    articleDirections: plan.articleTypePortfolio.map((item, index) => ({
+      portfolioItemId: item.portfolioItemId,
+      name: `人工方向 ${index + 1}`,
+      direction: `人工直接填写的写作方向 ${index + 1}。`
+    })),
+    prohibitedClaims: ["不得作绝对化承诺"]
+  });
+  const editedGenerated = edited.articleTypePortfolio.find((item) => item.origin === "generated");
+  assert.equal(edited.productPositioning.promotionPurpose, "人工改写后的推广目标。");
+  assert.equal(edited.productPositioning.expressionFocus, "人工改写后的推广目标。");
+  assert.deepEqual(edited.productPositioning.targetAudience, ["企业技术负责人", "业务负责人"]);
+  assert.deepEqual(edited.expressionDirection.keyMessages, ["先解释适用场景", "再说明人工边界"]);
+  assert.equal(edited.articleTypePortfolio[0].definition, "人工直接填写的写作方向 1。");
+  assert.notEqual(editedGenerated.definitionHash, originalGenerated.definitionHash);
+  assert.notEqual(editedGenerated.articleTypeVersionId, originalGenerated.articleTypeVersionId);
+  assert.ok(editedGenerated.raw.humanEdited);
+  contracts.assertProductGeoStrategyContentPlanV2(edited);
+});
+
 test("maps the live blueprint field names without losing opportunities, evidence gaps, or expression direction", () => {
   const blueprint = sampleBlueprint();
   blueprint.questionStrategy = {

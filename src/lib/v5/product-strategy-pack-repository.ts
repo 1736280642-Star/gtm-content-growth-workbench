@@ -11,6 +11,7 @@ import {
 } from "./knowledge-governance-repository";
 import { hashV5GovernancePayload, stringifyV5Json } from "./knowledge-governance-repository";
 import {
+  applyProductStrategyHumanEdit,
   productGeoStrategyContractVersion,
   assertProductGeoStrategyContentPlanV2,
   resolveProductStrategyDecisionStatus,
@@ -20,6 +21,7 @@ import {
   type ProductFixedExpressionRule,
   type ProductGeoStrategyPackRecord,
   type ProductGeoStrategyPackStatus,
+  type ProductStrategyHumanEditInput,
   type ProductStrategyArticleTypeVersionRecord
 } from "./product-strategy-pack-contracts";
 
@@ -418,6 +420,119 @@ export async function applyProductStrategyPack(input: {
       rowVersion: Number(pack.row_version || 1) + 1,
       replayed: false
     };
+  });
+}
+
+export async function updatePendingProductStrategyContent(input: {
+  productId: string;
+  strategyPackId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+  edit: ProductStrategyHumanEditInput;
+  actor: V5GovernanceActor;
+}) {
+  const requestHash = hashV5GovernancePayload({
+    productId: input.productId,
+    strategyPackId: input.strategyPackId,
+    expectedVersion: input.expectedVersion,
+    edit: input.edit
+  });
+  return withV5GovernanceTransaction(async (connection) => {
+    const replay = await readV5Idempotency(connection, input.idempotencyKey, requestHash);
+    if (replay) {
+      const [replayedRows] = await connection.query<RowDataPacket[]>(
+        "SELECT * FROM product_strategy_packs WHERE id = ? AND product_id = ?",
+        [replay.resourceId || input.strategyPackId, input.productId]
+      );
+      if (!replayedRows[0]) throw new V5GovernanceRepositoryError("strategy_pack_not_found", "产品策略包不存在。", 404);
+      return { pack: mapPack(replayedRows[0]), replayed: true };
+    }
+    const [rows] = await connection.query<RowDataPacket[]>(
+      "SELECT * FROM product_strategy_packs WHERE id = ? AND product_id = ? FOR UPDATE",
+      [input.strategyPackId, input.productId]
+    );
+    const pack = rows[0];
+    if (!pack) throw new V5GovernanceRepositoryError("strategy_pack_not_found", "产品策略包不存在。", 404);
+    if (String(pack.status) !== "pending_strategy_review") {
+      throw new V5GovernanceRepositoryError(
+        "strategy_pack_not_editable",
+        "只有尚未确认的候选策略可以直接编辑。",
+        409,
+        "请使用最新策略审核邮件，或先创建新的候选策略版本。"
+      );
+    }
+    if (Number(pack.row_version || 1) !== input.expectedVersion) {
+      throw new V5GovernanceRepositoryError("strategy_pack_version_conflict", "策略内容已被其他操作更新，请刷新后重试。", 409);
+    }
+    const storedPlan = parseV5Json<ProductGeoStrategyContentPlanV2 | null>(pack.content_plan_json, null);
+    if (!storedPlan || storedPlan.contractVersion !== productGeoStrategyContractVersion) {
+      throw new V5GovernanceRepositoryError("strategy_pack_incomplete", "策略包内容不完整，不能直接编辑。", 409);
+    }
+    const storedIds = storedPlan.articleTypePortfolio.map((item) => item.portfolioItemId).sort();
+    const editedIds = [...new Set(input.edit.articleDirections.map((item) => item.portfolioItemId))].sort();
+    if (JSON.stringify(storedIds) !== JSON.stringify(editedIds)) {
+      throw new V5GovernanceRepositoryError("strategy_article_directions_incomplete", "内容方向已经变化，请刷新后重新编辑。", 409);
+    }
+    const nextPlan = applyProductStrategyHumanEdit(storedPlan, input.edit);
+    try {
+      assertProductGeoStrategyContentPlanV2(nextPlan);
+    } catch (error) {
+      throw new V5GovernanceRepositoryError(
+        error instanceof Error ? error.message : "product_strategy_content_plan_invalid",
+        "人工修改后的策略没有通过完整性检查。",
+        422
+      );
+    }
+    const nextHash = hashV5GovernancePayload(nextPlan);
+    for (const item of nextPlan.articleTypePortfolio) {
+      await connection.query(
+        `UPDATE product_strategy_article_type_versions
+         SET article_type_id = ?, article_type_version_id = ?, name = ?, definition_json = ?, definition_hash = ?, updated_at = NOW()
+         WHERE strategy_pack_id = ? AND portfolio_item_id = ? AND status = 'draft'`,
+        [
+          item.articleTypeId || null,
+          item.articleTypeVersionId,
+          item.name,
+          stringifyV5Json(item),
+          item.definitionHash,
+          input.strategyPackId,
+          item.portfolioItemId
+        ]
+      );
+    }
+    await connection.query(
+      `UPDATE product_strategy_packs
+       SET content_plan_json = ?, content_plan_hash = ?, row_version = row_version + 1, updated_at = NOW()
+       WHERE id = ?`,
+      [stringifyV5Json(nextPlan), nextHash, input.strategyPackId]
+    );
+    await writeV5GovernanceAudit(connection, {
+      ...input.actor,
+      eventType: "product_strategy_content_human_edited",
+      objectType: "product_strategy_pack",
+      objectId: input.strategyPackId,
+      beforeSummary: { contentPlanHash: String(pack.content_plan_hash || ""), rowVersion: Number(pack.row_version || 1) },
+      afterSummary: {
+        contentPlanHash: nextHash,
+        rowVersion: Number(pack.row_version || 1) + 1,
+        targetAudienceCount: input.edit.targetAudience.length,
+        keyMessageCount: input.edit.keyMessages.length,
+        articleDirectionCount: input.edit.articleDirections.length,
+        prohibitedClaimCount: input.edit.prohibitedClaims.length
+      },
+      correlationId: input.productId
+    });
+    await writeV5Idempotency(connection, {
+      idempotencyKey: input.idempotencyKey,
+      operationType: "edit_pending_product_strategy",
+      requestHash,
+      resourceType: "product_strategy_pack",
+      resourceId: input.strategyPackId,
+      responseStatus: "updated",
+      responseSummary: { rowVersion: Number(pack.row_version || 1) + 1, contentPlanHash: nextHash }
+    });
+    const [savedRows] = await connection.query<RowDataPacket[]>("SELECT * FROM product_strategy_packs WHERE id = ?", [input.strategyPackId]);
+    return { pack: mapPack(savedRows[0]), replayed: false };
   });
 }
 

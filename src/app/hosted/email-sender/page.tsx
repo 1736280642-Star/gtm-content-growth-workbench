@@ -199,7 +199,7 @@ export default function HostedEmailSenderPage() {
               <li>由部署管理员使用密码管理器生成至少 32 位随机值。</li>
               <li>本地 Docker 写入被 Git 忽略的 <code>.env.local</code>，变量名为 <code>HOSTED_EMAIL_SETUP_TOKEN</code>。</li>
               <li>同时配置 32 字节的 <code>HOSTED_EMAIL_CREDENTIAL_ENCRYPTION_KEY</code>，用于加密保存授权信息。</li>
-              <li>重新构建 3027；Vercel 则在 Project Settings 的 Environment Variables 中配置后重新部署。</li>
+              <li>保存后重新构建 3027；服务器部署也需在部署机更新 .env.local 并重建 Web 容器。</li>
             </ol>
           </article>
         </div>

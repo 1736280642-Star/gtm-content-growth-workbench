@@ -12,7 +12,7 @@ import { V5GovernanceServiceError } from "@/lib/v5/knowledge-governance-service"
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const MODES = new Set<HostedDeploymentMode>(["docker", "vercel", "private"]);
+const MODES = new Set<HostedDeploymentMode>(["docker", "server"]);
 const FEATURES = new Set<HostedDeploymentFeature>(["email", "geo", "wechat", "browser_publish", "metrics", "capture"]);
 
 function requireDeploymentToken(submitted: string) {
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
         "HOSTED_DEPLOYMENT_MODE_INVALID",
         "不支持的部署方式。",
         400,
-        "请选择 Docker、Vercel 或私有服务器。"
+        "请选择本地 Docker 或服务器部署。"
       );
     }
     const features = [...new Set(Array.isArray(body.features) ? body.features : [])]

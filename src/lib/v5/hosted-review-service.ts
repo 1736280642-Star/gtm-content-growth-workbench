@@ -9,7 +9,8 @@ import {
 import { enqueueHostedNotification } from "./hosted-notification-service";
 import type { HostedPromotionOrderRecord } from "./hosted-managed-contracts";
 import { readHostedPromotionOrderRecord, updateHostedPromotionOrderStatus } from "./hosted-managed-repository";
-import { decideProductGeoStrategyPack, getProductGeoStrategyPackView } from "./product-strategy-pack-service";
+import { decideProductGeoStrategyPack, editPendingProductGeoStrategyPack, getProductGeoStrategyPackView } from "./product-strategy-pack-service";
+import type { ProductStrategyHumanEditInput } from "./product-strategy-pack-contracts";
 import {
   enqueueProductSampleArticle,
   enqueueProductSampleRevision,
@@ -97,9 +98,10 @@ function strategySummary(order: HostedPromotionOrderRecord, plan: Record<string,
     promotionPurpose: String(positioning.promotionPurpose || "帮助目标用户理解产品适用场景与采用方式。"),
     keyMessages: strings(expression.keyMessages).slice(0, 4),
     channels: order.channels.map((item) => item.channel),
-    articleDirections: portfolio.filter((item) => item.evidenceReadiness === "ready").slice(0, 4).map((item) => ({
+    articleDirections: portfolio.slice(0, 6).map((item) => ({
+      portfolioItemId: String(item.portfolioItemId || ""),
       name: String(item.name || "内容方向"),
-      reason: String(item.recommendationReason || item.contentGoal || "覆盖目标用户的真实问题。")
+      direction: String(item.definition || item.contentGoal || item.recommendationReason || "覆盖目标用户的真实问题。")
     })),
     prohibitedClaims: strings(positioning.prohibitedClaims).slice(0, 5)
   };
@@ -116,7 +118,11 @@ export async function getHostedReviewView(token: string) {
     return {
       review: { gateType: review.gateType, status: review.status, expiresAt: review.expiresAt, decision: review.decision, comment: review.comment },
       order: { orderId: order.orderId, productName: order.productName },
-      strategy: { strategyVersion: strategy.strategyVersion, summary: strategySummary(order, strategy.contentPlan as Record<string, unknown> | null) }
+      strategy: {
+        strategyVersion: strategy.strategyVersion,
+        rowVersion: strategy.rowVersion,
+        summary: strategySummary(order, strategy.contentPlan as Record<string, unknown> | null)
+      }
     };
   }
   const samples = await readProductSampleArticles(review.productId);
@@ -135,6 +141,46 @@ export async function getHostedReviewView(token: string) {
       articleTypeName: detail.articleTypeName,
       channel: "wechat"
     }
+  };
+}
+
+export async function editHostedStrategyReview(input: {
+  token: string;
+  expectedVersion: number;
+  edit: ProductStrategyHumanEditInput;
+}) {
+  const review = await readHostedReviewRequestByToken(input.token);
+  if (review.status !== "pending" || review.gateType !== "strategy") {
+    throw new V5GovernanceServiceError("hosted_strategy_edit_not_available", "只有待确认的策略邮件可以直接编辑。", 409);
+  }
+  const order = await readHostedPromotionOrderRecord(review.orderId);
+  if (!order) throw new V5GovernanceServiceError("hosted_order_not_found", "审核对应的托管任务不存在。", 404);
+  const view = await getProductGeoStrategyPackView(review.productId);
+  const strategy = view.latestStrategyPack;
+  if (!strategy || strategy.id !== review.targetId || strategy.status !== "pending_strategy_review") {
+    throw new V5GovernanceServiceError("hosted_review_target_changed", "策略已经更新，请使用最新邮件链接。", 409);
+  }
+  const editHash = hashV5GovernancePayload(input.edit);
+  const result = await editPendingProductGeoStrategyPack({
+    productId: review.productId,
+    strategyPackId: strategy.id,
+    expectedVersion: input.expectedVersion,
+    idempotencyKey: `hosted-strategy-edit:${review.reviewRequestId}:${input.expectedVersion}:${editHash.slice(0, 16)}`.slice(0, 128),
+    edit: input.edit,
+    actor: {
+      actorId: humanActorId(review.contactEmail),
+      actorRole: "product_owner",
+      actorType: "human",
+      auditReason: "用户在托管策略审核页面直接修改策略文字"
+    }
+  });
+  return {
+    strategy: {
+      strategyVersion: result.pack.strategyVersion,
+      rowVersion: result.pack.rowVersion,
+      summary: strategySummary(order, result.pack.contentPlan as Record<string, unknown> | null)
+    },
+    replayed: result.replayed
   };
 }
 

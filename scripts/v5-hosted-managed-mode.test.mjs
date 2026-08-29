@@ -261,6 +261,25 @@ test("策略修改意见会进入新一轮正式 GEO 调研而不是卡在已驳
   assert.match(reviewService, /strategyRevisionQueued/);
 });
 
+test("策略邮件允许人工直接编辑并保存当前候选包，不必重新调研", async () => {
+  const [reviewPage, reviewRoute, reviewService, strategyService, strategyRepository] = await Promise.all([
+    readFile(new URL("../src/app/hosted/review/[token]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/hosted/reviews/[token]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/hosted-review-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/product-strategy-pack-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/product-strategy-pack-repository.ts", import.meta.url), "utf8")
+  ]);
+  assert.match(reviewPage, /保存人工修改/);
+  assert.match(reviewPage, /method: "PATCH"/);
+  assert.match(reviewPage, /还有未保存的策略修改/);
+  assert.match(reviewRoute, /export async function PATCH/);
+  assert.match(reviewService, /editHostedStrategyReview/);
+  assert.match(strategyService, /editPendingProductGeoStrategyPack/);
+  assert.match(strategyRepository, /updatePendingProductStrategyContent/);
+  assert.match(strategyRepository, /product_strategy_content_human_edited/);
+  assert.match(strategyRepository, /status = 'draft'/);
+});
+
 test("结果邮件提供签名退订入口且行动邮件保持强制", async () => {
   const [notificationService, preferencePage] = await Promise.all([
     readFile(new URL("../src/lib/v5/hosted-notification-service.ts", import.meta.url), "utf8"),

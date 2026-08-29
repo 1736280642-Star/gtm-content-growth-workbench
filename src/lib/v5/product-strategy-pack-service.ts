@@ -2,6 +2,7 @@ import { V5GovernanceServiceError } from "./knowledge-governance-service";
 import type { V5GovernanceActor } from "./knowledge-governance-repository";
 import {
   applyProductStrategyPack,
+  updatePendingProductStrategyContent,
   updateApprovedProductStrategyFixedExpression,
   readCurrentProductStrategyPack,
   readLatestProductStrategyPack,
@@ -10,7 +11,8 @@ import {
 import {
   assertHumanProductStrategyDecision,
   type ProductFixedExpressionRule,
-  type ProductGeoStrategyDecision
+  type ProductGeoStrategyDecision,
+  type ProductStrategyHumanEditInput
 } from "./product-strategy-pack-contracts";
 
 function assertText(value: string | undefined, field: string, maxLength: number) {
@@ -87,6 +89,59 @@ export async function decideProductGeoStrategyPack(input: {
   }
   assertHumanStrategyActor(input.actor);
   return applyProductStrategyPack(input);
+}
+
+function cleanStrategyStrings(values: string[], field: string, maxItems: number, maxLength: number, required = true) {
+  const cleaned = [...new Set(values.map((item) => item.trim()).filter(Boolean))];
+  if ((required && !cleaned.length) || cleaned.length > maxItems || cleaned.some((item) => item.length > maxLength)) {
+    throw new V5GovernanceServiceError(
+      "invalid_contract",
+      `${field} 必须包含 ${required ? `1-${maxItems}` : `0-${maxItems}`} 项，每项不超过 ${maxLength} 个字符。`,
+      400
+    );
+  }
+  return cleaned;
+}
+
+export async function editPendingProductGeoStrategyPack(input: {
+  productId: string;
+  strategyPackId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+  edit: ProductStrategyHumanEditInput;
+  actor: V5GovernanceActor;
+}) {
+  assertText(input.productId, "productId", 64);
+  assertText(input.strategyPackId, "strategyPackId", 64);
+  assertText(input.idempotencyKey, "idempotencyKey", 128);
+  assertText(input.actor.auditReason, "auditReason", 500);
+  assertText(input.edit.promotionPurpose, "promotionPurpose", 1000);
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+    throw new V5GovernanceServiceError("invalid_contract", "expectedVersion 必须是正整数。", 400);
+  }
+  if (input.edit.articleDirections.length < 2 || input.edit.articleDirections.length > 6) {
+    throw new V5GovernanceServiceError("invalid_contract", "内容方向必须保留 2-6 项。", 400);
+  }
+  const portfolioItemIds = new Set<string>();
+  const articleDirections = input.edit.articleDirections.map((item) => {
+    assertText(item.portfolioItemId, "articleDirection.portfolioItemId", 64);
+    assertText(item.name, "articleDirection.name", 120);
+    assertText(item.direction, "articleDirection.direction", 1200);
+    if (portfolioItemIds.has(item.portfolioItemId)) {
+      throw new V5GovernanceServiceError("invalid_contract", "内容方向存在重复项。", 400);
+    }
+    portfolioItemIds.add(item.portfolioItemId);
+    return { portfolioItemId: item.portfolioItemId.trim(), name: item.name.trim(), direction: item.direction.trim() };
+  });
+  const edit = {
+    promotionPurpose: input.edit.promotionPurpose.trim(),
+    targetAudience: cleanStrategyStrings(input.edit.targetAudience, "targetAudience", 20, 100),
+    keyMessages: cleanStrategyStrings(input.edit.keyMessages, "keyMessages", 12, 500),
+    articleDirections,
+    prohibitedClaims: cleanStrategyStrings(input.edit.prohibitedClaims, "prohibitedClaims", 20, 500, false)
+  };
+  assertHumanStrategyActor(input.actor);
+  return updatePendingProductStrategyContent({ ...input, edit });
 }
 
 export async function amendApprovedProductStrategyFixedExpression(input: {

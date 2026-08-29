@@ -1,4 +1,4 @@
-export type HostedDeploymentMode = "docker" | "vercel" | "private";
+export type HostedDeploymentMode = "docker" | "server";
 
 export type HostedDeploymentFeature =
   | "email"
@@ -18,9 +18,8 @@ export interface HostedDeploymentReadinessGroup {
 }
 
 const MODE_REQUIREMENTS: Record<HostedDeploymentMode, string[]> = {
-  docker: ["MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"],
-  vercel: ["MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"],
-  private: ["MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"]
+  docker: ["MYSQL_PASSWORD"],
+  server: ["MYSQL_PASSWORD"]
 };
 
 const FEATURE_REQUIREMENTS: Record<HostedDeploymentFeature, {
@@ -81,13 +80,13 @@ export function evaluateHostedDeploymentReadiness(input: {
   const groups: HostedDeploymentReadinessGroup[] = [
     {
       id: "runtime",
-      label: input.mode === "vercel" ? "Vercel 运行环境与远程数据库" : "Docker 运行环境与数据库",
+      label: input.mode === "server" ? "服务器 Docker 运行环境与数据库" : "本地 Docker 运行环境与数据库",
       required: runtimeRequired,
       missing: runtimeRequired.filter((name) => !isConfigured(environment, name)),
       ready: runtimeRequired.every((name) => isConfigured(environment, name)),
-      manualChecks: input.mode === "vercel"
-        ? ["Vercel Production 环境变量已保存并重新部署", "数据库允许部署环境访问"]
-        : ["Docker 健康检查通过", "MySQL 与 OpenSearch 容器健康"]
+      manualChecks: input.mode === "server"
+        ? ["服务器 Docker 健康检查通过", "HTTPS 域名可从公网访问", "MySQL 与 OpenSearch 容器健康"]
+        : ["本地 Docker 健康检查通过", "MySQL 与 OpenSearch 容器健康"]
     }
   ];
 

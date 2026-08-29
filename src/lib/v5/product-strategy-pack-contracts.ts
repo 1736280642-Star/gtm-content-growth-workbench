@@ -140,6 +140,88 @@ export interface ProductGeoStrategyContentPlanV2 {
   };
 }
 
+export interface ProductStrategyHumanEditDirection {
+  portfolioItemId: string;
+  name: string;
+  direction: string;
+}
+
+export interface ProductStrategyHumanEditInput {
+  promotionPurpose: string;
+  targetAudience: string[];
+  keyMessages: string[];
+  articleDirections: ProductStrategyHumanEditDirection[];
+  prohibitedClaims: string[];
+}
+
+function humanEditedArticleType(
+  item: ProductGeoArticleTypePortfolioItem,
+  edit: ProductStrategyHumanEditDirection
+): ProductGeoArticleTypePortfolioItem {
+  const nextItem: ProductGeoArticleTypePortfolioItem = {
+    ...item,
+    name: edit.name,
+    definition: edit.direction,
+    contentGoal: edit.direction,
+    recommendationReason: edit.direction,
+    raw: { ...item.raw, humanEdited: true }
+  };
+  const definitionPayload: Record<string, unknown> = { ...nextItem };
+  delete definitionPayload.articleTypeId;
+  delete definitionPayload.articleTypeVersionId;
+  delete definitionPayload.definitionHash;
+  const definitionHash = createHash("sha256").update(JSON.stringify(definitionPayload)).digest("hex");
+  return {
+    ...nextItem,
+    articleTypeId: item.origin === "generated"
+      ? `product-article-type-${definitionHash.slice(0, 24)}`
+      : item.articleTypeId,
+    articleTypeVersionId: `strategy-article-type-version-${definitionHash.slice(0, 32)}`,
+    definitionHash
+  };
+}
+
+export function applyProductStrategyHumanEdit(
+  plan: ProductGeoStrategyContentPlanV2,
+  edit: ProductStrategyHumanEditInput
+): ProductGeoStrategyContentPlanV2 {
+  const editByPortfolioItemId = new Map(edit.articleDirections.map((item) => [item.portfolioItemId, item]));
+  const changedArticleTypeIds = new Map<string, string>();
+  const articleTypePortfolio = plan.articleTypePortfolio.map((item) => {
+    const direction = editByPortfolioItemId.get(item.portfolioItemId);
+    if (!direction) return item;
+    const nextItem = humanEditedArticleType(item, direction);
+    if (item.articleTypeId && nextItem.articleTypeId && item.articleTypeId !== nextItem.articleTypeId) {
+      changedArticleTypeIds.set(item.articleTypeId, nextItem.articleTypeId);
+    }
+    return nextItem;
+  });
+  return {
+    ...plan,
+    productPositioning: {
+      ...plan.productPositioning,
+      promotionPurpose: edit.promotionPurpose,
+      expressionFocus: edit.promotionPurpose,
+      targetAudience: edit.targetAudience,
+      prohibitedClaims: edit.prohibitedClaims
+    },
+    expressionDirection: {
+      ...plan.expressionDirection,
+      keyMessages: edit.keyMessages,
+      emphasisOrder: edit.keyMessages
+    },
+    articleTypePortfolio,
+    channelPriorities: plan.channelPriorities.map((priority) => ({
+      ...priority,
+      suitableArticleTypeIds: priority.suitableArticleTypeIds.map((id) => changedArticleTypeIds.get(id) || id)
+    })),
+    recommendedMonthlyMix: plan.recommendedMonthlyMix.map((mix) => ({
+      ...mix,
+      articleTypeId: changedArticleTypeIds.get(mix.articleTypeId) || mix.articleTypeId
+    }))
+  };
+}
+
 export interface ProductGeoStrategyPackRecord {
   id: string;
   productId: string;

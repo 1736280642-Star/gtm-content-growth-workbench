@@ -6,13 +6,9 @@ import { evaluateHostedDeploymentReadiness } from "../src/lib/v5/hosted-deployme
 test("deployment readiness reports names only and honors selected features", () => {
   const secret = "this-value-must-never-be-returned";
   const result = evaluateHostedDeploymentReadiness({
-    mode: "vercel",
+    mode: "server",
     features: ["email", "geo", "browser_publish"],
     environment: {
-      MYSQL_HOST: "database.example",
-      MYSQL_PORT: "3306",
-      MYSQL_DATABASE: "joto",
-      MYSQL_USER: "joto",
       MYSQL_PASSWORD: secret,
       HOSTED_PUBLIC_BASE_URL: "https://workbench.example",
       HOSTED_REVIEW_LINK_SECRET: secret,
@@ -26,6 +22,8 @@ test("deployment readiness reports names only and honors selected features", () 
 
   assert.equal(result.totalGroups, 4);
   assert.equal(result.configurationReady, false);
+  assert.equal(result.groups.find((group) => group.id === "runtime")?.ready, true);
+  assert.doesNotMatch(JSON.stringify(result), /MYSQL_ROOT_PASSWORD/);
   assert.deepEqual(result.groups.find((group) => group.id === "browser_publish")?.missing, ["JOTO_PUBLISH_RUNNER_TOKEN"]);
   assert.equal(JSON.stringify(result).includes(secret), false);
 });
@@ -60,6 +58,9 @@ test("deployment center exposes six guided sections, official sources and saniti
   assert.match(component, /复制当前模板/);
   assert.match(component, /下载 \{activeTemplate\.filename\}/);
   assert.match(component, /所有产品能力默认开启/);
+  assert.match(component, /本地 Docker/);
+  assert.match(component, /服务器部署/);
+  assert.doesNotMatch(component, /Vercel 托管|id: "vercel"|id: "private"/);
   for (const captureGuideText of [
     "chrome:\/\/extensions\/",
     "edge:\/\/extensions\/",
@@ -86,6 +87,12 @@ test("deployment center exposes six guided sections, official sources and saniti
   assert.match(envExample, /WECHATSYNC_BRIDGE_TOKEN=/);
   assert.match(envExample, /WECHAT_MP_APP_ID=/);
   assert.match(localEnvExample, /HOSTED_CAPTURE_SETUP_TOKEN=/);
+  assert.match(localEnvExample, /【必填】/);
+  assert.match(localEnvExample, /【选填】/);
+  assert.match(localEnvExample, /【默认】/);
+  assert.match(localEnvExample, /WORKBENCH_BASE_URL=http:\/\/127\.0\.0\.1:3027/);
+  assert.match(localEnvExample, /QWEN_MODEL=qwen-plus/);
+  assert.doesNotMatch(localEnvExample, /127\.0\.0\.1:3050/);
   assert.match(route, /timingSafeEqual/);
   assert.doesNotMatch(route, /process\.env\[[^\]]+\].*(?:json|NextResponse)/);
 });
