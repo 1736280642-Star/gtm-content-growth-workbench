@@ -1571,25 +1571,19 @@
 .deploymentDocsLink { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: #176b52; font-size: 8px; font-weight: 700; text-decoration: none; }
 .deploymentDocsLink:hover { text-decoration: underline; }
 
-/* The first-deployment guide is read while configuring external systems.
-   Keep its hero title unchanged, but raise all operational copy by roughly 50%. */
+/* The deployment hero is a single live status statement; supporting guidance starts below. */
 .deploymentReadablePage { padding-top: 12px; }
 .deploymentReadablePage .intro {
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 36px;
   padding: 8px 0 20px;
 }
 .deploymentReadablePage .intro h1 {
-  max-width: 700px;
+  max-width: none;
   margin: 8px 0 0;
   font-size: clamp(32px, 4vw, 52px);
   line-height: 1;
 }
-.deploymentReadablePage .introAside { gap: 8px; padding-top: 12px; }
-.deploymentReadablePage .introAside strong { font-size: 22.5px; }
-.deploymentReadablePage .introAside span { font-size: 19.5px; }
-.deploymentReadablePage .introAside small { font-size: 16.5px; }
 .deploymentReadablePage .roleSwitcher button strong { font-size: 19.5px; }
 .deploymentReadablePage .roleSwitcher button small { font-size: 15px; }
 .deploymentReadablePage .deploymentWorkspace { grid-template-columns: minmax(0, 1fr) 340px; }

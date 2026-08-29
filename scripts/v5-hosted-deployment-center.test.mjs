@@ -95,6 +95,10 @@ test("deployment center exposes five guided sections with AI and GEO first", asy
   }
   assert.doesNotMatch(component, /toggleFeature|setFeatures|deploymentFeatureGrid/);
   assert.match(page, /HostedDeploymentCenter/);
+  assert.match(page, /邮箱链路已连接，继续完成整体验收/);
+  assert.match(page, /现在处理：完整部署初始化/);
+  assert.match(page, /pageAudience !== "deployment" \? <aside/);
+  assert.doesNotMatch(page, /一次走完首次部署，之后只交给用户使用。|从数据库、AI、邮箱到自动发布|部署人员操作，普通用户不接触密钥/);
   assert.match(page, /ReturningOperationsHome/);
   assert.match(page, /orders\.slice\(0, 1\)\.map/);
   assert.match(ordersRoute, /listHostedPromotionOrderRecords\(identity\.workspaceId, 1\)/);

@@ -690,8 +690,8 @@ export default function HostedTaskPage() {
   return (
     <div className={`${styles.page} ${pageAudience === "deployment" ? styles.deploymentReadablePage : ""}`}>
       <section className={`${styles.intro} ${isOperationsHome ? styles.operationsIntro : ""}`}>
-        <div><div className={styles.kicker}>{isOperationsHome ? "JOTO / MANAGED OPERATIONS" : "JOTO / GUIDED MANAGED SETUP"}</div><h1>{pageAudience === "deployment" ? "一次走完首次部署，之后只交给用户使用。" : isOperationsHome ? "从这里开始您的品牌GEO推广" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
-        <aside className={styles.introAside}>{pageAudience === "deployment" ? <><strong>{senderStatus?.configured ? "邮箱链路已连接，继续完成整体验收" : "现在处理：完整部署初始化"}</strong><span>从数据库、AI、邮箱到自动发布，所有能力默认开启并进入必填清单和脱敏模板。</span><small>部署人员操作，普通用户不接触密钥</small></> : isOperationsHome ? <><strong>{orderStatusLabels[recentOrders[0]?.status] || "当前批次运行中"}</strong><span>首页只展示当前批次、真正需要判断的事项和最近结果。</span><small>一次性部署配置已收起</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside>
+        <div><div className={styles.kicker}>{isOperationsHome ? "JOTO / MANAGED OPERATIONS" : "JOTO / GUIDED MANAGED SETUP"}</div><h1>{pageAudience === "deployment" ? (senderStatus?.configured ? "邮箱链路已连接，继续完成整体验收" : "现在处理：完整部署初始化") : isOperationsHome ? "从这里开始您的品牌GEO推广" : "一次配置，托管你后续的GEO品牌推广。"}</h1></div>
+        {pageAudience !== "deployment" ? <aside className={styles.introAside}>{isOperationsHome ? <><strong>{orderStatusLabels[recentOrders[0]?.status] || "当前批次运行中"}</strong><span>首页只展示当前批次、真正需要判断的事项和最近结果。</span><small>一次性部署配置已收起</small></> : <><strong>当前进度：第 {currentStep} / 6 步</strong><span>{researchReady ? "调研已经开始；发布账号可以在正式发布前继续补齐。" : "先完成登录、产品资料、渠道和通知设置，即可开始调研。"}</span><small>文字教程可随时展开或收起</small></>}</aside> : null}
       </section>
 
       <nav className={styles.roleSwitcher} aria-label="选择当前操作角色">
