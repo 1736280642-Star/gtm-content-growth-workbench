@@ -4,7 +4,7 @@ import test from "node:test";
 
 process.env.HOSTED_REVIEW_LINK_SECRET = "hosted-managed-mode-test-secret";
 
-const [{ compileHostedOrderNextAction, deriveHostedChannelAuthorizationPhase }, { buildHostedReviewExpiry, buildHostedReviewToken, hashHostedReviewToken }, { dispatchHostedNotifications }, { allHostedChannelCapsReached, resolveHostedDailyResultGuidance }, { buildHostedPreferenceToken, verifyHostedPreferenceToken }] = await Promise.all([
+const [{ compileHostedOrderNextAction, deriveHostedChannelAuthorizationPhase, deriveHostedWorkflowState }, { buildHostedReviewExpiry, buildHostedReviewToken, hashHostedReviewToken }, { dispatchHostedNotifications }, { allHostedChannelCapsReached, resolveHostedDailyResultGuidance }, { buildHostedPreferenceToken, verifyHostedPreferenceToken }] = await Promise.all([
   import("../src/lib/v5/hosted-managed-contracts.ts"),
   import("../src/lib/v5/hosted-review-repository.ts"),
   import("../src/lib/v5/hosted-notification-service.ts"),
@@ -35,6 +35,7 @@ function order(status, overrides = {}) {
 test("托管用户状态始终编译成一个明确下一步", () => {
   assert.equal(compileHostedOrderNextAction(order("preparing")).type, "wait");
   assert.equal(compileHostedOrderNextAction(order("pending_strategy_review")).type, "review_strategy");
+  assert.equal(compileHostedOrderNextAction(order("generating_sample")).label, "正在生成代表样文");
   assert.equal(compileHostedOrderNextAction(order("pending_sample_review")).type, "review_sample");
   assert.equal(compileHostedOrderNextAction(order("running")).type, "view_results");
   assert.equal(compileHostedOrderNextAction(order("action_required", { lastError: { code: "auth", message: "需要重新连接账号" } })).description, "需要重新连接账号");
@@ -65,6 +66,75 @@ test("审核 Token 可重建、只落哈希且不同有效期产生不同 Token"
   assert.notEqual(first, renewed);
   assert.match(hashHostedReviewToken(first), /^[a-f0-9]{64}$/);
   assert.ok(!hashHostedReviewToken(first).includes("hosted-review-test"));
+});
+
+test("已确认策略后的样文运行态不会退回待确认策略", () => {
+  const running = deriveHostedWorkflowState({
+    strategyStatus: "superseded",
+    sample: {
+      strategyPackId: "strategy-approved",
+      taskId: "sample-task",
+      operationId: "sample-operation",
+      operationStatus: "running",
+      progressStage: "calling_provider",
+      attemptCount: 1,
+      reviewStatus: "pending_generation",
+      hasReviewableDraft: false
+    }
+  });
+  assert.deepEqual(running, { status: "generating_sample", currentActionType: "generate_sample" });
+
+  const failed = deriveHostedWorkflowState({
+    strategyStatus: "strategy_approved",
+    sample: {
+      operationStatus: "failed",
+      attemptCount: 1,
+      hasReviewableDraft: false,
+      error: { code: "provider_failed", message: "AI 服务暂时不可用" }
+    }
+  });
+  assert.equal(failed.status, "action_required");
+  assert.equal(failed.currentActionType, "retry_sample");
+  assert.equal(failed.lastError?.code, "hosted_sample_generation_failed");
+});
+
+test("托管订单绑定样文任务并在生成期间自动刷新", async () => {
+  const [migration, repository, reviewService, managedService, successPage, retryRoute] = await Promise.all([
+    readFile(new URL("../database/migrations/20260829_043_v5_hosted_sample_progress.sql", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/hosted-managed-repository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/hosted-review-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/hosted-managed-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/hosted/success/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/api/v5/hosted/orders/[orderId]/sample-retry/route.ts", import.meta.url), "utf8")
+  ]);
+  for (const column of ["current_strategy_pack_id", "current_sample_task_id", "current_sample_operation_id"]) {
+    assert.match(migration, new RegExp(column));
+    assert.match(repository, new RegExp(column));
+  }
+  assert.match(reviewService, /status: "generating_sample"|\? "generating_sample"/);
+  assert.match(managedService, /readHostedOrderSampleProgress/);
+  assert.match(managedService, /hosted_sample_generation_failed/);
+  assert.match(successPage, /window\.setInterval/);
+  assert.match(successPage, /页面每 4 秒自动更新/);
+  assert.match(successPage, /重新生成样文/);
+  assert.match(retryRoute, /retryHostedSampleGeneration/);
+});
+
+test("新 GEO 调研运行时托管端回到调研进度并清除旧样文绑定", async () => {
+  const [repository, managedService] = await Promise.all([
+    readFile(new URL("../src/lib/v5/hosted-managed-repository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/lib/v5/hosted-managed-service.ts", import.meta.url), "utf8")
+  ]);
+  assert.match(repository, /readHostedProductActiveResearchRun/);
+  assert.match(repository, /readHostedOrderHasInvalidatedWorkflowBinding/);
+  assert.match(repository, /pack\.invalidated_at IS NOT NULL/);
+  assert.match(repository, /'planned', 'queued', 'running', 'awaiting_frontend', 'synthesizing'/);
+  assert.match(repository, /CASE WHEN \? THEN NULL ELSE COALESCE/);
+  assert.match(repository, /newer_research\.created_at > strategy\.created_at/);
+  assert.match(repository, /newer_research\.status NOT IN \('failed', 'cancelled'\)/);
+  assert.match(managedService, /activeResearch[\s\S]*status: "preparing"/);
+  assert.match(managedService, /clearWorkflowBinding: Boolean\(activeResearch \|\| invalidatedWorkflowBinding\)/);
+  assert.match(managedService, /if \(!order\.lastError\?\.code\) return true/);
 });
 
 test("审核过期时间以 Date 写入 MySQL，同时以 ISO 字符串参与 Token 签名", async () => {

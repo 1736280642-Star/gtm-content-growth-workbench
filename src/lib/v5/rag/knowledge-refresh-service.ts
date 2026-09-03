@@ -29,9 +29,13 @@ export async function runAutomaticKnowledgeRefresh(input: {
     manifestId: manifest.manifestId,
     namespace: "production_public",
     language: "zh-CN",
-    indexVersion: `auto-${context.sourceSnapshotHash.slice(0, 12)}-${context.rulePackageVersionId.slice(-12)}`,
-    chunkSchemaVersion: "claim-aware@1",
-    chunkerVersion: "automatic-knowledge@2",
+    // The index version must cover the complete governed Manifest and the
+    // chunk contract. Source files can stay unchanged while claim status or
+    // evidence usage changes; keying only by source hash would incorrectly
+    // reuse an index built under an older evidence policy.
+    indexVersion: `auto-geo3-${manifest.manifestHash.slice(0, 16)}`,
+    chunkSchemaVersion: "claim-aware@2",
+    chunkerVersion: "automatic-knowledge@3",
     retrievalPolicyVersion: "v5-hybrid@1",
     actor: input.actor
   });

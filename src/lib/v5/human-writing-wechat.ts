@@ -1,4 +1,4 @@
-export const HUMAN_WRITING_WECHAT_PROFILE_VERSION = "human-writing.wechat.v1.2.0";
+export const HUMAN_WRITING_WECHAT_PROFILE_VERSION = "human-writing.wechat.v1.3.0";
 
 export const HUMAN_WRITING_WECHAT_DIRECTIVES = [
   "按非虚构中文长文处理。先确认材料能否托住篇幅，事实、数字、引语和产品能力只能来自已提供且可追溯的材料。",
@@ -27,6 +27,7 @@ function proseForStyleCheck(markdown: string) {
 }
 
 function hasDisallowedColon(line: string) {
+  if (/^\s*(?:#{1,6}\s*)?(?:\*\*)?[QA][：:]/i.test(line)) return false;
   const colonCount = (line.match(/[：:]/g) || []).length;
   if (!colonCount) return false;
   return !(colonCount === 1 && /(?:说|问|答|写道|回复)[^：:]{0,24}[：:]\s*[“「\"]/.test(line));

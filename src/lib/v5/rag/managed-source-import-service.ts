@@ -50,6 +50,13 @@ function normalizedMarkdown(markdown: string) {
   return markdown.replace(/\r\n/g, "\n").trim();
 }
 
+const managedResearchOnlyPattern = /\bGEO\b|关键词(?:研究|调研|分析)|竞品(?:研究|调研|分析)|搜索(?:结果|记录|策略)|检索(?:结果|记录|策略)|同名(?:实体|产品)|实体(?:消歧|混淆)|混淆(?:记录|分析)|交付物分类|引用网页|研究表/i;
+
+export function isManagedResearchOnlySource(source: Pick<ManagedSourceInput, "title" | "originalFileName" | "canonicalUrl">) {
+  if (source.canonicalUrl?.trim()) return false;
+  return managedResearchOnlyPattern.test(`${source.title}\n${source.originalFileName || ""}`);
+}
+
 export function inferOfficialUrlFromConfirmedSources(input: Pick<ManagedSourceImportInput, "authorityLevel" | "sources">) {
   if (input.authorityLevel !== "A2") return undefined;
   const candidates = input.sources.flatMap((source) => {
@@ -142,6 +149,7 @@ function buildCandidate(
   const normalizedTextRef = buildManagedNormalizedTextRef(sourceRevisionId);
   const rawAssetRef = buildManagedRawAssetRef(sourceRevisionId);
   const sourceUpdatedAt = new Date().toISOString();
+  const researchOnly = isManagedResearchOnlySource(source);
 
   return {
     registryId: `workbench-managed:${knowledgeBaseId}`,
@@ -165,16 +173,24 @@ function buildCandidate(
       mimeType: source.mimeType || "text/markdown",
       originalFileName: source.originalFileName
     },
-    disposition: "production_candidate",
-    namespace: "production_public",
-    documentType: source.canonicalUrl ? "workbench_managed_url" : "workbench_managed_document",
-    authorityLevel: input.authorityLevel,
-    lifecycleStatus: "current",
-    visibility: "public",
-    allowedEvidenceRoles: ["product_definition", "product_capability", "scenario", "limitation", "official_citation"],
-    forbiddenUsage: ["unqualified_performance", "unqualified_price", "customer_result"],
-    governanceMode: "automatic_policy",
-    reason: "A workbench user confirmed the product scope and public production eligibility."
+    disposition: researchOnly ? "governance_preview" : "production_candidate",
+    namespace: researchOnly ? "governance_preview" : "production_public",
+    documentType: researchOnly
+      ? "geo_research_document"
+      : source.canonicalUrl ? "workbench_managed_url" : "workbench_managed_document",
+    authorityLevel: researchOnly ? "C2" : input.authorityLevel,
+    lifecycleStatus: researchOnly ? "unknown" : "current",
+    visibility: researchOnly ? "internal" : "public",
+    allowedEvidenceRoles: researchOnly
+      ? ["research_observation", "search_strategy", "badcase"]
+      : ["product_definition", "product_capability", "scenario", "limitation", "official_citation"],
+    forbiddenUsage: researchOnly
+      ? ["production_fact", "public_citation", "formal_generation"]
+      : ["unqualified_performance", "unqualified_price", "customer_result"],
+    governanceMode: researchOnly ? "manual_review" : "automatic_policy",
+    reason: researchOnly
+      ? "GEO、关键词、竞品、搜索或实体消歧资料只用于研究治理，不得进入正式产品事实与正文索引。"
+      : "A workbench user confirmed the product scope and public production eligibility."
   };
 }
 
@@ -184,7 +200,11 @@ export async function importManagedSources(input: ManagedSourceImportInput) {
   const candidates = input.sources.map((source) => buildCandidate(input, source, product));
   const plan = prepareRagSourceImport(candidates);
   const stored = await writeRagSourceImport({ plan, idempotencyKey: input.idempotencyKey, actor: input.actor, deferAutomaticClaims: true });
-  const inferredIdentity = inferProductIdentityFromConfirmedSources(input);
+  const productionSources = input.sources.filter((source) => !isManagedResearchOnlySource(source));
+  const inferredIdentity = inferProductIdentityFromConfirmedSources({
+    authorityLevel: input.authorityLevel,
+    sources: productionSources
+  });
   const hasIdentityCandidate = Object.values(inferredIdentity).some(Boolean);
   const identityWrite = hasIdentityCandidate
     ? await confirmProductIdentityFromSourceRecord({

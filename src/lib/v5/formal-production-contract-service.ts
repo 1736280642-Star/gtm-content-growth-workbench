@@ -14,6 +14,7 @@ import type {
   ProductionArtifact,
   ProductionContractSnapshot
 } from "./content-production-contracts";
+import { ensureNarrativeSubjectTitle } from "./geo-article-title-policy";
 
 export function resolveJotoOfficialFixedExpression(
   text: string,
@@ -28,8 +29,9 @@ export function resolveJotoOfficialFixedExpression(
 }
 import type { SingleArticleActor } from "./single-article-contracts";
 import type { FormalGenerationContext } from "./single-article-production-repository";
+import { assertGeoArticleMission, type GeoArticleMissionContract } from "./geo-article-mission-contracts";
 
-const compilerVersion = "production-contract-compiler.v2" as const;
+const compilerVersion = "production-contract-compiler.v3" as const;
 
 interface StrategyRow extends RowDataPacket {
   product_id: string;
@@ -42,9 +44,12 @@ interface StrategyRow extends RowDataPacket {
   strategy_pack_id: string | null;
   strategy_version: number | null;
   strategy_status: string | null;
+  strategy_approved_at: string | Date | null;
+  strategy_approved_by: string | null;
   content_plan_hash: string | null;
   content_plan_json: unknown;
   article_type_version_id: string | null;
+  article_type_name: string | null;
   article_type_definition_hash: string | null;
   article_type_definition_json: unknown;
   calibration_version_id: string | null;
@@ -53,7 +58,40 @@ interface StrategyRow extends RowDataPacket {
   sample_revision_feedback: unknown;
 }
 
-export function selectRequiredCoreClaimIds(pack: RagFinalEvidencePack) {
+function relevanceUnits(value: string) {
+  const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ");
+  const ignored = new Set([
+    "腾讯", "腾讯云", "joto", "adp", "产品", "企业", "平台", "能力", "服务", "提供",
+    "文章", "问题", "如何", "什么", "哪些", "是否", "进行", "需要", "相关", "可以",
+    "智能", "智能体", "开发", "解决", "方案", "使用", "支持", "落地"
+  ]);
+  const units = new Set<string>();
+  for (const token of normalized.match(/[a-z0-9]+|[\u4e00-\u9fff]+/g) || []) {
+    if (/^[a-z0-9]+$/.test(token)) {
+      if (token.length >= 3 && !ignored.has(token)) units.add(token);
+      continue;
+    }
+    for (const size of [4, 3, 2]) {
+      for (let index = 0; index <= token.length - size; index += 1) {
+        const unit = token.slice(index, index + size);
+        if (!ignored.has(unit)) units.add(unit);
+      }
+    }
+  }
+  return units;
+}
+
+function missionEvidenceBonus(query: string, evidenceText: string) {
+  // “成熟度/行业积累” cannot be supported well by a generic delivery claim.
+  // Prefer governed facts that demonstrate breadth through explicit coverage
+  // and concrete enumerations. Keep this independent of any product name.
+  if (!/(?:行业.{0,8}(?:积累|成熟度)|(?:积累|成熟度).{0,8}行业|行业覆盖|覆盖.{0,6}行业)/.test(query)) return 0;
+  const breadthSignal = /(?:重点)?覆盖.{0,18}行业|行业场景|典型场景/.test(evidenceText) ? 30 : 0;
+  const enumerationCount = (evidenceText.match(/[、，；;]/g) || []).length;
+  return breadthSignal + Math.min(30, enumerationCount * 3);
+}
+
+export function selectRequiredCoreClaimIds(pack: RagFinalEvidencePack, mission?: GeoArticleMissionContract) {
   const evidenceById = new Map(pack.evidenceItems.map((item) => [item.evidenceItemId, item]));
   const slotClaimIds = pack.claimPlan.slots
     .filter((slot) => slot.required && slot.status === "satisfied")
@@ -62,12 +100,43 @@ export function selectRequiredCoreClaimIds(pack: RagFinalEvidencePack) {
       const item = evidenceById.get(evidenceItemId);
       return item?.primaryClaimId ? [item.primaryClaimId] : [];
     });
+  if (mission) {
+    const query = [
+      String((pack.taskSnapshot as Record<string, unknown>).title || ""),
+      mission.primaryQuestion,
+      ...mission.titlePromiseDimensions
+    ].join(" ");
+    const queryUnits = relevanceUnits(query);
+    const slotClaims = new Set(slotClaimIds);
+    const ranked = pack.evidenceItems.flatMap((item, index) => {
+      // The identity Claim is frozen in EvidencePack for governance and exact
+      // system assembly. It must not be selected as the model-authored core
+      // article Claim, otherwise the writer and deterministic identity block
+      // compete for the same sentence.
+      if (item.documentType === "governed_entity_graph" || item.allowedUsage?.includes("entity_identity")) return [];
+      if (item.evidenceUsage && item.evidenceUsage !== "product_fact") return [];
+      if (item.subjectEntityIds?.length && !item.subjectEntityIds.includes(mission.primaryEntityId)) return [];
+      if (!item.primaryClaimId) return [];
+      const evidenceUnits = relevanceUnits(`${item.normalizedClaim || ""} ${item.summary} ${item.originalQuote}`);
+      const matched = [...queryUnits].filter((unit) => evidenceUnits.has(unit));
+      const evidenceText = `${item.normalizedClaim || ""} ${item.summary} ${item.originalQuote}`;
+      const semanticScore = matched.reduce((sum, unit) => sum + (/^[a-z0-9]+$/.test(unit) ? 12 : unit.length), 0)
+        + missionEvidenceBonus(query, evidenceText);
+      return semanticScore > 0 ? [{ claimId: item.primaryClaimId, semanticScore, slotBonus: slotClaims.has(item.primaryClaimId) ? 1 : 0, index }] : [];
+    }).sort((left, right) => right.semanticScore - left.semanticScore || right.slotBonus - left.slotBonus || left.index - right.index);
+    // A required Claim must be relevant to this article mission. If the pack
+    // contains no relevant product fact, return no Claim and let the A-layer
+    // rubric block generation instead of forcing an unrelated fact into prose.
+    return ranked.length ? [ranked[0].claimId] : [];
+  }
   if (slotClaimIds.length) return Array.from(new Set(slotClaimIds));
 
   const availableClaimIds = new Set(pack.evidenceItems.flatMap((item) => item.claimIds));
   const plannedCoreClaim = pack.claimPlan.requiredClaimIds.find((claimId) => availableClaimIds.has(claimId));
   if (plannedCoreClaim) return [plannedCoreClaim];
-  const firstEvidenceClaim = pack.evidenceItems.find((item) => item.primaryClaimId)?.primaryClaimId;
+  const firstEvidenceClaim = pack.evidenceItems.find((item) =>
+    item.primaryClaimId && item.documentType !== "governed_entity_graph" && !item.allowedUsage?.includes("entity_identity")
+  )?.primaryClaimId;
   return firstEvidenceClaim ? [firstEvidenceClaim] : [];
 }
 
@@ -93,6 +162,21 @@ function expressionStrings(value: unknown) {
   const record = value as Record<string, unknown>;
   return ["text", "description", "action", "pattern", "value", "label", "purpose", "guidance", "rules", "items", "requirements", "boundaries", "conditions", "limitations"]
     .flatMap((key) => expressionStrings(record[key]));
+}
+
+function prohibitedExpressionStrings(value: unknown): string[] {
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text || text.length > 160) return [];
+    if (/https?:\/\/|\.docx\b|\.pdf\b|^表\s*\d|^编号[：:]|^整理依据[：:]|^输出格式[：:]|资料类型|搜索词或问题/.test(text)) return [];
+    return [text];
+  }
+  if (Array.isArray(value)) return value.flatMap(prohibitedExpressionStrings);
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  // Governance labels, descriptions and reasons explain why a rule exists;
+  // only the governed outward-facing text is eligible for literal blocking.
+  return prohibitedExpressionStrings(record.text ?? record.pattern ?? record.value);
 }
 
 export function compileSampleRevisionDirectives(value: unknown) {
@@ -126,6 +210,8 @@ function evidenceSnapshot(pack: RagFinalEvidencePack): ProductionContractSnapsho
       claimIds: item.claimIds,
       primaryClaimId: item.primaryClaimId,
       sourceRevisionId: item.sourceRevisionId,
+      evidenceUsage: item.evidenceUsage,
+      subjectEntityIds: item.subjectEntityIds,
       originalQuote: item.originalQuote,
       summary: item.normalizedClaim || item.summary,
       canonicalUrl: item.canonicalUrl,
@@ -144,6 +230,16 @@ function evidenceSnapshot(pack: RagFinalEvidencePack): ProductionContractSnapsho
     outdatedEvidence: pack.outdatedEvidence,
     unverifiedClaims: pack.unverifiedClaims
   };
+}
+
+function normalizeProductionTitle(value: string) {
+  let title = value.trim().replace(/[。.]+/g, "").replace(/\s+([，。？！；：])/g, "$1");
+  const questionCount = (title.match(/[？?]/g) || []).length;
+  if (questionCount > 1) {
+    let seen = 0;
+    title = title.replace(/[？?]/g, () => (++seen < questionCount ? "，" : "？"));
+  }
+  return title.replace(/[，,；;：:、]+$/g, "");
 }
 
 function contentTypeRule(row: StrategyRow, context: FormalGenerationContext): ContentTypeRuleSnapshot {
@@ -174,18 +270,25 @@ function contentTypeRule(row: StrategyRow, context: FormalGenerationContext): Co
     context.systemPrompt,
     context.userPromptTemplate
   ].filter(Boolean);
+  const articleTypeName = String(row.article_type_name || "");
+  const governedArtifacts: ProductionArtifact[] = [
+    ...(/(?:行业.*方案|AgentOps|全生命周期|服务商选型|实施伙伴|职责边界)/i.test(articleTypeName) ? ["table" as const] : []),
+    ...(/(?:服务商选型|实施伙伴|职责边界)/i.test(articleTypeName) ? ["list" as const] : [])
+  ];
   return {
     articleTypeProfileVersionId: String(row.article_type_version_id),
     promptConstraintSnapshotHash: String(row.article_type_definition_hash),
-    ctaIntent: "none",
+    ctaIntent: "contact_service",
     minLength: Number.isInteger(minLength) && minLength > 0 ? minLength : 800,
     maxLength: Number.isInteger(maxLength) && maxLength >= minLength ? maxLength : 3000,
     requiredSections,
     requiredArtifacts: Array.from(new Set([
       ...explicitArtifacts(sampleStandard.requiredArtifacts),
-      ...artifactsFrom(directives)
+      ...artifactsFrom(directives),
+      ...governedArtifacts
     ])),
     requiredEvidenceRoles: [],
+    argumentOrder: expressionStrings(sampleStandard.argumentOrder),
     promptDirectives: directives
   };
 }
@@ -194,8 +297,9 @@ async function readStrategyRow(taskId: string) {
   const [rows] = await getV5GovernancePool().query<StrategyRow[]>(
     `SELECT i.product_id, p.canonical_name, p.display_name, p.brand_name, p.official_entity,
        p.entity_relationship, p.aliases, p.strategy_pack_id, sp.strategy_version, sp.status AS strategy_status,
+       sp.strategy_approved_at, sp.strategy_approved_by,
        sp.content_plan_hash, sp.content_plan_json,
-       atv.article_type_version_id, atv.definition_hash AS article_type_definition_hash,
+       atv.article_type_version_id, atv.name AS article_type_name, atv.definition_hash AS article_type_definition_hash,
        atv.definition_json AS article_type_definition_json,
        ec.id AS calibration_version_id, ec.directives_json AS calibration_directives,
        calibration_draft.markdown AS calibration_sample_markdown,
@@ -262,8 +366,16 @@ export async function compileFormalProductionContract(input: {
     );
   }
   const task = input.pack.taskSnapshot;
+  const rawGeoMission = task.geoMission;
+  if (!rawGeoMission || typeof rawGeoMission !== "object" || Array.isArray(rawGeoMission)) {
+    throw new V5GovernanceRepositoryError("geo_article_mission_missing", "EvidencePack 没有冻结 GEO 文章任务合同。", 409, "按当前产品策略重新检索并冻结 EvidencePack。");
+  }
+  const geoMission = rawGeoMission as GeoArticleMissionContract;
+  try { assertGeoArticleMission(geoMission); } catch {
+    throw new V5GovernanceRepositoryError("geo_article_mission_invalid", "EvidencePack 中的 GEO 文章任务合同无效。", 409, "重新生成文章任务并检索证据。");
+  }
   const requiredFormat = expressionStrings(input.context.channelRequiredFormat);
-  const prohibitedPatterns = expressionStrings(input.context.channelProhibitedPatterns);
+  const prohibitedPatterns = prohibitedExpressionStrings(input.context.channelProhibitedPatterns);
   const calibrationDirectives = expressionStrings(row.calibration_directives);
   const acceptedSampleReference = input.mode === "batch" && row.calibration_sample_markdown
     ? [
@@ -276,6 +388,7 @@ export async function compileFormalProductionContract(input: {
     : [];
   const plan = parseV5Json<Record<string, unknown>>(row.content_plan_json, {});
   const positioning = parseV5Json<Record<string, unknown>>(JSON.stringify(plan.productPositioning || {}), {});
+  const coreExpressions = parseV5Json<Record<string, unknown>>(JSON.stringify(plan.coreExpressions || {}), {});
   const fixedExpressionConfig = parseV5Json<Record<string, unknown>>(JSON.stringify(plan.fixedExpression || {}), {});
   const fixedExpressionChannels = expressionStrings(fixedExpressionConfig.channels);
   const fixedExpressionPositions = expressionStrings(fixedExpressionConfig.positions)
@@ -286,23 +399,44 @@ export async function compileFormalProductionContract(input: {
     fixedExpressionChannels,
     taskChannel
   );
-  const coreExpressionConfig = parseV5Json<Record<string, unknown>>(JSON.stringify(plan.coreExpressions || {}), {});
-  const coreExpressionChannels = expressionStrings(coreExpressionConfig.channels);
-  const coreExpressionsApply = !coreExpressionChannels.length || coreExpressionChannels.includes(taskChannel);
-  const coreFixedExpressions = coreExpressionsApply
-    ? [
-        { text: String(coreExpressionConfig.productIdentity || "").trim(), positions: ["body" as const], channel: taskChannel },
-        { text: String(coreExpressionConfig.entityRelationship || "").trim(), positions: ["body" as const], channel: taskChannel },
-        { text: String(coreExpressionConfig.fixedExpression || "").trim(), positions: ["body" as const], channel: taskChannel },
-        {
-          text: [String(coreExpressionConfig.ctaLabel || "").trim(), String(coreExpressionConfig.ctaUrl || "").trim()]
-            .filter(Boolean).join("："),
-          positions: ["ending" as const],
-          channel: taskChannel
-        }
-      ].filter((item, index, items) => item.text && items.findIndex((candidate) => candidate.text === item.text) === index)
-    : [];
-  const compiledContentTypeRule = contentTypeRule(row, input.context);
+  const strategyIdentity = String(coreExpressions.fixedExpression || "").trim();
+  const strategyCtaLabel = String(coreExpressions.ctaLabel || "").trim();
+  const strategyCtaUrl = String(coreExpressions.ctaUrl || "").trim();
+  const strategyCtaEnabled = Boolean(strategyCtaLabel && strategyCtaUrl);
+  const strategyChannels = expressionStrings(coreExpressions.channels);
+  const identityApplies = !strategyChannels.length || strategyChannels.includes(taskChannel);
+  const promotionProfiles = strategyCtaEnabled ? [{
+    promotionProfileVersionId: `strategy-cta-${String(row.content_plan_hash).slice(0, 32)}`,
+    version: Number(row.strategy_version || 1),
+    status: "active" as const,
+    targetEntityIds: [geoMission.primaryEntityId],
+    excludedEntityIds: [],
+    applicableProductGroups: [],
+    articleScope: "single_product" as const,
+    promotionGoal: "",
+    ctaIntent: "contact_service" as const,
+    applicableContentTypes: [],
+    applicableTitleCategories: [],
+    allowMultiProduct: false,
+    requiresPrimaryEntity: true,
+    priority: 100,
+    variants: [{
+      ctaVariantId: `strategy-cta-variant-${String(row.content_plan_hash).slice(0, 24)}`,
+      channel: "*" as const,
+      label: strategyCtaLabel,
+      publicUrl: strategyCtaUrl,
+      identityClaimIds: [],
+      serviceClaimIds: [],
+      allowedRenderModes: ["markdown_link"],
+      status: "active" as const
+    }],
+    approvedBy: String(row.strategy_approved_by || "human-strategy-approval"),
+    approvedAt: row.strategy_approved_at ? new Date(row.strategy_approved_at).toISOString() : "1970-01-01T00:00:00.000Z"
+  }] : [];
+  const compiledContentTypeRule = {
+    ...contentTypeRule(row, input.context),
+    ctaIntent: strategyCtaEnabled ? "contact_service" as const : "none" as const
+  };
   const sampleContentTypeRule = input.mode === "sample"
     ? {
         ...compiledContentTypeRule,
@@ -314,6 +448,12 @@ export async function compileFormalProductionContract(input: {
         ]
       }
     : compiledContentTypeRule;
+  const governedTitle = normalizeProductionTitle(ensureNarrativeSubjectTitle({
+    title: normalizeProductionTitle(String(task.title || "")),
+    productName: String(row.display_name || row.canonical_name || ""),
+    narrativeSubjectName: geoMission.narrativeSubjectName,
+    narrativeSubjectRole: geoMission.narrativeSubjectRole
+  }));
   return compileProductionContract({
     governance: {
       productId: String(row.product_id),
@@ -324,22 +464,28 @@ export async function compileFormalProductionContract(input: {
       articleTypeDefinitionHash: String(row.article_type_definition_hash),
       expressionCalibrationVersionId: row.calibration_version_id ? String(row.calibration_version_id) : undefined,
       promptCompilerVersion: compilerVersion,
-      productionMode: input.mode
+      productionMode: input.mode,
+      geoIntentHash: geoMission.geoIntentHash,
+      entityGraphHash: geoMission.entityGraph.graphHash
     },
+    geoMission,
     task: {
       taskId: input.pack.taskId,
       taskVersion: input.pack.taskVersion,
-      title: String(task.title || "").trim(),
+      title: governedTitle,
       channel: taskChannel,
       contentType: String(task.contentType || "").trim(),
       targetAudience: String(task.targetAudience || "").trim(),
-      coreProblem: String(task.sourceProblem || "").trim(),
-      coreJudgment: expressionStrings(positioning).join("；") || "只陈述证据支持的能力、条件与人工判断边界。",
-      targetEntityIds: [String(row.product_id)],
-      primaryEntityId: String(row.product_id),
-      promotionGoal: "geo_education",
-      ctaIntent: "none",
-      promotionRequired: false
+      coreProblem: geoMission.primaryQuestion,
+      coreJudgment: geoMission.desiredAnswer || expressionStrings(positioning).join("；") || "只陈述证据支持的能力、条件与人工判断边界。",
+      // Promotion targeting contains products only. Brand owners and service
+      // providers remain in entityGraph, otherwise a single-product article is
+      // incorrectly resolved as a multi-product CTA task.
+      targetEntityIds: [geoMission.primaryEntityId],
+      primaryEntityId: geoMission.primaryEntityId,
+      promotionGoal: geoMission.promotionGoal,
+      ctaIntent: strategyCtaEnabled ? "contact_service" : "none",
+      promotionRequired: strategyCtaEnabled
     },
     evidencePack: evidenceSnapshot(input.pack),
     productRule: {
@@ -347,7 +493,7 @@ export async function compileFormalProductionContract(input: {
       sourceSnapshotHash: input.pack.sourceSnapshotHash,
       allowedExpressions: expressionStrings(input.context.allowedExpressions),
       conditionalExpressions: expressionStrings(input.context.conditionalExpressions),
-      blockedExpressions: expressionStrings(input.context.blockedExpressions),
+      blockedExpressions: prohibitedExpressionStrings(input.context.blockedExpressions),
       requiredEvidenceRoles: []
     },
     contentTypeRule: sampleContentTypeRule,
@@ -357,10 +503,10 @@ export async function compileFormalProductionContract(input: {
       requiredSections: [],
       requiredArtifacts: artifactsFrom(requiredFormat),
       prohibitedTerms: prohibitedPatterns,
-      maxCtaCount: 0,
-      ctaRenderMode: "none",
-      allowedCtaRenderModes: ["none"],
-      requireCtaAtEnd: false,
+      maxCtaCount: strategyCtaEnabled ? 1 : 0,
+      ctaRenderMode: strategyCtaEnabled ? "markdown_link" : "none",
+      allowedCtaRenderModes: strategyCtaEnabled ? ["markdown_link"] : ["none"],
+      requireCtaAtEnd: strategyCtaEnabled,
       crossChannelSimilarityThreshold: 0.72,
       promptDirectives: [...requiredFormat, input.context.ctaBoundary, ...sampleRevisionDirectives]
     },
@@ -371,13 +517,16 @@ export async function compileFormalProductionContract(input: {
       calibrationVersionId: row.calibration_version_id ? String(row.calibration_version_id) : undefined,
       calibrationDirectives: [...calibrationDirectives, ...acceptedSampleReference, ...sampleRevisionDirectives]
     },
-    promotionProfiles: [],
-    fixedExpressions: coreFixedExpressions.length
-      ? coreFixedExpressions
+    promotionProfiles,
+    fixedExpressions: strategyIdentity && identityApplies
+      ? [{ text: strategyIdentity, positions: ["opening"], channel: taskChannel }]
       : fixedExpression.text && fixedExpression.appliesToChannel
-        ? [{ text: fixedExpression.text, positions: fixedExpressionPositions, channel: taskChannel }]
+        ? [{ text: fixedExpression.text, positions: fixedExpressionPositions.length ? fixedExpressionPositions : ["opening"], channel: taskChannel }]
         : [],
-    requiredCoreClaimIds: selectRequiredCoreClaimIds(input.pack),
+    // Only the highest-priority governed Claim is mandatory. Additional facts
+    // remain available to the writer, but cannot turn the article into a
+    // mechanical evidence checklist.
+    requiredCoreClaimIds: selectRequiredCoreClaimIds(input.pack, geoMission).slice(0, 1),
     entityIdentity: {
       productId: String(row.product_id),
       canonicalName: String(row.canonical_name),

@@ -51,6 +51,12 @@ export type GeoSearchEntityClassification =
   | "unrelated"
   | "insufficient_evidence";
 
+export type GeoSearchEvidenceUsage =
+  | "product_fact"
+  | "competitor_fact"
+  | "demand_signal"
+  | "research_observation";
+
 export interface GeoSearchEvidenceCandidate {
   candidateId: string;
   canonicalUrl: string;
@@ -70,6 +76,8 @@ export interface GeoSearchEvidenceCandidate {
   providerRunIds: string[];
   rawResponseRefs: string[];
   entityClassification?: Exclude<GeoSearchEntityClassification, "homonym" | "unrelated" | "insufficient_evidence">;
+  /** 实体分类后的用途边界；需求与研究观察不得升级为产品事实。 */
+  evidenceUsage?: GeoSearchEvidenceUsage;
   matchedIdentityAnchors?: string[];
   /** 候选 URL 命中的目标渠道（来自渠道规则包域名匹配；非目标平台来源为空） */
   channelKey?: string;

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import mysql from "mysql2/promise";
 
-const FIXED_TEXT = "JOTO 作为腾讯CSP授权合作伙伴";
+const FIXED_TEXT = "JOTO是腾讯云ADP CSP授权服务商";
 const productIds = ["joto-workbuddy", "tencent-adp-joto"];
 const connection = await mysql.createConnection({
   host: process.env.MYSQL_HOST,

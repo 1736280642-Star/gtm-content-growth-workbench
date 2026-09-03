@@ -135,7 +135,7 @@ test("parsed webpage noise is removed before Claim governance and historical noi
     displayName: "WorkBuddy",
     brandName: "Tencent",
     aliases: ["WORKBUDDY", "JOTO WorkBuddy"],
-    fixedExpressionText: "JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。"
+    fixedExpressionText: "JOTO是腾讯云ADP CSP授权服务商。"
   });
   const effectiveBlocked = filterAutomaticKnowledgeBlockedClaims([
     { id: "noise", normalized_claim: "Contact Us", review_status: "rejected", limitations: ["automatic_noise_filter:navigation_terms"] },

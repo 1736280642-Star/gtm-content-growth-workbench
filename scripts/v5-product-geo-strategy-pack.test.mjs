@@ -201,7 +201,7 @@ test("a governed JOTO service-provider relationship always yields a provider-sel
     sourceSnapshotId: "source-snapshot-1",
     synthesisModel: "zhipu",
     productName: "WorkBuddy",
-    entityRelationship: "WorkBuddy 是腾讯旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。",
+    entityRelationship: "WorkBuddy 是腾讯旗下产品；JOTO是腾讯云ADP CSP授权服务商，支持WorkBuddy专项服务。",
     productKnowledgeProfile: sampleKnowledgeProfile()
   });
   const opportunity = plan.geoOpportunities.find((item) => item.intent === "service_provider_selection");
@@ -225,7 +225,7 @@ test("existing website coverage does not remove the governed provider-selection 
     sourceSnapshotId: "source-snapshot-1",
     synthesisModel: "zhipu",
     productName: "腾讯云 ADP",
-    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
+    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯云ADP CSP授权服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
     productKnowledgeProfile: sampleKnowledgeProfile(),
     websiteCoverageProfile: {
       id: "coverage-1",
@@ -272,7 +272,7 @@ test("a semantic provider guide is normalized into the governed provider-selecti
     sourceSnapshotId: "source-snapshot-1",
     synthesisModel: "zhipu",
     productName: "腾讯云 ADP",
-    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
+    entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯云ADP CSP授权服务商；JOTO 可提供腾讯云 ADP 项目实施、交付培训与后续支持。",
     productKnowledgeProfile: sampleKnowledgeProfile()
   });
   const providerTypes = plan.articleTypePortfolio.filter((item) => item.portfolioItemId === "service-provider-selection");

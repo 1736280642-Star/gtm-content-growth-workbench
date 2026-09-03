@@ -11,3 +11,35 @@ function fixture() { const chunk = { chunkId: "chunk-1", indexSnapshotId: "idx-1
 test("Final EvidencePack decision follows required evidence slots and config", () => { const { buildFinalEvidencePack } = load("src/lib/v5/rag/evidence-services.ts"); const { ragRetrievalRoutes } = load("src/lib/v5/rag/retrieval-route-registry.ts"); const { run, request } = fixture(); const base = { monthlyPlanId: "m", matrixVersionId: "mv", matrixItemId: "mi", taskId: "task", taskVersion: 1, request, route: ragRetrievalRoutes.implicit_tool_guide, retrievalRun: run, rulePackageVersionId: "rule-1", sourceSnapshotHash: "hash", taskSnapshot: {}, governanceSnapshot: {} }; const pending = buildFinalEvidencePack({ ...base, infrastructure: { status: "pending_config", mysql: { status: "ready", missingConfig: [] }, opensearch: { status: "pending_config", missingConfig: ["OPENSEARCH_URL"] }, embedding: { status: "pending_config", missingConfig: ["RAG_EMBEDDING_PROVIDER"] } } }); assert.equal(pending.decision, "pending_config"); const ready = buildFinalEvidencePack({ ...base, embeddingProvider: "qwen_embedding", embeddingModel: "text-embedding-v3", infrastructure: { status: "ready", mysql: { status: "ready", missingConfig: [] }, opensearch: { status: "ready", missingConfig: [] }, embedding: { status: "ready", provider: "qwen_embedding", model: "text-embedding-v3", missingConfig: [] } } }); assert.equal(ready.decision, "generatable"); });
 test("Final EvidencePack is rejected after task, rule or index changes", () => { const { buildFinalEvidencePack, assertFinalEvidencePackUsable } = load("src/lib/v5/rag/evidence-services.ts"); const { ragRetrievalRoutes } = load("src/lib/v5/rag/retrieval-route-registry.ts"); const { run, request } = fixture(); const pack = buildFinalEvidencePack({ monthlyPlanId: "m", matrixVersionId: "mv", matrixItemId: "mi", taskId: "task", taskVersion: 1, request, route: ragRetrievalRoutes.implicit_tool_guide, retrievalRun: run, rulePackageVersionId: "rule-1", sourceSnapshotHash: "hash", embeddingProvider: "qwen_embedding", embeddingModel: "model", taskSnapshot: {}, governanceSnapshot: {}, infrastructure: { status: "ready", mysql: { status: "ready", missingConfig: [] }, opensearch: { status: "ready", missingConfig: [] }, embedding: { status: "ready", missingConfig: [] } } }); assert.doesNotThrow(() => assertFinalEvidencePackUsable(pack, { taskId: "task", taskVersion: 1, rulePackageVersionId: "rule-1", activeIndexSnapshotIds: ["idx-1"] })); assert.throws(() => assertFinalEvidencePackUsable(pack, { taskId: "task", taskVersion: 2, rulePackageVersionId: "rule-1", activeIndexSnapshotIds: ["idx-1"] }), /task_snapshot_mismatch/); assert.throws(() => assertFinalEvidencePackUsable(pack, { taskId: "task", taskVersion: 1, rulePackageVersionId: "rule-1", activeIndexSnapshotIds: ["idx-2"] }), /index_snapshot_inactive/); });
 test("Final EvidencePack requires an immutable timestamp and at least one index snapshot", () => { const { assertFinalEvidencePackUsable } = load("src/lib/v5/rag/evidence-services.ts"); const incomplete = { evidencePackId: "pack", decision: "generatable", taskId: "task", taskVersion: 1, rulePackageVersionId: "rule", indexSnapshotIds: [], snapshotHash: "hash", immutableAt: "" }; assert.throws(() => assertFinalEvidencePackUsable(incomplete, { taskId: "task", taskVersion: 1, rulePackageVersionId: "rule", activeIndexSnapshotIds: [] }), /index_snapshot_missing/); });
+
+test("Final EvidencePack freezes the human-confirmed provider identity as a governed Claim", () => {
+  const { buildFinalEvidencePack } = load("src/lib/v5/rag/evidence-services.ts");
+  const { ragRetrievalRoutes } = load("src/lib/v5/rag/retrieval-route-registry.ts");
+  const { run, request } = fixture();
+  const geoMission = {
+    contractVersion: "geo-article-mission.v1", missionId: "geo-mission-adp", geoIntentHash: "a".repeat(64),
+    platformEntityId: "tencent-adp-joto", promotionSubjectEntityId: "entity-joto",
+    narrativeSubjectEntityId: "entity-joto", narrativeSubjectName: "JOTO", narrativeSubjectRole: "service_provider",
+    entityGraph: {
+      nodes: [
+        { entityId: "tencent-adp-joto", name: "腾讯云 ADP", role: "target_product", aliases: [] },
+        { entityId: "entity-joto", name: "JOTO", role: "service_provider", aliases: [] }
+      ],
+      relations: [{
+        subjectEntityId: "tencent-adp-joto", predicate: "served_by", objectEntityId: "entity-joto",
+        canonicalStatement: "JOTO是腾讯云ADP CSP授权服务商；JOTO 可提供项目实施与后续支持。", evidenceClaimIds: []
+      }]
+    }
+  };
+  const pack = buildFinalEvidencePack({
+    monthlyPlanId: "m", matrixVersionId: "mv", matrixItemId: "mi", taskId: "task", taskVersion: 1,
+    request, route: ragRetrievalRoutes.implicit_tool_guide, retrievalRun: run, rulePackageVersionId: "rule-1",
+    sourceSnapshotHash: "hash", embeddingProvider: "qwen_embedding", embeddingModel: "model",
+    taskSnapshot: { geoMission }, governanceSnapshot: {},
+    infrastructure: { status: "ready", mysql: { status: "ready", missingConfig: [] }, opensearch: { status: "ready", missingConfig: [] }, embedding: { status: "ready", missingConfig: [] } }
+  });
+  const identity = pack.evidenceItems.find((item) => item.documentType === "governed_entity_graph");
+  assert.ok(identity);
+  assert.equal(identity.normalizedClaim, "JOTO是腾讯云ADP CSP授权服务商");
+  assert.equal(pack.claimPlan.requiredClaimIds.includes(identity.primaryClaimId), true);
+});

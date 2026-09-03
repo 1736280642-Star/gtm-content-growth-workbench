@@ -2,8 +2,34 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { isManagedResearchOnlySource } from "../src/lib/v5/rag/managed-source-import-service.ts";
 
 const root = process.cwd();
+
+test("GEO、关键词与实体消歧交付物只进入研究治理区", () => {
+  assert.equal(isManagedResearchOnlySource({
+    title: "JOTO 腾讯云 ADP GEO 交付物分类整理",
+    originalFileName: "B2_腾讯云ADP资料与关键词研究表_简洁版.docx"
+  }), true);
+  assert.equal(isManagedResearchOnlySource({
+    title: "腾讯云 ADP 官方产品能力",
+    originalFileName: "腾讯云ADP产品文档.docx"
+  }), false);
+  assert.equal(isManagedResearchOnlySource({
+    title: "公开 GEO 产品文章",
+    canonicalUrl: "https://example.com/geo-product"
+  }), false);
+
+  const managedService = fs.readFileSync(path.join(root, "src/lib/v5/rag/managed-source-import-service.ts"), "utf8");
+  const migration = fs.readFileSync(path.join(root, "database/migrations/20260829_044_v5_geo_research_evidence_isolation.sql"), "utf8");
+  assert.match(managedService, /researchOnly \? "governance_preview" : "production_candidate"/);
+  assert.match(managedService, /\["research_observation", "search_strategy", "badcase"\]/);
+  assert.match(managedService, /\["production_fact", "public_citation", "formal_generation"\]/);
+  assert.match(migration, /research_only_source_removed/);
+  assert.match(migration, /draft\.copy_allowed = FALSE/);
+  assert.match(migration, /review\.status = 'cancelled'/);
+  assert.match(migration, /https:\/\/cloud\.tencent\.com\/document\/product\/1759/);
+});
 
 test("workbench imports persist managed SourceRevision content and queue formal RAG refresh", () => {
   const migration = fs.readFileSync(path.join(root, "database/migrations/20260728_013_v5_managed_source_content.sql"), "utf8");
@@ -37,7 +63,8 @@ test("normal workbench imports do not require local RAG source roots", () => {
   const claimExtractionService = fs.readFileSync(path.join(root, "src/lib/v5/rag/managed-claim-extraction-service.ts"), "utf8");
 
   assert.doesNotMatch(template, /^RAG_SOURCE_ROOT_/m);
-  assert.doesNotMatch(template, /^RAG_IMPORT_/m);
+  assert.match(template, /Workbench document and URL imports are stored in MySQL/);
+  assert.match(template, /They do not require/);
   assert.match(managedReference, /mysql:\/\/source-revision/);
   assert.match(claimExtractionService, /managed-claim-extraction:\$\{versionedPlanHash\}/);
   assert.doesNotMatch(claimExtractionService, /managed-claim-extraction:\$\{productId\}:/);

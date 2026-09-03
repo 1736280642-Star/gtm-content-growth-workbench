@@ -2,7 +2,7 @@ import { copyFile, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 
-const FIXED_TEXT = "JOTO 作为腾讯CSP授权合作伙伴";
+const FIXED_TEXT = "JOTO是腾讯云ADP CSP授权服务商";
 const args = new Map(process.argv.slice(2).map((token) => {
   const [key, ...value] = token.replace(/^--/, "").split("=");
   return [key, value.length ? value.join("=") : "true"];

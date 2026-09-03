@@ -6,6 +6,7 @@ import type {
   V5SupportMode,
   V5Visibility
 } from "../knowledge-governance-contracts";
+import type { GeoArticleMissionContract, GeoEvidenceUsage } from "../geo-article-mission-contracts";
 
 export const RAG_NAMESPACES = [
   "production_public",
@@ -128,6 +129,8 @@ export interface RagKnowledgeChunk {
   visibility: V5Visibility;
   supportMode: V5SupportMode;
   claimScope: V5ClaimScope;
+  evidenceUsage?: GeoEvidenceUsage;
+  subjectEntityIds?: string[];
   capabilityStatus: V5LifecycleStatus;
   conditions: string[];
   limitations: string[];
@@ -178,6 +181,14 @@ export interface RagRetrievalRequest {
   platformContentType: RagPlatformContentType;
   targetAudience: string;
   sourceProblem: string;
+  geoMission?: GeoArticleMissionContract;
+  geoIntentHash?: string;
+  entityGraphHash?: string;
+  primaryEntityId?: string;
+  requiredRelationshipTypes?: string[];
+  allowedEvidenceUsages?: GeoEvidenceUsage[];
+  forbiddenEntityIds?: string[];
+  requiredClaimIds?: string[];
   distilledTermIds: string[];
   rulePackageVersionId: string;
   permissionScope: V5Visibility[];
@@ -229,6 +240,8 @@ export interface RagEvidenceItem {
   authorityLevel: V5AuthorityLevel;
   supportMode: V5SupportMode;
   claimScope: V5ClaimScope;
+  evidenceUsage?: GeoEvidenceUsage;
+  subjectEntityIds?: string[];
   status: RagChunkStatus;
   version: string;
   conditions: string[];

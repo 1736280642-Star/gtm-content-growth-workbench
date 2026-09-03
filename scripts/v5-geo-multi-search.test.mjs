@@ -365,6 +365,39 @@ test("identity compiler forbids name-only GEO queries", () => {
   assert.equal(queries.some((item) => /^Noteflow\s+(?:竞品|功能特点|用户评价)/i.test(item.query)), false);
 });
 
+test("identity compiler cleans internal category slugs and markdown fragments", () => {
+  const identity = {
+    productId: "product-1",
+    canonicalName: "Acme Agent",
+    displayName: "Acme Agent",
+    aliases: ["Acme Agent"],
+    brandName: "Acme",
+    officialEntity: "Acme Cloud",
+    officialUrl: "https://cloud.acme.test/agent",
+    officialDomain: "cloud.acme.test",
+    productCategory: "enterprise_ai_service",
+    positioning: ["面向企业的智能体开发平台"],
+    audiences: ["企业团队"],
+    capabilities: ["ADP 4.0全新升级，核心打造**以 AgentOps 为核心的生产级企业智能体平台**"],
+    scenarios: ["企业智能体开发与治理"],
+    boundaries: [],
+    profileSource: "parsed",
+    profileFactCount: 4
+  };
+  const queries = compileIdentityAnchoredQueries({ taskType: "live_question_discovery", identity, maxQueries: 3 });
+  assert.equal(queries.some((item) => item.query.includes("enterprise_ai_service")), false);
+  assert.equal(queries.some((item) => item.query.includes("**")), false);
+  assert.equal(queries.some((item) => item.query.includes("全新升级")), false);
+  assert.equal(queries.some((item) => item.query.includes("企业级 AI 智能体平台")), true);
+  assert.equal(queries.some((item) => item.query.includes("AgentOps")), true);
+});
+
+test("research planning persists deterministic identity-safe queries even without a search evidence pack", async () => {
+  const providerSource = await readFile(new URL("../src/lib/v5/geo-research-provider.ts", import.meta.url), "utf8");
+  assert.match(providerSource, /const structured = evidencePack[\s\S]*: groundedSemanticOutput;/);
+  assert.doesNotMatch(providerSource, /const structured = evidencePack[\s\S]*: semanticOutput;/);
+});
+
 test("WorkBuddy and Tencent Cloud ADP service-provider relationships become mandatory web-search intents", () => {
   const fact = (claimId, text) => ({ claimId, text, sourceId: "official-source", sourceRevisionId: "official-revision" });
   const profile = {
@@ -382,7 +415,7 @@ test("WorkBuddy and Tencent Cloud ADP service-provider relationships become mand
       product: {
         productId: "joto-workbuddy", canonicalName: "WorkBuddy", displayName: "WorkBuddy", aliases: ["WorkBuddy"],
         brandName: "腾讯", officialEntity: "腾讯", productCategory: "企业 AI 工作台",
-        entityRelationship: "WorkBuddy 是腾讯旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。"
+        entityRelationship: "WorkBuddy 是腾讯旗下产品；JOTO是腾讯云ADP CSP授权服务商，支持WorkBuddy专项服务。"
       },
       expectedProduct: "WorkBuddy"
     },
@@ -390,7 +423,7 @@ test("WorkBuddy and Tencent Cloud ADP service-provider relationships become mand
       product: {
         productId: "tencent-adp-joto", canonicalName: "腾讯云 ADP", displayName: "腾讯云 ADP", aliases: ["Tencent Cloud ADP"],
         brandName: "腾讯", officialEntity: "腾讯云", productCategory: "企业智能体开发平台",
-        entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商；JOTO 可在约定项目范围内提供腾讯云 ADP 项目实施、交付培训与后续支持。"
+        entityRelationship: "腾讯云 ADP 是腾讯云旗下产品；JOTO是腾讯云ADP CSP授权服务商；JOTO 可在约定项目范围内提供腾讯云 ADP 项目实施、交付培训与后续支持。"
       },
       expectedProduct: "腾讯云 ADP"
     }
@@ -471,6 +504,39 @@ test("same-name entities are discarded before evidence persistence even if class
   assert.equal(filtered.candidates.length, 0);
   assert.equal(filtered.providerRuns.every((run) => run.sourceCount === 0), true);
   assert.equal(filtered.gate.decision, "blocked");
+});
+
+test("entity-resolved evidence keeps demand signals separate from product facts", () => {
+  const identity = {
+    productId: "product-1", canonicalName: "Acme Agent", displayName: "Acme Agent",
+    aliases: ["Acme Agent"], brandName: "Acme", officialEntity: "Acme Cloud",
+    officialDomain: "cloud.acme.test", productCategory: "企业智能体平台",
+    positioning: ["企业智能体开发平台"], audiences: ["企业团队"], capabilities: ["智能体开发"],
+    scenarios: ["企业流程自动化"], boundaries: [], profileSource: "parsed", profileFactCount: 4
+  };
+  const baseCandidate = {
+    canonicalUrl: "https://example.com/source", retrievedAt: new Date(0).toISOString(), retrievalStatus: "retrieved",
+    sourceType: "community", authority: "medium", providerKeys: ["zhipu", "qwen"], queryIds: ["query-1"],
+    queries: ["企业智能体平台选型"], providerRunIds: ["run-zhipu", "run-qwen"], rawResponseRefs: ["run-zhipu", "run-qwen"]
+  };
+  const candidates = [
+    { ...baseCandidate, candidateId: "target", title: "Acme Agent", excerpt: "Acme Cloud 企业智能体开发平台" },
+    { ...baseCandidate, candidateId: "demand", canonicalUrl: "https://example.com/demand", title: "企业如何选智能体平台", excerpt: "企业采购关注集成与治理" }
+  ];
+  const pack = {
+    contractVersion: "geo-multi-search-evidence.v2", queries: query, providerRuns: [], candidates,
+    gate: { decision: "passed", successfulProviders: ["zhipu", "qwen"], configuredProviders: ["zhipu", "qwen"], independentSourceCount: 2, requiredSuccessfulProviders: 2, requiredIndependentSources: 2, gaps: [] },
+    compiledAt: new Date(0).toISOString(), supplementaryRounds: 0
+  };
+  const filtered = applyGeoEntityResolution({
+    taskType: "live_question_discovery", identity, pack,
+    resolutions: [
+      { candidateId: "target", classification: "target_match", matchedIdentityAnchors: ["brand", "category"], contradictingIdentityAnchors: [], competitorRelationshipSupported: false, overlapDimensions: [], confidence: 0.95 },
+      { candidateId: "demand", classification: "user_demand", matchedIdentityAnchors: ["category", "purchase_task"], contradictingIdentityAnchors: [], competitorRelationshipSupported: false, overlapDimensions: [], confidence: 0.9 }
+    ]
+  });
+  assert.equal(filtered.candidates.find((item) => item.candidateId === "target")?.evidenceUsage, "product_fact");
+  assert.equal(filtered.candidates.find((item) => item.candidateId === "demand")?.evidenceUsage, "demand_signal");
 });
 
 test("competitor and AI mention metrics fail closed without verified entity relationships", () => {

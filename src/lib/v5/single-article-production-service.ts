@@ -6,6 +6,7 @@ import type { RagPlatformContentType, RagRetrievalRequest } from "./rag/contract
 import { readActiveRagIndexSnapshotRecord, readFinalEvidencePackRecord, readRagMatrixItemContextRecord } from "./rag/rag-repository";
 import { createFinalEvidencePack, RagServiceError, retrieveRag } from "./rag/rag-service";
 import { assertFinalEvidencePackUsable } from "./rag/evidence-services";
+import { assertGeoArticleMission } from "./geo-article-mission-contracts";
 import type { SingleArticleActor, SingleArticleFailure, SingleArticleResult } from "./single-article-contracts";
 import {
   claimSingleArticleOperation,
@@ -72,6 +73,18 @@ export async function prepareAndGenerateSingleArticle(input: {
   try {
     const matrix = await readRagMatrixItemContextRecord(input.taskId);
     if (!matrix) throw new SingleArticleProductionError(404, "formal_task_not_found", "正式矩阵项不存在。", "确认已批准策略已写入 MySQL content_matrix_item 后重试。");
+    const geoMission = matrix.geoMissionSnapshot;
+    if (!geoMission) throw new SingleArticleProductionError(409, "geo_article_mission_missing", "文章任务缺少冻结的 GEO 推广任务合同。", "重新从已批准产品策略生成文章任务；禁止降级成普通产品文章。");
+    try {
+      assertGeoArticleMission(geoMission);
+    } catch (error) {
+      throw new SingleArticleProductionError(409, "geo_article_mission_invalid", "文章任务的 GEO 推广任务合同不完整或已经失效。", "重新编译 GEO 策略与文章任务后重试。", [error instanceof Error ? error.message : String(error)]);
+    }
+    if (geoMission.productId !== matrix.productId
+      || geoMission.geoIntentHash !== matrix.geoIntentHash
+      || geoMission.entityGraph.graphHash !== matrix.entityGraphHash) {
+      throw new SingleArticleProductionError(409, "geo_article_mission_stale", "文章任务、产品实体图和 GEO 目标版本不一致。", "重新编译文章任务并重新检索证据。");
+    }
     const snapshot = await readActiveRagIndexSnapshotRecord({ productId: matrix.productId, namespace: "production_public", language: "zh-CN" });
     if (!snapshot) throw new SingleArticleProductionError(409, "active_snapshot_missing", `${matrix.productName} 没有 active production_public IndexSnapshot。`, "系统将在索引构建与评测通过后自动恢复该任务。");
     const request: RagRetrievalRequest = {
@@ -89,6 +102,14 @@ export async function prepareAndGenerateSingleArticle(input: {
       platformContentType: matrix.platformContentType as RagPlatformContentType,
       targetAudience: matrix.targetAudience,
       sourceProblem: matrix.sourceProblem,
+      geoMission,
+      geoIntentHash: geoMission.geoIntentHash,
+      entityGraphHash: geoMission.entityGraph.graphHash,
+      primaryEntityId: geoMission.primaryEntityId,
+      requiredRelationshipTypes: geoMission.entityGraph.relations.map((item) => item.predicate),
+      allowedEvidenceUsages: geoMission.allowedEvidenceUsages,
+      forbiddenEntityIds: geoMission.forbiddenEntityIds,
+      requiredClaimIds: geoMission.requiredClaimIds,
       distilledTermIds: [matrix.primaryDistilledTermId, ...matrix.secondaryDistilledTermIds].filter(Boolean),
       rulePackageVersionId: matrix.rulePackageVersionId,
       permissionScope: ["public"],
@@ -99,6 +120,11 @@ export async function prepareAndGenerateSingleArticle(input: {
     let retrievalRunId: string;
     let pack;
     if (existingPack) {
+      const taskSnapshot = existingPack.taskSnapshot as Record<string, unknown>;
+      if (String(taskSnapshot.geoIntentHash || "") !== geoMission.geoIntentHash
+        || String(taskSnapshot.entityGraphHash || "") !== geoMission.entityGraph.graphHash) {
+        throw new SingleArticleProductionError(409, "stale_pack_used", "现有 EvidencePack 不属于当前 GEO 任务与实体图。", "使旧 EvidencePack 失效后按当前 GEO 任务重新检索。");
+      }
       assertFinalEvidencePackUsable(existingPack, {
         taskId: matrix.matrixItemId,
         taskVersion: matrix.currentTaskVersion,

@@ -30,6 +30,11 @@ function hardFilter(chunk: RagKnowledgeChunk, request: RagRetrievalRequest, rout
   const reasons: string[] = [];
   if (chunk.namespace !== request.namespace) reasons.push("namespace_mismatch");
   if (chunk.productId !== request.productId) reasons.push("product_mismatch");
+  const evidenceUsage = chunk.evidenceUsage || (chunk.documentType === "geo_research_document" ? "research_observation" : "product_fact");
+  if (request.allowedEvidenceUsages?.length && !request.allowedEvidenceUsages.includes(evidenceUsage)) reasons.push("evidence_usage_forbidden");
+  const subjectEntityIds = chunk.subjectEntityIds?.length ? chunk.subjectEntityIds : [chunk.productId];
+  if (request.primaryEntityId && evidenceUsage === "product_fact" && !subjectEntityIds.includes(request.primaryEntityId)) reasons.push("primary_entity_mismatch");
+  if (request.forbiddenEntityIds?.some((entityId) => subjectEntityIds.includes(entityId))) reasons.push("forbidden_entity_hit");
   if (chunk.status !== "active") reasons.push("inactive_chunk");
   if (!request.permissionScope.includes(chunk.visibility)) reasons.push("visibility_denied");
   if (!request.lifecycleStatuses.includes(chunk.lifecycleStatus) || !request.lifecycleStatuses.includes(chunk.capabilityStatus)) reasons.push("lifecycle_mismatch");
@@ -46,6 +51,23 @@ function hardFilter(chunk: RagKnowledgeChunk, request: RagRetrievalRequest, rout
 
 function authorityBonus(level: RagKnowledgeChunk["authorityLevel"]) {
   return ({ A1: 0.22, A2: 0.2, B1: 0.12, B2: 0.08, C1: 0.03, C2: 0.02, D: 0, E: -0.1 })[level];
+}
+
+const promotionCapabilityPatterns = [
+  /(?:场景|需求|业务).{0,8}(?:诊断|咨询|梳理|评估)|可行性评估/,
+  /(?:方案|架构|原型|知识库|工作流|智能体).{0,8}(?:设计|封装|搭建|配置|编排)|垂直解决方案/,
+  /(?:系统|数据|流程).{0,8}(?:集成|接入|接通|打通)|(?:实施|部署|交付).{0,6}(?:服务|支持|工作|动作)?/,
+  /(?:交付)?培训|(?:持续|长期|后续).{0,8}(?:运营|优化|支持|陪跑)|运营陪跑/
+];
+
+function promotionProviderName(request: RagRetrievalRequest) {
+  return request.geoMission?.entityGraph.nodes.find((item) => item.role === "service_provider")?.name;
+}
+
+function promotionCapabilityCategories(chunk: RagKnowledgeChunk, providerName: string) {
+  const text = `${chunk.summary} ${chunk.content} ${chunk.originalQuote}`;
+  if (!text.toLocaleLowerCase().includes(providerName.toLocaleLowerCase())) return [];
+  return promotionCapabilityPatterns.flatMap((pattern, index) => pattern.test(text) ? [index] : []);
 }
 
 export function runHybridRetrieval(input: { request: RagRetrievalRequest; route: RagRetrievalRoute; indexSnapshotIds: string[]; retrievalPolicyVersion: string; pools: RagRecallPools }): RagRetrievalRun {
@@ -71,7 +93,8 @@ export function runHybridRetrieval(input: { request: RagRetrievalRequest; route:
     const limitationBonus = candidate.chunk.semanticType === "limitation_chunk" ? 0.16 : 0;
     const citationBonus = candidate.chunk.semanticType === "official_citation" ? 0.12 : 0;
     const riskPenalty = candidate.chunk.authorityLevel.startsWith("C") ? 0.08 : 0;
-    candidate.rerankScore = candidate.rrfScore + authorityBonus(candidate.chunk.authorityLevel) + routeMatch + limitationBonus + citationBonus - riskPenalty;
+    const requiredClaimBonus = request.requiredClaimIds?.some((claimId) => candidate.chunk.claimIds.includes(claimId)) ? 0.4 : 0;
+    candidate.rerankScore = candidate.rrfScore + authorityBonus(candidate.chunk.authorityLevel) + routeMatch + limitationBonus + citationBonus + requiredClaimBonus - riskPenalty;
     if (!candidate.exclusionReasons.length) candidate.selectionReasons = ["hard_filter_passed", ...candidate.channels.map((channel) => `recalled_by_${channel}`)];
   }
 
@@ -99,12 +122,26 @@ export function runHybridRetrieval(input: { request: RagRetrievalRequest; route:
     const candidate = eligible.find((item) => !item.selected && item.evidenceRoles.includes(role));
     if (candidate) select(candidate);
   }
+  const providerName = promotionProviderName(request);
+  const selectedPromotionCategories = new Set<number>();
+  if (providerName) {
+    for (let category = 0; category < promotionCapabilityPatterns.length; category += 1) {
+      const candidate = eligible.find((item) =>
+        !item.selected && promotionCapabilityCategories(item.chunk, providerName).includes(category)
+      );
+      if (candidate && select(candidate)) selectedPromotionCategories.add(category);
+      if (selectedPromotionCategories.size >= 3) break;
+    }
+  }
   for (const candidate of eligible) {
     select(candidate);
     if (selected.length >= route.candidateLimits.final) break;
   }
   const selectedRoles = new Set(selected.flatMap((candidate) => candidate.evidenceRoles));
-  const missingEvidenceRoles = route.requiredEvidenceRoles.filter((role) => !selectedRoles.has(role));
+  const missingEvidenceRoles = [
+    ...route.requiredEvidenceRoles.filter((role) => !selectedRoles.has(role)),
+    ...(providerName && selectedPromotionCategories.size < 2 ? ["promotion_service_capability"] : [])
+  ];
   const status = missingEvidenceRoles.length ? "needs_material" : "completed";
   const now = new Date().toISOString();
   return { retrievalRunId: `retrieval-${randomUUID()}`, retrievalRequestId: request.retrievalRequestId, indexSnapshotIds: input.indexSnapshotIds,

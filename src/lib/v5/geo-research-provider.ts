@@ -1200,6 +1200,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       providerRunIds: candidate.providerRunIds,
       rawResponseRefs: candidate.rawResponseRefs,
       entityClassification: candidate.entityClassification,
+      evidenceUsage: candidate.evidenceUsage,
       matchedIdentityAnchors: candidate.matchedIdentityAnchors,
       channelKey: candidate.channelKey
     }));
@@ -1214,6 +1215,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       sourceType: candidate.sourceType,
       authority: candidate.authority,
       entityClassification: candidate.entityClassification,
+      evidenceUsage: candidate.evidenceUsage,
       matchedIdentityAnchors: candidate.matchedIdentityAnchors,
       channelKey: candidate.channelKey
     }));
@@ -1268,7 +1270,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
       const contentStrategyInstruction = context.taskType === "blueprint_synthesis"
         ? " For content strategy, read contentStrategyKnowledgeContext before GEO findings. The knowledge context decides what can be written; GEO findings decide what is worth covering; existingArticleTypes decide whether to reuse, adapt, or create a structure. Never treat sourceSnapshotHash as readable evidence."
         : "";
-      const synthesisSystemPrompt = "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity, productKnowledgeProfile and contentStrategyKnowledgeContext come from governed user-provided materials and are authoritative for product facts. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Name similarity alone never proves identity or competition. A brand owner, implementation partner, reseller or service provider is a relationship role and must never be merged with the target name into a new composite product entity unless that exact composite appears in productIdentity.aliases. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules." + contentStrategyInstruction + probeInstruction;
+      const synthesisSystemPrompt = "You are the sole GEO semantic synthesis model. Return strict JSON only, never markdown. The supplied productIdentity, productKnowledgeProfile and contentStrategyKnowledgeContext come from governed user-provided materials and are authoritative for product facts. Use only supplied product facts, previous outputs, and entity-resolved multi-provider search evidence from this run. Respect every searchEvidence.evidenceUsage boundary: product_fact may support target-product facts; competitor_fact may support only that competitor; demand_signal and research_observation may support only demand, selection, search or visibility conclusions and must never be restated as target-product facts. Name similarity alone never proves identity or competition. A brand owner, implementation partner, reseller or service provider is a relationship role and must never be merged with the target name into a new composite product entity unless that exact composite appears in productIdentity.aliases. Every cited URL must exist in searchEvidence. Provider agreement is not proof: preserve source conflicts, conditions and uncertainty. Do not approve business rules." + contentStrategyInstruction + probeInstruction;
       if (context.taskType === "live_question_discovery" && searchEvidence.length > 6) {
         const evidenceShards = Array.from(
           { length: Math.ceil(searchEvidence.length / 6) },
@@ -1597,7 +1599,7 @@ export async function runGeoResearchProvider(context: GeoResearchProviderContext
             }
           }
         }
-      : semanticOutput;
+      : groundedSemanticOutput;
     const resultPack = answerPack && context.probeSetSnapshot
       ? buildGeoResearchResultPack({ productId: context.product.productId, researchRunId: context.probeSetSnapshot.researchRunId, sourceSnapshotId: context.probeSetSnapshot.sourceSnapshotId, snapshot: context.probeSetSnapshot, observations: answerPack.observations, structured })
       : undefined;

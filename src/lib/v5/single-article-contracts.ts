@@ -44,6 +44,8 @@ export interface HardRuleResult {
   providerDurationMs?: number;
   providerInputTokens?: number;
   providerOutputTokens?: number;
+  pipelineDiagnostic?: import("./production-rubrics").BusinessChainRubricResult;
+  articleQuality?: import("./production-rubrics").ArticleQualityRubricResult;
 }
 
 export interface FormalGenerationRun {

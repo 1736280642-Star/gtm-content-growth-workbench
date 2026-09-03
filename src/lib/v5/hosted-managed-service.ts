@@ -1,15 +1,17 @@
 import { V5GovernanceServiceError } from "./knowledge-governance-service";
 import { getProductGeoStrategyPackView } from "./product-strategy-pack-service";
-import { readProductSampleArticles } from "./product-sample-article-service";
 import { getActiveProduct } from "./product-registry-service";
 import type {
   CreateHostedPromotionOrderInput,
-  HostedPromotionOrderRecord,
-  HostedOrderStatus
+  HostedOrderStatus,
+  HostedPromotionOrderRecord
 } from "./hosted-managed-contracts";
-import { compileHostedOrderNextAction } from "./hosted-managed-contracts";
+import { compileHostedOrderNextAction, deriveHostedWorkflowState } from "./hosted-managed-contracts";
 import {
   createHostedPromotionOrderRecord,
+  readHostedOrderHasInvalidatedWorkflowBinding,
+  readHostedProductActiveResearchRun,
+  readHostedOrderSampleProgress,
   readHostedPromotionOrderRecord,
   updateHostedPromotionOrderStatus
 } from "./hosted-managed-repository";
@@ -19,6 +21,7 @@ import { enqueueHostedNotification } from "./hosted-notification-service";
 import { getV5GovernancePool } from "./knowledge-governance-repository";
 import type { RowDataPacket } from "mysql2/promise";
 import { getMonthlyReview } from "./monthly-review-service";
+import { queueSingleArticleOperation } from "./single-article-production-repository";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -45,28 +48,12 @@ export async function createHostedPromotionOrder(input: CreateHostedPromotionOrd
   return { ...stored, nextAction: compileHostedOrderNextAction(stored.order) };
 }
 
-function mappedStatus(strategyStatus?: string, samples?: Awaited<ReturnType<typeof readProductSampleArticles>>): {
-  status: HostedOrderStatus;
-  currentActionType?: string;
-} {
-  if (strategyStatus === "pending_strategy_review") {
-    return { status: "pending_strategy_review", currentActionType: "review_strategy" };
-  }
-  if (strategyStatus === "rejected") return { status: "preparing" };
-  if (strategyStatus === "strategy_approved" || strategyStatus === "pending_sample_review") {
-    const hasReviewableDraft = Boolean(samples?.items.some((item) => item.draft?.copyAllowed && item.reviewStatus !== "approved"));
-    return hasReviewableDraft
-      ? { status: "pending_sample_review", currentActionType: "review_sample" }
-      : { status: "preparing" };
-  }
-  if (strategyStatus === "production_ready" || strategyStatus === "active") return { status: "running" };
-  return { status: "preparing" };
-}
-
 function canAutomaticallyReconcile(order: Awaited<ReturnType<typeof readHostedPromotionOrderRecord>>) {
   if (!order || order.status !== "action_required") return true;
+  if (!order.lastError?.code) return true;
   return order.lastError?.code === "hosted_channel_authorization_required"
-    || order.lastError?.code === "hosted_channel_unavailable";
+    || order.lastError?.code === "hosted_channel_unavailable"
+    || order.lastError?.code === "hosted_sample_generation_failed";
 }
 
 async function applyChannelReadiness(
@@ -243,23 +230,47 @@ async function enqueueHostedStateNotification(order: NonNullable<Awaited<ReturnT
 export async function getHostedPromotionOrder(orderId: string) {
   let order = await readHostedPromotionOrderRecord(orderId);
   if (!order) throw new V5GovernanceServiceError("hosted_order_not_found", "托管任务不存在。", 404);
+  const invalidatedWorkflowBinding = await readHostedOrderHasInvalidatedWorkflowBinding(order);
+  let sampleProgress = invalidatedWorkflowBinding ? undefined : await readHostedOrderSampleProgress(order);
   if (!["paused", "completed"].includes(order.status) && canAutomaticallyReconcile(order)) {
-    const [strategy, samples] = await Promise.all([
-      getProductGeoStrategyPackView(order.productId),
-      readProductSampleArticles(order.productId)
-    ]);
-    const mapped = await applyChannelReadiness(order, mappedStatus(strategy.latestStrategyPack?.status, samples));
+    const activeResearch = await readHostedProductActiveResearchRun(order.productId);
+    const strategy = activeResearch || sampleProgress ? undefined : await getProductGeoStrategyPackView(order.productId);
+    const mapped = activeResearch
+      ? { status: "preparing" as const, currentActionType: undefined, lastError: undefined }
+      : await applyChannelReadiness(order, deriveHostedWorkflowState({
+          strategyStatus: sampleProgress?.strategyStatus || strategy?.latestStrategyPack?.status,
+          sample: sampleProgress?.sample
+        }));
     const lastErrorChanged = mapped.lastError?.code !== order.lastError?.code || mapped.lastError?.message !== order.lastError?.message;
-    if (mapped.status !== order.status || mapped.currentActionType !== order.currentActionType || lastErrorChanged) {
+    const workflowBinding = sampleProgress?.sample ? {
+      strategyPackId: sampleProgress.sample.strategyPackId,
+      sampleTaskId: sampleProgress.sample.taskId,
+      sampleOperationId: sampleProgress.sample.operationId
+    } : undefined;
+    const bindingChanged = Boolean(invalidatedWorkflowBinding) || Boolean(activeResearch && (
+      order.currentStrategyPackId || order.currentSampleTaskId || order.currentSampleOperationId
+    )) || Boolean(workflowBinding && (
+      workflowBinding.strategyPackId !== order.currentStrategyPackId
+      || workflowBinding.sampleTaskId !== order.currentSampleTaskId
+      || workflowBinding.sampleOperationId !== order.currentSampleOperationId
+    ));
+    if (mapped.status !== order.status || mapped.currentActionType !== order.currentActionType || lastErrorChanged || bindingChanged) {
       order = await updateHostedPromotionOrderStatus({
         orderId,
         expectedVersion: order.rowVersion,
         status: mapped.status,
         currentActionType: mapped.currentActionType,
         lastError: mapped.lastError,
+        workflowBinding: activeResearch || invalidatedWorkflowBinding ? undefined : workflowBinding,
+        clearWorkflowBinding: Boolean(activeResearch || invalidatedWorkflowBinding),
         actorId: "hosted-status-reconciler",
-        auditReason: "根据正式策略与样文状态同步托管端用户状态"
+        auditReason: invalidatedWorkflowBinding
+          ? "旧策略或样文证据包已失效，清除工作流绑定并切换到最新正式策略"
+          : activeResearch
+          ? `新 GEO 调研 ${activeResearch.runId} 正在运行，清除旧策略与样文绑定并恢复调研进度`
+          : "根据正式策略与样文状态同步托管端用户状态"
       });
+      if (activeResearch || invalidatedWorkflowBinding) sampleProgress = undefined;
     }
   }
   if (await isMonthlyExecutionComplete(order)) {
@@ -276,8 +287,43 @@ export async function getHostedPromotionOrder(orderId: string) {
   return {
     order,
     nextAction: compileHostedOrderNextAction(order),
-    pendingReview: pendingReview ? { gateType: pendingReview.gateType, status: pendingReview.status, expiresAt: pendingReview.expiresAt } : undefined
+    pendingReview: pendingReview ? { gateType: pendingReview.gateType, status: pendingReview.status, expiresAt: pendingReview.expiresAt } : undefined,
+    sampleProgress: sampleProgress?.sample
   };
+}
+
+export async function retryHostedSampleGeneration(orderId: string, actorId: string) {
+  const order = await readHostedPromotionOrderRecord(orderId);
+  if (!order) throw new V5GovernanceServiceError("hosted_order_not_found", "托管任务不存在。", 404);
+  const workflow = await readHostedOrderSampleProgress(order);
+  const sample = workflow?.sample;
+  if (!sample?.taskId || !sample.operationId || !["failed", "blocked", "pending_config"].includes(sample.operationStatus || "")) {
+    throw new V5GovernanceServiceError("hosted_sample_retry_not_available", "当前没有需要重新生成的样文任务。", 409);
+  }
+  const queued = await queueSingleArticleOperation({
+    taskId: sample.taskId,
+    idempotencyKey: `hosted-sample-retry:${orderId}:${sample.operationId}`.slice(0, 191),
+    actor: {
+      actorId,
+      actorRole: "workbench_operator",
+      actorType: "human",
+      auditReason: "用户从托管进度页重新生成失败的代表样文"
+    }
+  });
+  await updateHostedPromotionOrderStatus({
+    orderId,
+    expectedVersion: order.rowVersion,
+    status: "generating_sample",
+    currentActionType: "generate_sample",
+    workflowBinding: {
+      strategyPackId: sample.strategyPackId,
+      sampleTaskId: sample.taskId,
+      sampleOperationId: queued.operation.operationId
+    },
+    actorId,
+    auditReason: "重新排队失败的代表样文，并恢复可见生成进度"
+  });
+  return getHostedPromotionOrder(orderId);
 }
 
 export async function reconcileHostedPromotionOrders(limit = 50) {

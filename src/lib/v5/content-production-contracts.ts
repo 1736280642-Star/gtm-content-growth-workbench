@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { GeoArticleMissionContract, GeoEvidenceUsage } from "./geo-article-mission-contracts";
 
 export type CTAIntent =
   | "none"
@@ -96,6 +97,8 @@ export interface ProductionEvidenceItem {
   claimIds: string[];
   primaryClaimId?: string;
   sourceRevisionId: string;
+  evidenceUsage?: GeoEvidenceUsage;
+  subjectEntityIds?: string[];
   originalQuote: string;
   summary: string;
   canonicalUrl?: string;
@@ -138,7 +141,36 @@ export interface ContentTypeRuleSnapshot {
   requiredSections: string[];
   requiredArtifacts: ProductionArtifact[];
   requiredEvidenceRoles: string[];
+  argumentOrder?: string[];
   promptDirectives: string[];
+}
+
+export type ArticleArgumentRole = "answer" | "criterion" | "mechanism" | "evidence" | "decision";
+
+export interface ArticleArgumentSection {
+  sectionId: string;
+  role: ArticleArgumentRole;
+  sectionQuestion: string;
+  sectionClaim: string;
+  because: string;
+  evidenceClaimIds: string[];
+  decisionImplication: string;
+  transitionToNext?: string;
+}
+
+export interface ArticleArgumentPlan {
+  planVersion: "article-argument-plan.v1";
+  centralJudgment: string;
+  causalChain: string[];
+  sections: ArticleArgumentSection[];
+  promotionSubjectSectionRequirement?: {
+    requiredInEveryCoreSection: true;
+    literalSubjectNameRequired: true;
+    narrativeSubjectName: string;
+    eligibleActionClaimIds: string[];
+    eligibleActionCategories: PromotionCapabilityCategory[];
+    decisionImplicationRequired: true;
+  };
 }
 
 export type ProductionArtifact = "table" | "list" | "state_flow" | "code_block";
@@ -191,8 +223,66 @@ export interface ProductionGovernanceSnapshot {
   articleTypeVersionId: string;
   articleTypeDefinitionHash: string;
   expressionCalibrationVersionId?: string;
-  promptCompilerVersion: "production-contract-compiler.v2";
+  promptCompilerVersion: "production-contract-compiler.v2" | "production-contract-compiler.v3";
+  geoIntentHash: string;
+  entityGraphHash: string;
   productionMode: "sample" | "batch" | "single";
+}
+
+export type PromotionCapabilityCategory =
+  | "diagnosis_consulting"
+  | "solution_design"
+  | "integration_delivery"
+  | "training_operations";
+
+export interface PromotionCapabilityClaimPlan {
+  claimId: string;
+  evidenceItemId: string;
+  category: PromotionCapabilityCategory;
+}
+
+export interface PromotionSubjectPlan {
+  enabled: boolean;
+  platformEntityId: string;
+  promotionSubjectEntityId: string;
+  narrativeSubjectName: string;
+  narrativeSubjectRole: "target_product" | "service_provider";
+  identityStatement?: string;
+  identityClaimIds: string[];
+  serviceCapabilityClaims: PromotionCapabilityClaimPlan[];
+  minimumServiceCapabilityClaims: number;
+  minimumServiceCapabilityCategories: number;
+  minimumBodySubjectMentions: number;
+  requiredSectionCoverageRatio: number;
+}
+
+export type GovernedFaqTopic =
+  | "entity_relationship"
+  | "service_capability"
+  | "scenario_applicability"
+  | "implementation_deployment"
+  | "responsibility_boundary"
+  | "security_governance"
+  | "product_mechanism";
+
+export interface GovernedFaqEvidenceCandidate {
+  topic: GovernedFaqTopic;
+  suggestedQuestion: string;
+  evidenceItemId: string;
+  claimId: string;
+  sourceRevisionId: string;
+}
+
+export interface GovernedFaqPlan {
+  enabled: boolean;
+  required: boolean;
+  heading: "常见问题";
+  placement: "before_cta";
+  minimumItems: number;
+  maximumItems: number;
+  allowedQuestionOrigins: Array<"search_intent" | "knowledge_simulation" | "human_confirmed">;
+  evidenceCandidates: GovernedFaqEvidenceCandidate[];
+  planHash: string;
 }
 
 export interface ProductionValidatorPolicy {
@@ -207,12 +297,18 @@ export interface ProductionValidatorPolicy {
   maxCtaCount: number;
   requireCtaAtEnd: boolean;
   crossChannelSimilarityThreshold: number;
+  promotionSubjectPlan: PromotionSubjectPlan;
+  faqPlan: GovernedFaqPlan;
 }
 
 export interface ProductionContractSnapshot {
   contractVersion: "content-production.v2";
   contractHash: string;
   governance: ProductionGovernanceSnapshot;
+  geoMission: GeoArticleMissionContract;
+  promotionSubjectPlan: PromotionSubjectPlan;
+  faqPlan: GovernedFaqPlan;
+  argumentPlan: ArticleArgumentPlan;
   task: ContentTaskSnapshot;
   evidencePack: FinalEvidencePackSnapshot;
   productRule: ProductRuleSnapshot;
@@ -261,6 +357,22 @@ export type ProductionValidationCode =
   | "duplicate_paragraph"
   | "chat_residue"
   | "human_writing_style"
+  | "title_heading_punctuation"
+  | "meta_opening"
+  | "pronoun_before_entity"
+  | "sentence_fragment"
+  | "argument_discontinuity"
+  | "promotion_subject_missing"
+  | "promotion_subject_section_coverage"
+  | "service_capability_coverage"
+  | "role_responsibility_unclear"
+  | "faq_required_missing"
+  | "faq_item_count_invalid"
+  | "faq_question_format_invalid"
+  | "faq_answer_untraced"
+  | "faq_topic_misaligned"
+  | "faq_duplicate"
+  | "faq_position_invalid"
   | "cross_channel_similarity";
 
 export interface ProductionValidationIssue {

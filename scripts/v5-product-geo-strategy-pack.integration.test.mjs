@@ -182,7 +182,7 @@ test("compile is pending, human approval is required, replay is idempotent and r
   assert.equal(view.currentStrategyPack?.status, "strategy_approved");
 
   const fixedExpression = {
-    text: "JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。",
+    text: "JOTO是腾讯云ADP CSP授权服务商。",
     positions: ["opening", "ending"],
     channels: ["wechat"]
   };

@@ -6,17 +6,19 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const root = process.cwd();
-const require = createRequire(import.meta.url);
-
 async function loadTs(relativePath) {
   const filePath = path.join(root, relativePath);
+  const baseRequire = createRequire(filePath);
+  const localRequire = (specifier) => specifier === "../deployment-ai-config"
+    ? { getDeploymentRuntimeValue: (name) => process.env[name]?.trim() || undefined }
+    : baseRequire(specifier);
   const source = fs.readFileSync(filePath, "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
     fileName: filePath
   }).outputText;
   const module = { exports: {} };
-  new Function("require", "module", "exports", output)(require, module, module.exports);
+  new Function("require", "module", "exports", output)(localRequire, module, module.exports);
   return module.exports;
 }
 
@@ -126,10 +128,12 @@ test("automatic refresh keeps blocked text out of parent chunks and versions ind
   const evaluation = fs.readFileSync(path.join(root, "src/lib/v5/rag/automatic-index-evaluation-service.ts"), "utf8");
   assert.match(chunking, /sanitizeBlockedText/);
   assert.match(chunking, /code !== "too_short"/);
-  assert.match(refresh, /context\.rulePackageVersionId\.slice\(-12\)/);
-  assert.match(refresh, /automatic-knowledge@2/);
+  assert.match(refresh, /manifest\.manifestHash\.slice\(0, 16\)/);
+  assert.match(refresh, /claim-aware@2/);
+  assert.match(refresh, /automatic-knowledge@3/);
   assert.match(refreshRepository, /claimSetHash\.slice\(0, 8\)/);
-  assert.match(evaluation, /claim\.reviewStatus !== "superseded"/);
+  assert.match(evaluation, /claim\.reviewStatus === "rejected"/);
+  assert.doesNotMatch(evaluation, /claim\.reviewStatus !== "superseded"/);
 });
 
 test("Final EvidencePack accepts an approved matrix item after automatic release", () => {

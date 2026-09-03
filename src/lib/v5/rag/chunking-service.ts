@@ -78,6 +78,16 @@ function semanticType(claim: V5ProductClaim) {
   return "claim_chunk";
 }
 
+function evidenceUsage(source: V5SourceAsset, claim?: V5ProductClaim): RagKnowledgeChunk["evidenceUsage"] {
+  if (source.documentType === "geo_research_document" || source.safetyStatus === "isolated") return "research_observation";
+  if (!claim || claim.subjectType === "product") return "product_fact";
+  return claim.subjectType === "external" || claim.subjectType === "cross_product" ? "competitor_fact" : "research_observation";
+}
+
+function subjectEntityIds(productId: string, claim?: V5ProductClaim) {
+  return !claim || claim.subjectType === "product" ? [productId] : [];
+}
+
 function issueCodes(chunk: RagKnowledgeChunk, claim?: V5ProductClaim) {
   const issues: string[] = [];
   if (!chunk.productId) issues.push("product_missing");
@@ -120,6 +130,8 @@ export function buildClaimAwareChunks(input: RagChunkingInput): RagChunkingResul
       chunkTitle: key, summary: parentContent.slice(0, 240), content: parentContent, originalQuote: parentContent,
       canonicalUrl: input.source.canonicalUrl, documentType: input.source.documentType, authorityLevel: input.source.authorityLevel,
       lifecycleStatus: input.source.lifecycleStatus, visibility: input.source.visibility, supportMode: "background_only", claimScope: "public_product",
+      evidenceUsage: sectionClaims.every((claim) => claim.subjectType === "product") ? evidenceUsage(input.source) : "research_observation",
+      subjectEntityIds: sectionClaims.every((claim) => claim.subjectType === "product") ? [input.productId] : [],
       capabilityStatus: input.source.lifecycleStatus, conditions: [], limitations: [], scenarioTags: [], capabilityTags: [], audienceTags: [], problemTags: [],
       channelTags: [], distilledTermIds: [], questionCandidateIds: [], conflictGroupIds: sectionClaims.flatMap((claim) => claim.conflictGroupId && unresolvedConflictIds.has(claim.conflictGroupId) ? [claim.conflictGroupId] : []),
       rulePackageVersionId: input.rulePackageVersionId, validFrom: input.source.validFrom, validUntil: input.source.validUntil,
@@ -147,6 +159,7 @@ export function buildClaimAwareChunks(input: RagChunkingInput): RagChunkingResul
       originalQuote: claim.originalQuote, canonicalUrl: input.source.canonicalUrl, documentType: input.source.documentType,
       authorityLevel: claim.authorityLevel, lifecycleStatus: input.source.lifecycleStatus, visibility: input.source.visibility,
       supportMode: claim.supportMode, claimScope: claim.claimScope, capabilityStatus: claim.capabilityStatus,
+      evidenceUsage: evidenceUsage(input.source, claim), subjectEntityIds: subjectEntityIds(input.productId, claim),
       conditions: claim.conditions, limitations: claim.limitations, scenarioTags: claim.claimType.includes("scenario") ? [claim.normalizedClaim] : [],
       capabilityTags: claim.claimType.includes("capability") ? [claim.normalizedClaim] : [], audienceTags: [], problemTags: [], channelTags: [],
       distilledTermIds: [], questionCandidateIds: [], conflictGroupIds: claim.conflictGroupId && unresolvedConflictIds.has(claim.conflictGroupId) ? [claim.conflictGroupId] : [],

@@ -434,9 +434,11 @@ export async function failFormalGenerationRun(input: {
 }) {
   await withV5GovernanceTransaction(async (connection) => {
     await connection.query(
-      `UPDATE generation_run SET status = ?, hard_rule_result = ?, failure_code = ?, failure_message = ?, next_action = ?, completed_at = NOW()
+      `UPDATE generation_run SET status = ?, hard_rule_result = ?, pipeline_diagnostic_result = ?, article_quality_result = ?, failure_code = ?, failure_message = ?, next_action = ?, completed_at = NOW()
        WHERE id = ? AND status = 'running'`,
       [input.status, stringifyV5Json(input.hardRuleResult || { passed: false, blockers: [], checkedRuleCount: 0, traceableFactCount: 0 }),
+        input.hardRuleResult?.pipelineDiagnostic ? stringifyV5Json(input.hardRuleResult.pipelineDiagnostic) : null,
+        input.hardRuleResult?.articleQuality ? stringifyV5Json(input.hardRuleResult.articleQuality) : null,
         input.failure.code, input.failure.message, input.failure.nextAction, input.generationRunId]
     );
     await connection.query(
@@ -476,15 +478,19 @@ export async function completeFormalGeneration(input: {
     await connection.query(
       `INSERT INTO draft_version
        (id, generation_run_id, task_id, task_version, matrix_item_id, final_evidence_pack_id, production_contract_id, production_contract_hash, rule_package_version_id,
-        version_number, title, markdown, fact_traces, hard_rule_result, copy_allowed, test_only, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, FALSE, ?)`,
+         version_number, title, markdown, fact_traces, hard_rule_result, article_quality_result, copy_allowed, test_only, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, FALSE, ?)`,
       [draftVersionId, input.generationRunId, input.pack.taskId, input.pack.taskVersion, input.pack.matrixItemId, input.pack.evidencePackId,
         input.productionContractId, input.productionContractHash,
-        input.context.rulePackageVersionId, versionNumber, input.title, input.markdown, stringifyV5Json(input.factTraces), stringifyV5Json(input.hardRuleResult), input.actor.actorId]
+        input.context.rulePackageVersionId, versionNumber, input.title, input.markdown, stringifyV5Json(input.factTraces), stringifyV5Json(input.hardRuleResult),
+        input.hardRuleResult.articleQuality ? stringifyV5Json(input.hardRuleResult.articleQuality) : null, input.actor.actorId]
     );
     await connection.query(
-      "UPDATE generation_run SET model = ?, status = 'completed', hard_rule_result = ?, completed_at = NOW() WHERE id = ? AND status = 'running'",
-      [input.providerModel || null, stringifyV5Json(input.hardRuleResult), input.generationRunId]
+      "UPDATE generation_run SET model = ?, status = 'completed', hard_rule_result = ?, pipeline_diagnostic_result = ?, article_quality_result = ?, completed_at = NOW() WHERE id = ? AND status = 'running'",
+      [input.providerModel || null, stringifyV5Json(input.hardRuleResult),
+        input.hardRuleResult.pipelineDiagnostic ? stringifyV5Json(input.hardRuleResult.pipelineDiagnostic) : null,
+        input.hardRuleResult.articleQuality ? stringifyV5Json(input.hardRuleResult.articleQuality) : null,
+        input.generationRunId]
     );
     await connection.query(
       `UPDATE single_article_operation

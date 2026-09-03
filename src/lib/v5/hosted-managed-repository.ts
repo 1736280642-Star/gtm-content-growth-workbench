@@ -16,7 +16,8 @@ import type {
   CreateHostedPromotionOrderInput,
   HostedMaterialSummary,
   HostedOrderStatus,
-  HostedPromotionOrderRecord
+  HostedPromotionOrderRecord,
+  HostedSampleProgress
 } from "./hosted-managed-contracts";
 
 function iso(value: unknown) {
@@ -42,6 +43,9 @@ function mapOrder(row: RowDataPacket): HostedPromotionOrderRecord {
     }),
     timezone: String(row.timezone || "Asia/Shanghai"),
     currentMonthlyPlanId: row.current_monthly_plan_id ? String(row.current_monthly_plan_id) : undefined,
+    currentStrategyPackId: row.current_strategy_pack_id ? String(row.current_strategy_pack_id) : undefined,
+    currentSampleTaskId: row.current_sample_task_id ? String(row.current_sample_task_id) : undefined,
+    currentSampleOperationId: row.current_sample_operation_id ? String(row.current_sample_operation_id) : undefined,
     currentActionType: row.current_action_type ? String(row.current_action_type) : undefined,
     pauseReason: row.pause_reason ? String(row.pause_reason) : undefined,
     lastError: lastErrorCode ? { code: lastErrorCode, message: String(row.last_error_message || "需要你处理一项问题。") } : undefined,
@@ -115,6 +119,123 @@ export async function readHostedPromotionOrderRecord(orderId: string) {
   return rows[0] ? mapOrder(rows[0]) : undefined;
 }
 
+export async function readHostedProductActiveResearchRun(productId: string) {
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT id, status, created_at
+     FROM geo_research_run
+     WHERE product_id = ?
+       AND status IN ('planned', 'queued', 'running', 'awaiting_frontend', 'synthesizing')
+     ORDER BY run_version DESC
+     LIMIT 1`,
+    [productId]
+  );
+  return rows[0] ? {
+    runId: String(rows[0].id),
+    status: String(rows[0].status),
+    createdAt: iso(rows[0].created_at)
+  } : undefined;
+}
+
+export async function readHostedOrderHasInvalidatedWorkflowBinding(order: HostedPromotionOrderRecord) {
+  if (!order.currentStrategyPackId && !order.currentSampleTaskId && !order.currentSampleOperationId) return false;
+  const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT 1
+     FROM product_sample_article_task task
+     LEFT JOIN single_article_operation operation ON operation.task_id = task.id
+     JOIN final_evidence_pack pack ON pack.id = COALESCE(operation.final_evidence_pack_id, task.final_evidence_pack_id)
+     WHERE task.product_id = ?
+       AND (
+         task.product_strategy_pack_id = ?
+         OR task.id = ?
+         OR operation.id = ?
+       )
+       AND pack.invalidated_at IS NOT NULL
+     LIMIT 1`,
+    [order.productId, order.currentStrategyPackId || "", order.currentSampleTaskId || "", order.currentSampleOperationId || ""]
+  );
+  return Boolean(rows[0]);
+}
+
+export async function readHostedOrderSampleProgress(order: HostedPromotionOrderRecord): Promise<{
+  strategyStatus?: string;
+  sample?: HostedSampleProgress;
+} | undefined> {
+  const [strategyRows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT strategy.id, strategy.status
+     FROM product_strategy_packs strategy
+     WHERE strategy.product_id = ?
+       AND strategy.id = COALESCE(?, (
+         SELECT review.target_id
+         FROM hosted_review_request review
+         WHERE review.order_id = ? AND review.gate_type = 'strategy'
+           AND review.status = 'acted' AND review.decision = 'approve'
+         ORDER BY review.acted_at DESC LIMIT 1
+       ))
+       AND NOT EXISTS (
+         SELECT 1 FROM product_sample_article_task invalid_sample
+         JOIN final_evidence_pack invalid_pack ON invalid_pack.id = invalid_sample.final_evidence_pack_id
+         WHERE invalid_sample.product_strategy_pack_id = strategy.id
+           AND invalid_pack.invalidated_at IS NOT NULL
+       )
+       AND (
+         ? IS NOT NULL OR NOT EXISTS (
+           SELECT 1 FROM geo_research_run newer_research
+           WHERE newer_research.product_id = strategy.product_id
+             AND newer_research.created_at > strategy.created_at
+             AND newer_research.status NOT IN ('failed', 'cancelled')
+         )
+       )
+     LIMIT 1`,
+    [order.productId, order.currentStrategyPackId || null, order.orderId, order.currentStrategyPackId || null]
+  );
+  const strategy = strategyRows[0];
+  if (!strategy) return undefined;
+  const strategyPackId = String(strategy.id);
+  const [sampleRows] = await getV5GovernancePool().query<RowDataPacket[]>(
+    `SELECT task.id AS task_id, task.review_status,
+            operation.id AS operation_id, operation.status AS operation_status,
+            operation.progress_stage, operation.attempt_count, operation.error_code,
+            operation.error_message, operation.next_action,
+            draft.copy_allowed
+     FROM product_sample_article_task task
+     LEFT JOIN single_article_operation operation ON operation.id = COALESCE(?, (
+       SELECT candidate.id FROM single_article_operation candidate
+       WHERE candidate.task_id = task.id ORDER BY candidate.created_at DESC LIMIT 1
+     ))
+     LEFT JOIN draft_version draft ON draft.id = operation.draft_version_id AND draft.test_only = FALSE
+     WHERE task.product_id = ? AND task.product_strategy_pack_id = ?
+       AND task.id = COALESCE(?, (
+         SELECT candidate_task.id FROM product_sample_article_task candidate_task
+         WHERE candidate_task.product_strategy_pack_id = ?
+         ORDER BY candidate_task.updated_at DESC LIMIT 1
+       ))
+     LIMIT 1`,
+    [order.currentSampleOperationId || null, order.productId, strategyPackId,
+      order.currentSampleTaskId || null, strategyPackId]
+  );
+  const row = sampleRows[0];
+  if (!row) return { strategyStatus: String(strategy.status) };
+  const error = row.error_code ? {
+    code: String(row.error_code),
+    message: String(row.error_message || "代表样文生成失败。"),
+    nextAction: row.next_action ? String(row.next_action) : undefined
+  } : undefined;
+  return {
+    strategyStatus: String(strategy.status),
+    sample: {
+      strategyPackId,
+      taskId: String(row.task_id),
+      operationId: row.operation_id ? String(row.operation_id) : undefined,
+      operationStatus: row.operation_status ? String(row.operation_status) : undefined,
+      progressStage: row.progress_stage ? String(row.progress_stage) : undefined,
+      attemptCount: Number(row.attempt_count || 0),
+      reviewStatus: row.review_status ? String(row.review_status) : undefined,
+      hasReviewableDraft: Boolean(row.copy_allowed) && String(row.review_status || "") !== "approved",
+      error
+    }
+  };
+}
+
 export async function listHostedPromotionOrderRecords(workspaceId: string, limit = 8) {
   const safeLimit = Math.max(1, Math.min(30, Math.floor(limit)));
   const [rows] = await getV5GovernancePool().query<RowDataPacket[]>(
@@ -167,6 +288,12 @@ export async function updateHostedPromotionOrderStatus(input: {
   status: HostedOrderStatus;
   currentActionType?: string;
   lastError?: { code: string; message: string };
+  workflowBinding?: {
+    strategyPackId?: string;
+    sampleTaskId?: string;
+    sampleOperationId?: string;
+  };
+  clearWorkflowBinding?: boolean;
   actorId: string;
   auditReason: string;
 }) {
@@ -182,10 +309,16 @@ export async function updateHostedPromotionOrderStatus(input: {
     const [result] = await connection.query<ResultSetHeader>(
       `UPDATE hosted_promotion_order
        SET status = ?, current_action_type = ?, last_error_code = ?, last_error_message = ?,
+           current_strategy_pack_id = CASE WHEN ? THEN NULL ELSE COALESCE(?, current_strategy_pack_id) END,
+           current_sample_task_id = CASE WHEN ? THEN NULL ELSE COALESCE(?, current_sample_task_id) END,
+           current_sample_operation_id = CASE WHEN ? THEN NULL ELSE COALESCE(?, current_sample_operation_id) END,
            row_version = row_version + 1
        WHERE id = ? AND row_version = ?`,
       [input.status, input.currentActionType || null, input.lastError?.code || null,
-        input.lastError?.message || null, input.orderId, input.expectedVersion]
+        input.lastError?.message || null, Boolean(input.clearWorkflowBinding), input.workflowBinding?.strategyPackId || null,
+        Boolean(input.clearWorkflowBinding), input.workflowBinding?.sampleTaskId || null,
+        Boolean(input.clearWorkflowBinding), input.workflowBinding?.sampleOperationId || null,
+        input.orderId, input.expectedVersion]
     );
     if (result.affectedRows !== 1) throw new V5GovernanceRepositoryError("hosted_order_version_conflict", "托管状态已经变化，请刷新后重试。", 409);
     await writeV5GovernanceAudit(connection, {
@@ -197,7 +330,15 @@ export async function updateHostedPromotionOrderStatus(input: {
       objectType: "hosted_promotion_order",
       objectId: input.orderId,
       beforeSummary: { status: String(rows[0].status), rowVersion: input.expectedVersion },
-      afterSummary: { status: input.status, rowVersion: input.expectedVersion + 1, currentActionType: input.currentActionType },
+      afterSummary: {
+        status: input.status,
+        rowVersion: input.expectedVersion + 1,
+        currentActionType: input.currentActionType,
+        workflowBindingCleared: Boolean(input.clearWorkflowBinding),
+        strategyPackId: input.workflowBinding?.strategyPackId,
+        sampleTaskId: input.workflowBinding?.sampleTaskId,
+        sampleOperationId: input.workflowBinding?.sampleOperationId
+      },
       correlationId: String(rows[0].product_id)
     });
     const [updatedRows] = await connection.query<RowDataPacket[]>(`${orderSelect} WHERE order_row.id = ? LIMIT 1`, [input.orderId]);

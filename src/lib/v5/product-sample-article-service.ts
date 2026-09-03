@@ -11,6 +11,9 @@ import {
 import type { SingleArticleActor } from "./single-article-contracts";
 import { prepareAndGenerateSingleArticle } from "./single-article-production-service";
 import { queueSingleArticleOperation } from "./single-article-production-repository";
+import { compileGeoArticleMission } from "./geo-article-mission-contracts";
+import { normalizeJotoAdpIdentityPhrasing } from "./geo-product-identity";
+import { ensureNarrativeSubjectTitle } from "./geo-article-title-policy";
 
 const sampleScope = "product_sample_calibration";
 
@@ -47,7 +50,32 @@ export function selectRepresentativeSampleQuestion(definition: Record<string, un
   const selected = questions.find((question) => /人工|边界|条件|采用|场景/.test(question))
     || questions[0]
     || "适合哪些真实工作场景，采用前需要确认哪些人机协作边界？";
-  return selected.includes(productName) ? selected : `${productName} ${selected}`;
+  return normalizeFrozenArticleTitle(selected.includes(productName) ? selected : `${productName} ${selected}`);
+}
+
+export function normalizeFrozenArticleTitle(value: string) {
+  let title = value.trim().replace(/[。.]+/g, "").replace(/\s+([，。？！；：])/g, "$1");
+  const questionCount = (title.match(/[？?]/g) || []).length;
+  if (questionCount > 1) {
+    let seen = 0;
+    title = title.replace(/[？?]/g, () => (++seen < questionCount ? "，" : "？"));
+  }
+  return title.replace(/[，,；;：:、]+$/g, "");
+}
+
+export function compileNarrativeSubjectTitle(input: {
+  representativeQuestion: string;
+  productName: string;
+  narrativeSubjectName: string;
+  narrativeSubjectRole: "target_product" | "service_provider";
+}) {
+  const question = normalizeFrozenArticleTitle(input.representativeQuestion);
+  return normalizeFrozenArticleTitle(ensureNarrativeSubjectTitle({
+    title: question,
+    productName: input.productName,
+    narrativeSubjectName: input.narrativeSubjectName,
+    narrativeSubjectRole: input.narrativeSubjectRole
+  }));
 }
 
 async function ensurePromptBinding(
@@ -163,8 +191,9 @@ export async function ensureProductSampleArticleTasks(input: {
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [strategyRows] = await connection.query<RowDataPacket[]>(
-      `SELECT p.display_name, p.strategy_pack_id, sp.status AS strategy_status,
-              atv.article_type_version_id, atv.name AS article_type_name,
+      `SELECT p.display_name, p.canonical_name, p.aliases, p.brand_name, p.official_entity, p.entity_relationship,
+              p.strategy_pack_id, sp.status AS strategy_status, sp.content_plan_json,
+               atv.article_type_version_id, atv.name AS article_type_name,
               atv.definition_json, atv.definition_hash
        FROM product_entity p
        JOIN product_strategy_packs sp ON sp.id = p.strategy_pack_id
@@ -220,7 +249,7 @@ export async function ensureProductSampleArticleTasks(input: {
     for (const strategy of selectedStrategies) {
       const articleTypeVersionId = String(strategy.article_type_version_id);
       const [existingTaskRows] = await connection.query<RowDataPacket[]>(
-        `SELECT id FROM product_sample_article_task
+        `SELECT id, title, geo_intent_hash, entity_graph_hash FROM product_sample_article_task
          WHERE product_strategy_pack_id = ? AND article_type_version_id = ? LIMIT 1 FOR UPDATE`,
         [input.strategyPackId, articleTypeVersionId]
       );
@@ -230,8 +259,28 @@ export async function ensureProductSampleArticleTasks(input: {
       });
       const articleDefinition = parseV5Json<Record<string, unknown>>(strategy.definition_json, {});
       const representativeQuestion = selectRepresentativeSampleQuestion(articleDefinition, productName);
-      const title = representativeQuestion;
       const sourceProblem = `回答真实用户问题“${representativeQuestion}”。基于已批准证据解释 ${productName} 的产品能力、适用场景、采用路径，以及哪些环节可由 AI 执行、哪些判断仍应由人负责；不讨论证据不足的竞品优劣、案例、ROI、价格或底层架构。`;
+      const geoMission = compileGeoArticleMission({
+        identity: {
+          productId: input.productId,
+          canonicalName: String(strategy.canonical_name || productName),
+          displayName: productName,
+          aliases: parseV5Json<string[]>(strategy.aliases, []),
+          brandName: strategy.brand_name ? String(strategy.brand_name) : undefined,
+          officialEntity: strategy.official_entity ? String(strategy.official_entity) : undefined,
+          entityRelationship: strategy.entity_relationship ? String(strategy.entity_relationship) : undefined
+        },
+        plan: parseV5Json(strategy.content_plan_json, {}),
+        articleType: articleDefinition,
+        primaryQuestion: representativeQuestion,
+        sourceProblem
+      });
+      const title = compileNarrativeSubjectTitle({
+        representativeQuestion,
+        productName,
+        narrativeSubjectName: geoMission.narrativeSubjectName,
+        narrativeSubjectRole: geoMission.narrativeSubjectRole
+      });
       const expressionSnapshot = {
         productionScope: sampleScope,
         articleTypeName: String(strategy.article_type_name),
@@ -241,15 +290,54 @@ export async function ensureProductSampleArticleTasks(input: {
         sampleOnly: true,
         representativeQuestion
       };
-      await connection.query(
-        `INSERT INTO product_sample_article_task
+      const existingTask = existingTaskRows[0];
+      if (existingTask) {
+        const missionChanged = String(existingTask.geo_intent_hash || "") !== geoMission.geoIntentHash
+          || String(existingTask.entity_graph_hash || "") !== geoMission.entityGraph.graphHash
+          || String(existingTask.title || "") !== title;
+        await connection.query(
+          `UPDATE product_sample_article_task
+           SET title = ?, target_audience = ?, primary_distilled_term_id = ?, secondary_distilled_term_ids = ?, knowledge_base_ids = ?,
+               rule_package_version_id = ?, prompt_group_id = ?, prompt_group_version_id = ?, channel_rule_version_id = ?,
+               platform_expression_snapshot = ?, geo_mission_snapshot = ?, geo_intent_hash = ?, entity_graph_hash = ?, source_problem = ?,
+               final_evidence_pack_id = IF(?, NULL, final_evidence_pack_id),
+               evidence_gate_status = IF(?, NULL, evidence_gate_status),
+               status = IF(?, 'approved', status), review_status = IF(?, 'pending_generation', review_status),
+               row_version = row_version + IF(?, 1, 0), updated_at = NOW()
+           WHERE id = ?`,
+          [
+            title,
+            "正在判断企业 AI 产品是否适合真实工作场景的业务负责人、技术负责人和产品负责人",
+            firstDistilledTerm(snapshot.distilled_term_suggestions) || null,
+            stringifyV5Json([]),
+            stringifyV5Json(parseV5Json(snapshot.knowledge_base_ids, [])),
+            String(snapshot.active_rule_package_version_id),
+            binding.promptGroupId,
+            binding.promptGroupVersionId,
+            binding.channelRuleVersionId,
+            stringifyV5Json(expressionSnapshot),
+            stringifyV5Json(geoMission),
+            geoMission.geoIntentHash,
+            geoMission.entityGraph.graphHash,
+            sourceProblem,
+            missionChanged,
+            missionChanged,
+            missionChanged,
+            missionChanged,
+            missionChanged,
+            taskId
+          ]
+        );
+      } else {
+        await connection.query(
+          `INSERT INTO product_sample_article_task
          (id, product_id, product_strategy_pack_id, article_type_version_id, channel, platform_content_type,
-          title, target_audience, primary_distilled_term_id, secondary_distilled_term_ids, knowledge_base_ids,
-          rule_package_version_id, prompt_group_id, prompt_group_version_id, channel_rule_version_id,
-          platform_expression_snapshot, source_problem, status, review_status, approved_at, approved_by)
-         VALUES (?, ?, ?, ?, 'wechat', 'explicit_product_intro', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 'pending_generation', NOW(), ?)
-         ON DUPLICATE KEY UPDATE id = id`,
-        [
+           title, target_audience, primary_distilled_term_id, secondary_distilled_term_ids, knowledge_base_ids,
+           rule_package_version_id, prompt_group_id, prompt_group_version_id, channel_rule_version_id,
+           platform_expression_snapshot, geo_mission_snapshot, geo_intent_hash, entity_graph_hash,
+           source_problem, status, review_status, approved_at, approved_by)
+          VALUES (?, ?, ?, ?, 'wechat', 'explicit_product_intro', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 'pending_generation', NOW(), ?)`,
+         [
           taskId,
           input.productId,
           input.strategyPackId,
@@ -262,12 +350,16 @@ export async function ensureProductSampleArticleTasks(input: {
           String(snapshot.active_rule_package_version_id),
           binding.promptGroupId,
           binding.promptGroupVersionId,
-          binding.channelRuleVersionId,
-          stringifyV5Json(expressionSnapshot),
-          sourceProblem,
-          input.actor.actorId
-        ]
-      );
+           binding.channelRuleVersionId,
+           stringifyV5Json(expressionSnapshot),
+           stringifyV5Json(geoMission),
+           geoMission.geoIntentHash,
+           geoMission.entityGraph.graphHash,
+           sourceProblem,
+           input.actor.actorId
+         ]
+        );
+      }
       await writeV5GovernanceAudit(connection, {
         ...input.actor,
         eventType: "product_sample_article_task_ready",
@@ -277,8 +369,10 @@ export async function ensureProductSampleArticleTasks(input: {
           productId: input.productId,
           strategyPackId: input.strategyPackId,
           articleTypeVersionId,
-          sourceSnapshotId: String(snapshot.snapshot_id),
-          productionScope: sampleScope
+           sourceSnapshotId: String(snapshot.snapshot_id),
+           productionScope: sampleScope,
+           geoIntentHash: geoMission.geoIntentHash,
+           entityGraphHash: geoMission.entityGraph.graphHash
         },
         correlationId: input.strategyPackId
       });
@@ -569,7 +663,7 @@ export async function readProductSampleArticleDetail(productId: string, taskId: 
     draftVersionId: String(row.draft_version_id),
     versionNumber: Number(row.version_number),
     title: String(row.title),
-    markdown: String(row.markdown),
+    markdown: normalizeJotoAdpIdentityPhrasing(String(row.markdown)),
     copyAllowed: Boolean(row.copy_allowed),
     hardRuleResult: parseV5Json(row.hard_rule_result, {}),
     createdAt: iso(row.created_at),

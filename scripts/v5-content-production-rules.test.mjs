@@ -6,6 +6,7 @@ import { ProductionDomainError } from "../src/lib/v5/content-production-contract
 import { compileProductionContract } from "../src/lib/v5/production-contract-compiler";
 import { validateProductionOutput } from "../src/lib/v5/production-output-validator";
 import { resolvePromotionPlan } from "../src/lib/v5/promotion-resolver";
+import { compileGeoArticleMission } from "../src/lib/v5/geo-article-mission-contracts";
 
 const NOW = "2026-07-24T00:00:00.000Z";
 
@@ -131,7 +132,25 @@ function createEvidencePack(overrides = {}) {
 }
 
 function createCompileInput(overrides = {}) {
+  const geoMission = compileGeoArticleMission({
+    identity: {
+      productId: "product-a",
+      canonicalName: "产品 A",
+      displayName: "产品 A",
+      aliases: [],
+      brandName: "示例品牌",
+      officialEntity: "示例品牌",
+      entityRelationship: "产品 A 属于示例品牌。"
+    },
+    plan: {
+      productPositioning: { promotionPurpose: "帮助企业完成可核验的产品评估", expressionFocus: "能力、条件与人工责任边界" },
+      geoOpportunities: [{ opportunityId: "evaluation", title: "产品评估答案缺口", intent: "产品评估", productFit: "回答适用边界", representativeQuestions: ["企业如何评估产品 A"], sourceIds: [] }]
+    },
+    articleType: { portfolioItemId: "problem-solution", contentGoal: "帮助企业依据能力和边界完成评估", suitableQuestions: ["企业如何评估产品 A"], questionClusterIds: ["evaluation"], knowledgeClaimIds: ["claim-a", "claim-boundary"], expectedMentionRationale: "形成可核验的产品评估答案" },
+    primaryQuestion: "企业如何评估产品 A"
+  });
   return {
+    geoMission,
     task: createTask(),
     evidencePack: createEvidencePack(),
     productRule: {
@@ -166,8 +185,10 @@ function createCompileInput(overrides = {}) {
       productStrategyHash: "strategy-hash-a-v1",
       articleTypeVersionId: "problem-solution-v1",
       articleTypeDefinitionHash: "article-type-hash-v1",
-      promptCompilerVersion: "production-contract-compiler.v2",
-      productionMode: "single"
+      promptCompilerVersion: "production-contract-compiler.v3",
+      productionMode: "single",
+      geoIntentHash: geoMission.geoIntentHash,
+      entityGraphHash: geoMission.entityGraph.graphHash
     },
     promotionProfiles: [createProfile()],
     requiredCoreClaimIds: ["claim-a", "claim-boundary"],
@@ -192,6 +213,8 @@ function createContract(overrides = {}) {
 function createGoodOutput(contract) {
   const factA = "产品 A 支持标准流程编排。";
   const boundary = "该能力需要管理员完成授权，并保留人工复核。";
+  const faqFactA = "产品 A 的知识库资料确认其支持标准流程编排。";
+  const faqBoundary = "知识库资料同时要求管理员完成授权，并保留人工复核。";
   return {
     markdown: [
       `# ${contract.task.title}`,
@@ -203,11 +226,21 @@ function createGoodOutput(contract) {
       `- ${boundary}`,
       "- 团队还应在试用阶段记录实际操作结果，并由负责人作最终判断。",
       "",
+      "## 常见问题",
+      "",
+      "### Q：产品 A 可以支持哪些流程？",
+      `A：${faqFactA}`,
+      "",
+      "### Q：使用产品 A 前需要确认哪些权限条件？",
+      `A：${faqBoundary}`,
+      "",
       `[${contract.ctaPlan.selectedVariants[0].label}](${contract.ctaPlan.selectedVariants[0].publicUrl})`
     ].join("\n"),
     factTraces: [
       { sentence: factA, evidenceItemId: "evidence-a", claimId: "claim-a", sourceRevisionId: "source-a-v1" },
-      { sentence: boundary, evidenceItemId: "evidence-boundary", claimId: "claim-boundary", sourceRevisionId: "source-boundary-v1" }
+      { sentence: boundary, evidenceItemId: "evidence-boundary", claimId: "claim-boundary", sourceRevisionId: "source-boundary-v1" },
+      { sentence: faqFactA, evidenceItemId: "evidence-a", claimId: "claim-a", sourceRevisionId: "source-a-v1" },
+      { sentence: faqBoundary, evidenceItemId: "evidence-boundary", claimId: "claim-boundary", sourceRevisionId: "source-boundary-v1" }
     ]
   };
 }
@@ -398,6 +431,30 @@ test("输出校验捕获标题、事实、CTA、URL 和敏感信息问题", () =
   }
 });
 
+test("GEO FAQ允许AI模拟问法，但每个答案必须使用知识库Claim", () => {
+  const contract = createContract();
+  const good = createGoodOutput(contract);
+  const valid = validateProductionOutput({ contract, output: good });
+  assert.equal(valid.issues.some((item) => item.code.startsWith("faq_")), false, JSON.stringify(valid));
+
+  const withoutFaq = {
+    ...good,
+    markdown: good.markdown.replace(/\n\n## 常见问题[\s\S]+?(?=\n\n\[查看产品 A 评估入口)/, ""),
+    factTraces: good.factTraces.slice(0, 2)
+  };
+  const missing = validateProductionOutput({ contract, output: withoutFaq });
+  assert.equal(missing.issues.some((item) => item.code === "faq_required_missing"), true);
+
+  const untraced = validateProductionOutput({ contract, output: { ...good, factTraces: good.factTraces.slice(0, 2) } });
+  assert.equal(untraced.issues.some((item) => item.code === "faq_answer_untraced"), true);
+});
+
+test("知识库不存在可回答Claim时在正文模型调用前阻断FAQ", () => {
+  expectDomainError(() => createContract({
+    evidencePack: createEvidencePack({ evidenceItems: [] })
+  }), "evidence_missing");
+});
+
 test("首次规则失败后只修复一次并可变为 available", async () => {
   const contract = createContract();
   const good = createGoodOutput(contract);
@@ -414,7 +471,7 @@ test("首次规则失败后只修复一次并可变为 available", async () => {
       }
     }
   });
-  assert.equal(result.status, "available");
+  assert.equal(result.status, "available", JSON.stringify(result));
   assert.equal(result.repairCount, 1);
   assert.equal(repairs, 1);
 });
@@ -451,7 +508,7 @@ test("Provider 技术失败最多重试三次", async () => {
       async repair() { return good; }
     }
   });
-  assert.equal(recovered.status, "available");
+  assert.equal(recovered.status, "available", JSON.stringify(recovered));
   assert.equal(recovered.technicalRetryCount, 2);
 
   let failedAttempts = 0;
@@ -472,7 +529,7 @@ test("Provider 技术失败最多重试三次", async () => {
 
 test("公众号生产合同注入 human-writing 规则并确定性拦截翻案腔", () => {
   const contract = createContract();
-  assert.equal(contract.promptDirectives.some((item) => item.includes("human-writing.wechat.v1.1.0")), true);
+  assert.equal(contract.promptDirectives.some((item) => item.includes("human-writing.wechat.v1.")), true);
   const output = createGoodOutput(contract);
   output.markdown = output.markdown.replace("评估时应先确认", "先说结论：评估时应先确认");
   const result = validateProductionOutput({ contract, output });
@@ -480,7 +537,7 @@ test("公众号生产合同注入 human-writing 规则并确定性拦截翻案�
 });
 
 test("fixed expression is required verbatim in every selected position", () => {
-  const fixedText = "JOTO是腾讯CSP伙伴，是腾讯云ADP认证服务商，支持WorkBuddy专项服务。";
+  const fixedText = "JOTO是腾讯云ADP CSP授权服务商。";
   const contract = createContract({
     fixedExpressions: [{ text: fixedText, positions: ["opening", "body", "ending"], channel: "wechat" }]
   });

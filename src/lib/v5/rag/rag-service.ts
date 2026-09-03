@@ -7,6 +7,7 @@ import { getRagInfrastructureStatus } from "./infrastructure";
 import { HttpRagOpenSearchAdapter, buildRagIndexName } from "./opensearch-adapter";
 import { createRagIndexSnapshotRecord, createRagManifestRecord, readActiveRagIndexSnapshotRecord, readRagIndexSnapshotRecord, readRagManifestRecord, readRagMatrixItemContextRecord, readRagRetrievalRunRecord, transitionRagIndexSnapshotRecord, validateRagManifestGovernanceRecord, writeEvidencePreviewRecord, writeFinalEvidencePackRecord, writeRagRetrievalRunRecord } from "./rag-repository";
 import { getRagRetrievalRoute } from "./retrieval-route-registry";
+import { assertGeoArticleMission } from "../geo-article-mission-contracts";
 import { inferEvidenceRoles, runHybridRetrieval } from "./retrieval-service";
 import { assertRagIndexTransition } from "./state-machines";
 import { buildEvidencePreview, buildFinalEvidencePack } from "./evidence-services";
@@ -90,12 +91,18 @@ export async function retrieveRag(input: { request: RagRetrievalRequest; indexSn
   if (!route) throw new RagServiceError(400, "retrieval_route_not_found", "平台内容类型没有已登记 RetrievalRoute。" );
   const matrix = await readRagMatrixItemContextRecord(input.request.matrixItemId);
   if (!matrix) throw new RagServiceError(404, "matrix_item_not_found", "检索请求绑定的矩阵项不存在。" );
+  if (!matrix.geoMissionSnapshot) throw new RagServiceError(409, "geo_article_mission_missing", "检索请求绑定的文章任务缺少 GEO 推广任务合同。", "重新从产品策略生成文章任务。" );
+  try { assertGeoArticleMission(matrix.geoMissionSnapshot); } catch (error) {
+    throw new RagServiceError(409, "geo_article_mission_invalid", "文章任务的 GEO 推广任务合同不完整或已经失效。", "重新编译文章任务。", [error instanceof Error ? error.message : String(error)]);
+  }
   const matrixMatches = input.request.productId === matrix.productId
     && input.request.title === matrix.title
     && input.request.channel === matrix.channel
     && input.request.contentType === matrix.contentType
     && input.request.platformContentType === matrix.platformContentType
     && input.request.rulePackageVersionId === matrix.rulePackageVersionId
+    && input.request.geoIntentHash === matrix.geoIntentHash
+    && input.request.entityGraphHash === matrix.entityGraphHash
     && (!input.request.taskId || input.request.taskId === matrix.matrixItemId)
     && (!input.request.taskVersion || input.request.taskVersion === matrix.currentTaskVersion);
   if (!matrixMatches) throw new RagServiceError(409, "matrix_snapshot_mismatch", "检索请求必须使用当前矩阵项冻结的产品、标题、渠道、内容类型和规则包。" );
@@ -123,6 +130,14 @@ export async function retrieveRag(input: { request: RagRetrievalRequest; indexSn
     platformContentType: matrix.platformContentType as RagRetrievalRequest["platformContentType"],
     targetAudience: matrix.targetAudience,
     sourceProblem: matrix.sourceProblem,
+    geoMission: matrix.geoMissionSnapshot,
+    geoIntentHash: matrix.geoIntentHash,
+    entityGraphHash: matrix.entityGraphHash,
+    primaryEntityId: matrix.geoMissionSnapshot.primaryEntityId,
+    requiredRelationshipTypes: matrix.geoMissionSnapshot.entityGraph.relations.map((item) => item.predicate),
+    allowedEvidenceUsages: matrix.geoMissionSnapshot.allowedEvidenceUsages,
+    forbiddenEntityIds: matrix.geoMissionSnapshot.forbiddenEntityIds,
+    requiredClaimIds: matrix.geoMissionSnapshot.requiredClaimIds,
     distilledTermIds: [matrix.primaryDistilledTermId, ...matrix.secondaryDistilledTermIds].filter(Boolean),
     rulePackageVersionId: matrix.rulePackageVersionId,
     permissionScope: allowedPermissions as RagRetrievalRequest["permissionScope"],
@@ -130,17 +145,33 @@ export async function retrieveRag(input: { request: RagRetrievalRequest; indexSn
     requestedAt: new Date().toISOString()
   };
   const infra = getRagInfrastructureStatus(); if (infra.status !== "ready") throw new RagServiceError(503, "pending_config", "RAG 基础设施尚未完整配置。", "补齐 MySQL、OpenSearch 与真实 Embedding 配置。", [...infra.mysql.missingConfig, ...infra.opensearch.missingConfig, ...infra.embedding.missingConfig]);
-  const provider = infra.embedding.provider as KnowledgeEmbeddingModelProvider; const embedding = await callEmbeddingProvider({ provider, input: `${effectiveRequest.title}\n${effectiveRequest.sourceProblem}` });
+  const provider = infra.embedding.provider as KnowledgeEmbeddingModelProvider; const embedding = await callEmbeddingProvider({ provider, input: [
+    effectiveRequest.title,
+    effectiveRequest.sourceProblem,
+    effectiveRequest.geoMission?.primaryQuestion,
+    effectiveRequest.geoMission?.desiredAnswer,
+    ...(effectiveRequest.geoMission?.representativeQueries || [])
+  ].filter(Boolean).join("\n") });
   if (!embedding.ok || !embedding.vectors?.[0]) throw new RagServiceError(embedding.status === "pending_config" ? 503 : 502, embedding.status, "真实 Embedding 调用失败。", embedding.status === "pending_config" ? "补齐 Embedding Provider 配置。" : "检查 Provider 状态后重试。", embedding.missingConfig || [embedding.errorMessage || "unknown"]);
   const adapter = new HttpRagOpenSearchAdapter();
-  const [bm25, vector, relation, requiredHits] = await Promise.all([
+  const promotionProvider = effectiveRequest.geoMission?.entityGraph.nodes.find((item) => item.role === "service_provider")?.name;
+  const providerCapabilityRequest = promotionProvider ? {
+    ...effectiveRequest,
+    title: `${promotionProvider} 场景诊断 方案设计 系统集成 项目实施 交付培训 持续运营`,
+    sourceProblem: `${effectiveRequest.sourceProblem} ${promotionProvider} 如何把平台能力转成企业实施交付服务`
+  } : undefined;
+  const [bm25, vector, relation, requiredHits, providerCapabilityHits] = await Promise.all([
     adapter.keywordSearch(snapshot.indexName, effectiveRequest, route.candidateLimits.bm25, route.forbiddenSupportModes),
     adapter.vectorSearch(snapshot.indexName, effectiveRequest, embedding.vectors[0], route.candidateLimits.vector, route.forbiddenSupportModes),
     adapter.relationSearch(snapshot.indexName, effectiveRequest, route.candidateLimits.relation, route.forbiddenSupportModes),
-    adapter.requiredEvidenceSearch(snapshot.indexName, effectiveRequest, route.requiredSemanticTypes, route.candidateLimits.required, route.forbiddenSupportModes)
+    adapter.requiredEvidenceSearch(snapshot.indexName, effectiveRequest, route.requiredSemanticTypes, route.candidateLimits.required, route.forbiddenSupportModes),
+    providerCapabilityRequest
+      ? adapter.keywordSearch(snapshot.indexName, providerCapabilityRequest, Math.max(12, route.candidateLimits.bm25), route.forbiddenSupportModes)
+      : Promise.resolve([])
   ]);
   const required = requiredHits.map((hit) => ({ ...hit, evidenceRoles: inferEvidenceRoles(hit.chunk) }));
-  const run = runHybridRetrieval({ request: effectiveRequest, route, indexSnapshotIds: [snapshot.indexSnapshotId], retrievalPolicyVersion: snapshot.retrievalPolicyVersion, pools: { bm25, vector, relation, required } });
+  const providerRequired = providerCapabilityHits.map((hit) => ({ ...hit, evidenceRoles: [...inferEvidenceRoles(hit.chunk), "promotion_service_capability"] }));
+  const run = runHybridRetrieval({ request: effectiveRequest, route, indexSnapshotIds: [snapshot.indexSnapshotId], retrievalPolicyVersion: snapshot.retrievalPolicyVersion, pools: { bm25, vector, relation, required: [...required, ...providerRequired] } });
   return writeRagRetrievalRunRecord({ ...effectiveRequest, requestHash: hash(effectiveRequest) }, run, input.actor.actorId);
 }
 
@@ -150,6 +181,7 @@ export async function createEvidencePreview(input: { retrievalRunId: string; act
   if (!stored) throw new RagServiceError(404, "retrieval_run_not_found", "RetrievalRun 不存在。" );
   const matrix = await readRagMatrixItemContextRecord(stored.request.matrixItemId);
   if (!matrix) throw new RagServiceError(404, "matrix_item_not_found", "RetrievalRun 绑定的矩阵项不存在。" );
+  if (!matrix.geoMissionSnapshot || !matrix.geoIntentHash || !matrix.entityGraphHash) throw new RagServiceError(409, "geo_article_mission_missing", "文章任务缺少冻结的 GEO 推广任务合同。", "重新生成文章任务并重新检索。" );
   const snapshots = await Promise.all(stored.run.indexSnapshotIds.map(readRagIndexSnapshotRecord));
   if (!snapshots.length || snapshots.some((snapshot) => !snapshot || snapshot.status !== "active")) throw new RagServiceError(409, "active_index_required", "EvidencePreview 必须来自当前 active Snapshot。" );
   const sourceSnapshotHash = hash(snapshots.map((snapshot) => ({ id: snapshot!.indexSnapshotId, manifestHash: snapshot!.manifestHash })));
@@ -176,6 +208,8 @@ export async function createFinalEvidencePack(input: { retrievalRunId: string; a
     && stored.request.contentType === matrix.contentType
     && stored.request.platformContentType === matrix.platformContentType
     && stored.request.rulePackageVersionId === matrix.rulePackageVersionId
+    && stored.request.geoIntentHash === matrix.geoIntentHash
+    && stored.request.entityGraphHash === matrix.entityGraphHash
     && (!stored.request.taskId || stored.request.taskId === matrix.matrixItemId)
     && (!stored.request.taskVersion || stored.request.taskVersion === matrix.currentTaskVersion);
   if (!requestMatches) throw new RagServiceError(409, "frozen_snapshot_mismatch", "RetrievalRun 与当前批准矩阵项不一致，必须按最终标题重新检索。" );
@@ -212,7 +246,9 @@ export async function createFinalEvidencePack(input: { retrievalRunId: string; a
     targetAudience: matrix.targetAudience, sourceProblem: matrix.sourceProblem, primaryDistilledTermId: matrix.primaryDistilledTermId,
     secondaryDistilledTermIds: matrix.secondaryDistilledTermIds, knowledgeBaseIds: matrix.knowledgeBaseIds,
     rulePackageVersionId: matrix.rulePackageVersionId, promptGroupId: matrix.promptGroupId, promptGroupVersionId: matrix.promptGroupVersionId,
-    channelRuleVersionId: matrix.channelRuleVersionId, channelRuleSnapshot, confirmedBy: matrix.matrixApprovedBy, confirmedAt: matrix.matrixApprovedAt
+    channelRuleVersionId: matrix.channelRuleVersionId, channelRuleSnapshot,
+    geoMission: matrix.geoMissionSnapshot, geoIntentHash: matrix.geoIntentHash, entityGraphHash: matrix.entityGraphHash,
+    confirmedBy: matrix.matrixApprovedBy, confirmedAt: matrix.matrixApprovedAt
   };
   const governanceSnapshot = {
     manifestId: manifest.manifestId, manifestHash: manifest.manifestHash, monthlyProductionReadinessId: matrix.readinessId,

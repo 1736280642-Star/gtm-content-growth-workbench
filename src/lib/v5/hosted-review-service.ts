@@ -25,7 +25,13 @@ function humanActorId(email: string) {
   return `hosted-user-${hashV5GovernancePayload(email.toLocaleLowerCase()).slice(0, 24)}`;
 }
 
-async function updateOrderState(orderId: string, status: HostedPromotionOrderRecord["status"], currentActionType?: string, lastError?: { code: string; message: string }) {
+async function updateOrderState(
+  orderId: string,
+  status: HostedPromotionOrderRecord["status"],
+  currentActionType?: string,
+  lastError?: { code: string; message: string },
+  workflowBinding?: { strategyPackId?: string; sampleTaskId?: string; sampleOperationId?: string }
+) {
   const order = await readHostedPromotionOrderRecord(orderId);
   if (!order) throw new V5GovernanceServiceError("hosted_order_not_found", "托管任务不存在。", 404);
   if (order.status === status && order.currentActionType === currentActionType && order.lastError?.code === lastError?.code) return order;
@@ -35,6 +41,7 @@ async function updateOrderState(orderId: string, status: HostedPromotionOrderRec
     status,
     currentActionType,
     lastError,
+    workflowBinding,
     actorId: "hosted-review-orchestrator",
     auditReason: "根据用户审核结果推进托管状态"
   });
@@ -238,14 +245,20 @@ export async function decideHostedReview(input: { token: string; decision: "appr
       }
     });
     let transitionError: { code: string; message: string } | undefined;
+    let sampleBinding: { strategyPackId: string; sampleTaskId: string; sampleOperationId: string } | undefined;
     if (approved) {
       try {
-        await enqueueProductSampleArticle({
+        const queuedSample = await enqueueProductSampleArticle({
           productId: review.productId,
           strategyPackId: result.strategyPackId,
           idempotencyKey: `hosted-sample:${review.reviewRequestId}`,
           actor: { ...getSingleArticleActor(), auditReason: "用户确认 GEO 托管策略后生成一篇代表样文" }
         });
+        sampleBinding = {
+          strategyPackId: result.strategyPackId,
+          sampleTaskId: queuedSample.taskId,
+          sampleOperationId: queuedSample.operation.operationId
+        };
       } catch (error) {
         transitionError = { code: "hosted_sample_queue_failed", message: error instanceof Error ? error.message : "策略已确认，但样文暂时无法生成。" };
       }
@@ -287,7 +300,13 @@ export async function decideHostedReview(input: { token: string; decision: "appr
       }
     }
     const completed = await completeHostedReviewRequestRecord({ reviewRequestId: review.reviewRequestId, decision: input.decision, comment: normalizedComment, actedBy: actorId });
-    await updateOrderState(review.orderId, transitionError ? "action_required" : "preparing", undefined, transitionError);
+    await updateOrderState(
+      review.orderId,
+      transitionError ? "action_required" : approved ? "generating_sample" : "preparing",
+      transitionError ? undefined : approved ? "generate_sample" : undefined,
+      transitionError,
+      sampleBinding
+    );
     return {
       review: completed.review,
       strategy: result,

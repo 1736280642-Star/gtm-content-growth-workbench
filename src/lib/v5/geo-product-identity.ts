@@ -2,12 +2,31 @@ import type { ProductKnowledgeProfile } from "./product-knowledge-profile";
 import type {
   GeoSearchEntityClassification,
   GeoSearchEvidenceCandidate,
+  GeoSearchEvidenceUsage,
   GeoSearchQuery,
   MultiSearchEvidencePack
 } from "./geo-search-contracts";
 import { recomputeChannelStats } from "./geo-search-adapters";
 import type { GeoChannelRule } from "./geo-channel-rule-pack";
 import { V5GovernanceRepositoryError } from "./knowledge-governance-repository";
+
+export const JOTO_ADP_CSP_IDENTITY = "JOTO是腾讯云ADP CSP授权服务商";
+
+/**
+ * Removes model-authored inverted duplicates while preserving the governed
+ * exact identity sentence assembled by the system. This is also applied when
+ * reading legacy accepted drafts so their immutable audit record stays intact
+ * while the user-facing copy reflects the current expression rule.
+ */
+export function normalizeJotoAdpIdentityPhrasing(
+  markdown: string,
+  options: { exactIdentityWillBeAssembled?: boolean } = {}
+) {
+  if (!options.exactIdentityWillBeAssembled && !markdown.includes(JOTO_ADP_CSP_IDENTITY)) return markdown;
+  return markdown
+    .replace(/作为\s*腾讯云\s*ADP\s*CSP\s*授权服务商[，,]\s*(?=JOTO)/gi, "")
+    .replace(/JOTO\s*作为\s*腾讯云\s*ADP\s*CSP\s*授权服务商[，,]\s*/gi, "JOTO ");
+}
 
 export interface GeoProductIdentityCard {
   productId: string;
@@ -140,8 +159,29 @@ export function assertGeoProductIdentityReady(card: GeoProductIdentityCard) {
   }
 }
 
-function queryPart(value: string | undefined, maximum = 18) {
-  return value?.replace(/\s+/g, " ").trim().slice(0, maximum);
+const productCategoryQueryLabels: Record<string, string> = {
+  enterprise_ai_service: "企业级 AI 智能体平台",
+  ai_product: "AI 产品"
+};
+
+function queryPart(value: string | undefined, maximum = 24) {
+  if (!value) return undefined;
+  const categoryLabel = productCategoryQueryLabels[value.trim().toLocaleLowerCase()];
+  const cleaned = (categoryLabel || value)
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[`*_>#|]/g, " ")
+    .replace(/_/g, " ")
+    .replace(/^[^，。；]{0,20}(?:全新升级|重磅升级)[，：:\s]*/i, "")
+    .replace(/^(?:核心)?打造\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const segment = cleaned.split(/[。；;\n]/).map((item) => item.trim()).find((item) => item.length >= 4) || cleaned;
+  return Array.from(segment).slice(0, maximum).join("") || undefined;
+}
+
+function firstQueryPart(values: Array<string | undefined>, maximum = 24) {
+  return values.map((value) => queryPart(value, maximum)).find(Boolean);
 }
 
 export function identityQueryAnchors(card: GeoProductIdentityCard) {
@@ -233,11 +273,15 @@ export function compileIdentityAnchoredQueries(input: {
     || input.identity.officialDomain
     || input.identity.entityRelationship
     || input.identity.canonicalName;
-  const category = input.identity.productCategory || queryPart(input.identity.positioning[0]) || "已解析产品品类";
-  const capability = queryPart(input.identity.capabilities[0])
-    || queryPart(input.identity.scenarios[0])
-    || queryPart(input.identity.positioning[1])
-    || queryPart(input.identity.positioning[0])
+  const category = queryPart(input.identity.productCategory)
+    || firstQueryPart(input.identity.positioning)
+    || "已解析产品品类";
+  const capability = firstQueryPart([
+    ...input.identity.capabilities,
+    ...input.identity.scenarios,
+    ...input.identity.positioning.slice(1),
+    input.identity.positioning[0]
+  ])
     || category;
   const round = input.round || 0;
   const provider = input.identity.serviceProvider?.name;
@@ -264,7 +308,7 @@ export function compileIdentityAnchoredQueries(input: {
         stopCondition: `该平台返回至少一条通过产品实体校验的收录样本`,
         round,
         identityAnchors: compact([product, owner, channel.channelKey]),
-        candidateAcceptanceRule: "来源域名必须命中该渠道规则包域名，且与产品身份卡一致或支持同一用户任务。",
+        candidateAcceptanceRule: "来源域名必须命中该渠道规则包域名；产品事实只能来自 target_match，category_related 与 user_demand 只能作为需求信号。",
         candidateRejectionRule: "非该平台域名、名称相同但身份不一致的来源必须丢弃。",
         channelKey: channel.channelKey
       }))
@@ -328,7 +372,7 @@ export function compileIdentityAnchoredQueries(input: {
       : "至少两家 Provider 返回两个通过产品实体校验的独立 URL",
     round,
     identityAnchors: compact(anchors as string[]),
-    candidateAcceptanceRule: "来源必须与产品身份卡一致，或明确支持同一用户任务、品类需求或竞争关系。",
+    candidateAcceptanceRule: "产品事实只接受 target_match；verified_competitor 只证明竞品事实；category_related 与 user_demand 只证明需求、选型或搜索关系。",
     candidateRejectionRule: "名称相同但品牌归属、品类、能力或场景不一致，以及身份不足的来源必须丢弃且不得留存。",
     channelKey
   }));
@@ -351,6 +395,13 @@ function acceptedClassification(taskType: string, classification: GeoSearchEntit
     return ["target_match", "verified_competitor", "category_related", "user_demand"].includes(classification);
   }
   return ["target_match", "verified_competitor", "category_related", "user_demand"].includes(classification);
+}
+
+function evidenceUsage(classification: GeoSearchEntityClassification): GeoSearchEvidenceUsage {
+  if (classification === "target_match") return "product_fact";
+  if (classification === "verified_competitor") return "competitor_fact";
+  if (classification === "category_related" || classification === "user_demand") return "demand_signal";
+  return "research_observation";
 }
 
 function isSameNameCandidate(candidate: GeoSearchEvidenceCandidate, identity: GeoProductIdentityCard) {
@@ -431,6 +482,7 @@ export function applyGeoEntityResolution(input: {
     return [{
       ...candidate,
       entityClassification: resolution.classification as GeoSearchEvidenceCandidate["entityClassification"],
+      evidenceUsage: evidenceUsage(resolution.classification),
       matchedIdentityAnchors: resolution.matchedIdentityAnchors
     }];
   });

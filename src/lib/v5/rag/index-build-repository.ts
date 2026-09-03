@@ -119,14 +119,15 @@ export async function persistRagIndexBuild(input: { indexSnapshotId: string; chu
         `INSERT INTO rag_knowledge_chunk
          (id, index_snapshot_id, namespace, product_id, product_name, knowledge_base_ids, source_id, source_revision_id, parent_chunk_id,
           primary_claim_id, claim_ids, source_locator, semantic_type, chunk_title, summary, content, original_quote, canonical_url, document_type,
-          authority_level, lifecycle_status, visibility, support_mode, claim_scope, capability_status, conditions, limitations, scenario_tags,
+           authority_level, lifecycle_status, visibility, support_mode, claim_scope, evidence_usage, subject_entity_ids, capability_status, conditions, limitations, scenario_tags,
           capability_tags, audience_tags, problem_tags, channel_tags, distilled_term_ids, question_candidate_ids, conflict_group_ids,
           rule_package_version_id, valid_from, valid_until, content_hash, semantic_hash, duplicate_cluster_id, status, chunker_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE id = VALUES(id)`,
         [chunk.chunkId, chunk.indexSnapshotId, chunk.namespace, chunk.productId, chunk.productName, stringifyV5Json(chunk.knowledgeBaseIds), chunk.sourceId, chunk.sourceRevisionId, chunk.parentChunkId || null,
           chunk.primaryClaimId || null, stringifyV5Json(chunk.claimIds), stringifyV5Json(chunk.sourceLocator), chunk.semanticType, chunk.chunkTitle, chunk.summary, chunk.content, chunk.originalQuote,
-          chunk.canonicalUrl || null, chunk.documentType, chunk.authorityLevel, chunk.lifecycleStatus, chunk.visibility, chunk.supportMode, chunk.claimScope, chunk.capabilityStatus,
+          chunk.canonicalUrl || null, chunk.documentType, chunk.authorityLevel, chunk.lifecycleStatus, chunk.visibility, chunk.supportMode, chunk.claimScope,
+          chunk.evidenceUsage || "product_fact", stringifyV5Json(chunk.subjectEntityIds || [chunk.productId]), chunk.capabilityStatus,
           stringifyV5Json(chunk.conditions), stringifyV5Json(chunk.limitations), stringifyV5Json(chunk.scenarioTags), stringifyV5Json(chunk.capabilityTags), stringifyV5Json(chunk.audienceTags),
           stringifyV5Json(chunk.problemTags), stringifyV5Json(chunk.channelTags), stringifyV5Json(chunk.distilledTermIds), stringifyV5Json(chunk.questionCandidateIds), stringifyV5Json(chunk.conflictGroupIds),
           chunk.rulePackageVersionId, chunk.validFrom ? new Date(chunk.validFrom) : null, chunk.validUntil ? new Date(chunk.validUntil) : null, chunk.contentHash, chunk.semanticHash,

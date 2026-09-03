@@ -8,7 +8,7 @@ const args = new Map(process.argv.slice(2).map((token) => {
 }));
 const apply = args.get("apply") === "true";
 const statePath = resolve(String(args.get("state-path") || process.env.V5_MONTHLY_STATE_PATH || "data/v5-monthly-workbench.json"));
-const fixedText = "JOTO 作为腾讯CSP授权合作伙伴";
+const fixedText = "JOTO是腾讯云ADP CSP授权服务商";
 const taskIds = new Set([
   "task-2026-08-restored-11",
   "task-2026-08-restored-27",

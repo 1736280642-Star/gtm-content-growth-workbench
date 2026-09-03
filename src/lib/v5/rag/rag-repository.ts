@@ -10,6 +10,7 @@ import {
   type V5GovernanceActor
 } from "../knowledge-governance-repository";
 import type { RagEvidencePreview, RagFinalEvidencePack, RagIndexSnapshot, RagIngestionManifest, RagRetrievalRequest, RagRetrievalRun } from "./contracts";
+import type { GeoArticleMissionContract } from "../geo-article-mission-contracts";
 
 function date(value: unknown) { return value instanceof Date ? value.toISOString() : value ? String(value) : undefined; }
 
@@ -384,6 +385,9 @@ export async function readRagMatrixItemContextRecord(matrixItemId: string) {
     channelRuleVersionId: String(row.channel_rule_version_id || ""),
     finalEvidencePackId: row.final_evidence_pack_id ? String(row.final_evidence_pack_id) : undefined,
     platformExpressionSnapshot: parseV5Json<Record<string, unknown>>(row.platform_expression_snapshot, {}),
+    geoMissionSnapshot: parseV5Json<GeoArticleMissionContract | undefined>(row.geo_mission_snapshot, undefined),
+    geoIntentHash: row.geo_intent_hash ? String(row.geo_intent_hash) : undefined,
+    entityGraphHash: row.entity_graph_hash ? String(row.entity_graph_hash) : undefined,
     itemStatus: String(row.status),
     matrixStatus: String(row.matrix_status),
     matrixApprovedBy: row.matrix_approved_by ? String(row.matrix_approved_by) : undefined,

@@ -1,6 +1,7 @@
 export const hostedOrderStatuses = [
   "preparing",
   "pending_strategy_review",
+  "generating_sample",
   "pending_sample_review",
   "running",
   "action_required",
@@ -9,6 +10,57 @@ export const hostedOrderStatuses = [
 ] as const;
 
 export type HostedOrderStatus = typeof hostedOrderStatuses[number];
+
+export interface HostedSampleProgress {
+  strategyPackId?: string;
+  taskId?: string;
+  operationId?: string;
+  operationStatus?: string;
+  progressStage?: string;
+  attemptCount: number;
+  reviewStatus?: string;
+  hasReviewableDraft: boolean;
+  error?: { code: string; message: string; nextAction?: string };
+}
+
+export interface HostedWorkflowState {
+  status: HostedOrderStatus;
+  currentActionType?: string;
+  lastError?: { code: string; message: string };
+}
+
+export function deriveHostedWorkflowState(input: {
+  strategyStatus?: string;
+  sample?: HostedSampleProgress;
+}): HostedWorkflowState {
+  const sample = input.sample;
+  if (sample?.reviewStatus === "approved") return { status: "running" };
+  if (sample?.hasReviewableDraft) {
+    return { status: "pending_sample_review", currentActionType: "review_sample" };
+  }
+  if (sample?.operationStatus === "queued" || sample?.operationStatus === "running") {
+    return { status: "generating_sample", currentActionType: "generate_sample" };
+  }
+  if (["failed", "blocked", "pending_config"].includes(sample?.operationStatus || "") || sample?.error) {
+    return {
+      status: "action_required",
+      currentActionType: "retry_sample",
+      lastError: {
+        code: "hosted_sample_generation_failed",
+        message: sample?.error?.message || "代表样文生成失败，可以从当前进度重新生成。"
+      }
+    };
+  }
+  if (input.strategyStatus === "pending_strategy_review") {
+    return { status: "pending_strategy_review", currentActionType: "review_strategy" };
+  }
+  if (input.strategyStatus === "rejected") return { status: "preparing" };
+  if (input.strategyStatus === "strategy_approved" || input.strategyStatus === "pending_sample_review") {
+    return { status: "generating_sample", currentActionType: "generate_sample" };
+  }
+  if (input.strategyStatus === "production_ready" || input.strategyStatus === "active") return { status: "running" };
+  return { status: "preparing" };
+}
 
 export type HostedChannelCapability = "auto_publish" | "draft_only" | "unsupported";
 export type HostedChannelAuthorizationStatus = "connected" | "required" | "not_applicable" | "unavailable";
@@ -76,6 +128,9 @@ export interface HostedPromotionOrderRecord {
   materialSummary: HostedMaterialSummary;
   timezone: string;
   currentMonthlyPlanId?: string;
+  currentStrategyPackId?: string;
+  currentSampleTaskId?: string;
+  currentSampleOperationId?: string;
   currentActionType?: string;
   pauseReason?: string;
   lastError?: { code: string; message: string };
@@ -110,6 +165,9 @@ export function compileHostedOrderNextAction(order: HostedPromotionOrderRecord):
   }
   if (order.status === "pending_sample_review") {
     return { type: "review_sample", label: "确认代表样文", description: "样文已生成，通过后系统开始批量托管。" };
+  }
+  if (order.status === "generating_sample") {
+    return { type: "wait", label: "正在生成代表样文", description: "系统正在生成并检查样文，完成后页面会自动更新。" };
   }
   if (order.status === "action_required") {
     return {

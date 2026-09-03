@@ -11,6 +11,7 @@ import type {
   RagRetrievalRoute,
   RagRetrievalRun
 } from "./contracts";
+import type { GeoArticleMissionContract } from "../geo-article-mission-contracts";
 
 function hash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -34,6 +35,8 @@ function evidenceItem(chunk: RagKnowledgeChunk, selectionReason: string[], evide
     authorityLevel: chunk.authorityLevel,
     supportMode: chunk.supportMode,
     claimScope: chunk.claimScope,
+    evidenceUsage: chunk.evidenceUsage || (chunk.documentType === "geo_research_document" ? "research_observation" : "product_fact"),
+    subjectEntityIds: chunk.subjectEntityIds?.length ? chunk.subjectEntityIds : [chunk.productId],
     status: chunk.status,
     version: chunk.chunkerVersion,
     conditions: chunk.conditions,
@@ -44,6 +47,49 @@ function evidenceItem(chunk: RagKnowledgeChunk, selectionReason: string[], evide
     forbiddenUsage: chunk.supportMode === "background_only"
       ? ["current_product_capability", "performance_result", "privacy_commitment"]
       : chunk.limitations.length ? ["unqualified_claim"] : []
+  };
+}
+
+function governedPromotionIdentityEvidence(taskSnapshot: Record<string, unknown>): RagEvidenceItem | undefined {
+  const rawMission = taskSnapshot.geoMission;
+  if (!rawMission || typeof rawMission !== "object" || Array.isArray(rawMission)) return undefined;
+  const mission = rawMission as GeoArticleMissionContract;
+  if (mission.narrativeSubjectRole !== "service_provider" || !mission.narrativeSubjectName) return undefined;
+  const relation = mission.entityGraph?.relations?.find((item) =>
+    item.predicate === "served_by" && item.objectEntityId === mission.promotionSubjectEntityId
+  );
+  const statement = relation?.canonicalStatement.split(/[；。\n]/).map((item) => item.trim())
+    .find((item) => item.toLocaleLowerCase().includes(mission.narrativeSubjectName.toLocaleLowerCase())
+      && /(?:CSP\s*授权服务商|授权服务商|实施服务商|交付服务商)/i.test(item));
+  if (!statement) return undefined;
+  const evidenceHash = hash({ missionId: mission.missionId, statement }).slice(0, 32);
+  const claimId = `claim-entity-relationship-${evidenceHash}`;
+  return {
+    evidenceItemId: `evidence-entity-relationship-${evidenceHash}`,
+    chunkId: `governed-entity-relationship-${evidenceHash}`,
+    primaryClaimId: claimId,
+    claimIds: [claimId],
+    sourceId: `geo-mission-${mission.missionId}`,
+    sourceRevisionId: `geo-intent-${mission.geoIntentHash.slice(0, 52)}`,
+    sourceLocator: { headingPath: ["已确认实体关系"] },
+    title: "已确认的产品与服务商身份关系",
+    normalizedClaim: statement,
+    summary: statement,
+    originalQuote: statement,
+    documentType: "governed_entity_graph",
+    authorityLevel: "A1",
+    supportMode: "direct",
+    claimScope: "public_product",
+    evidenceUsage: "product_fact",
+    subjectEntityIds: [mission.platformEntityId, mission.promotionSubjectEntityId],
+    status: "active",
+    version: mission.contractVersion,
+    conditions: [],
+    limitations: [],
+    validity: { lifecycleStatus: "current", capabilityStatus: "current" },
+    selectionReason: ["human_confirmed_entity_relationship"],
+    allowedUsage: ["entity_identity", "official_citation"],
+    forbiddenUsage: ["service_capability_without_separate_claim"]
   };
 }
 
@@ -122,6 +168,14 @@ export function buildFinalEvidencePack(input: {
   const claimPlan = buildClaimPlan(input.route, input.retrievalRun);
   const selected = input.retrievalRun.candidates.filter((candidate) => candidate.selected);
   const items = selected.map((candidate) => evidenceItem(candidate.chunk, candidate.selectionReasons, candidate.evidenceRoles));
+  const promotionIdentityEvidence = governedPromotionIdentityEvidence(input.taskSnapshot);
+  if (promotionIdentityEvidence && !items.some((item) => item.evidenceItemId === promotionIdentityEvidence.evidenceItemId)) {
+    items.unshift(promotionIdentityEvidence);
+    claimPlan.requiredClaimIds = Array.from(new Set([
+      ...claimPlan.requiredClaimIds,
+      ...promotionIdentityEvidence.claimIds
+    ]));
+  }
   const missingSlots = claimPlan.slots.filter((slot) => slot.status !== "satisfied").map((slot) => slot.evidenceRole);
   const conflicts = selected.filter((candidate) => candidate.chunk.conflictGroupIds.length).flatMap((candidate) => candidate.chunk.conflictGroupIds);
   const outdatedEvidence = selected.filter((candidate) => candidate.chunk.lifecycleStatus !== "current" || candidate.chunk.status !== "active").map((candidate) => candidate.chunk.chunkId);
