@@ -1,6 +1,7 @@
 import type { ProductRegistryItem } from "@/lib/v5/product-registry-contracts";
 import type { ProductionMatrixTask } from "@/lib/v5/monthly-workspace-contracts";
 import type { FreeContentExpressionTypeSummary, FreeProductionBatch } from "@/lib/v5/free-production-contracts";
+import type { HostedResultSnapshot } from "@/lib/v5/hosted-history-contracts";
 export type DemoScenario = "populated" | "first-use" | "attention" | "completed";
 export const DEMO_SCHEMA = 4;
 export const DEMO_STORAGE_KEY = "gtm-demo-runtime.v1";
@@ -87,6 +88,7 @@ export interface DemoState {
     monitoringQuestions: DemoRecord[];
     connections: DemoRecord[];
     reviews: Record<string, DemoRecord>;
+    hostedHistory?: HostedResultSnapshot[];
     mails: DemoMail[];
     settings: DemoRecord;
     events: {

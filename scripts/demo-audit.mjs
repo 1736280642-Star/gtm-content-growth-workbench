@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 const walk=dir=>existsSync(dir)?readdirSync(dir,{withFileTypes:true}).flatMap(item=>item.isDirectory()?walk(path.join(dir,item.name)):[path.join(dir,item.name)]):[];
 const checks=[];
 function check(name,run){try{const detail=run();checks.push({name,ok:true,detail});}catch(error){checks.push({name,ok:false,error:error.message});}}
-check('Original main pages, components and CSS remain unchanged',()=>{
+check('Same shared UI, with only the requested hosted history enhancement',()=>{
   const changed=execFileSync('git',['diff','2b84ec2','--name-only','--','src/app','src/components'],{encoding:'utf8'}).trim().split(/\r?\n/).filter(Boolean);
-  assert.deepEqual(changed.filter(file=>file!=='src/app/layout.tsx'&&!file.startsWith('src/app/demo-')),[]);
-  return 'Only the root runtime boundary and separate Demo utility routes differ.';
+  const sharedEnhancement=['src/app/hosted-mode.module.css','src/app/hosted/success/page.tsx','src/app/hosted/email/page.tsx','src/app/hosted/review/[token]/page.tsx'];
+  assert.deepEqual(changed.filter(file=>file!=='src/app/layout.tsx'&&!file.startsWith('src/app/demo-')&&!sharedEnhancement.includes(file)&&!file.startsWith('src/app/hosted/history/')&&!file.startsWith('src/app/hosted/_components/')&&!file.startsWith('src/app/api/v5/hosted/orders/[orderId]/history/')),[]);
+  return 'Hosted result history is a shared feature; there is no separate Demo workbench UI.';
 });
 check('Authored Demo code contains no recognizable credentials or personal contact data',()=>{
   const sources=[...walk('src/demo'),...walk('src/app/demo-control'),...walk('src/app/demo-article'),...walk('public/demo-assets')].filter(file=>/\.(?:ts|tsx|svg|md)$/.test(file));

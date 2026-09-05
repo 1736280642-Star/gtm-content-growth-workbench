@@ -5,6 +5,7 @@ import { productionRequest } from "./handlers/production";
 import { monitoringRequest } from "./handlers/monitoring";
 import { systemRequest } from "./handlers/system";
 import { sanitizeDemoInput } from "./privacy";
+import { captureDemoPublishing } from "./hosted-history";
 export function dispatchDemoRequest(state: DemoState, request: DemoRequest): DemoReply {
     try {
         request = { ...request, body: sanitizeDemoInput(request.body) };
@@ -26,6 +27,7 @@ export function dispatchDemoRequest(state: DemoState, request: DemoRequest): Dem
         if (!result)
             return reply({ ok: false, message: `演示适配尚未覆盖：${request.method} ${request.path}`, error: { code: "demo_unhandled_api", message: `演示适配尚未覆盖：${request.method} ${request.path}` } }, 501);
         if (mutating && result.status < 400) {
+            captureDemoPublishing(state);
             state.revision += 1;
             recordEvent(state, request.method, request.path, "演示操作已保存");
             if (key) {

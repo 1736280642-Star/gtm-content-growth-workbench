@@ -1,4 +1,6 @@
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { archiveHostedResult } from "./hosted-history-repository";
+import { publishingResultContent } from "./hosted-history-projection";
 import {
   getV5GovernancePool,
   hashV5GovernancePayload,
@@ -156,7 +158,12 @@ export async function upsertHostedDailyPublishBatchRecord(input: {
       correlationId: input.orderId
     });
     const [updatedRows] = await connection.query<RowDataPacket[]>("SELECT * FROM hosted_daily_publish_batch WHERE id = ? LIMIT 1", [input.batchId]);
-    return mapBatch(updatedRows[0]);
+    const updated = mapBatch(updatedRows[0]);
+    if (updated.status === "closed") await archiveHostedResult(connection, {
+      ...publishingResultContent(updated), resultId: `${updated.batchId}:v${updated.rowVersion}`,
+      orderId: input.orderId, step: "publishing", createdAt: new Date().toISOString()
+    }, input.actorId);
+    return updated;
   });
 }
 

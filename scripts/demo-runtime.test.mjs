@@ -18,10 +18,10 @@ function call(state,path,method='GET',body={},key){
 function success(...args){const result=call(...args);assert.ok(result.status<400,JSON.stringify(result));return result.body.data??result.body;}
 const initial=()=>createDemoState('populated',new Date('2026-09-05T02:30:00Z'));
 
-test('64 maintained routes are inventoried without replacing production pages',()=>{
+test('65 maintained routes are inventoried without replacing production pages',()=>{
   const walk=(dir)=>readdirSync(dir,{withFileTypes:true}).flatMap(item=>item.isDirectory()?walk(dir+'/'+item.name):item.name==='page.tsx'?[dir.replace('src/app','')||'/']:[]);
   const routes=walk('src/app').filter(route=>!route.startsWith('/demo-'));
-  assert.equal(routes.length,64);assert.deepEqual(new Set(demoPageCases.map(p=>p.route)),new Set(routes));
+  assert.equal(routes.length,65);assert.deepEqual(new Set(demoPageCases.map(p=>p.route)),new Set(routes));
 });
 test('synthetic state uses one calendar month, and all record links are local',()=>{
   const state=initial();assert.equal(state.month,'2026-09');

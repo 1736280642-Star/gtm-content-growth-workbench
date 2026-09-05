@@ -16,6 +16,7 @@ const rows: Array<[
     ["/hosted/login/verify", "/hosted/login/verify#token=demo-login", "OrbitDesk", "托管"],
     ["/hosted/success", `/hosted/success?orderId=${order}`, "系统正在按本轮计划自动发布", "托管"],
     ["/hosted/email", `/hosted/email?orderId=${order}`, "公开结果与状态", "邮件"],
+    ["/hosted/history", `/hosted/history?orderId=${order}&step=research`, "步骤历史结果", "托管"],
     ["/hosted/review/[token]", "/hosted/review/demo-strategy", "核心表达", "邮件"],
     ["/hosted/preferences/[token]", "/hosted/preferences/demo-preferences", "保存通知偏好", "邮件"],
     ["/hosted/settings", `/hosted/settings?orderId=${order}`, "结果通知", "托管"],

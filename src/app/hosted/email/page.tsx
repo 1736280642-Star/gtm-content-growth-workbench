@@ -87,7 +87,7 @@ export default function HostedEmailResultPage() {
     <div className={styles.emailPage}>
       <div className={styles.emailToolbar}>
         <div><h1>每日发布结果</h1><span>这里只展示正式发布记录和已经取得的公开 URL</span></div>
-        <div className={styles.toolbarActions}>{orderId ? <Button icon={<ReloadOutlined />} onClick={() => load(orderId)}>刷新</Button> : null}<Link href={orderId ? `/hosted/success?orderId=${encodeURIComponent(orderId)}` : "/"}><Button icon={<ArrowLeftOutlined />}>{orderId ? "返回托管状态" : "返回发起推广"}</Button></Link></div>
+        <div className={styles.toolbarActions}>{orderId ? <Link href={`/hosted/history?orderId=${encodeURIComponent(orderId)}&step=publishing`}><Button>查看历史回执</Button></Link> : null}{orderId ? <Button icon={<ReloadOutlined />} onClick={() => load(orderId)}>刷新</Button> : null}<Link href={orderId ? `/hosted/success?orderId=${encodeURIComponent(orderId)}` : "/"}><Button icon={<ArrowLeftOutlined />}>{orderId ? "返回托管状态" : "返回发起推广"}</Button></Link></div>
       </div>
 
       {!orderId ? <section className={styles.resultEmpty}><MailOutlined /><strong>这里不再展示模拟邮件</strong><span>从正式托管回执进入后，系统会展示该任务的真实每日批次。邮件中的链接也会直接带上对应任务。</span><Link href="/"><Button type="primary">发起一项托管推广</Button></Link></section> : null}

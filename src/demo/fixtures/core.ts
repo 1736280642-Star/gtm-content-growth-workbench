@@ -4,6 +4,7 @@ import { DEMO_CHANNELS, DEMO_ORDER_ID, DEMO_SCHEMA, type DemoOrder, type DemoSce
 import { makeExpressions, makeFreeBatch } from "./production";
 import { makeKnowledge, makeProductDetail, makeResearch, makeStrategy, makeArticleTypes, makeCollectionSources } from "./knowledge";
 import { makeMonitoring, makeSiteAudits } from "./monitoring";
+import { initializeDemoHistory } from "../hosted-history";
 export function articleText(productName: string, title: string) {
     return `# ${title}\n\n> 演示资料：以下产品、场景和结果均为虚构，不代表真实企业能力或业务成效。\n\n## 一个需要被接住的工作请求\n\n运营同事收到一份活动需求，需要确认目标、拆分任务、找到资料，并在交付前核对结果。信息分散时，最耗时的是反复确认“现在做到哪一步”。\n\n${productName} 在这个虚拟案例中提供任务记录、资料引用和人工确认入口。系统先整理输入，再生成可检查的草稿；最终判断仍由用户完成。\n\n## 从资料到可检查的结果\n\n1. 录入任务目标，关联产品说明与使用边界。\n2. 依据已确认资料组织初稿，每项关键表述保留来源。\n3. 检查是否缺少事实、素材或发布授权。\n4. 人工确认后进入排程，并记录处理结果。\n\n| 环节 | 系统输出 | 用户判断 |\n| --- | --- | --- |\n| 资料整理 | 来源清单与事实摘要 | 确认适用范围 |\n| 内容生成 | 正文与引用 | 确认表达和证据 |\n| 发布与监测 | 状态、链接和指标 | 处理系统无法判断的事项 |\n\n## 使用边界\n\n演示中的数据采用固定样本。系统不能将没有证据的数字写成真实效果，也不能替用户决定对外承诺。资料缺失时，页面展示补充入口；确认完成后，任务从原阶段继续。\n\n## 下一步\n\n可以从一个月度计划开始，查看同一条任务在正文、发布结果和监控页之间如何流转。\n\n资料来源：[虚拟产品说明](/demo-article/product-guide)。`;
 }
@@ -98,5 +99,5 @@ export function createDemoState(scenario: DemoScenario = "populated", date = new
         }
         state.mails.unshift({ id: "demo-mail-completed", orderId: order.orderId, kind: "completed", subject: "本月执行完成与下一月建议", to: order.contactEmail, createdAt: now, href: "/content-monitor?tab=ai", summary: "本月六篇内容已完成模拟发布。建议下月补充对比场景与使用边界。", status: "simulated" });
     }
-    return state;
+    return initializeDemoHistory(state);
 }

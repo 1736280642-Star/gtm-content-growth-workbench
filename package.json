@@ -20,6 +20,7 @@
     "build:demo": "node scripts/demo-run.mjs build",
     "start:demo": "node scripts/demo-run.mjs start",
     "test:demo": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/demo-runtime.test.mjs",
+    "test:hosted-history": "node --no-warnings --experimental-transform-types --loader ./workers/typescript-loader.mjs --test scripts/hosted-history.test.mjs",
     "test:demo:browser": "node scripts/demo-browser.mjs --all",
     "test:demo:interactions": "node scripts/demo-interactions.mjs",
     "audit:demo": "node scripts/demo-audit.mjs",

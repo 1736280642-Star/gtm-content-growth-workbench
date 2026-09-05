@@ -1,19 +1,20 @@
 import { DEMO_CHANNELS, DEMO_CHANNEL_LABELS, DEMO_ORDER_ID, dataReply, demoError, expectVersion, reply, required, type DemoMail, type DemoOrder, type DemoRecord, type DemoRequest, type DemoState } from "../model";
 import { createProduct, prepareOrderTasks, completeOrderSimulation } from "../entities";
 import { makeOrder } from "../fixtures/core";
-export function orderBatches(state: DemoState, order: DemoOrder) {
-    const tasks = state.tasks.filter(task => state.taskOrders[task.taskId] === order.orderId);
-    const results = tasks.map((task, i) => ({ taskId: task.taskId, title: task.title, channel: task.channel, status: task.status === "published" ? "published" : ["awaiting_material", "intercepted"].includes(task.status) ? "failed" : i % 2 ? "platform_review" : "deferred", publicUrl: task.publicUrl, publishedAt: task.status === "published" ? task.updatedAt : undefined, failureReason: task.failureReason, responsibility: ["awaiting_material", "intercepted"].includes(task.status) ? "user" : task.status === "published" ? undefined : i % 2 ? "external" : "system", userActionRequired: ["awaiting_material", "intercepted"].includes(task.status), nextAction: task.status === "intercepted" ? "此任务已由人工拦截，不会继续模拟发布。" : ["awaiting_material", "intercepted"].includes(task.status) ? "补充虚拟资料后，系统继续处理。" : "系统将继续跟踪模拟发布结果。", attemptCount: 1 }));
-    return [{ batchId: `batch-${order.orderId}-${state.month}`, orderId: order.orderId, businessDate: state.now.slice(0, 10), plannedCount: results.length, publishedCount: results.filter(r => r.status === "published").length, pendingCount: results.filter(r => ["platform_review", "deferred"].includes(r.status)).length, failedCount: results.filter(r => r.status === "failed").length, status: "closed", closedAt: state.now, results }];
-}
+import { archiveDemoStep } from "../hosted-history";
+import { hostedHistorySteps, summarizeHostedResult } from "@/lib/v5/hosted-history-contracts";
+import { orderBatches } from "../hosted-results";
+export { orderBatches } from "../hosted-results";
 export function addMail(state: DemoState, order: DemoOrder, kind: DemoMail["kind"], token?: string) {
     const subject = { login: "演示登录链接", strategy: `请确认 ${order.productName} 的推广策略`, sample: `请确认 ${order.productName} 的代表样文`, digest: `${order.productName} 每日发布结果`, completed: `${order.productName} 本月完成与复盘建议`, action: `${order.productName} 需要补充资料` }[kind];
     const href = kind === "login" ? "/hosted/login/verify#token=demo-login" : kind === "strategy" || kind === "sample" ? `/hosted/review/${token || Object.keys(state.reviews).find(k => state.reviews[k].orderId === order.orderId && state.reviews[k].gateType === kind && state.reviews[k].status === "pending") || `demo-${kind}`}` : kind === "completed" ? "/content-monitor?tab=ai" : `/hosted/email?orderId=${order.orderId}`;
     state.mails.unshift({ id: `mail-${state.revision}-${state.mails.length}`, orderId: order.orderId, kind, subject, to: "presenter@example.com", createdAt: state.now, href, summary: kind === "digest" ? "请查看关联文章、发布状态与需处理事项。" : "请打开关联页面检查内容后继续。", status: "simulated" });
+    if (kind === "strategy" || kind === "sample") archiveDemoStep(state, order, kind === "strategy" ? "research" : "sample-generation", `${href.split("/").at(-1)}:generated`);
     return state.mails[0];
 }
 function reviewPayload(state: DemoState, token: string) {
     const review = required(state.reviews[token], "演示确认链接");
+    if (review.status === "acted" && review.snapshot) return { ...structuredClone(review.snapshot), review, order: required(state.orders.find(o => o.orderId === review.orderId), "演示委托") };
     const order = required(state.orders.find(o => o.orderId === review.orderId), "演示委托");
     const pack = required(state.strategies[order.productId], "演示策略");
     const plan = pack.contentPlan;
@@ -86,6 +87,15 @@ export function hostedRequest(state: DemoState, req: DemoRequest) {
         const order = required(state.orders.find(o => o.orderId === orders[1]), "演示委托"), action = orders[2];
         if (!action)
             return reply(orderPayload(state, order));
+        if (action === "history") {
+            if (req.method !== "GET") demoError("历史结果为只读记录。", 405);
+            const step = url.searchParams.get("step"), resultId = url.searchParams.get("resultId");
+            if (step && !hostedHistorySteps.some(value => value === step)) demoError("结果步骤无效，请从托管回执重新进入。", 400);
+            const history = (state.hostedHistory || []).filter(item => item.orderId === order.orderId);
+            const result = history.find(item => (!step || item.step === step) && (!resultId || item.resultId === resultId));
+            if (resultId && !result) demoError("该历史结果不存在或不属于当前任务，请返回托管回执。", 404);
+            return reply({ order: { orderId: order.orderId, productName: order.productName }, entries: history.map(summarizeHostedResult), result: step || resultId ? result : undefined });
+        }
         if (action === "daily-batches")
             return reply({ batches: orderBatches(state, order) });
         if (action === "settings" && write) {
@@ -136,6 +146,7 @@ export function hostedRequest(state: DemoState, req: DemoRequest) {
     if (review) {
         const token = review[1], payload = reviewPayload(state, token), pack = state.strategies[payload.order.productId];
         if (req.method === "PATCH") {
+            if (payload.review.status !== "pending" || payload.review.gateType !== "strategy") demoError("只有待确认的策略可以编辑。", 409);
             expectVersion(pack.rowVersion, body.expectedVersion);
             if (!body.edit?.productIdentity?.trim())
                 demoError("产品身份不能为空。");
@@ -152,6 +163,8 @@ export function hostedRequest(state: DemoState, req: DemoRequest) {
                 demoError("请选择有效的审核决定。");
             if (body.decision === "changes_requested" && !body.comment?.trim())
                 demoError("请填写修改意见。");
+            archiveDemoStep(state, payload.order, payload.review.gateType === "strategy" ? "strategy" : "sample-review", `${token}:decision`, { decision: body.decision, comment: body.comment?.trim() });
+            payload.review.snapshot = structuredClone({ strategy: payload.strategy, sample: payload.sample });
             Object.assign(payload.review, { status: "acted", decision: body.decision, comment: body.comment });
             if (body.decision === "approve") {
                 pack.status = payload.review.gateType === "strategy" ? "pending_sample_review" : "production_ready";
@@ -166,7 +179,7 @@ export function hostedRequest(state: DemoState, req: DemoRequest) {
                 pack.status = "pending_strategy_review";
                 payload.order.status = payload.review.gateType === "strategy" ? "pending_strategy_review" : "pending_sample_review";
                 const nextToken = `${token}-revision-${state.revision}`;
-                state.reviews[nextToken] = { ...payload.review, status: "pending", decision: undefined, comment: undefined };
+                state.reviews[nextToken] = { ...payload.review, status: "pending", decision: undefined, comment: undefined, snapshot: undefined };
                 addMail(state, payload.order, payload.review.gateType, nextToken);
             }
             pack.rowVersion++;

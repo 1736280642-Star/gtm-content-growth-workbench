@@ -12,6 +12,7 @@ import {
 import { Button, Popconfirm, Spin } from "antd";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { hostedHistoryHref, type HostedHistoryStep, type HostedResultSummary } from "@/lib/v5/hosted-history-contracts";
 import styles from "../../hosted-mode.module.css";
 
 type HostedStatus = "preparing" | "pending_strategy_review" | "generating_sample" | "pending_sample_review" | "running" | "action_required" | "paused" | "completed";
@@ -94,6 +95,8 @@ function readError(payload: unknown, fallback: string) {
 }
 
 export default function HostedSuccessPage() {
+  const [history, setHistory] = useState<HostedResultSummary[]>([]);
+  const [historyError, setHistoryError] = useState(false);
   const [order, setOrder] = useState<HostedOrder>();
   const [nextAction, setNextAction] = useState<NextAction>();
   const [latestBatch, setLatestBatch] = useState<DailyBatch>();
@@ -125,6 +128,13 @@ export default function HostedSuccessPage() {
       setNextAction(payload.nextAction as NextAction);
       setPendingReview(payload.pendingReview as PendingReview | undefined);
       setSampleProgress(payload.sampleProgress as SampleProgress | undefined);
+      try {
+        const historyResponse = await fetch(`/api/v5/hosted/orders/${encodeURIComponent(targetOrderId)}/history`, { cache: "no-store" });
+        if (!historyResponse.ok) throw new Error("history_unavailable");
+        const historyPayload = await historyResponse.json();
+        setHistory(Array.isArray(historyPayload.entries) ? historyPayload.entries : []);
+        setHistoryError(false);
+      } catch { setHistoryError(true); }
       const batchesResponse = await batchesRequest;
       if (batchesResponse?.ok) {
         const batchesPayload = await batchesResponse.json();
@@ -227,6 +237,10 @@ export default function HostedSuccessPage() {
   const sampleStepDone = ["pending_sample_review", "running", "completed"].includes(order.status);
   const strategyStepDone = sampleStepActive || sampleStepDone;
   const progressText = sampleProgressLabels[sampleProgress?.progressStage || sampleProgress?.operationStatus || "queued"] || "正在生成代表样文";
+  function resultLink(step: HostedHistoryStep) {
+    const entries = history.filter(item => item.step === step);
+    return <Link className={styles.timelineResult} href={hostedHistoryHref(order!.orderId, step, entries[0]?.resultId)}>{historyError ? "重新读取历史结果" : entries.length ? "查看结果" : "查看步骤记录"}<ArrowRightOutlined /><small>{historyError ? "历史读取暂不可用" : entries.length ? `${entries.length} 份留存` : "尚无留存结果"}</small></Link>;
+  }
 
   return (
     <div className={styles.successPage}>
@@ -246,11 +260,11 @@ export default function HostedSuccessPage() {
             <div className={styles.taskFact}><span>推广渠道</span><strong>{channelText}</strong></div>
           </div>
           <div className={styles.timeline}>
-            <div className={`${styles.timelineItem} ${order.status === "preparing" ? styles.isActive : styles.isDone}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>资料处理与 GEO 调研</strong><span>系统整理官网与文件，并生成受治理的推广策略</span></div><span className={styles.timelineTime}>{order.status === "preparing" ? "进行中" : "已完成"}</span></div>
-            <div className={`${styles.timelineItem} ${order.status === "pending_strategy_review" ? styles.isActive : strategyStepDone ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>确认 GEO 策略</strong><span>邮件链接直达目标用户、核心表达、渠道和内容方向</span></div><span className={styles.timelineTime}>{order.status === "pending_strategy_review" ? "等你确认" : strategyStepDone ? "已完成" : "随后"}</span></div>
-            <div className={`${styles.timelineItem} ${sampleStepActive ? styles.isActive : sampleStepDone ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>生成代表样文</strong><span>系统自动生成并检查事实、表达与渠道格式</span></div><span className={styles.timelineTime}>{order.currentActionType === "retry_sample" ? "需要重试" : order.status === "generating_sample" ? "进行中" : sampleStepDone ? "已完成" : "随后"}</span></div>
-            <div className={`${styles.timelineItem} ${order.status === "pending_sample_review" ? styles.isActive : ["running", "completed"].includes(order.status) ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>确认代表样文</strong><span>样文通过后才进入正式批量生产</span></div><span className={styles.timelineTime}>{order.status === "pending_sample_review" ? "等你确认" : ["running", "completed"].includes(order.status) ? "已完成" : "随后"}</span></div>
-            <div className={`${styles.timelineItem} ${order.status === "running" ? styles.isActive : order.status === "completed" ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>托管发布与 URL 回传</strong><span>按渠道每日安全上限执行，当日批次关闭后发送一封汇总邮件</span></div><span className={styles.timelineTime}>{order.status === "running" ? "自动运行" : "本轮内"}</span></div>
+            <div className={`${styles.timelineItem} ${order.status === "preparing" ? styles.isActive : styles.isDone}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>资料处理与 GEO 调研</strong><span>系统整理官网与文件，并生成受治理的推广策略</span>{resultLink("research")}</div><span className={styles.timelineTime}>{order.status === "preparing" ? "进行中" : "已完成"}</span></div>
+            <div className={`${styles.timelineItem} ${order.status === "pending_strategy_review" ? styles.isActive : strategyStepDone ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>确认 GEO 策略</strong><span>邮件链接直达目标用户、核心表达、渠道和内容方向</span>{resultLink("strategy")}</div><span className={styles.timelineTime}>{order.status === "pending_strategy_review" ? "等你确认" : strategyStepDone ? "已完成" : "随后"}</span></div>
+            <div className={`${styles.timelineItem} ${sampleStepActive ? styles.isActive : sampleStepDone ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>生成代表样文</strong><span>系统自动生成并检查事实、表达与渠道格式</span>{resultLink("sample-generation")}</div><span className={styles.timelineTime}>{order.currentActionType === "retry_sample" ? "需要重试" : order.status === "generating_sample" ? "进行中" : sampleStepDone ? "已完成" : "随后"}</span></div>
+            <div className={`${styles.timelineItem} ${order.status === "pending_sample_review" ? styles.isActive : ["running", "completed"].includes(order.status) ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>确认代表样文</strong><span>样文通过后才进入正式批量生产</span>{resultLink("sample-review")}</div><span className={styles.timelineTime}>{order.status === "pending_sample_review" ? "等你确认" : ["running", "completed"].includes(order.status) ? "已完成" : "随后"}</span></div>
+            <div className={`${styles.timelineItem} ${order.status === "running" ? styles.isActive : order.status === "completed" ? styles.isDone : ""}`}><span className={styles.timelineDot} /><div className={styles.timelineCopy}><strong>托管发布与 URL 回传</strong><span>按渠道每日安全上限执行，当日批次关闭后发送一封汇总邮件</span>{resultLink("publishing")}</div><span className={styles.timelineTime}>{order.status === "running" ? "自动运行" : "本轮内"}</span></div>
           </div>
           {latestBatch ? <div className={styles.recentResults}><div><strong>最近公开结果</strong><span>{latestBatch.businessDate} · {latestBatch.publishedCount} 个公开 URL</span></div>{latestBatch.results.filter((item) => item.publicUrl).slice(0, 3).map((item) => <a href={item.publicUrl} target="_blank" rel="noreferrer" key={item.taskId}>{item.title} <ArrowRightOutlined /></a>)}</div> : null}
         </section>

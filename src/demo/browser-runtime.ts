@@ -1,5 +1,6 @@
 import { createDemoState } from "./fixtures/core";
 import { dispatchDemoRequest } from "./gateway";
+import { initializeDemoHistory } from "./hosted-history";
 import { DEMO_SCHEMA, DEMO_STORAGE_KEY, type DemoState, type DemoScenario, type DemoRecord } from "./model";
 let installed = false;
 let state: DemoState;
@@ -15,8 +16,13 @@ function loadState(): DemoState {
     if (stored) {
         try {
             const parsed = JSON.parse(stored);
-            if (parsed.schema === DEMO_SCHEMA && parsed.products?.length && Array.isArray(parsed.events))
+            if (parsed.schema === DEMO_SCHEMA && parsed.products?.length && Array.isArray(parsed.events)) {
+                if (!parsed.hostedHistory) {
+                    initializeDemoHistory(parsed, true);
+                    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(parsed));
+                }
                 return parsed;
+            }
         }
         catch { /* Restore a valid synthetic seed after corrupt browser storage. */ }
     }

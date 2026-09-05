@@ -7,6 +7,8 @@ import {
   writeV5GovernanceAudit
 } from "./knowledge-governance-repository";
 import { hostedLinkSigningSecret } from "./hosted-link-signing";
+import { archiveHostedResult } from "./hosted-history-repository";
+import type { HostedResultContent } from "./hosted-history-contracts";
 
 export type HostedReviewGate = "strategy" | "sample";
 export type HostedReviewStatus = "pending" | "acted" | "expired" | "cancelled";
@@ -100,6 +102,7 @@ export async function ensureHostedReviewRequestRecord(input: {
   targetId: string;
   actorId: string;
   expiresInHours?: number;
+  resultContent?: HostedResultContent;
 }) {
   const baseKey = `hosted-review:${createHash("sha256").update(`${input.orderId}:${input.gateType}:${input.targetId}`).digest("hex").slice(0, 64)}`;
   return withV5GovernanceTransaction(async (connection) => {
@@ -149,6 +152,10 @@ export async function ensureHostedReviewRequestRecord(input: {
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       [reviewRequestId, input.orderId, input.productId, input.gateType, input.targetId, tokenHash, expiresAtDate, idempotencyKey]
     );
+    if (input.resultContent) await archiveHostedResult(connection, {
+      ...input.resultContent, resultId: `${reviewRequestId}:generated`, orderId: input.orderId,
+      step: input.gateType === "strategy" ? "research" : "sample-generation", createdAt: new Date().toISOString()
+    }, input.actorId);
     await writeV5GovernanceAudit(connection, {
       actorId: input.actorId,
       actorRole: "workbench_operator",
@@ -253,6 +260,7 @@ export async function completeHostedReviewRequestRecord(input: {
   decision: string;
   comment?: string;
   actedBy: string;
+  resultContent?: HostedResultContent;
 }) {
   return withV5GovernanceTransaction(async (connection) => {
     const [rows] = await connection.query<RowDataPacket[]>(`${reviewSelect} WHERE review.id = ? LIMIT 1 FOR UPDATE`, [input.reviewRequestId]);
@@ -271,6 +279,11 @@ export async function completeHostedReviewRequestRecord(input: {
       [input.actedBy, input.decision, input.comment?.trim() || null, input.reviewRequestId, current.rowVersion]
     );
     if (result.affectedRows !== 1) throw new V5GovernanceRepositoryError("hosted_review_version_conflict", "审核状态已经变化，请刷新后重试。", 409);
+    if (input.resultContent) await archiveHostedResult(connection, {
+      ...input.resultContent, resultId: `${current.reviewRequestId}:decision`, orderId: current.orderId,
+      step: current.gateType === "strategy" ? "strategy" : "sample-review", createdAt: new Date().toISOString(),
+      decision: input.decision === "approve" ? "approve" : "changes_requested", comment: input.comment?.trim()
+    }, input.actedBy);
     await writeV5GovernanceAudit(connection, {
       actorId: input.actedBy,
       actorRole: "product_owner",

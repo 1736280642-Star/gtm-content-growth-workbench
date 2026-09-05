@@ -20,6 +20,7 @@ import {
 import { decideSampleArticle } from "./sample-calibration-repository";
 import { getSingleArticleActor } from "./single-article-api";
 import { getGeoResearchWorkspace, startGeoResearchRun, updateGeoResearchProject } from "./geo-research-service";
+import { sampleResultContent, strategyResultContent } from "./hosted-history-projection";
 
 function humanActorId(email: string) {
   return `hosted-user-${hashV5GovernancePayload(email.toLocaleLowerCase()).slice(0, 24)}`;
@@ -69,6 +70,7 @@ export async function ensureHostedReviewForOrder(order: HostedPromotionOrderReco
       productId: order.productId,
       gateType: "strategy",
       targetId: strategy.id,
+      resultContent: strategyResultContent({ sourceId: strategy.id, sourceVersion: `策略 V${strategy.strategyVersion} · 修订 ${strategy.rowVersion}`, summary: strategySummary(order, strategy.contentPlan as Record<string, unknown> | null), materials: order.materialSummary }),
       actorId: "hosted-review-orchestrator"
     });
     await enqueueHostedReviewNotification(ensured.review);
@@ -77,12 +79,16 @@ export async function ensureHostedReviewForOrder(order: HostedPromotionOrderReco
   if (order.status === "pending_sample_review") {
     const samples = await readProductSampleArticles(order.productId);
     const item = samples?.items.find((candidate) => candidate.draft?.copyAllowed && candidate.reviewStatus !== "approved");
-    if (!item?.draft?.draftVersionId) return undefined;
+    if (!item?.draft?.draftVersionId || !item.taskId) return undefined;
+    const detail = await readProductSampleArticleDetail(order.productId, item.taskId);
+    const version = detail?.versions.find(candidate => candidate.draftVersionId === item.draft?.draftVersionId);
+    if (!detail || !version) return undefined;
     const ensured = await ensureHostedReviewRequestRecord({
       orderId: order.orderId,
       productId: order.productId,
       gateType: "sample",
       targetId: item.draft.draftVersionId,
+      resultContent: sampleResultContent({ sourceId: version.draftVersionId, sourceVersion: version.draftVersionId, title: version.title, markdown: version.markdown, articleTypeName: detail.articleTypeName, channel: "wechat" }),
       actorId: "hosted-review-orchestrator"
     });
     await enqueueHostedReviewNotification(ensured.review);
@@ -231,6 +237,7 @@ export async function decideHostedReview(input: { token: string; decision: "appr
     const strategy = view.latestStrategyPack;
     if (!strategy || strategy.id !== review.targetId) throw new V5GovernanceServiceError("hosted_review_target_changed", "策略已经更新，请使用最新邮件链接。", 409);
     const approved = input.decision === "approve";
+    const resultContent = strategyResultContent({ sourceId: strategy.id, sourceVersion: `策略 V${strategy.strategyVersion} · 修订 ${strategy.rowVersion}`, summary: strategySummary(order, strategy.contentPlan as Record<string, unknown> | null) });
     const result = await decideProductGeoStrategyPack({
       productId: review.productId,
       strategyPackId: strategy.id,
@@ -299,7 +306,7 @@ export async function decideHostedReview(input: { token: string; decision: "appr
         };
       }
     }
-    const completed = await completeHostedReviewRequestRecord({ reviewRequestId: review.reviewRequestId, decision: input.decision, comment: normalizedComment, actedBy: actorId });
+    const completed = await completeHostedReviewRequestRecord({ reviewRequestId: review.reviewRequestId, decision: input.decision, comment: normalizedComment, actedBy: actorId, resultContent });
     await updateOrderState(
       review.orderId,
       transitionError ? "action_required" : approved ? "generating_sample" : "preparing",
@@ -320,6 +327,10 @@ export async function decideHostedReview(input: { token: string; decision: "appr
   const item = samples?.items.find((candidate) => candidate.draft?.draftVersionId === review.targetId);
   if (!item?.taskId) throw new V5GovernanceServiceError("hosted_review_target_changed", "样文已经更新，请使用最新邮件链接。", 409);
   const singleArticleActor = getSingleArticleActor();
+  const detail = await readProductSampleArticleDetail(review.productId, item.taskId);
+  const version = detail?.versions.find(candidate => candidate.draftVersionId === review.targetId);
+  if (!detail || !version) throw new V5GovernanceServiceError("hosted_sample_not_found", "没有找到本次确认的样文版本，请刷新后重试。", 404);
+  const resultContent = sampleResultContent({ sourceId: review.targetId, sourceVersion: review.targetId, title: version.title, markdown: version.markdown, articleTypeName: detail.articleTypeName, channel: "wechat" });
   const feedback = await decideSampleArticle({
     draftVersionId: review.targetId,
     idempotencyKey,
@@ -329,7 +340,7 @@ export async function decideHostedReview(input: { token: string; decision: "appr
   if (input.decision === "changes_requested" && feedback.taskId) {
     await enqueueProductSampleRevision({ taskId: feedback.taskId, feedbackId: feedback.feedbackId, actor: { ...singleArticleActor, auditReason: "根据托管用户的一条修改意见生成新样文" } });
   }
-  const completed = await completeHostedReviewRequestRecord({ reviewRequestId: review.reviewRequestId, decision: input.decision, comment: normalizedComment, actedBy: actorId });
+  const completed = await completeHostedReviewRequestRecord({ reviewRequestId: review.reviewRequestId, decision: input.decision, comment: normalizedComment, actedBy: actorId, resultContent });
   await updateOrderState(review.orderId, input.decision === "approve" ? "running" : "preparing");
   return { review: completed.review, sample: feedback, productionReady: input.decision === "approve", replayed: completed.replayed };
 }

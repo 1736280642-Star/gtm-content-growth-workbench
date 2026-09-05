@@ -652,6 +652,24 @@
 .timelineCopy strong { color: #37443e; font-size: 13px; }
 .timelineCopy span { margin-top: 4px; color: #84908a; font-size: 11px; line-height: 1.45; }
 .timelineTime { color: #84908a; font-size: 10px; text-align: right; white-space: nowrap; }
+.timelineResult { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 16px; color: #176b52; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.timelineResult:hover { color: #104b39; }
+.timelineResult small { color: #63716b; text-decoration: none; }
+.timelineResultEmpty { padding-bottom: 16px; }
+.historyPage { padding: 38px 0 0; }
+.historySteps { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
+.historySteps a { flex: 1 1 155px; padding: 12px; border: 1px solid #c9d9d0; border-radius: 8px; background: #fff; color: #37443e; font-size: 13px; }
+.historySteps small { display: block; margin-top: 6px; color: #63716b; }
+.historySteps a[aria-current], .historyVersions a[aria-current] { border-color: #176b52; background: #eef7f2; }
+.historyGrid { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 22px; align-items: start; }
+.historyVersions { display: grid; gap: 8px; }
+.historyVersions h2 { margin: 0 0 6px; font-size: 16px; }
+.historyVersions a { display: grid; gap: 6px; padding: 14px; border: 1px solid #dce4df; border-radius: 8px; color: #37443e; background: #fff; overflow-wrap: anywhere; }
+.historyVersions span, .historyVersions p { color: #63716b; font-size: 12px; }
+.historyResult { display: grid; min-width: 0; gap: 18px; overflow-wrap: anywhere; }
+.historyMeta { display: block; margin-top: 10px; color: #63716b; font-size: 12px; line-height: 1.6; }
+.historySteps a:focus-visible, .historyVersions a:focus-visible, .timelineResult:focus-visible { outline: 2px solid #176b52; outline-offset: 3px; }
+@media (max-width: 760px) { .historyGrid { grid-template-columns: 1fr; } .historyVersions { grid-template-columns: repeat(2, minmax(0, 1fr)); } .historyVersions h2 { grid-column: 1 / -1; } }
 .mailNotice { padding: 18px 20px; border-radius: 10px; color: #37443e; background: #eaf3ee; }
 .mailNotice strong, .mailNotice span { display: block; }
 .mailNotice strong { color: #176b52; font-size: 14px; }
