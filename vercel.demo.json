@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build:demo",
+  "outputDirectory": ".next",
+  "env": { "APP_RUNTIME_MODE": "demo" },
+  "build": { "env": { "APP_RUNTIME_MODE": "demo" } }
+}

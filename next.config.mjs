@@ -1,11 +1,24 @@
+import path from "node:path";
+const demoMode = process.env.APP_RUNTIME_MODE === "demo";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   distDir: process.env.NEXT_DIST_DIR || ".next",
   assetPrefix: process.env.NEXT_ASSET_PREFIX || undefined,
-  output: "standalone",
+  ...(demoMode ? { outputFileTracingExcludes: { "/*": [".env*", "./data/**/*", "./runtime/**/*", "./保存/**/*"] } } : { output: "standalone" }),
   compress: true,
   poweredByHeader: false,
+  env: { APP_RUNTIME_MODE: demoMode ? "demo" : "production", NEXT_PUBLIC_APP_RUNTIME_MODE: demoMode ? "demo" : "production" },
+  webpack(config, { webpack }) {
+    if (demoMode) {
+      config.plugins.push(new webpack.NormalModuleReplacementPlugin(/(?:^|\/)client-state(?:\.ts)?$/, (resource) => {
+        if (!resource.context.includes(`${path.sep}demo`)) resource.request = path.resolve("src/demo/client-state.ts");
+      }));
+      config.plugins.push(new webpack.NormalModuleReplacementPlugin(/(?:^|\/)demo-data(?:\.ts)?$/, path.resolve("src/demo/legacy-data.ts")));
+      config.plugins.push(new webpack.NormalModuleReplacementPlugin(/[\\/]app[\\/]api[\\/].*[\\/]route(?:\.ts)?$/, path.resolve("src/demo/server-route.ts")));
+    }
+    return config;
+  },
   async redirects() {
     return [
       { source: "/monthly-matrix", destination: "/monthly-plan?step=strategy", permanent: false },

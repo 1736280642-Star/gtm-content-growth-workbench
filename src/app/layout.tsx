@@ -1,6 +1,7 @@
 import "antd/dist/reset.css";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { DemoBoundary } from "@/demo/DemoBoundary";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN">
       <body>
-        <AppShell>{children}</AppShell>
+        {process.env.APP_RUNTIME_MODE === "demo"
+          ? <DemoBoundary><AppShell>{children}</AppShell></DemoBoundary>
+          : <AppShell>{children}</AppShell>}
       </body>
     </html>
   );

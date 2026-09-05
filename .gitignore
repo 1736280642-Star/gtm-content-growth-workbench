@@ -32,6 +32,8 @@ public/wechat/
 artifacts/v5-generation/
 *.log
 *.tsbuildinfo
+artifacts/demo-runtime/
+.vercel/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -47,8 +47,8 @@ export const distributionTargetStatusColors: Record<DistributionTargetStatus, st
 };
 
 export const productLabels: Record<ProductKey, string> = {
-  joto_brand: "JOTO 官方品牌",
-  weike_guardrails: "唯客 AI 护栏"
+  joto_brand: process.env.NEXT_PUBLIC_APP_RUNTIME_MODE === "demo" ? "OrbitDesk 协作助手" : "JOTO 官方品牌",
+  weike_guardrails: process.env.NEXT_PUBLIC_APP_RUNTIME_MODE === "demo" ? "HarborFlow 流程助手" : "唯客 AI 护栏"
 };
 
 export const contentTypeLabels: Record<ContentType, string> = {

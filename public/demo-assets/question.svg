@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500" role="img" aria-label="从问题到可检查的结果：虚拟封面">
+  <rect width="900" height="500" fill="#f6ede0"/>
+  <circle cx="760" cy="260" r="180" fill="#e1d4bc"/>
+  <text x="64" y="94" fill="#775d36" font-size="23" font-family="sans-serif">FIELD NOTES / 虚拟场景</text>
+  <text x="64" y="204" fill="#302b22" font-size="46" font-weight="bold" font-family="sans-serif">任务完成之后，</text>
+  <text x="64" y="272" fill="#302b22" font-size="46" font-weight="bold" font-family="sans-serif">结果去哪里检查？</text>
+  <path d="M66 330H535" stroke="#775d36" stroke-width="3"/>
+  <text x="64" y="390" fill="#775d36" font-size="26" font-family="sans-serif">资料 → 人工确认 → 正文 → 结果反馈</text>
+  <text x="64" y="454" fill="#8e816c" font-size="18" font-family="sans-serif">演示专用 · 不包含企业信息</text>
+</svg>
