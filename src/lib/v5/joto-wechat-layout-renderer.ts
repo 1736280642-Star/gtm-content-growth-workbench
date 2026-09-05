@@ -1,4 +1,5 @@
 import type { DraftSection, VisualMaterialSuggestion } from "./free-production-contracts";
+import { parseMarkdownTable, type ParsedMarkdownTable } from "../markdown-table";
 
 export const JOTO_OFFICIAL_WECHAT_TEMPLATE_ID = "joto-official-v1" as const;
 export const WORKBENCH_MEDIA_REF_PREFIX = "workbench-media:" as const;
@@ -48,6 +49,13 @@ function inlineMarkdown(value: string) {
   return output.replace(/\u0000(\d+)\u0000/g, (_, index: string) => tokens[Number(index)] || "");
 }
 
+function tableHtml(table: ParsedMarkdownTable) {
+  const cellWidth = `${Math.floor(100 / table.headers.length)}%`;
+  const headers = table.headers.map((cell, index) => `<th width="${cellWidth}" style="padding:9px 8px;border:1px solid #0022fc;background:#eef3ff;color:#0022fc;font-size:13px;line-height:1.55;font-weight:700;text-align:${table.alignments[index]};vertical-align:top;word-break:break-word;box-sizing:border-box;">${inlineMarkdown(cell)}</th>`).join("");
+  const rows = table.rows.map((row) => `<tr>${row.map((cell, index) => `<td style="padding:9px 8px;border:1px solid #dbdbdb;background:#fff;color:#3e3e3e;font-size:13px;line-height:1.65;text-align:${table.alignments[index]};vertical-align:top;word-break:break-word;box-sizing:border-box;">${inlineMarkdown(cell)}</td>`).join("")}</tr>`).join("");
+  return `<section style="margin:18px 20px 22px;overflow-x:auto;box-sizing:border-box;"><table width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;table-layout:fixed;box-sizing:border-box;"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></section>`;
+}
+
 function renderMarkdown(markdown: string) {
   const blocks: string[] = [];
   let paragraph: string[] = [];
@@ -73,8 +81,18 @@ function renderMarkdown(markdown: string) {
   };
   const flush = () => { flushParagraph(); flushList(); flushQuote(); };
 
-  for (const rawLine of markdown.replace(/\r\n/g, "\n").split("\n")) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  for (let lineIndex = 0; lineIndex < lines.length;) {
+    const rawLine = lines[lineIndex];
     const line = rawLine.trim();
+    const table = parseMarkdownTable(lines, lineIndex);
+    if (table) {
+      flush();
+      blocks.push(tableHtml(table));
+      lineIndex = table.nextIndex;
+      continue;
+    }
+    lineIndex += 1;
     if (!line) { flush(); continue; }
     const heading = /^(#{1,4})\s+(.+)$/.exec(line);
     if (heading) {

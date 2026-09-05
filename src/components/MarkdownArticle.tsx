@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { normalizeMarkdownBlocks } from "@/lib/markdown-normalization";
+import { parseMarkdownTable } from "@/lib/markdown-table";
 import styles from "./MarkdownArticle.module.css";
 
 function renderInline(value: string): ReactNode[] {
@@ -33,6 +34,20 @@ export function MarkdownArticle({ markdown, className }: { markdown?: string; cl
       continue;
     }
 
+    const table = parseMarkdownTable(lines, index);
+    if (table) {
+      blocks.push(
+        <div className={styles.tableWrap} key={`table-${index}`} role="region" aria-label="文章表格" tabIndex={0}>
+          <table>
+            <thead><tr>{table.headers.map((cell, cellIndex) => <th key={cellIndex} style={{ textAlign: table.alignments[cellIndex] }}>{renderInline(cell)}</th>)}</tr></thead>
+            <tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex} style={{ textAlign: table.alignments[cellIndex] }}>{renderInline(cell)}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      );
+      index = table.nextIndex;
+      continue;
+    }
+
     if (/^[-*]\s+/.test(line)) {
       const items: string[] = [];
       while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) items.push(lines[index++].trim().replace(/^[-*]\s+/, ""));
@@ -57,7 +72,7 @@ export function MarkdownArticle({ markdown, className }: { markdown?: string; cl
     index += 1;
     while (index < lines.length) {
       const next = lines[index].trim();
-      if (!next || /^(#{1,3})\s+/.test(next) || /^[-*]\s+/.test(next) || /^\d+\.\s+/.test(next) || next.startsWith("> ")) break;
+      if (!next || /^(#{1,3})\s+/.test(next) || /^[-*]\s+/.test(next) || /^\d+\.\s+/.test(next) || next.startsWith("> ") || parseMarkdownTable(lines, index)) break;
       paragraph.push(next);
       index += 1;
     }

@@ -135,6 +135,19 @@ test("renderer 不重复输出与正式标题相同的 Markdown H1", () => {
   assert.doesNotMatch(html, /># 排版测试</);
 });
 
+test("样文中的 GFM 表格在通用与 JOTO 正式公众号排版中渲染为内联样式 table", () => {
+  const markdown = "## 服务阶段\n\n以下表格用于核对正式交付边界。\n\n| 服务阶段 | 核心动作 | 价值与边界 |\n|---|---|---|\n| 场景诊断与方案设计 | 梳理流程并设计方案 | 明确可行性边界 |\n| 原型搭建与定制实施 | 完成原型验证与系统集成 | 原型不等同生产系统 |";
+  const general = renderWechatHtml({ title: "排版测试", markdown, templateId: "official-command" });
+  const official = renderJotoOfficialWechatBody({ sections: [{ sectionKey: "service", heading: "服务阶段", markdown }], visualSuggestions: [], includeVisualPlaceholders: false });
+  for (const html of [general, official]) {
+    assert.match(html, /<table\b[^>]*style=/i);
+    assert.equal((html.match(/<th\b/g) || []).length, 3);
+    assert.equal((html.match(/<td\b/g) || []).length, 6);
+    assert.doesNotMatch(html, /\|---\|/);
+    assert.equal(validateWechatHtml(html).passed, true);
+  }
+});
+
 test("正文变化会改变来源 Hash，使旧呈现不可复用", () => {
   assert.notEqual(hashWechatSource("标题", "正文 A"), hashWechatSource("标题", "正文 B"));
   assert.equal(hashWechatSource("标题", "正文 A"), hashWechatSource("标题", "正文 A"));

@@ -1,5 +1,6 @@
 import { JOTO_OFFICIAL_WECHAT_TEMPLATE_ID, renderJotoOfficialWechatHtml } from "./joto-wechat-layout-renderer";
 import type { WechatLayoutTemplateId, WechatRenderableTemplateId } from "./wechat-presentation-contracts";
+import { parseMarkdownTable, type ParsedMarkdownTable } from "../markdown-table";
 
 interface Theme {
   accent: string;
@@ -68,6 +69,13 @@ function headingHtml(text: string, level: number, index: number, theme: Theme) {
   return `<h${level} style="${base}margin-top:42px;text-align:center;color:${theme.accent};font-weight:600;"><span style="display:block;margin:0 auto 10px;width:22px;height:1px;background:${theme.accent};"></span>${text}</h${level}>`;
 }
 
+function tableHtml(table: ParsedMarkdownTable, theme: Theme) {
+  const cellWidth = `${Math.floor(100 / table.headers.length)}%`;
+  const headers = table.headers.map((cell, index) => `<th width="${cellWidth}" style="padding:10px 9px;border:1px solid ${theme.accent};background:${theme.accentSoft};color:${theme.text};font-family:${theme.bodyFont};font-size:14px;line-height:1.55;font-weight:700;text-align:${table.alignments[index]};vertical-align:top;word-break:break-word;box-sizing:border-box;">${inlineMarkdown(cell, theme)}</th>`).join("");
+  const rows = table.rows.map((row) => `<tr>${row.map((cell, index) => `<td style="padding:10px 9px;border:1px solid #d8dee7;background:${theme.surface};color:${theme.text};font-family:${theme.bodyFont};font-size:14px;line-height:1.65;text-align:${table.alignments[index]};vertical-align:top;word-break:break-word;box-sizing:border-box;">${inlineMarkdown(cell, theme)}</td>`).join("")}</tr>`).join("");
+  return `<section style="margin:20px 0 24px;overflow-x:auto;box-sizing:border-box;"><table width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;table-layout:fixed;box-sizing:border-box;"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></section>`;
+}
+
 function headerHtml(title: string, theme: Theme) {
   const safeTitle = escapeHtml(title);
   if (theme.headerStyle === "command") return `<header style="margin:0 0 30px;padding:18px 20px;background:${theme.accent};color:#fff;border-radius:4px;"><span style="display:block;margin-bottom:8px;font-size:11px;letter-spacing:.16em;opacity:.76;">JOTO · DECISION BRIEF</span><h1 style="margin:0;font-size:25px;line-height:1.45;font-weight:700;">${safeTitle}</h1></header>`;
@@ -102,8 +110,17 @@ export function renderWechatHtml(input: { title: string; markdown: string; templ
     quoteLines = [];
   };
 
-  for (const rawLine of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length;) {
+    const rawLine = lines[lineIndex];
     const line = rawLine.trim();
+    const table = parseMarkdownTable(lines, lineIndex);
+    if (table) {
+      flushList(); flushQuote();
+      blocks.push(tableHtml(table, theme));
+      lineIndex = table.nextIndex;
+      continue;
+    }
+    lineIndex += 1;
     if (!line) { flushList(); flushQuote(); continue; }
     const heading = /^(#{1,4})\s+(.+)$/.exec(line);
     if (heading) {
